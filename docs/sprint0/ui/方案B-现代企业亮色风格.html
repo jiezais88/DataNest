@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataNest UI 方案 B — 现代企业亮色风格</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-root: #f7f8fa;
+            --bg-surface: #ffffff;
+            --bg-elevated: #ffffff;
+            --bg-hover: #f1f3f6;
+            --border-subtle: #e2e6ed;
+            --border-strong: #cdd3dc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --accent-light: #eef2ff;
+            --accent-glow: rgba(79, 70, 229, .12);
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --danger-light: #fef2f2;
+            --success: #16a34a;
+            --success-light: #f0fdf4;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, .04), 0 2px 4px rgba(0, 0, 0, .03);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, .05), 0 4px 6px rgba(0, 0, 0, .03);
+            --shadow-xl: 0 20px 25px rgba(0, 0, 0, .06), 0 10px 10px rgba(0, 0, 0, .03);
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-root);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .view-tabs {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            padding: 4px;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .view-tab {
+            padding: 8px 24px;
+            border-radius: 100px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all var(--transition-fast);
+            font-family: var(--font-sans);
+        }
+
+        .view-tab.active {
+            background: var(--text-primary);
+            color: #fff;
+        }
+
+        .view-tab:hover:not(.active) {
+            color: var(--text-primary);
+        }
+
+        /* ── LOGIN ── */
+        .login-page {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+            background: var(--bg-root);
+            background-image: radial-gradient(circle at 20% 30%, rgba(79, 70, 229, .03) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(79, 70, 229, .03) 0%, transparent 50%);
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 48px 40px;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .login-logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 36px;
+        }
+
+        .login-logo-icon {
+            width: 52px;
+            height: 52px;
+            background: var(--accent);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: #fff;
+            font-weight: 800;
+        }
+
+        .login-logo-text {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -.5px;
+            color: var(--text-primary);
+        }
+
+        .login-subtitle {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            transition: all var(--transition-fast);
+            outline: none;
+        }
+
+        .form-input:hover {
+            border-color: var(--border-strong);
+        }
+
+        .form-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper .form-input {
+            padding-right: 44px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+        }
+
+        .toggle-password:hover {
+            color: var(--text-secondary);
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .checkbox-row label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-family: var(--font-sans);
+            letter-spacing: -.1px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .error-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--danger-light);
+            border: 1px solid #fecaca;
+            border-radius: var(--radius-sm);
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: var(--danger);
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 28px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* ── ADMIN ── */
+        .admin-page {
+            display: none;
+            min-height: 100vh;
+        }
+
+        .admin-page.active {
+            display: flex;
+        }
+
+        .sidebar {
+            width: 248px;
+            min-height: 100vh;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 20px 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            margin-bottom: 16px;
+        }
+
+        .sidebar-brand-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #fff;
+            font-weight: 800;
+        }
+
+        .sidebar-brand-text {
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .nav-section {
+            padding: 4px 12px;
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 12px 8px 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 9px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .nav-item-icon {
+            font-size: 17px;
+            width: 22px;
+            text-align: center;
+            opacity: .7;
+        }
+
+        .nav-item.active .nav-item-icon {
+            opacity: 1;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 28px 36px;
+            overflow-y: auto;
+            background: var(--bg-root);
+        }
+
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px 6px 6px;
+            border-radius: 100px;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .user-info:hover {
+            border-color: var(--border-strong);
+        }
+
+        .user-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), #818cf8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .user-name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .page-header {
+            margin-bottom: 28px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -.5px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .header-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: var(--bg-surface);
+            padding: 12px 16px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .search-input {
+            padding: 9px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            width: 280px;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .select-input {
+            padding: 9px 36px 9px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+
+        .toolbar-spacer {
+            flex: 1;
+        }
+
+        .btn-sm {
+            padding: 9px 18px;
+            font-size: 13px;
+            border-radius: var(--radius-sm);
+        }
+
+        .btn-accent {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-accent:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border-subtle);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--border-strong);
+            color: var(--text-primary);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+        }
+
+        .data-table thead {
+            background: var(--bg-root);
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 14px 20px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            border-bottom: 2px solid var(--border-subtle);
+        }
+
+        .data-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+            vertical-align: middle;
+        }
+
+        .data-table tbody tr {
+            transition: background var(--transition-fast);
+        }
+
+        .data-table tbody tr:hover {
+            background: var(--bg-hover);
+        }
+
+        .data-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: .1px;
+        }
+
+        .badge-role {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .badge-status-active {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .badge-status-active::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .badge-status-disabled {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .badge-status-disabled::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 6px;
+        }
+
+        .action-btn {
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-size: 12px;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            font-weight: 500;
+            letter-spacing: .1px;
+            background: transparent;
+            color: var(--text-muted);
+            transition: all var(--transition-fast);
+        }
+
+        .action-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .action-btn.danger:hover {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .action-btn.success:hover {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .5);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity var(--transition-smooth);
+            backdrop-filter: blur(2px);
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            width: 520px;
+            max-width: 94vw;
+            background: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            padding: 36px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: translateY(12px) scale(.97);
+            transition: transform var(--transition-smooth);
+        }
+
+        .modal-overlay.open .modal {
+            transform: translateY(0) scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -.3px;
+        }
+
+        .modal-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+
+        .modal-close:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .confirm-box {
+            background: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            max-width: 420px;
+            width: 92%;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .confirm-box h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .confirm-box p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 28px;
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 60px;
+                overflow: hidden;
+            }
+
+            .sidebar-brand-text, .nav-section-title, .nav-item span:not(.nav-item-icon) {
+                display: none;
+            }
+
+            .nav-item {
+                justify-content: center;
+                padding: 10px;
+            }
+
+            .main-content {
+                padding: 20px 16px;
+            }
+
+            .header-row {
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .modal {
+                width: 100%;
+                border-radius: 0;
+                margin: 0;
+            }
+
+            .toolbar {
+                flex-wrap: wrap;
+            }
+
+            .search-input {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="view-tabs">
+    <button class="view-tab active" onclick="switchView('login')">登录页</button>
+    <button class="view-tab" onclick="switchView('admin')">用户管理</button>
+</div>
+
+<!-- ══════ LOGIN ══════ -->
+<div id="view-login" class="login-page">
+    <div class="login-card">
+        <div class="login-logo">
+            <div class="login-logo-icon">D</div>
+            <div>
+                <div class="login-logo-text">DataNest</div>
+                <div class="login-subtitle">开源数据中台 · 开发治理一体化</div>
+            </div>
+        </div>
+
+        <div class="error-card" style="display:none" id="login-error">
+            <span style="font-size:18px">&#9888;</span>
+            <span id="login-error-text"></span>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">用户名</label>
+            <input class="form-input" type="text" placeholder="请输入用户名" id="login-username"
+                   autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label class="form-label">密码</label>
+            <div class="input-wrapper">
+                <input class="form-input" type="password" placeholder="请输入密码" id="login-password"
+                       autocomplete="current-password">
+                <button class="toggle-password" onclick="togglePassword('login-password')">&#128065;</button>
+            </div>
+        </div>
+        <div class="checkbox-row">
+            <input type="checkbox" id="remember-me">
+            <label for="remember-me">记住登录状态（有效期 7 天）</label>
+        </div>
+        <button class="btn btn-primary" id="login-btn" onclick="simulateLogin()" disabled>登录</button>
+        <div class="login-footer">还没有账号？请联系管理员创建</div>
+    </div>
+</div>
+
+<!-- ══════ ADMIN ══════ -->
+<div id="view-admin" class="admin-page">
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-brand-icon">D</div>
+            <div class="sidebar-brand-text">DataNest</div>
+        </div>
+        <nav>
+            <div class="nav-section">
+                <div class="nav-section-title">数据平台</div>
+                <div class="nav-item"><span class="nav-item-icon">&#8599;</span> 数据集成</div>
+                <div class="nav-item"><span class="nav-item-icon">&#9776;</span> 数据开发</div>
+                <div class="nav-item"><span class="nav-item-icon">&#9737;</span> 数据治理</div>
+                <div class="nav-item"><span class="nav-item-icon">&#9733;</span> 资产目录</div>
+                <div class="nav-item"><span class="nav-item-icon">&#8663;</span> 数据服务</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">系统管理</div>
+                <div class="nav-item active"><span class="nav-item-icon">&#128101;</span> 用户管理</div>
+                <div class="nav-item"><span class="nav-item-icon">&#9881;</span> 角色管理</div>
+            </div>
+        </nav>
+    </aside>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <div class="user-info">
+                <div class="user-avatar">A</div>
+                <span class="user-name">admin</span>
+                <span style="color:var(--text-muted);font-size:12px">&#9660;</span>
+            </div>
+        </div>
+
+        <div class="header-row" style="margin-bottom:24px">
+            <div class="page-header" style="margin-bottom:0">
+                <div class="page-title">用户管理</div>
+                <div class="page-subtitle">管理平台用户账号、角色分配与访问状态</div>
+            </div>
+            <button class="btn btn-accent btn-sm" onclick="openModal('create')">+ 创建用户</button>
+        </div>
+
+        <div class="toolbar">
+            <input class="search-input" type="text" placeholder="&#128269; 搜索用户名或邮箱...">
+            <select class="select-input">
+                <option>全部角色</option>
+                <option>超级管理员</option>
+                <option>数据工程师</option>
+                <option>数据分析师</option>
+                <option>治理管理员</option>
+            </select>
+            <select class="select-input">
+                <option>全部状态</option>
+                <option>正常</option>
+                <option>已禁用</option>
+            </select>
+            <div class="toolbar-spacer"></div>
+            <span style="font-size:12px;color:var(--text-muted)">共 4 个用户</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+            <tr>
+                <th>用户名</th>
+                <th>角色</th>
+                <th>邮箱</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th style="text-align:right">操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td><span style="font-weight:700">admin</span> <span
+                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1001</span></td>
+                <td><span class="badge badge-role">超级管理员</span></td>
+                <td>admin@datanest.io</td>
+                <td><span class="badge badge-status-active">正常</span></td>
+                <td style="color:var(--text-muted)">2026-07-15 10:32</td>
+                <td>
+                    <div class="action-btns" style="justify-content:flex-end">
+                        <button class="action-btn">详情</button>
+                        <button class="action-btn" onclick="openModal('edit','admin')">编辑</button>
+                        <button class="action-btn danger" onclick="openConfirm('admin','禁用')">禁用</button>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td><span style="font-weight:700">zhangw</span> <span
+                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1002</span></td>
+                <td><span class="badge badge-role">数据工程师</span></td>
+                <td>zhangw@datanest.io</td>
+                <td><span class="badge badge-status-active">正常</span></td>
+                <td style="color:var(--text-muted)">2026-07-18 14:15</td>
+                <td>
+                    <div class="action-btns" style="justify-content:flex-end">
+                        <button class="action-btn">详情</button>
+                        <button class="action-btn" onclick="openModal('edit','zhangw')">编辑</button>
+                        <button class="action-btn danger" onclick="openConfirm('zhangw','禁用')">禁用</button>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td><span style="font-weight:700">lisi</span> <span
+                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1003</span></td>
+                <td><span class="badge badge-role">数据分析师</span></td>
+                <td>lisi@datanest.io</td>
+                <td><span class="badge badge-status-disabled">已禁用</span></td>
+                <td style="color:var(--text-muted)">2026-07-20 09:08</td>
+                <td>
+                    <div class="action-btns" style="justify-content:flex-end">
+                        <button class="action-btn">详情</button>
+                        <button class="action-btn" onclick="openModal('edit','lisi')">编辑</button>
+                        <button class="action-btn success" onclick="openConfirm('lisi','启用')">启用</button>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td><span style="font-weight:700">wangw</span> <span
+                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1004</span></td>
+                <td>
+                    <span class="badge badge-role">数据工程师</span>
+                    <span class="badge badge-role" style="margin-left:3px">数据分析师</span>
+                </td>
+                <td>wangw@datanest.io</td>
+                <td><span class="badge badge-status-active">正常</span></td>
+                <td style="color:var(--text-muted)">2026-07-22 16:44</td>
+                <td>
+                    <div class="action-btns" style="justify-content:flex-end">
+                        <button class="action-btn">详情</button>
+                        <button class="action-btn" onclick="openModal('edit','wangw')">编辑</button>
+                        <button class="action-btn danger" onclick="openConfirm('wangw','禁用')">禁用</button>
+                    </div>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ══════ MODAL ══════ -->
+<div class="modal-overlay" id="user-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="modal-title">创建用户</div>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">用户名 <span style="color:var(--danger)">*</span></label>
+            <input class="form-input" type="text" placeholder="3-30 位字母数字下划线" id="field-username">
+        </div>
+        <div class="form-group">
+            <label class="form-label" id="pwd-label">初始密码 <span style="color:var(--danger)">*</span></label>
+            <input class="form-input" type="password" placeholder="6-20 位" id="field-password">
+        </div>
+        <div class="form-group">
+            <label class="form-label">确认密码 <span style="color:var(--danger)">*</span></label>
+            <input class="form-input" type="password" placeholder="与初始密码一致" id="field-confirm">
+        </div>
+        <div class="form-group">
+            <label class="form-label">角色 <span style="color:var(--danger)">*</span></label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:8px 14px;background:var(--accent-light);border-radius:100px;color:var(--accent);font-weight:600"><input
+                        type="checkbox" checked style="accent-color:var(--accent)"> 数据工程师</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:8px 14px;background:var(--bg-hover);border-radius:100px;color:var(--text-secondary)"><input
+                        type="checkbox" style="accent-color:var(--accent)"> 数据分析师</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:8px 14px;background:var(--bg-hover);border-radius:100px;color:var(--text-secondary)"><input
+                        type="checkbox" style="accent-color:var(--accent)"> 治理管理员</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:8px 14px;background:var(--bg-hover);border-radius:100px;color:var(--text-secondary)"><input
+                        type="checkbox" style="accent-color:var(--accent)"> 超级管理员</label>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px">支持一个用户拥有多个角色（权限取并集）
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">邮箱（可选）</label>
+            <input class="form-input" type="email" placeholder="user@datanest.io" id="field-email">
+        </div>
+        <div class="form-group">
+            <label class="form-label">手机号（可选）</label>
+            <input class="form-input" type="tel" placeholder="13800138000" id="field-phone">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline btn-sm" onclick="closeModal()">取消</button>
+            <button class="btn btn-accent btn-sm" onclick="closeModal()">创建</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════ CONFIRM ══════ -->
+<div class="modal-overlay" id="confirm-dialog">
+    <div class="confirm-box">
+        <h3 id="confirm-title">确认操作</h3>
+        <p id="confirm-text"></p>
+        <div class="confirm-actions">
+            <button class="btn btn-outline btn-sm" onclick="closeConfirm()">取消</button>
+            <button class="btn btn-primary btn-sm" style="width:auto;background:var(--danger)" id="confirm-action-btn"
+                    onclick="closeConfirm()">确认
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchView(view) {
+        document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('view-login').style.display = view === 'login' ? 'flex' : 'none';
+        const a = document.getElementById('view-admin');
+        if (view === 'admin') {
+            a.classList.add('active');
+            a.style.display = 'flex';
+        } else {
+            a.classList.remove('active');
+            a.style.display = 'none';
+        }
+    }
+
+    const ui = document.getElementById('login-username'), pi = document.getElementById('login-password'),
+        lb = document.getElementById('login-btn');
+
+    function updateBtn() {
+        lb.disabled = !ui.value.trim() || !pi.value.trim();
+    }
+
+    ui.addEventListener('input', updateBtn);
+    pi.addEventListener('input', updateBtn);
+
+    function togglePassword(id) {
+        const e = document.getElementById(id);
+        e.type = e.type === 'password' ? 'text' : 'password';
+    }
+
+    function simulateLogin() {
+        const e = document.getElementById('login-error'), t = document.getElementById('login-error-text');
+        const s = ['该用户不存在，请检查用户名或联系管理员创建账号', '密码错误，请重试', '该账号已被禁用，请联系管理员'];
+        t.textContent = s[Math.floor(Math.random() * 3)];
+        e.style.display = 'flex';
+        setTimeout(() => {
+            e.style.display = 'none';
+        }, 4000);
+    }
+
+    function openModal(mode, user) {
+        const m = document.getElementById('user-modal'), t = document.getElementById('modal-title'),
+            l = document.getElementById('pwd-label');
+        if (mode === 'create') {
+            t.textContent = '创建用户';
+            l.innerHTML = '初始密码 <span style="color:var(--danger)">*</span>';
+            document.getElementById('field-username').value = '';
+            document.getElementById('field-password').value = '';
+            document.getElementById('field-confirm').value = '';
+            document.getElementById('field-email').value = '';
+            document.getElementById('field-phone').value = '';
+        } else {
+            t.textContent = '编辑用户 — ' + user;
+            l.innerHTML = '密码 <span style="color:var(--text-muted)">(不修改则留空)</span>';
+            document.getElementById('field-username').value = user;
+            document.getElementById('field-password').value = '';
+            document.getElementById('field-confirm').value = '';
+            document.getElementById('field-email').value = user + '@datanest.io';
+            document.getElementById('field-phone').value = '';
+        }
+        m.classList.add('open');
+    }
+
+    function closeModal() {
+        document.getElementById('user-modal').classList.remove('open');
+    }
+
+    document.getElementById('user-modal').addEventListener('click', function (e) {
+        if (e.target === this) closeModal();
+    });
+
+    function openConfirm(user, action) {
+        const d = document.getElementById('confirm-dialog');
+        document.getElementById('confirm-title').textContent = action + '用户';
+        document.getElementById('confirm-text').textContent = '确认' + action + '用户 ' + user + '？' + (action === '禁用' ? ' 禁用后该用户将无法登录。' : '');
+        const b = document.getElementById('confirm-action-btn');
+        b.textContent = '确认' + action;
+        b.style.background = action === '禁用' ? 'var(--danger)' : 'var(--success)';
+        d.classList.add('open');
+    }
+
+    function closeConfirm() {
+        document.getElementById('confirm-dialog').classList.remove('open');
+    }
+
+    document.getElementById('confirm-dialog').addEventListener('click', function (e) {
+        if (e.target === this) closeConfirm();
+    });</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: data-nest-gateway
+
+  config:
+    import:
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        file-extension: yaml
+
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: system-service
+              uri: lb://data-nest-system
+              predicates:
+                - Path=/api/system/**
+              filters:
+                - StripPrefix=1
+
+sa-token:
+  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 604800
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: true
+  token-style: tik
+  is-read-header: true
+
+springdoc:
+  api-docs:
+    enabled: false

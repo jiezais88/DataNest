@@ -1,0 +1,39 @@
+# ============================================
+# shared-security.yaml
+# Sa-Token JWT + CORS + Redis 共享配置
+# 消费方: gateway, system-service
+# ============================================
+sa-token:
+  # JWT 模式
+  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
+  # Token 名称 (前端携带: Authorization: Bearer xxx)
+  token-name: Authorization
+  # Token 有效期 (秒)，默认 7 天
+  timeout: 604800
+  # 临时有效期 (秒)，默认 30 分钟
+  active-timeout: 1800
+  # 是否允许同一账号多地同时登录
+  is-concurrent: true
+  # 是否共用一个 Token
+  is-share: true
+  # Token 风格: tik (UUID 风格)
+  token-style: tik
+  # 是否从请求头读取 Token
+  is-read-header: true
+  # 是否输出日志
+  is-log: true
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+datanest:
+  security:
+    cors:
+      allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
+      allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+      allowed-headers: Authorization,Content-Type,X-User-Id
+      allow-credentials: true
+      max-age: 3600

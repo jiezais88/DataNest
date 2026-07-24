@@ -1,0 +1,43 @@
+server:
+  port: 8087
+  servlet:
+    context-path: /system
+
+spring:
+  application:
+    name: data-nest-system
+
+  config:
+    import:
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        file-extension: yaml
+
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
+
+sa-token:
+  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
+  token-name: Authorization
+  timeout: 604800
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: true
+  token-style: tik
+  is-read-header: true

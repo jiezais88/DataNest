@@ -1,0 +1,17 @@
+# ============================================
+# shared-datasource.yaml
+# PostgreSQL 数据源共享配置
+# 消费方: system-service
+# ============================================
+spring:
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DATABASE:datanest}
+    username: ${PG_USER:datanest}
+    password: ${PG_PASSWORD:datanest123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      connection-timeout: 30000

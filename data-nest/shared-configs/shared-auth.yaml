@@ -1,0 +1,45 @@
+# ============================================
+# shared-auth.yaml
+# 预置角色和权限矩阵 (参考文档)
+# 消费方: system-service (Flyway 种子数据)
+# ============================================
+datanest:
+  auth:
+    roles:
+      - code: SUPER_ADMIN
+        name: 超级管理员
+        description: 拥有系统所有权限
+        permissions:
+          - user:read
+          - user:create
+          - user:update
+          - user:delete
+          - user:reset_password
+          - user:toggle_status
+          - system:admin
+
+      - code: DATA_ENGINEER
+        name: 数据工程师
+        description: 负责数据集成和数据开发
+        permissions:
+          - data:read
+          - data:write
+          - pipeline:manage
+          - user:read
+
+      - code: DATA_ANALYST
+        name: 数据分析师
+        description: 数据查询与分析
+        permissions:
+          - data:read
+          - query:execute
+          - user:read
+
+      - code: GOVERNANCE_ADMIN
+        name: 治理管理员
+        description: 数据治理与质量管理
+        permissions:
+          - data:read
+          - governance:manage
+          - quality:manage
+          - user:read

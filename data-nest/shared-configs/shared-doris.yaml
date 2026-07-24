@@ -1,0 +1,11 @@
+# ============================================
+# shared-doris.yaml
+# Apache Doris 连接信息 (Sprint 1 使用)
+# 消费方: engineering-service, data-service
+# ============================================
+datanest:
+  doris:
+    fe-host: ${DORIS_FE_HOST:localhost}
+    fe-query-port: ${DORIS_FE_PORT:9030}
+    user: ${DORIS_USER:root}
+    password: ${DORIS_PASSWORD:}
