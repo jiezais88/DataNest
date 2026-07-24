@@ -6,8 +6,12 @@
 sa-token:
   # JWT 模式
   jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
-  # Token 名称 (前端携带: Authorization: Bearer xxx)
+  # Token 名称，前端放在同名 Header 中提交：Authorization: <token>
   token-name: Authorization
+  # 关闭 Cookie 读取，统一走 Header（前后端分离）
+  is-read-cookie: false
+  # 开启从请求头读取 Token
+  is-read-header: true
   # Token 有效期 (秒)，默认 7 天
   timeout: 604800
   # 临时有效期 (秒)，默认 30 分钟
@@ -18,8 +22,6 @@ sa-token:
   is-share: true
   # Token 风格: tik (UUID 风格)
   token-style: tik
-  # 是否从请求头读取 Token
-  is-read-header: true
   # 是否输出日志
   is-log: true
 

@@ -1,4 +1,4 @@
-import {useState, useEffect} from 'react';
+import {useEffect, useState} from 'react';
 import {HiOutlineXMark} from 'react-icons/hi2';
 import type {CreateUserParams, UpdateUserParams, UserVO} from '../api/auth';
 
@@ -137,7 +137,7 @@ export default function UserModal({open, editUser, onClose, onSubmit}: Props) {
                             className="px-ds-4 py-ds-2 text-ds-small text-ds-text-secondary hover:bg-ds-bg-hover rounded-ds-sm transition-colors ds-fast">
                         取消
                     </button>
-                    <button onClick={handleSubmit} disabled={!canSubmit}
+                    <button type="button" onClick={handleSubmit} disabled={!canSubmit}
                             className="px-ds-4 py-ds-2 text-ds-small text-white bg-ds-accent hover:bg-ds-accent-hover rounded-ds-sm font-semibold transition-colors ds-fast disabled:opacity-50 disabled:cursor-not-allowed">
                         {isEdit ? '保存修改' : '创建用户'}
                     </button>

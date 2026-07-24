@@ -982,14 +982,15 @@ spring:
 ```yaml
 sa-token:
   jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
+  # 统一从 Authorization Header 读取 token，不额外配置 token-prefix
   token-name: Authorization
-  token-prefix: Bearer
   timeout: 604800
   active-timeout: 1800
   is-concurrent: true
   is-share: true
   token-style: tik
   is-read-header: true
+  is-read-cookie: false
   is-log: true
 
 spring:

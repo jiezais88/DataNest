@@ -1,6 +1,6 @@
-import {useNavigate, useLocation} from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {HiOutlineCircleStack, HiOutlineUsers} from 'react-icons/hi2';
+import {HiOutlineHome, HiOutlineUsers} from 'react-icons/hi2';
 
 interface MenuItem {
     label: string;
@@ -13,11 +13,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
     {
         group: '数据平台',
         items: [
-            {label: '数据集成', path: '/data/integration', icon: <HiOutlineCircleStack size={18}/>},
-            {label: '数据开发', path: '/data/development', icon: <HiOutlineCircleStack size={18}/>},
-            {label: '数据治理', path: '/data/governance', icon: <HiOutlineCircleStack size={18}/>},
-            {label: '资产目录', path: '/data/catalog', icon: <HiOutlineCircleStack size={18}/>},
-            {label: '数据服务', path: '/data/service', icon: <HiOutlineCircleStack size={18}/>},
+            {label: '首页', path: '/', icon: <HiOutlineHome size={18}/>},
         ],
     },
     {
