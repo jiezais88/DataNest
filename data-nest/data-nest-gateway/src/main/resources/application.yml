@@ -28,17 +28,6 @@ spring:
               filters:
                 - StripPrefix=1
 
-sa-token:
-  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
-  token-name: Authorization
-  token-prefix: Bearer
-  timeout: 604800
-  active-timeout: 1800
-  is-concurrent: true
-  is-share: true
-  token-style: tik
-  is-read-header: true
-
 springdoc:
   api-docs:
     enabled: false

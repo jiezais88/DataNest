@@ -32,12 +32,3 @@ mybatis-plus:
     db-config:
       id-type: assign_id
 
-sa-token:
-  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
-  token-name: Authorization
-  timeout: 604800
-  active-timeout: 1800
-  is-concurrent: true
-  is-share: true
-  token-style: tik
-  is-read-header: true

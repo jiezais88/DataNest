@@ -148,7 +148,6 @@ data-nest/
 └── shared-configs/
     ├── shared-datasource.yaml
     ├── shared-security.yaml
-    ├── shared-auth.yaml
     └── shared-doris.yaml
 ```
 
@@ -348,7 +347,6 @@ spring:
       - nacos:system-service.yaml?refreshEnabled=true
       - nacos:shared-datasource.yaml?refreshEnabled=true&group=shared-configs
       - nacos:shared-security.yaml?refreshEnabled=true&group=shared-configs
-      - nacos:shared-auth.yaml?refreshEnabled=true&group=shared-configs
   cloud:
     nacos:
       discovery:
@@ -554,7 +552,6 @@ spring:
     import:
       - nacos:gateway-service.yaml?refreshEnabled=true
       - nacos:shared-security.yaml?refreshEnabled=true&group=shared-configs
-      - nacos:shared-auth.yaml?refreshEnabled=true&group=shared-configs
   cloud:
     nacos:
       discovery:
@@ -578,17 +575,10 @@ spring:
 
 server:
   port: 8080
-
-sa-token:
-  token-name: Authorization
-  timeout: 86400
-  active-timeout: 1800
-  is-concurrent: true
-  is-share: true
-  token-style: tik
-  is-log: false
-  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!}
 ```
+
+> Sa-Token 配置统一放在 Nacos `shared-configs/shared-security.yaml`，通过 `spring.config.import` 加载，本地
+> `application.yml` 不再重复声明。
 
 ### 5.3 登录时序
 
@@ -971,7 +961,6 @@ INSERT INTO sys_user_role (user_id, role_id) VALUES (10001, 1);
 |--------------------------|-------------------|---------------------------------|
 | `shared-datasource.yaml` | PG 连接信息       | system、governance、integration |
 | `shared-security.yaml`   | JWT Secret、CORS  | gateway                         |
-| `shared-auth.yaml` 🆕    | 预置角色/权限矩阵 | gateway、system                 |
 | `shared-doris.yaml`      | Doris FE/BE 地址  | integration、dev、governance    |
 
 ### 8.2 shared-datasource.yaml
@@ -992,46 +981,34 @@ spring:
 
 ```yaml
 sa-token:
-  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!}
+  jwt-secret-key: ${JWT_SECRET:DataNestSecretKey2026!ChangeMeInProduction}
   token-name: Authorization
-  timeout: 86400
+  token-prefix: Bearer
+  timeout: 604800
   active-timeout: 1800
   is-concurrent: true
   is-share: true
+  token-style: tik
+  is-read-header: true
+  is-log: true
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 datanest:
   security:
     cors:
       allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
       allowed-methods: GET,POST,PUT,DELETE,OPTIONS
-      allowed-headers: Authorization,Content-Type
+      allowed-headers: Authorization,Content-Type,X-User-Id
+      allow-credentials: true
+      max-age: 3600
 ```
 
-### 8.4 shared-auth.yaml 🆕
-
-```yaml
-datanest:
-  auth:
-    # 预置角色定义（与 V1.0.1 seed SQL 保持一致）
-    roles:
-      - code: SUPER_ADMIN
-        name: 超级管理员
-      - code: DATA_ENGINEER
-        name: 数据工程师
-      - code: DATA_ANALYST
-        name: 数据分析师
-      - code: GOVERNANCE_ADMIN
-        name: 治理管理员
-
-    # 权限矩阵（前端用：角色 → 可见菜单）
-    menu-matrix:
-      SUPER_ADMIN:      [system, integration, dev, governance, catalog, data, realtime]
-      DATA_ENGINEER:    [integration, dev, governance, catalog, data, realtime]
-      DATA_ANALYST:     [governance, catalog, data]
-      GOVERNANCE_ADMIN: [governance, catalog]
-```
-
-### 8.5 shared-doris.yaml
+### 8.4 shared-doris.yaml
 
 ```yaml
 datanest:

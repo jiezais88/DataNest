@@ -263,7 +263,6 @@ Nacos Namespace: datanest-dev
 ├── shared-configs (共享配置组)
 │   ├── shared-datasource.yaml       # 数据源公共配置
 │   ├── shared-security.yaml         # JWT、加密密钥
-│   ├── shared-auth.yaml             # 预置角色/权限矩阵 🆕
 │   ├── shared-doris.yaml            # Doris 连接信息
 │   ├── shared-iceberg.yaml          # Iceberg Catalog 配置
 │   └── shared-flink.yaml            # Flink 配置
