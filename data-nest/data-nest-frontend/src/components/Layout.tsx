@@ -3,7 +3,7 @@ import {useState} from 'react';
 import Sidebar from './Sidebar';
 import {useAuthStore} from '../store/useAuthStore';
 import ChangePasswordModal from './ChangePasswordModal';
-import {HiOutlineLockClosed, HiOutlineArrowRightOnRectangle} from 'react-icons/hi2';
+import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/hi2';
 
 export default function Layout() {
     const {userInfo, logout} = useAuthStore();
@@ -19,14 +19,14 @@ export default function Layout() {
     const initials = userInfo?.username?.slice(0, 1).toUpperCase() || 'U';
 
     return (
-        <div className="min-h-screen bg-ds-bg-root">
+        <div className="h-screen overflow-hidden bg-ds-bg-root">
             <Sidebar/>
 
             {/* Main content area */}
-            <div className="ml-[248px]">
+            <div className="ml-[248px] flex flex-col h-screen">
                 {/* Top bar */}
                 <header
-                    className="sticky top-0 z-ds-elevated h-14 bg-ds-bg-surface/80 backdrop-blur-sm border-b border-ds-border-subtle flex items-center justify-end px-ds-6">
+                    className="flex-shrink-0 z-ds-elevated h-14 bg-ds-bg-surface/80 backdrop-blur-sm border-b border-ds-border-subtle flex items-center justify-end px-ds-6">
                     <div className="relative">
                         <button
                             onClick={() => setMenuOpen(!menuOpen)}
@@ -67,7 +67,7 @@ export default function Layout() {
                 </header>
 
                 {/* Page content */}
-                <main className="p-ds-6">
+                <main className="flex-1 min-h-0 overflow-hidden p-ds-6">
                     <Outlet/>
                 </main>
             </div>
