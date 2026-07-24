@@ -1,0 +1,1991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataNest Sprint 1 — 数据源与元数据采集</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-root: #f7f8fa;
+            --bg-surface: #ffffff;
+            --bg-elevated: #ffffff;
+            --bg-hover: #f1f3f6;
+            --border-subtle: #e2e6ed;
+            --border-strong: #cdd3dc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --accent-light: #eef2ff;
+            --accent-glow: rgba(79, 70, 229, .12);
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --danger-light: #fef2f2;
+            --success: #16a34a;
+            --success-light: #f0fdf4;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, .04), 0 2px 4px rgba(0, 0, 0, .03);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, .05), 0 4px 6px rgba(0, 0, 0, .03);
+            --shadow-xl: 0 20px 25px rgba(0, 0, 0, .06), 0 10px 10px rgba(0, 0, 0, .03);
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-root);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased
+        }
+
+        /* tabs */
+        .vt {
+            position: fixed;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            padding: 3px;
+            z-index: 400;
+            box-shadow: var(--shadow-sm)
+        }
+
+        .vb {
+            padding: 6px 18px;
+            border-radius: 100px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all var(--transition-fast);
+            font-family: var(--font-sans);
+            white-space: nowrap
+        }
+
+        .vb.ac {
+            background: var(--accent);
+            color: #fff
+        }
+
+        .vb:hover:not(.ac) {
+            color: var(--text-primary)
+        }
+
+        .ap {
+            display: none;
+            min-height: 100vh
+        }
+
+        .ap.ac {
+            display: flex
+        }
+
+        .sb {
+            width: 220px;
+            min-height: 100vh;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0
+        }
+
+        .sbb {
+            padding: 0 18px 22px;
+            border-bottom: 1px solid var(--border-subtle);
+            margin-bottom: 12px;
+            font-size: 17px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .sbi {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, var(--accent), #a78bfa);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            color: #fff;
+            font-weight: 800
+        }
+
+        .ns {
+            padding: 2px 10px
+        }
+
+        .nst {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            padding: 14px 10px 6px
+        }
+
+        .ni {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast)
+        }
+
+        .ni:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .ni.ac {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600
+        }
+
+        .niic {
+            font-size: 14px;
+            width: 20px;
+            text-align: center;
+            opacity: .55
+        }
+
+        .ni.ac .niic {
+            opacity: 1
+        }
+
+        .mc {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-root);
+            height: 100vh
+        }
+
+        .ch {
+            flex-shrink: 0;
+            padding: 24px 32px 0
+        }
+
+        .cs {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 32px 24px
+        }
+
+        .tb {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-bottom: 10px
+        }
+
+        .ui {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px 5px 5px;
+            border-radius: 100px;
+            cursor: pointer;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            font-size: 13px;
+            color: var(--text-secondary);
+            transition: all var(--transition-fast)
+        }
+
+        .ui:hover {
+            border-color: var(--border-strong)
+        }
+
+        .ua {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), #a78bfa);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #fff
+        }
+
+        .ph .pt {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -.4px
+        }
+
+        .ph .ps {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 2px
+        }
+
+        .hr {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 20px
+        }
+
+        .tbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 18px;
+            background: var(--bg-surface);
+            padding: 12px 16px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-xs);
+            flex-wrap: wrap
+        }
+
+        .si {
+            padding: 9px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            width: 240px;
+            transition: all var(--transition-fast)
+        }
+
+        .si:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .si::placeholder {
+            color: var(--text-muted)
+        }
+
+        .sel {
+            padding: 9px 34px 9px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            transition: all var(--transition-fast)
+        }
+
+        .sel:hover {
+            border-color: var(--border-strong)
+        }
+
+        .tbsp {
+            flex: 1
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 9px 18px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-family: var(--font-sans);
+            letter-spacing: -.1px
+        }
+
+        .btn-a {
+            background: var(--accent);
+            color: #fff
+        }
+
+        .btn-a:hover {
+            background: var(--accent-hover)
+        }
+
+        .btn-o {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border-subtle)
+        }
+
+        .btn-o:hover {
+            border-color: var(--border-strong);
+            color: var(--text-primary)
+        }
+
+        .btn-d {
+            background: var(--danger);
+            color: #fff
+        }
+
+        .btn-d:hover {
+            background: var(--danger-hover)
+        }
+
+        .btn-gh {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500
+        }
+
+        .btn-gh:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .btn-gh.danger:hover {
+            background: var(--danger-light);
+            color: var(--danger)
+        }
+
+        .btn-gh.success:hover {
+            background: var(--success-light);
+            color: var(--success)
+        }
+
+        .btn:disabled {
+            opacity: .4;
+            cursor: not-allowed
+        }
+
+        .dt {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm)
+        }
+
+        .dt thead {
+            background: var(--bg-root)
+        }
+
+        .dt th {
+            text-align: left;
+            padding: 12px 18px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            border-bottom: 2px solid var(--border-subtle)
+        }
+
+        .dt td {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-subtle);
+            vertical-align: middle
+        }
+
+        .dt tbody tr:hover {
+            background: var(--bg-hover)
+        }
+
+        .dt tbody tr:last-child td {
+            border-bottom: none
+        }
+
+        .dt tbody tr {
+            transition: background var(--transition-fast)
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600
+        }
+
+        .b-acc {
+            background: var(--accent-light);
+            color: var(--accent)
+        }
+
+        .b-ok {
+            background: var(--success-light);
+            color: var(--success)
+        }
+
+        .b-ok::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--success)
+        }
+
+        .b-err {
+            background: var(--danger-light);
+            color: var(--danger)
+        }
+
+        .b-err::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--danger)
+        }
+
+        .b-warn {
+            background: var(--warning-light);
+            color: var(--warning)
+        }
+
+        .b-warn::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--warning)
+        }
+
+        .b-running {
+            background: var(--accent-light);
+            color: var(--accent)
+        }
+
+        .b-running::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: pulse 1.5s infinite
+        }
+
+        .b-une {
+            background: var(--bg-hover);
+            color: var(--text-muted)
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1
+            }
+            50% {
+                opacity: .4
+            }
+        }
+
+        .pg {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            padding: 16px 0 0;
+            font-size: 13px;
+            color: var(--text-secondary)
+        }
+
+        .pg-info {
+            margin-right: 12px;
+            color: var(--text-muted);
+            font-size: 12px
+        }
+
+        .pg-size {
+            padding: 5px 28px 5px 10px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: var(--font-sans);
+            color: var(--text-secondary);
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            margin-right: 16px
+        }
+
+        .pg-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid var(--border-subtle);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+            font-family: var(--font-sans)
+        }
+
+        .pg-btn:hover {
+            border-color: var(--border-strong);
+            color: var(--text-primary)
+        }
+
+        .pg-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff
+        }
+
+        .pg-btn:disabled {
+            opacity: .4;
+            cursor: not-allowed
+        }
+
+        /* drawer */
+        .dro {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .4);
+            z-index: 300;
+            display: flex;
+            align-items: stretch;
+            justify-content: flex-end;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity var(--transition-smooth);
+            backdrop-filter: blur(2px)
+        }
+
+        .dro.op {
+            opacity: 1;
+            pointer-events: auto
+        }
+
+        .dr {
+            width: 560px;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-subtle);
+            padding: 36px 40px;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+            transform: translateX(100%);
+            transition: transform var(--transition-smooth)
+        }
+
+        .dro.op .dr {
+            transform: translateX(0)
+        }
+
+        .drh {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px
+        }
+
+        .drt {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -.3px
+        }
+
+        .drc {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast)
+        }
+
+        .drc:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .fg {
+            margin-bottom: 18px
+        }
+
+        .fl {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: .4px
+        }
+
+        .fi {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            outline: none;
+            transition: all var(--transition-fast)
+        }
+
+        .fi:hover {
+            border-color: var(--border-strong)
+        }
+
+        .fi:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .fi::placeholder {
+            color: var(--text-muted)
+        }
+
+        .fi:disabled {
+            background: var(--bg-hover);
+            color: var(--text-muted);
+            cursor: not-allowed
+        }
+
+        .iw {
+            position: relative
+        }
+
+        .iw .fi {
+            padding-right: 40px
+        }
+
+        .tp {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 15px;
+            padding: 4px
+        }
+
+        .tp:hover {
+            color: var(--text-secondary)
+        }
+
+        .fhint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px
+        }
+
+        .fhint.err {
+            color: var(--danger)
+        }
+
+        .drf {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-subtle)
+        }
+
+        .alert-ok {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--success-light);
+            border: 1px solid #bbf7d0;
+            border-radius: var(--radius-sm);
+            margin-bottom: 18px;
+            font-size: 13px;
+            color: var(--success)
+        }
+
+        .alert-err {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--danger-light);
+            border: 1px solid #fecaca;
+            border-radius: var(--radius-sm);
+            margin-bottom: 18px;
+            font-size: 13px;
+            color: var(--danger)
+        }
+
+        /* modal */
+        .mo {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .5);
+            z-index: 310;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity var(--transition-smooth);
+            backdrop-filter: blur(2px)
+        }
+
+        .mo.op {
+            opacity: 1;
+            pointer-events: auto
+        }
+
+        .mdl {
+            width: 520px;
+            max-width: 94vw;
+            background: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+            transform: translateY(8px) scale(.97);
+            transition: transform var(--transition-smooth)
+        }
+
+        .mo.op .mdl {
+            transform: translateY(0) scale(1)
+        }
+
+        .mh {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px
+        }
+
+        .mt {
+            font-size: 18px;
+            font-weight: 700
+        }
+
+        .mcbtn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast)
+        }
+
+        .mcbtn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        /* cron chip */
+        .cron-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-family: monospace
+        }
+
+        .cron-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px
+        }
+
+        /* radio group */
+        .rg {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap
+        }
+
+        .rg label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            border: 1.5px solid var(--border-subtle);
+            border-radius: 100px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast)
+        }
+
+        .rg label:hover {
+            border-color: var(--border-strong)
+        }
+
+        .rg input:checked + span {
+            font-weight: 600
+        }
+
+        .rg input:checked + span + span {
+            display: none
+        }
+
+        .rg label:has(input:checked) {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            color: var(--accent)
+        }
+
+        .rg input[type=radio] {
+            accent-color: var(--accent)
+        }
+
+        .rg input[type=checkbox] {
+            accent-color: var(--accent)
+        }
+
+        /* chip group */
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-height: 36px;
+            padding: 6px 0
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 14px;
+            background: var(--accent-light);
+            color: var(--accent);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600
+        }
+
+        .chip-rm {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast)
+        }
+
+        .chip-rm:hover {
+            background: var(--accent);
+            color: #fff
+        }
+
+        /* empty state */
+        .empty {
+            text-align: center;
+            padding: 80px 20px
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: .25
+        }
+
+        .empty-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px
+        }
+
+        .empty-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 20px
+        }
+
+        /* tree & detail */
+        .tree-panel {
+            width: 240px;
+            flex-shrink: 0;
+            overflow-y: auto;
+            padding: 16px 0;
+            border-right: 1px solid var(--border-subtle);
+            background: var(--bg-surface);
+            border-radius: var(--radius-md) 0 0 var(--radius-md)
+        }
+
+        .tree-item {
+            padding: 7px 16px 7px 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all var(--transition-fast);
+            user-select: none
+        }
+
+        .tree-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .tree-item.active {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600
+        }
+
+        .tree-arrow {
+            font-size: 10px;
+            width: 14px;
+            text-align: center;
+            color: var(--text-muted);
+            flex-shrink: 0;
+            transition: transform var(--transition-fast)
+        }
+
+        .tree-arrow.expanded {
+            transform: rotate(90deg)
+        }
+
+        .tree-item.lv1 {
+            padding-left: 12px
+        }
+
+        .tree-item.lv2 {
+            padding-left: 30px
+        }
+
+        .tree-item.lv3 {
+            padding-left: 48px
+        }
+
+        .tree-count {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-left: auto;
+            background: var(--bg-hover);
+            padding: 1px 6px;
+            border-radius: 100px
+        }
+
+        .detail-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 28px;
+            background: var(--bg-surface);
+            border-radius: 0 var(--radius-md) var(--radius-md) 0
+        }
+
+        .detail-section {
+            margin-bottom: 24px
+        }
+
+        .detail-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .detail-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 13px
+        }
+
+        .detail-label {
+            width: 100px;
+            color: var(--text-muted);
+            flex-shrink: 0
+        }
+
+        .detail-value {
+            color: var(--text-primary);
+            font-weight: 500
+        }
+
+        .comment-input {
+            padding: 6px 10px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            width: 180px;
+            transition: all var(--transition-fast)
+        }
+
+        .comment-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .comment-input:disabled {
+            background: var(--bg-hover);
+            color: var(--text-muted);
+            cursor: not-allowed
+        }
+
+        /* breadcrumb */
+        .bc {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px
+        }
+
+        .bc a {
+            color: var(--accent);
+            text-decoration: none;
+            cursor: pointer
+        }
+
+        .bc a:hover {
+            text-decoration: underline
+        }
+
+        .bc span {
+            color: var(--text-muted)
+        }
+
+        /* log */
+        .log-box {
+            background: #1a1d24;
+            color: #d4d7dd;
+            font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+            font-size: 12px;
+            line-height: 1.7;
+            padding: 16px 20px;
+            border-radius: var(--radius-sm);
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap
+        }
+
+        .log-err {
+            color: #f87171
+        }
+
+        .log-info {
+            color: #60a5fa
+        }
+
+        .log-time {
+            color: #94a3b8
+        }
+
+        .inline-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--accent-light);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--accent);
+            margin-bottom: 12px
+        }
+
+        @media (max-width: 768px) {
+            .sb {
+                width: 56px;
+                overflow: hidden
+            }
+
+            .sbb, .nst, .ni span:not(.niic) {
+                display: none
+            }
+
+            .ni {
+                justify-content: center;
+                padding: 10px
+            }
+
+            .ch {
+                padding: 20px 16px 0
+            }
+
+            .cs {
+                padding: 0 16px 20px
+            }
+
+            .dr {
+                width: 100%
+            }
+
+            .tbar {
+                flex-direction: column;
+                align-items: stretch
+            }
+
+            .si {
+                width: 100%
+            }
+
+            .tree-panel {
+                width: 180px
+            }
+
+            .detail-panel {
+                padding: 16px
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="vt">
+    <button class="vb ac" onclick="sv('ds')">数据源管理</button>
+    <button class="vb" onclick="sv('task')">元数据采集任务</button>
+    <button class="vb" onclick="sv('meta')">元数据管理</button>
+</div>
+
+<!-- ═══════════ DATA SOURCES ═══════════ -->
+<div id="v-ds" class="ap ac">
+
+    <div class="sb" style="display:none"></div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">&#9660;</span></div>
+            </div>
+            <div class="hr">
+                <div class="ph">
+                    <div class="pt">数据源</div>
+                    <div class="ps">管理所有已接入的外部数据源连接</div>
+                </div>
+                <button class="btn btn-a" onclick="od('create','ds')">+ 新增数据源</button>
+            </div>
+            <div class="tbar">
+                <input class="si" type="text" placeholder="&#128269; 搜索数据源名称...">
+                <select class="sel">
+                    <option>全部类型</option>
+                    <option>MySQL</option>
+                    <option>PostgreSQL</option>
+                    <option>Doris</option>
+                </select>
+                <select class="sel">
+                    <option>全部状态</option>
+                    <option>正常</option>
+                    <option>异常</option>
+                </select>
+                <div class="tbsp"></div>
+                <button class="btn btn-a">查询</button>
+                <button class="btn btn-o">重置</button>
+            </div>
+        </div>
+        <div class="cs">
+            <table class="dt">
+                <thead>
+                <tr>
+                    <th>数据源名称</th>
+                    <th>类型</th>
+                    <th>主机地址</th>
+                    <th>状态</th>
+                    <th>最近连接时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td><span style="font-weight:650">order_db</span></td>
+                    <td><span class="badge b-acc">MySQL</span></td>
+                    <td>10.0.1.100</td>
+                    <td><span class="badge b-ok">正常</span></td>
+                    <td style="color:var(--text-muted)">2 分钟前</td>
+                    <td>
+                        <button class="btn btn-gh" onclick="od('edit','ds','order_db')">编辑</button>
+                        <button class="btn btn-gh" onclick="odc('order_db','ds')">删除</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span style="font-weight:650">user_db</span></td>
+                    <td><span class="badge b-acc">PostgreSQL</span></td>
+                    <td>10.0.1.200</td>
+                    <td><span class="badge b-err">异常</span></td>
+                    <td style="color:var(--text-muted)">1 小时前</td>
+                    <td>
+                        <button class="btn btn-gh" onclick="od('edit','ds','user_db')">编辑</button>
+                        <button class="btn btn-gh" onclick="odc('user_db','ds')">删除</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span style="font-weight:650">doris_olap</span></td>
+                    <td><span class="badge b-acc">Doris</span></td>
+                    <td>10.0.1.50</td>
+                    <td><span class="badge b-ok">正常</span></td>
+                    <td style="color:var(--text-muted)">5 分钟前</td>
+                    <td>
+                        <button class="btn btn-gh" onclick="od('edit','ds','doris_olap')">编辑</button>
+                        <button class="btn btn-gh" onclick="odc('doris_olap','ds','ref')">删除</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="pg"><span class="pg-info">共 3 条</span><select class="pg-size">
+                <option>20条/页</option>
+            </select>
+                <button class="pg-btn" disabled>&#8249;</button>
+                <button class="pg-btn active">1</button>
+                <button class="pg-btn">&#8250;</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ METADATA TASKS ═══════════ -->
+<div id="v-task" class="ap">
+
+    <div class="sb" style="display:none"></div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">&#9660;</span></div>
+            </div>
+            <div class="hr">
+                <div class="ph">
+                    <div class="pt">元数据采集任务</div>
+                    <div class="ps">管理元数据采集任务，支持手动和定时触发</div>
+                </div>
+                <button class="btn btn-a" onclick="od('create','task')">+ 创建任务</button>
+            </div>
+            <div class="tbar">
+                <input class="si" type="text" placeholder="&#128269; 搜索任务名称...">
+                <select class="sel">
+                    <option>全部状态</option>
+                    <option>运行中</option>
+                    <option>正常</option>
+                    <option>失败</option>
+                    <option>未执行</option>
+                </select>
+                <div class="tbsp"></div>
+                <button class="btn btn-a">查询</button>
+                <button class="btn btn-o">重置</button>
+            </div>
+        </div>
+        <div class="cs">
+            <div class="inline-status" style="cursor:pointer" title="点击刷新">核心库采集 正在执行中... 已采集 23/45
+                个表
+            </div>
+            <table class="dt">
+                <thead>
+                <tr>
+                    <th>任务名称</th>
+                    <th>采集范围</th>
+                    <th>触发方式</th>
+                    <th>状态</th>
+                    <th>最近执行</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td><span style="font-weight:650">核心库采集</span></td>
+                    <td>order_db.production</td>
+                    <td><span class="badge b-acc">手动</span></td>
+                    <td><span class="badge b-running">运行中</span></td>
+                    <td style="color:var(--text-muted)">5 分钟前</td>
+                    <td>
+                        <button class="btn btn-gh" disabled>执行</button>
+                        <button class="btn btn-gh" onclick="od('edit','task','核心库采集')">编辑</button>
+                        <button class="btn btn-gh danger" onclick="odc('核心库采集','task')">删除</button>
+                        <button class="btn btn-gh" onclick="sh('history')">历史</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span style="font-weight:650">每日同步</span></td>
+                    <td>order_db.public</td>
+                    <td><span class="badge b-acc">定时</span></td>
+                    <td><span class="badge b-une">未执行</span></td>
+                    <td style="color:var(--text-muted)">—</td>
+                    <td>
+                        <button class="btn btn-gh success">执行</button>
+                        <button class="btn btn-gh" onclick="od('edit','task','每日同步')">编辑</button>
+                        <button class="btn btn-gh danger" onclick="odc('每日同步','task')">删除</button>
+                        <button class="btn btn-gh" onclick="sh('history')">历史</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span style="font-weight:650">doris采集</span></td>
+                    <td>doris_olap.db01, +1</td>
+                    <td><span class="badge b-acc">手动</span></td>
+                    <td><span class="badge b-err">失败</span></td>
+                    <td style="color:var(--text-muted)">1 小时前</td>
+                    <td>
+                        <button class="btn btn-gh success">执行</button>
+                        <button class="btn btn-gh" onclick="od('edit','task','doris采集')">编辑</button>
+                        <button class="btn btn-gh danger" onclick="odc('doris采集','task')">删除</button>
+                        <button class="btn btn-gh" onclick="sh('history')">历史</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="pg"><span class="pg-info">共 3 条</span><select class="pg-size">
+                <option>20条/页</option>
+            </select>
+                <button class="pg-btn" disabled>&#8249;</button>
+                <button class="pg-btn active">1</button>
+                <button class="pg-btn">&#8250;</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ TASK HISTORY (sub-view) ═══════════ -->
+<div id="v-history" class="ap">
+
+    <div class="sb" style="display:none"></div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">&#9660;</span></div>
+            </div>
+            <div class="bc"><a onclick="sv('task')">元数据采集任务</a> <span>/</span> 核心库采集 <span>/</span> 历史记录
+            </div>
+            <div class="ph" style="margin-bottom:18px">
+                <div class="pt" style="font-size:20px">历史记录</div>
+            </div>
+        </div>
+        <div class="cs">
+            <table class="dt">
+                <thead>
+                <tr>
+                    <th>执行时间</th>
+                    <th>执行方式</th>
+                    <th>状态</th>
+                    <th>耗时</th>
+                    <th>库/表/字段</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>2026-07-24 14:32:18</td>
+                    <td><span class="badge b-acc">手动触发</span></td>
+                    <td><span class="badge b-ok">成功</span></td>
+                    <td>12s</td>
+                    <td>2 / 45 / 320</td>
+                    <td>
+                        <button class="btn btn-gh" onclick="om('detail')">详情</button>
+                        <button class="btn btn-gh" onclick="om('log')">日志</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2026-07-24 02:00:00</td>
+                    <td><span class="badge b-acc">定时触发</span></td>
+                    <td><span class="badge b-ok">成功</span></td>
+                    <td>15s</td>
+                    <td>2 / 46 / 321</td>
+                    <td>
+                        <button class="btn btn-gh" onclick="om('detail')">详情</button>
+                        <button class="btn btn-gh" onclick="om('log')">日志</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>2026-07-23 13:10:05</td>
+                    <td><span class="badge b-acc">手动触发</span></td>
+                    <td><span class="badge b-err">失败</span></td>
+                    <td>2s</td>
+                    <td>—</td>
+                    <td>
+                        <button class="btn btn-gh" onclick="om('detail')">详情</button>
+                        <button class="btn btn-gh" onclick="om('log')">日志</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="pg"><span class="pg-info">共 3 条</span><select class="pg-size">
+                <option>20条/页</option>
+            </select>
+                <button class="pg-btn" disabled>&#8249;</button>
+                <button class="pg-btn active">1</button>
+                <button class="pg-btn">&#8250;</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ METADATA MANAGEMENT ═══════════ -->
+<div id="v-meta" class="ap">
+
+    <div class="sb" style="display:none"></div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">&#9660;</span></div>
+            </div>
+            <div class="hr">
+                <div class="ph">
+                    <div class="pt">元数据管理</div>
+                    <div class="ps">浏览已采集的数据源库表结构，编辑注释信息</div>
+                </div>
+            </div>
+        </div>
+        <div class="cs" style="display:flex;gap:0;padding-top:0">
+            <!-- left tree -->
+            <div class="tree-panel" style="border:1px solid var(--border-subtle);border-right:none">
+                <div class="tree-item lv1" onclick="tmt(this)"><span class="tree-arrow expanded">&#9654;</span> order_db
+                    (MySQL)
+                </div>
+                <div class="tree-item lv2 active" onclick="tmt(this,'production')">&#9642; production <span
+                        class="tree-count">30表</span></div>
+                <div class="tree-item lv2" onclick="tmt(this,'user_db_schema')">&#9642; user_db <span
+                        class="tree-count">15表</span></div>
+                <div class="tree-item lv1" onclick="tmt(this)"><span class="tree-arrow">&#9654;</span> doris_olap
+                    (Doris)
+                </div>
+            </div>
+            <!-- right detail -->
+            <div class="detail-panel" style="border:1px solid var(--border-subtle);border-left:none" id="meta-detail">
+                <div class="bc">order_db / <strong>production</strong></div>
+                <!-- table list -->
+                <div class="detail-section">
+                    <div class="detail-section-title">表（30）</div>
+                    <table class="dt" style="box-shadow:none;border:none">
+                        <thead>
+                        <tr>
+                            <th>表名</th>
+                            <th>注释</th>
+                            <th>字段数</th>
+                            <th>采集来源</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr style="cursor:pointer" onclick="st('users')">
+                            <td><span style="font-weight:650;color:var(--accent)">users</span></td>
+                            <td>用户表</td>
+                            <td>12</td>
+                            <td>核心库采集</td>
+                        </tr>
+                        <tr style="cursor:pointer" onclick="st('orders')">
+                            <td><span style="font-weight:650;color:var(--accent)">orders</span></td>
+                            <td>订单表</td>
+                            <td>18</td>
+                            <td>核心库采集</td>
+                        </tr>
+                        <tr style="cursor:pointer" onclick="st('products')">
+                            <td><span style="font-weight:650;color:var(--accent)">products</span></td>
+                            <td>商品表</td>
+                            <td>15</td>
+                            <td>核心库采集</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- field detail (shown when table selected) -->
+                <div id="field-detail" style="display:none">
+                    <div class="detail-section">
+                        <div class="detail-section-title">表信息</div>
+                        <div class="detail-row"><span class="detail-label">表名</span><span
+                                class="detail-value">users</span></div>
+                        <div class="detail-row"><span class="detail-label">注释</span><input class="comment-input"
+                                                                                             value="用户表">
+                            <button class="btn btn-a" style="padding:6px 14px;font-size:12px;margin-left:8px">保存
+                            </button>
+                        </div>
+                        <div class="detail-row"><span class="detail-label">字段数</span><span
+                                class="detail-value">12</span></div>
+                        <div class="detail-row"><span class="detail-label">最近采集</span><span class="detail-value">2026-07-24 14:32:18（核心库采集）</span>
+                        </div>
+                        <div class="detail-row"><span class="detail-label">数据源</span><span class="detail-value">order_db (MySQL)</span>
+                        </div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">字段列表</div>
+                        <table class="dt" style="box-shadow:none;border:none">
+                            <thead>
+                            <tr>
+                                <th>字段名</th>
+                                <th>数据类型</th>
+                                <th>中文注释</th>
+                                <th>可空</th>
+                                <th>备注</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td style="font-weight:600">id</td>
+                                <td>bigint</td>
+                                <td><input class="comment-input" value="用户ID"></td>
+                                <td><span class="badge b-err">NO</span></td>
+                                <td>主键</td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:600">username</td>
+                                <td>varchar(64)</td>
+                                <td><input class="comment-input" value="用户名"></td>
+                                <td><span class="badge b-ok">YES</span></td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:600">email</td>
+                                <td>varchar(128)</td>
+                                <td><input class="comment-input" value="邮箱"></td>
+                                <td><span class="badge b-ok">YES</span></td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:600">created_at</td>
+                                <td>datetime</td>
+                                <td><input class="comment-input" value="创建时间"></td>
+                                <td><span class="badge b-ok">YES</span></td>
+                                <td>记录创建时间</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ DRAWER: Data Source ═══════════ -->
+<div class="dro" id="dr-ds">
+    <div class="dr">
+        <div class="drh">
+            <div class="drt" id="dr-title-ds">新增数据源</div>
+            <button class="drc" onclick="cd()">&times;</button>
+        </div>
+
+        <div class="alert-ok" id="conn-ok" style="display:none">&#10003; 连接成功</div>
+        <div class="alert-err" id="conn-err" style="display:none">&#10007; <span
+                id="conn-err-msg">连接失败：网络超时</span></div>
+
+        <div class="fg"><label class="fl">数据源名称 <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
+                                                                                       placeholder="3-30位 字母数字下划线"
+                                                                                       id="ds-name">
+            <div class="fhint">支持字母、数字、下划线，3-30 位</div>
+        </div>
+        <div class="fg"><label class="fl">数据源类型 <span
+                style="color:var(--danger);text-transform:none">*</span></label><select class="sel" style="width:100%"
+                                                                                        id="ds-type"
+                                                                                        onchange="dsTypeChange()">
+            <option value="">请选择类型</option>
+            <option>MySQL</option>
+            <option>PostgreSQL</option>
+            <option>Doris</option>
+        </select></div>
+        <div class="fg"><label class="fl">主机地址 <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
+                                                                                       placeholder="例如：10.0.1.100 或 mysql.internal">
+        </div>
+        <div class="fg"><label class="fl">端口 <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="number"
+                                                                                       placeholder="例如：3306"
+                                                                                       id="ds-port" style="width:140px">
+            <div class="fhint" id="port-hint">MySQL 默认 3306，PG 默认 5432，Doris 默认 9030</div>
+        </div>
+        <div class="fg"><label class="fl">数据库名 <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
+                                                                                       placeholder="要接入的具体数据库">
+        </div>
+        <div class="fg" id="schema-group" style="display:none"><label class="fl">Schema <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
+                                                                                       placeholder="默认 public"
+                                                                                       value="public"></div>
+        <div class="fg"><label class="fl">用户名 <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"></div>
+        <div class="fg"><label class="fl">密码 <span style="color:var(--danger);text-transform:none">*</span></label>
+            <div class="iw"><input class="fi" type="password" placeholder="输入密码" id="ds-pwd">
+                <button class="tp" onclick="tpw2('ds-pwd')">&#128065;</button>
+            </div>
+        </div>
+        <div class="fg"><label class="fl">描述</label><input class="fi" type="text" placeholder="可选，说明数据源用途">
+            <div class="fhint">最多 200 字</div>
+        </div>
+        <div class="drf">
+            <button class="btn btn-a" onclick="testConn()">测试连接</button>
+            <button class="btn btn-o" onclick="cd()">取消</button>
+            <button class="btn btn-a" id="ds-save-btn" disabled onclick="cd()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ DRAWER: Metadata Task ═══════════ -->
+<div class="dro" id="dr-task">
+    <div class="dr">
+        <div class="drh">
+            <div class="drt" id="dr-title-task">创建元数据采集任务</div>
+            <button class="drc" onclick="cd()">&times;</button>
+        </div>
+
+        <div class="fg"><label class="fl">任务名称 <span
+                style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
+                                                                                       placeholder="支持字母、数字、下划线、中文，3-50 位">
+            <div class="fhint">支持字母、数字、下划线、中文，3-50 位</div>
+        </div>
+
+        <div class="fg"><label class="fl">选择数据源 <span
+                style="color:var(--danger);text-transform:none">*</span></label><select class="sel" style="width:100%">
+            <option value="">请选择数据源</option>
+            <option selected>order_db (MySQL, 正常)</option>
+            <option>doris_olap (Doris, 正常)</option>
+        </select>
+            <div class="fhint">单选，只显示状态正常的数据源</div>
+        </div>
+
+        <div class="fg"><label class="fl">选择库/Schema <span
+                style="color:var(--danger);text-transform:none">*</span></label><select class="sel" style="width:100%"
+                                                                                        multiple>
+            <option selected>production</option>
+            <option selected>user_db</option>
+            <option>logs</option>
+        </select>
+            <div class="fhint">可多选；选中数据源后从数据源拉取列表</div>
+        </div>
+
+        <div class="chips"><span class="chip">production<button class="chip-rm">&times;</button></span><span
+                class="chip">user_db<button class="chip-rm">&times;</button></span></div>
+
+        <div class="fg"><label class="fl">采集模式 <span
+                style="color:var(--danger);text-transform:none">*</span></label>
+            <div class="rg"><label><input type="radio" name="collect-mode"><span>全量采集</span><span
+                    style="font-size:11px;color:var(--text-muted);margin-left:4px">每次重新采集全部</span></label><label><input
+                    type="radio" name="collect-mode" checked><span>全量+增量</span><span
+                    style="font-size:11px;color:var(--text-muted);margin-left:4px">首次全量，后续仅同步变更</span></label>
+            </div>
+        </div>
+
+        <div class="fg"><label class="fl">触发方式 <span
+                style="color:var(--danger);text-transform:none">*</span></label>
+            <div class="rg"><label><input type="radio" name="trigger-mode" onchange="tgCron(this)"><span>手动触发</span></label><label><input
+                    type="radio" name="trigger-mode" checked onchange="tgCron(this)"><span>定时触发</span></label></div>
+        </div>
+
+        <div class="fg" id="cron-group">
+            <label class="fl">Cron 表达式 <span style="color:var(--danger);text-transform:none">*</span></label>
+            <div class="cron-bar">0 0 2 * * ?</div>
+            <div class="cron-desc">每天 02:00:00 执行</div>
+        </div>
+
+        <div class="fg"><label class="fl">描述</label><input class="fi" type="text" placeholder="可选，说明任务用途">
+            <div class="fhint">最多 200 字</div>
+        </div>
+
+        <div class="drf">
+            <button class="btn btn-a">立即执行</button>
+            <button class="btn btn-o" onclick="cd()">取消</button>
+            <button class="btn btn-a" onclick="cd()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Delete Confirm ═══════════ -->
+<div class="mo" id="md-del">
+    <div class="mdl" style="width:440px">
+        <div class="mh">
+            <div class="mt" id="md-del-title">删除确认</div>
+            <button class="mcbtn" onclick="cm()">&times;</button>
+        </div>
+        <div id="md-del-body"><p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">
+            确定删除数据源「order_db」吗？</p>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.8">删除后：<br>&bull;
+                该数据源从列表中移除<br>&bull; 已创建的元数据采集任务无法再引用它<br>&bull; 已采集的元数据记录仍保留，并标记源已下线
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="cm()">取消</button>
+            <button class="btn btn-d" onclick="cm()">删除</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Delete Blocked (has refs) ═══════════ -->
+<div class="mo" id="md-blocked">
+    <div class="mdl" style="width:440px">
+        <div class="mh">
+            <div class="mt">无法删除数据源</div>
+            <button class="mcbtn" onclick="cm()">&times;</button>
+        </div>
+        <p style="font-size:14px;color:var(--text-secondary);margin-bottom:12px">
+            数据源「doris_olap」已被以下采集任务引用，请先删除或修改这些任务后再删除数据源。</p>
+        <div style="padding:10px 14px;background:var(--bg-root);border-radius:var(--radius-sm);margin-bottom:24px">
+            <div style="font-size:13px;padding:4px 0">&bull; doris采集（doris_olap.db01）</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-a" onclick="cm()">我知道了</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Execution Detail ═══════════ -->
+<div class="mo" id="md-detail">
+    <div class="mdl">
+        <div class="mh">
+            <div class="mt">执行详情</div>
+            <button class="mcbtn" onclick="cm()">&times;</button>
+        </div>
+        <div class="detail-row"><span class="detail-label">执行时间</span><span
+                class="detail-value">2026-07-24 14:32:18</span></div>
+        <div class="detail-row"><span class="detail-label">执行方式</span><span class="detail-value">手动触发</span>
+        </div>
+        <div class="detail-row"><span class="detail-label">状态</span><span class="badge b-ok">成功</span></div>
+        <div class="detail-row"><span class="detail-label">耗时</span><span class="detail-value">12 秒</span></div>
+        <div class="detail-section">
+            <div class="detail-section-title">库/Schema 执行情况</div>
+            <table class="dt" style="box-shadow:none">
+                <thead>
+                <tr>
+                    <th>库/Schema</th>
+                    <th>表数</th>
+                    <th>字段数</th>
+                    <th>状态</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>order_db.production</td>
+                    <td>30</td>
+                    <td>210</td>
+                    <td><span class="badge b-ok">成功</span></td>
+                </tr>
+                <tr>
+                    <td>order_db.user_db</td>
+                    <td>15</td>
+                    <td>110</td>
+                    <td><span class="badge b-ok">成功</span></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="detail-section">
+            <div class="detail-section-title">变更统计</div>
+            <div style="display:flex;gap:32px;font-size:13px">
+                <div><span style="color:var(--text-muted)">表：</span>新增 2 · 删除 0 · 修改 1</div>
+                <div><span style="color:var(--text-muted)">字段：</span>新增 5 · 删除 1 · 修改 3</div>
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+            <button class="btn btn-o" onclick="om('log');cm()">查看日志</button>
+            <button class="btn btn-o" onclick="cm()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Execution Log ═══════════ -->
+<div class="mo" id="md-log">
+    <div class="mdl" style="width:640px">
+        <div class="mh">
+            <div class="mt">执行日志</div>
+            <button class="mcbtn" onclick="cm()">&times;</button>
+        </div>
+        <div class="log-box"><span class="log-time">[2026-07-24 14:32:18]</span> <span class="log-info">INFO</span>
+            开始执行采集任务：核心库采集
+            <span class="log-time">[2026-07-24 14:32:18]</span> <span class="log-info">INFO</span> 调度触发成功
+            <span class="log-time">[2026-07-24 14:32:19]</span> <span class="log-info">INFO</span> 开始采集
+            order_db.production
+            <span class="log-time">[2026-07-24 14:32:20]</span> <span class="log-info">INFO</span> 共发现 30 张表，210
+            个字段
+            <span class="log-time">[2026-07-24 14:32:25]</span> <span class="log-info">INFO</span> 开始采集
+            order_db.user_db
+            <span class="log-time">[2026-07-24 14:32:27]</span> <span class="log-info">INFO</span> 共发现 15 张表，110
+            个字段
+            <span class="log-time">[2026-07-24 14:32:30]</span> <span class="log-info">INFO</span> 任务执行完成
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+            <button class="btn btn-o">复制日志</button>
+            <button class="btn btn-o" onclick="cm()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function sv(view) {
+        document.querySelectorAll('.vb').forEach(t => t.classList.remove('ac'));
+        event.target.classList.add('ac');
+        ['ds', 'task', 'meta', 'history'].forEach(v => {
+            const e = document.getElementById('v-' + v);
+            e.classList.toggle('ac', v === view);
+            e.style.display = v === view ? 'flex' : 'none';
+        });
+    }
+
+    // drawer open
+    function od(mode, type, item) {
+        if (type === 'ds') {
+            document.getElementById('dr-title-ds').textContent = mode === 'create' ? '新增数据源' : '编辑数据源 — ' + item;
+            document.getElementById('ds-name').value = mode === 'edit' ? item : '';
+            document.getElementById('ds-name').disabled = mode === 'edit';
+            document.getElementById('ds-save-btn').disabled = true;
+            document.getElementById('conn-ok').style.display = 'none';
+            document.getElementById('conn-err').style.display = 'none';
+            document.getElementById('dr-ds').classList.add('op');
+        } else {
+            document.getElementById('dr-title-task').textContent = mode === 'create' ? '创建元数据采集任务' : '编辑任务 — ' + item;
+            document.getElementById('dr-task').classList.add('op');
+        }
+    }
+
+    function cd() {
+        document.querySelectorAll('.dro').forEach(d => d.classList.remove('op'))
+    }
+
+    document.querySelectorAll('.dro').forEach(d => d.addEventListener('click', function (e) {
+        if (e.target === this) cd()
+    }));
+
+    // delete confirm
+    function odc(item, type, ref) {
+        if (ref === 'ref') {
+            document.getElementById('md-blocked').classList.add('op');
+        } else {
+            document.getElementById('md-del-title').textContent = '删除确认';
+            document.getElementById('md-del-body').innerHTML = '<p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">确定删除' + (type === 'ds' ? '数据源' : '任务') + '「' + item + '」吗？</p><div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.8">删除后：<br>&bull; ' + (type === 'ds' ? '该数据源从列表中移除' : '该任务不再执行') + '<br>&bull; ' + (type === 'ds' ? '已创建的采集任务无法再引用它' : '该任务的所有历史记录将被删除') + '<br>&bull; 已采集的元数据记录仍保留' + (type === 'ds' ? '，并标记源已下线' : '') + '</div>';
+            document.getElementById('md-del').classList.add('op');
+        }
+    }
+
+    // modal
+    function om(type) {
+        document.getElementById(type === 'detail' ? 'md-detail' : 'md-log').classList.add('op')
+    }
+
+    function cm() {
+        document.querySelectorAll('.mo').forEach(m => m.classList.remove('op'))
+    }
+
+    document.querySelectorAll('.mo').forEach(m => m.addEventListener('click', function (e) {
+        if (e.target === this) cm()
+    }));
+
+    // sub-view switch
+    function sh(view) {
+        sv(view)
+    }
+
+    // drawer interactions
+    function dsTypeChange() {
+        const t = document.getElementById('ds-type').value;
+        document.getElementById('schema-group').style.display = t === 'PostgreSQL' ? 'block' : 'none';
+        const ports = {MySQL: 3306, PostgreSQL: 5432, Doris: 9030};
+        if (ports[t]) document.getElementById('ds-port').value = ports[t];
+    }
+
+    function testConn() {
+        document.getElementById('conn-ok').style.display = 'block';
+        document.getElementById('conn-err').style.display = 'none';
+        document.getElementById('ds-save-btn').disabled = false
+    }
+
+    function tpw2(id) {
+        const e = document.getElementById(id);
+        e.type = e.type === 'password' ? 'text' : 'password'
+    }
+
+    function tgCron(el) {
+        document.getElementById('cron-group').style.display = el.value === '手动触发' ? 'none' : 'block'
+    }
+
+    // metadata tree
+    function tmt(el, schema) {
+        document.querySelectorAll('.tree-item').forEach(i => i.classList.remove('active'));
+        el.classList.add('active');
+        if (schema) {
+            const a = el.querySelector('.tree-arrow');
+            if (a) a.classList.toggle('expanded')
+        }
+    }
+
+    function st(table) {
+        document.getElementById('field-detail').style.display = 'block';
+        document.getElementById('field-detail').querySelector('.detail-row .detail-value').textContent = table;
+    }
+</script>
+</body>
+</html>
