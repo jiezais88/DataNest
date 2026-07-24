@@ -7,6 +7,7 @@ spring:
 
   config:
     import:
+      - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
@@ -18,16 +19,23 @@ spring:
         file-extension: yaml
 
     gateway:
-      server:
-        webflux:
-          routes:
-            - id: system-service
-              uri: lb://data-nest-system
-              predicates:
-                - Path=/api/system/**
-              filters:
-                - StripPrefix=1
+      routes:
+        - id: system-service
+          uri: lb://data-nest-system
+          predicates:
+            - Path=/api/system/**
+          filters:
+            - StripPrefix=1
+        - id: engineering-service
+          uri: lb://data-nest-engineering
+          predicates:
+            - Path=/api/engineering/**
+          filters:
+            - StripPrefix=1
+        - id: governance-service
+          uri: lb://data-nest-governance
+          predicates:
+            - Path=/api/governance/**
+          filters:
+            - StripPrefix=1
 
-springdoc:
-  api-docs:
-    enabled: false

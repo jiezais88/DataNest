@@ -1,0 +1,35 @@
+import request from './request';
+import type {MetadataColumn, MetadataCommentRequest, MetadataTable} from '../types/metadata';
+import type {Result} from './datasource';
+
+export function listMetadataDatasourceIds() {
+    return request.get<Result<string[]>>('/governance/metadata/datasources');
+}
+
+export function listMetadataDatabases(datasourceId: string) {
+    return request.get<Result<string[]>>(`/governance/metadata/datasources/${datasourceId}/databases`);
+}
+
+export function listMetadataSchemas(datasourceId: string, databaseName: string) {
+    return request.get<Result<string[]>>(`/governance/metadata/datasources/${datasourceId}/databases/${databaseName}/schemas`);
+}
+
+export function listMetadataTables(datasourceId: string, databaseName: string, schemaName: string) {
+    return request.get<Result<MetadataTable[]>>(`/governance/metadata/datasources/${datasourceId}/databases/${databaseName}/schemas/${schemaName}/tables`);
+}
+
+export function getMetadataTable(tableId: string) {
+    return request.get<Result<MetadataTable>>(`/governance/metadata/tables/${tableId}`);
+}
+
+export function listMetadataColumns(tableId: string) {
+    return request.get<Result<MetadataColumn[]>>(`/governance/metadata/tables/${tableId}/columns`);
+}
+
+export function updateTableComment(tableId: string, manualComment: string) {
+    return request.put<Result<null>>(`/governance/metadata/tables/${tableId}/comment`, {manualComment} as MetadataCommentRequest);
+}
+
+export function updateColumnComment(columnId: string, manualComment: string) {
+    return request.put<Result<null>>(`/governance/metadata/columns/${columnId}/comment`, {manualComment} as MetadataCommentRequest);
+}

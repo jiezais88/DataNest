@@ -16,7 +16,8 @@ services:
       - "3306:3306"
     volumes:
       - nacos-mysql-data:/var/lib/mysql
-      - ./scripts/mysql-schema.sql:/docker-entrypoint-initdb.d/01-mysql-schema.sql:ro
+      - ./scripts/nacos-mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-mysql-schema.sql:ro
+      - ./scripts/init-scheduler-db.sql:/docker-entrypoint-initdb.d/02-init-scheduler-db.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin -u root -proot123 ping | grep 'mysqld is alive'" ]
       interval: 10s
@@ -68,8 +69,30 @@ services:
       - datanest-net
 
   # ============================================
-  # PostgreSQL 16 — 用户权限元数据库
+  # XXL-JOB 3.4.2 — 统一调度中心
+  # 复用 nacos-mysql 的 datanest_scheduler 库
+  # 端口: 8088 (Admin Web)
   # ============================================
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:3.4.2
+    container_name: datanest-xxl-job-admin
+    environment:
+      - PARAMS=--spring.datasource.url=jdbc:mysql://nacos-mysql:3306/datanest_scheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true --spring.datasource.username=nacos --spring.datasource.password=nacos123 --xxl.job.accessToken=default_token
+    ports:
+      - "8088:8080"
+    volumes:
+      - xxl-job-admin-data:/data/applogs
+    depends_on:
+      nacos-mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s -L http://localhost:8080/ | grep -q 'XXL-JOB'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
   postgres:
     image: postgres:16-alpine
     container_name: datanest-postgres
@@ -163,8 +186,7 @@ services:
       - PG_DATABASE=datanest
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-    ports:
-      - "8087:8087"
+    # 不暴露宿主机端口，仅通过 Gateway 访问
     depends_on:
       nacos:
         condition: service_healthy
@@ -176,6 +198,109 @@ services:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8087" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Test MySQL 8.0 — 数据源 E2E 测试目标库
+  # 不暴露宿主机端口，仅内部网络访问
+  # ============================================
+  test-mysql:
+    image: mysql:8.0
+    container_name: datanest-test-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass123
+    volumes:
+      - test-mysql-data:/var/lib/mysql
+      - ./scripts/test-mysql-init.sql:/docker-entrypoint-initdb.d/01-test-mysql-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin -u root -proot123 ping | grep 'mysqld is alive'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Engineering — 数据工程服务
+  # ============================================
+  engineering:
+    build:
+      context: ./data-nest-engineering
+      dockerfile: Dockerfile
+    container_name: datanest-engineering
+    environment:
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    # 不暴露宿主机端口，仅通过 Gateway 访问
+    depends_on:
+      nacos:
+        condition: service_healthy
+      nacos-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      test-mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8082" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Governance — 元数据采集与治理服务
+  # ============================================
+  governance:
+    build:
+      context: ./data-nest-governance
+      dockerfile: Dockerfile
+    container_name: datanest-governance
+    environment:
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_PORT=8080
+    depends_on:
+      nacos:
+        condition: service_healthy
+      nacos-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      xxl-job-admin:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8084" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -232,6 +357,8 @@ volumes:
   nacos-logs:
   pgdata:
   redisdata:
+  test-mysql-data:
+  xxl-job-admin-data:
 
 networks:
   datanest-net:

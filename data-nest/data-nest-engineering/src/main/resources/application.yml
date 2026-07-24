@@ -1,0 +1,25 @@
+server:
+  port: 8082
+  servlet:
+    context-path: /engineering
+
+spring:
+  application:
+    name: data-nest-engineering
+
+  config:
+    import:
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-mybatis.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        file-extension: yaml
+
+

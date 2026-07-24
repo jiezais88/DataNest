@@ -1,7 +1,7 @@
 # ============================================
 # shared-security.yaml
-# Sa-Token JWT + CORS + Redis 共享配置
-# 消费方: gateway, system-service
+# Sa-Token JWT + CORS + 加密密钥共享配置
+# 消费方: gateway, system-service, engineering-service, governance-service
 # ============================================
 sa-token:
   # JWT 模式
@@ -25,12 +25,6 @@ sa-token:
   # 是否输出日志
   is-log: true
 
-spring:
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-
 datanest:
   security:
     cors:
@@ -39,3 +33,6 @@ datanest:
       allowed-headers: Authorization,Content-Type,X-User-Id
       allow-credentials: true
       max-age: 3600
+    encryption:
+      # AES-256-GCM 数据源密码加密密钥；生产环境务必通过环境变量覆盖
+      key: ${DATANEST_ENCRYPTION_KEY:DataNestDefaultEncryptionKey2026}

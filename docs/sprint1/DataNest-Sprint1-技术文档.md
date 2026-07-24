@@ -63,14 +63,14 @@ Sprint 0 建好了门和锁（用户体系），Sprint 1 让平台 **有数据�
 
 ## 2. 交付物清单
 
-| #  | 交付物                                              | 类型 | 验收方式                              |
-|----|-----------------------------------------------------|------|---------------------------------------|
-| D1 | `data-nest-engineering/` 模块                       | 代码 | 数据源 CRUD + 测试连接可用            |
-| D2 | `data-nest-governance/` 模块                        | 代码 | 采集任务 CRUD + 执行 + 元数据浏览     |
-| D3 | Flyway 迁移脚本 V2.0.0 + V2.0.1                     | 代码 | 启动后自动建表                        |
-| D4 | `docker-compose.yml` 新增 1 个服务（xxl-job-admin） | 配置 | `docker compose up -d` 7 容器 healthy |
-| D5 | shared-configs 新增 `shared-encryption.yaml`        | 配置 | Nacos 可见                            |
-| D6 | 前端：数据源/采集任务/元数据管理 3 个页面           | 代码 | 按 PRD 交互可用                       |
+| #  | 交付物                                                     | 类型 | 验收方式                              |
+|----|------------------------------------------------------------|------|---------------------------------------|
+| D1 | `data-nest-engineering/` 模块                              | 代码 | 数据源 CRUD + 测试连接可用            |
+| D2 | `data-nest-governance/` 模块                               | 代码 | 采集任务 CRUD + 执行 + 元数据浏览     |
+| D3 | Flyway 迁移脚本 V2.0.0 + V2.0.1                            | 代码 | 启动后自动建表                        |
+| D4 | `docker-compose.yml` 新增 1 个服务（xxl-job-admin）        | 配置 | `docker compose up -d` 7 容器 healthy |
+| D5 | shared-configs 更新 `shared-security.yaml`（新增加密密钥） | 配置 | Nacos 可见                            |
+| D6 | 前端：数据源/采集任务/元数据管理 3 个页面                  | 代码 | 按 PRD 交互可用                       |
 
 ---
 
@@ -265,7 +265,8 @@ routes:
 | 新增数据源                   | `POST /api/engineering/datasources`                | SUPER_ADMIN / DATA_ENGINEER             |
 | 编辑数据源                   | `PUT /api/engineering/datasources/{id}`            | SUPER_ADMIN / DATA_ENGINEER             |
 | 删除数据源                   | `DELETE /api/engineering/datasources/{id}`         | SUPER_ADMIN / DATA_ENGINEER             |
-| 测试连接                     | `POST /api/engineering/datasources/test`           | SUPER_ADMIN / DATA_ENGINEER / GOV_ADMIN |
+| 测试连接（任意参数）         | `POST /api/engineering/datasources/test`           | SUPER_ADMIN / DATA_ENGINEER / GOV_ADMIN |
+| 测试已保存数据源并更新状态   | `POST /api/engineering/datasources/{id}/test`      | SUPER_ADMIN / DATA_ENGINEER             |
 | 检查引用关系                 | `GET /api/engineering/datasources/{id}/references` | 内部（删除前校验）                      |
 | 拉取库/Schema 列表           | `GET /api/engineering/datasources/{id}/schemas`    | GOV_ADMIN（采集任务创建时用）           |
 
@@ -287,9 +288,9 @@ public class DataSourceConnection {
     private String username;
     private String encryptedPassword; // AES-256-GCM 加密
     private String description;
-    private String status;           // NORMAL / ERROR
-    private String lastErrorMessage;
-    private LocalDateTime lastTestedAt;
+    private String status;           // ACTIVE / ERROR / UNKNOWN
+    private String errorMessage;
+    private LocalDateTime lastTestTime;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
@@ -298,10 +299,10 @@ public class DataSourceConnection {
 ### 5.3 密码加密
 
 ```java
-// 使用 AES-256-GCM，密钥从 Nacos shared-encryption.yaml 读取
+// 使用 AES-256-GCM，密钥从 Nacos shared-security.yaml 读取
 @Component
 public class EncryptionUtil {
-    @Value("${datanest.encryption.secret-key}")
+    @Value("${datanest.security.encryption.key}")
     private String secretKey;
 
     public String encrypt(String plainText) {
@@ -364,6 +365,16 @@ public void deleteDataSource(Long id) {
     datasourceMapper.deleteById(id);
 }
 ```
+
+### 5.6 定时刷新数据源状态
+
+engineering-service 通过 Spring Scheduler 每 5 分钟自动检测所有 `status = ACTIVE 或 UNKNOWN` 的数据源，调用
+`DriverManager.getConnection` 验证连通性，并更新 `status`、`last_test_time`、`error_message`。
+
+- Cron 表达式：`${datanest.datasource.refresh-cron:0 0/5 * * * ?}`，生产环境可通过配置中心覆盖。
+- 刷新范围：仅刷新最近一次检测为正常或从未检测的数据源，避免对已确认异常的连接频繁重试。
+- 异常处理：单条数据源刷新失败不会影响其他数据源，错误信息写入 `error_message`。
+- 手动触发：前端列表页提供「测试连接」按钮，可对单条数据源立即执行检测并更新状态。
 
 ---
 
@@ -895,14 +906,21 @@ public class CollectTaskService {
 
 ## 9. 共享配置变更
 
-新增 `shared-encryption.yaml` + `shared-xxljob.yaml`：
+更新 `shared-security.yaml` + 新增 `shared-xxljob.yaml`：
 
 ```yaml
-# shared-encryption.yaml
+# shared-security.yaml（新增 encryption 段落）
 datanest:
-  encryption:
-    secret-key: ${ENCRYPTION_KEY:DataNestAESKey2026!}
-    algorithm: AES/GCM/NoPadding
+  security:
+    cors:
+      allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
+      allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+      allowed-headers: Authorization,Content-Type,X-User-Id
+      allow-credentials: true
+      max-age: 3600
+    encryption:
+      # AES-256-GCM 数据源密码加密密钥；生产环境务必通过环境变量覆盖
+      key: ${DATANEST_ENCRYPTION_KEY:DataNestDefaultEncryptionKey2026}
 
 # shared-xxljob.yaml 🆕
 xxl:
@@ -998,12 +1016,12 @@ const menuConfig: Record<string, MenuItem[]> = {
 
 ### ADR-S1-003: 密码加密——AES-256-GCM
 
-| 项目       | 内容                                                                                                        |
-|------------|-------------------------------------------------------------------------------------------------------------|
-| **状态**   | Accepted                                                                                                    |
-| **上下文** | 数据源密码不能明文存储                                                                                      |
-| **决策**   | **AES-256-GCM**，密钥从 Nacos `shared-encryption.yaml` 读取，engineering-service 和 governance-service 共享 |
-| **后果**   | 📈 行业标准加密，GCM 提供认证加密防篡改；📉 密钥泄露则所有密码可破，需保护 Nacos 访问权限                   |
+| 项目       | 内容                                                                                                      |
+|------------|-----------------------------------------------------------------------------------------------------------|
+| **状态**   | Accepted                                                                                                  |
+| **上下文** | 数据源密码不能明文存储                                                                                    |
+| **决策**   | **AES-256-GCM**，密钥从 Nacos `shared-security.yaml` 读取，engineering-service 和 governance-service 共享 |
+| **后果**   | 📈 行业标准加密，GCM 提供认证加密防篡改；📉 密钥泄露则所有密码可破，需保护 Nacos 访问权限                 |
 
 ### ADR-S1-004: 增量采集策略——表名+字段名对比
 
@@ -1038,12 +1056,12 @@ const menuConfig: Record<string, MenuItem[]> = {
 
 ## 13. 风险与对策
 
-| #  | 风险                                           | 概率 | 影响 | 对策                                                                          |
-|----|------------------------------------------------|------|------|-------------------------------------------------------------------------------|
-| R1 | MySQL/PG/Doris `information_schema` 查询差异大 | 低   | 中   | 都是标准 SQL，差异主要在 Schema 概念（MySQL 无、PG 有），已按类型分支处理     |
-| R2 | 采集任务执行耗时导致 HTTP 超时                 | 中   | 中   | 采用 `@Async` 异步执行，接口提交后立即返回，前端轮询状态                      |
-| R3 | 增量采集对比逻辑 Bug 导致元数据丢失            | 中   | 高   | Sprint 1 增量策略简单（表名+字段名对比），充分测试；保留全量采集选项兜底      |
-| R4 | AES 密钥管理不当                               | 低   | 高   | 密钥放 Nacos，`shared-encryption.yaml` 仅管理员可见；生产环境通过环境变量注入 |
+| #  | 风险                                           | 概率 | 影响 | 对策                                                                                     |
+|----|------------------------------------------------|------|------|------------------------------------------------------------------------------------------|
+| R1 | MySQL/PG/Doris `information_schema` 查询差异大 | 低   | 中   | 都是标准 SQL，差异主要在 Schema 概念（MySQL 无、PG 有），已按类型分支处理                |
+| R2 | 采集任务执行耗时导致 HTTP 超时                 | 中   | 中   | 采用 `@Async` 异步执行，接口提交后立即返回，前端轮询状态                                 |
+| R3 | 增量采集对比逻辑 Bug 导致元数据丢失            | 中   | 高   | Sprint 1 增量策略简单（表名+字段名对比），充分测试；保留全量采集选项兜底                 |
+| R4 | AES 密钥管理不当                               | 低   | 高   | 密钥放 Nacos `shared-security.yaml`；生产环境通过环境变量 `DATANEST_ENCRYPTION_KEY` 注入 |
 
 ---
 

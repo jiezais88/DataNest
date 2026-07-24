@@ -15,6 +15,8 @@
         <module>data-nest-common</module>
         <module>data-nest-gateway</module>
         <module>data-nest-system</module>
+        <module>data-nest-engineering</module>
+        <module>data-nest-governance</module>
     </modules>
 
     <properties>

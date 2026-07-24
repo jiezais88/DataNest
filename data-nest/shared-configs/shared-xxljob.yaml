@@ -1,0 +1,11 @@
+xxl:
+  job:
+    accessToken: ${XXL_JOB_ACCESS_TOKEN:default_token}
+    admin:
+      addresses: http://${XXL_JOB_HOST:localhost}:${XXL_JOB_PORT:8088}
+    executor:
+      appname: data-nest-governance
+      ip:
+      port: 9999
+      logpath: /data/applogs/xxl-job/jobhandler
+      logretentiondays: 30

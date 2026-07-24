@@ -1,6 +1,6 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {HiOutlineHome, HiOutlineUsers} from 'react-icons/hi2';
+import {HiOutlineBookOpen, HiOutlineClock, HiOutlineHome, HiOutlineServer, HiOutlineUsers,} from 'react-icons/hi2';
 
 interface MenuItem {
     label: string;
@@ -14,6 +14,34 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         group: '数据平台',
         items: [
             {label: '首页', path: '/', icon: <HiOutlineHome size={18}/>},
+        ],
+    },
+    {
+        group: '数据工程',
+        items: [
+            {
+                label: '数据源',
+                path: '/engineering/datasources',
+                icon: <HiOutlineServer size={18}/>,
+                roles: ['SUPER_ADMIN', 'DATA_ENGINEER', 'GOVERNANCE_ADMIN']
+            },
+        ],
+    },
+    {
+        group: '数据治理',
+        items: [
+            {
+                label: '采集任务',
+                path: '/governance/collect-tasks',
+                icon: <HiOutlineClock size={18}/>,
+                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
+            },
+            {
+                label: '元数据管理',
+                path: '/governance/metadata',
+                icon: <HiOutlineBookOpen size={18}/>,
+                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN', 'DATA_ANALYST']
+            },
         ],
     },
     {

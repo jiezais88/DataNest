@@ -1,0 +1,31 @@
+server:
+  port: 8084
+  servlet:
+    context-path: /governance
+
+spring:
+  application:
+    name: data-nest-governance
+
+  config:
+    import:
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-mybatis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        file-extension: yaml
+
+datanest:
+  governance:
+    xxl-job:
+      username: ${XXL_JOB_USERNAME:admin}
+      password: ${XXL_JOB_PASSWORD:123456}
+      job-group-id: ${XXL_JOB_GROUP_ID:1}
