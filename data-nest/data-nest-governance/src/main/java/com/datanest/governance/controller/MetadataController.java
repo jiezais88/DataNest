@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.MetadataCommentRequest;
+import com.datanest.governance.dto.MetadataDatasourceDTO;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.service.MetadataService;
@@ -24,7 +25,7 @@ public class MetadataController {
     }
 
     @GetMapping("/datasources")
-    public Result<List<Long>> listDatasourceIds() {
+    public Result<List<MetadataDatasourceDTO>> listDatasourceIds() {
         return Result.ok(metadataService.listDatasourceIds());
     }
 
@@ -43,6 +44,12 @@ public class MetadataController {
                                                   @PathVariable String databaseName,
                                                   @PathVariable String schemaName) {
         return Result.ok(metadataService.listTables(datasourceId, databaseName, schemaName));
+    }
+
+    @GetMapping("/datasources/{datasourceId}/databases/{databaseName}/tables")
+    public Result<List<MetadataTable>> listTablesWithoutSchema(@PathVariable Long datasourceId,
+                                                               @PathVariable String databaseName) {
+        return Result.ok(metadataService.listTables(datasourceId, databaseName, databaseName));
     }
 
     @GetMapping("/tables/{tableId}")

@@ -1,9 +1,9 @@
 import request from './request';
-import type {MetadataColumn, MetadataCommentRequest, MetadataTable} from '../types/metadata';
+import type {MetadataColumn, MetadataCommentRequest, MetadataDatasource, MetadataTable} from '../types/metadata';
 import type {Result} from './datasource';
 
 export function listMetadataDatasourceIds() {
-    return request.get<Result<string[]>>('/governance/metadata/datasources');
+    return request.get<Result<MetadataDatasource[]>>('/governance/metadata/datasources');
 }
 
 export function listMetadataDatabases(datasourceId: string) {

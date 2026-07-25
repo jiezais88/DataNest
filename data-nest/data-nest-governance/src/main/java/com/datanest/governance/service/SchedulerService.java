@@ -1,18 +1,22 @@
 package com.datanest.governance.service;
 
-
+import com.datanest.common.exception.BusinessException;
+import com.datanest.common.exception.ErrorCode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xxl.job.core.constant.ExecutorBlockStrategyEnum;
-import com.xxl.job.core.glue.GlueTypeEnum;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
@@ -22,210 +26,236 @@ import java.util.List;
 public class SchedulerService {
 
     private static final Logger logger = LoggerFactory.getLogger(SchedulerService.class);
+    private static final String DEFAULT_AUTHOR = "data-nest";
+    private static final String HANDLER_NAME = "collectTaskHandler";
+    private static final String GLUE_TYPE_BEAN = "BEAN";
+    private static final String ROUTE_STRATEGY = "ROUND";
+    private static final String MISFIRE_STRATEGY = "DO_NOTHING";
+    private static final String BLOCK_STRATEGY = "SERIAL_EXECUTION";
 
-    private final RestTemplate restTemplate;
+    @Value("${xxl.job.admin.addresses}")
+    private String adminAddresses;
+
+    @Value("${xxl.job.executor.appname}")
+    private String appName;
+
+    @Value("${datanest.governance.xxl-job.username:admin}")
+    private String adminUsername;
+
+    @Value("${datanest.governance.xxl-job.password:123456}")
+    private String adminPassword;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final String adminBaseUrl;
-    private final String username;
-    private final String password;
-    private final int jobGroupId;
+    private RestTemplate restTemplate;
+    private String sessionCookie;
 
-    private volatile String sessionCookie;
-
-    public SchedulerService(@Value("${xxl.job.admin.addresses}") String adminBaseUrl,
-                            @Value("${datanest.governance.xxl-job.username:admin}") String username,
-                            @Value("${datanest.governance.xxl-job.password:123456}") String password,
-                            @Value("${datanest.governance.xxl-job.job-group-id:1}") int jobGroupId) {
-        this.restTemplate = new RestTemplate();
-        this.adminBaseUrl = adminBaseUrl;
-        this.username = username;
-        this.password = password;
-        this.jobGroupId = jobGroupId;
+    @PostConstruct
+    public void init() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(10000);
+        restTemplate = new RestTemplate();
+        restTemplate.setRequestFactory(factory);
+        System.setProperty("http.followRedirects", "false");
     }
 
-    public Integer registerJob(String jobDesc, String cron, String scheduleType) {
-        ensureLogin();
-        MultiValueMap<String, String> params = jobBaseParams();
-        params.add("jobDesc", jobDesc);
-        params.add("author", "governance");
-        params.add("scheduleType", scheduleType);
-        params.add("scheduleConf", cron);
-        params.add("glueType", GlueTypeEnum.BEAN.name());
-        params.add("executorHandler", "collectTaskHandler");
-        params.add("executorRouteStrategy", "FIRST");
-        params.add("misfireStrategy", "DO_NOTHING");
-        params.add("executorBlockStrategy", ExecutorBlockStrategyEnum.SERIAL_EXECUTION.name());
-        params.add("executorTimeout", "0");
-        params.add("executorFailRetryCount", "0");
-        params.add("triggerStatus", scheduleType.equals("CRON") ? "1" : "0");
-        params.add("triggerLastTime", "0");
-        params.add("triggerNextTime", "0");
-
-        JsonNode response = postWithRetry("/jobinfo/add", params);
-        if (response == null || response.get("code") == null || response.get("code").asInt() != 200) {
-            String msg = response == null ? "empty response" : response.path("msg").asText("unknown");
-            throw new IllegalStateException("XXL-JOB 注册任务失败: " + msg);
-        }
-        return response.path("content").asInt();
+    public Integer registerJob(String name, String cronExpression, String scheduleType) {
+        int jobGroup = ensureJobGroup();
+        MultiValueMap<String, String> params = buildJobParams(null, jobGroup, name, cronExpression, scheduleType, true);
+        JsonNode response = postWithAuth("/jobinfo/insert", params, "注册调度任务失败");
+        Integer jobId = parseJobId(response);
+        logger.info("Registered XXL-JOB job: name={}, jobGroup={}, jobId={}", name, jobGroup, jobId);
+        return jobId;
     }
 
-    public void updateJob(Integer xxlJobId, String jobDesc, String cron, String scheduleType) {
-        ensureLogin();
-        MultiValueMap<String, String> params = jobBaseParams();
-        params.add("id", String.valueOf(xxlJobId));
-        params.add("jobDesc", jobDesc);
-        params.add("author", "governance");
-        params.add("scheduleType", scheduleType);
-        params.add("scheduleConf", cron);
-        params.add("glueType", GlueTypeEnum.BEAN.name());
-        params.add("executorHandler", "collectTaskHandler");
-        params.add("executorRouteStrategy", "FIRST");
-        params.add("misfireStrategy", "DO_NOTHING");
-        params.add("executorBlockStrategy", ExecutorBlockStrategyEnum.SERIAL_EXECUTION.name());
-        params.add("executorTimeout", "0");
-        params.add("executorFailRetryCount", "0");
-        params.add("triggerStatus", scheduleType.equals("CRON") ? "1" : "0");
-
-        JsonNode response = postWithRetry("/jobinfo/update", params);
-        if (response == null || response.get("code") == null || response.get("code").asInt() != 200) {
-            String msg = response == null ? "empty response" : response.path("msg").asText("unknown");
-            throw new IllegalStateException("XXL-JOB 更新任务失败: " + msg);
-        }
+    public void updateJob(Integer jobId, String name, String cronExpression, String scheduleType) {
+        int jobGroup = ensureJobGroup();
+        MultiValueMap<String, String> params = buildJobParams(jobId, jobGroup, name, cronExpression, scheduleType, false);
+        params.add("id", String.valueOf(jobId));
+        postWithAuth("/jobinfo/update", params, "更新调度任务失败");
+        logger.info("Updated XXL-JOB job: jobId={}, name={}", jobId, name);
     }
 
-    public void unregisterJob(Integer xxlJobId) {
-        ensureLogin();
+    public void unregisterJob(Integer jobId) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("id", String.valueOf(xxlJobId));
-        JsonNode response = postWithRetry("/jobinfo/remove", params);
-        if (response == null || response.get("code") == null || response.get("code").asInt() != 200) {
-            logger.warn("XXL-JOB 注销任务可能失败: xxlJobId={}, response={}", xxlJobId, response);
-        }
+        params.add("ids[]", String.valueOf(jobId));
+        postWithAuth("/jobinfo/delete", params, "删除调度任务失败");
+        logger.info("Removed XXL-JOB job: jobId={}", jobId);
     }
 
-    public void triggerJob(Integer xxlJobId, String executorParam) {
-        ensureLogin();
+    public void triggerJob(Integer jobId, String executorParam) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("id", String.valueOf(xxlJobId));
-        if (executorParam != null) {
-            params.add("executorParam", executorParam);
-        }
-        JsonNode response = postWithRetry("/jobinfo/trigger", params);
-        if (response == null || response.get("code") == null || response.get("code").asInt() != 200) {
-            String msg = response == null ? "empty response" : response.path("msg").asText("unknown");
-            throw new IllegalStateException("XXL-JOB 触发任务失败: " + msg);
-        }
+        params.add("id", String.valueOf(jobId));
+        params.add("executorParam", executorParam);
+        params.add("addressList", "");
+        postWithAuth("/jobinfo/trigger", params, "触发调度任务失败");
+        logger.info("Triggered XXL-JOB job: jobId={}, executorParam={}", jobId, executorParam);
     }
 
-    private MultiValueMap<String, String> jobBaseParams() {
+    private MultiValueMap<String, String> buildJobParams(Integer jobId, int jobGroup, String name,
+                                                         String cronExpression, String scheduleType,
+                                                         boolean isNew) {
+        boolean cron = "CRON".equalsIgnoreCase(scheduleType);
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("jobGroup", String.valueOf(jobGroupId()));
-        params.add("alarmEmail", "");
+        params.add("jobGroup", String.valueOf(jobGroup));
+        params.add("jobDesc", name);
+        params.add("author", DEFAULT_AUTHOR);
+        params.add("scheduleType", cron ? "CRON" : "NONE");
+        params.add("scheduleConf", cron && StringUtils.hasText(cronExpression) ? cronExpression : "");
+        params.add("glueType", GLUE_TYPE_BEAN);
+        params.add("executorHandler", HANDLER_NAME);
         params.add("executorParam", "");
+        params.add("executorRouteStrategy", ROUTE_STRATEGY);
+        params.add("misfireStrategy", MISFIRE_STRATEGY);
+        params.add("executorBlockStrategy", BLOCK_STRATEGY);
+        params.add("executorTimeout", "0");
+        params.add("executorFailRetryCount", "0");
         params.add("childJobId", "");
+        params.add("triggerStatus", cron ? "1" : "0");
         return params;
     }
 
-    private int jobGroupId() {
-        return jobGroupId;
+    private int ensureJobGroup() {
+        JsonNode page = getWithAuth("/jobgroup/pageList?start=0&length=10&appname=" + appName, "查询执行器失败");
+        List<JsonNode> groups = extractPageList(page);
+        if (!groups.isEmpty()) {
+            return groups.get(0).path("id").asInt();
+        }
+
+        logger.warn("XXL-JOB job group not found, creating: appName={}", appName);
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("appname", appName);
+        params.add("title", appName);
+        params.add("addressType", "0");
+        postWithAuth("/jobgroup/insert", params, "创建执行器失败");
+
+        JsonNode reloaded = getWithAuth("/jobgroup/pageList?start=0&length=10&appname=" + appName, "查询执行器失败");
+        List<JsonNode> reloadedGroups = extractPageList(reloaded);
+        if (reloadedGroups.isEmpty()) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "无法获取 XXL-JOB 执行器分组");
+        }
+        return reloadedGroups.get(0).path("id").asInt();
     }
 
-    private JsonNode postWithRetry(String path, MultiValueMap<String, String> params) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        if (sessionCookie != null) {
-            headers.put(HttpHeaders.COOKIE, List.of(sessionCookie));
-        }
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
-
-        try {
-            ResponseEntity<String> response = restTemplate.postForEntity(adminBaseUrl + path, request, String.class);
-            return parseResponse(response.getBody());
-        } catch (Exception e) {
-            if (isUnauthorized(e)) {
-                logger.warn("XXL-JOB session expired or invalid, re-login and retry once: path={}", path);
-                login();
-                headers.put(HttpHeaders.COOKIE, List.of(sessionCookie));
-                HttpEntity<MultiValueMap<String, String>> retryRequest = new HttpEntity<>(params, headers);
-                ResponseEntity<String> response = restTemplate.postForEntity(adminBaseUrl + path, retryRequest, String.class);
-                return parseResponse(response.getBody());
+    private List<JsonNode> extractPageList(JsonNode response) {
+        JsonNode data = response.path("data").path("data");
+        if (data.isArray()) {
+            int size = data.size();
+            List<JsonNode> list = new java.util.ArrayList<>(size);
+            for (JsonNode node : data) {
+                list.add(node);
             }
-            throw new IllegalStateException("XXL-JOB API 调用失败: " + path, e);
+            return list;
         }
-    }
-
-    private JsonNode parseResponse(String body) {
-        if (body == null) {
-            return null;
-        }
-        if (looksLikeLoginPage(body)) {
-            throw new IllegalStateException("XXL-JOB 响应为登录页，会话已失效");
-        }
-        try {
-            return objectMapper.readTree(body);
-        } catch (Exception e) {
-            throw new IllegalStateException("XXL-JOB 响应解析失败", e);
-        }
-    }
-
-    private void ensureLogin() {
-        if (sessionCookie == null) {
-            login();
-        }
+        return Collections.emptyList();
     }
 
     private synchronized void login() {
-        if (sessionCookie != null) {
-            return;
-        }
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("userName", username);
-        params.add("password", password);
-        params.add("remember_me", "false");
+        try {
+            MultiValueMap<String, String> loginParams = new LinkedMultiValueMap<>();
+            loginParams.add("userName", adminUsername);
+            loginParams.add("password", adminPassword);
+            loginParams.add("ifRemember", "on");
 
-        HttpHeaders headers = new HttpHeaders();
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            org.springframework.http.HttpEntity<MultiValueMap<String, String>> request =
+                    new org.springframework.http.HttpEntity<>(loginParams, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    adminAddresses + "/auth/doLogin", request, String.class);
+
+            String cookie = response.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+            if (cookie == null) {
+                throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "XXL-JOB 登录响应未返回 Cookie");
+            }
+            sessionCookie = cookie;
+            logger.info("Logged in to XXL-JOB admin, cookie received");
+        } catch (RestClientResponseException e) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "XXL-JOB 登录失败: " + e.getResponseBodyAsString());
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "XXL-JOB 登录失败: " + e.getMessage());
+        }
+    }
+
+    private JsonNode postWithAuth(String path, MultiValueMap<String, String> params, String errorMessage) {
+        return exchangeWithAuth(path, true, params, errorMessage);
+    }
+
+    private JsonNode getWithAuth(String path, String errorMessage) {
+        return exchangeWithAuth(path, false, null, errorMessage);
+    }
+
+    private JsonNode exchangeWithAuth(String path, boolean post, MultiValueMap<String, String> params, String errorMessage) {
+        if (sessionCookie == null) {
+            login();
+        }
+        try {
+            JsonNode result = doExchange(path, post, params);
+            if (isLoginRequired(result)) {
+                logger.warn("XXL-JOB session expired, re-login and retry: path={}", path);
+                login();
+                result = doExchange(path, post, params);
+            }
+            return assertSuccess(result, errorMessage);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (RestClientResponseException e) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, errorMessage + ": " + e.getResponseBodyAsString());
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, errorMessage + ": " + e.getMessage(), e);
+        }
+    }
+
+    private JsonNode doExchange(String path, boolean post, MultiValueMap<String, String> params) throws Exception {
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
-
-        ResponseEntity<String> response = restTemplate.postForEntity(adminBaseUrl + "/login", request, String.class);
-        List<String> cookies = response.getHeaders().get(HttpHeaders.SET_COOKIE);
-        if (cookies == null || cookies.isEmpty()) {
-            throw new IllegalStateException("XXL-JOB 登录失败，未返回 Cookie");
+        if (sessionCookie != null) {
+            headers.add(HttpHeaders.COOKIE, sessionCookie);
         }
-        this.sessionCookie = cookies.get(0);
-        logger.info("XXL-JOB login succeeded");
+
+        String url = adminAddresses + path;
+        org.springframework.http.HttpEntity<MultiValueMap<String, String>> request =
+                new org.springframework.http.HttpEntity<>(params, headers);
+
+        ResponseEntity<String> response;
+        if (post) {
+            response = restTemplate.postForEntity(url, request, String.class);
+        } else {
+            org.springframework.http.HttpEntity<Void> getRequest = new org.springframework.http.HttpEntity<>(headers);
+            response = restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, getRequest, String.class);
+        }
+        return objectMapper.readTree(response.getBody());
     }
 
-    private boolean isUnauthorized(Exception e) {
-        if (e instanceof HttpStatusCodeException ex) {
-            HttpStatusCode status = ex.getStatusCode();
-            return status == HttpStatus.UNAUTHORIZED
-                    || status == HttpStatus.FORBIDDEN
-                    || status == HttpStatus.FOUND
-                    || status == HttpStatus.MOVED_PERMANENTLY;
+    private boolean isLoginRequired(JsonNode response) {
+        if (response == null) {
+            return true;
         }
-        String message = e.getMessage();
-        if (message == null) {
-            return false;
-        }
-        String lower = message.toLowerCase();
-        return lower.contains("401")
-                || lower.contains("403")
-                || lower.contains("unauthorized")
-                || lower.contains("未登录")
-                || lower.contains("登录")
-                || lower.contains("login")
-                || lower.contains("session")
-                || lower.contains("cookie");
+        String msg = response.path("msg").asText("");
+        return msg.contains("login") || msg.contains("Login") || msg.contains("请登录") || msg.contains("未登录");
     }
 
-    private boolean looksLikeLoginPage(String body) {
-        if (body == null) {
-            return false;
+    private JsonNode assertSuccess(JsonNode response, String errorMessage) {
+        if (response == null) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, errorMessage + ": 空响应");
         }
-        String lower = body.toLowerCase();
-        return lower.contains("<!doctype html")
-                && (lower.contains("login") || lower.contains("xxl-sso") || lower.contains("登录") || lower.contains("用户名"));
+        int code = response.path("code").asInt(-1);
+        if (code != 200) {
+            String msg = response.path("msg").asText("未知错误");
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, errorMessage + " (code=" + code + "): " + msg);
+        }
+        return response;
+    }
+
+    private Integer parseJobId(JsonNode response) {
+        String data = response.path("data").asText(null);
+        if (data != null) {
+            try {
+                return Integer.parseInt(data);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "XXL-JOB 返回的任务 ID 无效");
     }
 }

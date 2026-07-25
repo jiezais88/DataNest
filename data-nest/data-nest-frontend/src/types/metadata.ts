@@ -30,10 +30,17 @@ export interface MetadataCommentRequest {
     manualComment: string;
 }
 
+export interface MetadataDatasource {
+    id: string;
+    name?: string;
+    exists: boolean;
+}
+
 export interface MetadataTreeNode {
     id: string;
     type: 'datasource' | 'database' | 'schema' | 'table';
     name: string;
+    exists?: boolean;
     children?: MetadataTreeNode[];
     count?: number;
     databaseName?: string;

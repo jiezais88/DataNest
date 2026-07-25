@@ -28,13 +28,19 @@ public class DataSourceConnection {
 
     private String username;
 
-    private String password;
-
-    private String status;
+    private String encryptedPassword;
 
     private String description;
 
-    private LocalDateTime lastConnectTime;
+    private String status;
+
+    private LocalDateTime lastTestTime;
+
+    private String errorMessage;
+
+    private Long createdBy;
+
+    private Long updatedBy;
 
     private LocalDateTime createdAt;
 

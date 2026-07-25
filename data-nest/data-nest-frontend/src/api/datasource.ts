@@ -22,7 +22,7 @@ export interface Result<T> {
 }
 
 export function getDataSources(params: DataSourceQueryParams) {
-    return request.get<Result<PageResult<DataSource>>>('/engineering/datasources', {params});
+    return request.post<Result<PageResult<DataSource>>>('/engineering/datasources/page', params);
 }
 
 export function getDataSource(id: string) {

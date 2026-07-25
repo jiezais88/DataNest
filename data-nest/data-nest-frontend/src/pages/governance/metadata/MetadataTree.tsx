@@ -5,7 +5,7 @@ import {
     listMetadataSchemas,
     listMetadataTables,
 } from '../../../api/metadata';
-import type {MetadataTreeNode} from '../../../types/metadata';
+import type {MetadataDatasource, MetadataTreeNode} from '../../../types/metadata';
 import {HiChevronDown, HiChevronRight, HiOutlineServer, HiOutlineTableCells} from 'react-icons/hi2';
 import {Database} from 'lucide-react';
 
@@ -23,24 +23,39 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
         loadRoots();
     }, []);
 
+    const updateNodeChildren = (nodes: MetadataTreeNode[], nodeId: string, children: MetadataTreeNode[]): MetadataTreeNode[] => {
+        return nodes.map(n => {
+            if (n.id === nodeId) {
+                return {...n, children};
+            }
+            if (n.children) {
+                return {...n, children: updateNodeChildren(n.children, nodeId, children)};
+            }
+            return n;
+        });
+    };
+
     const loadRoots = async () => {
         try {
             const result = await listMetadataDatasourceIds();
             if (result.code === 200) {
-                const nodes: MetadataTreeNode[] = result.data.map((id) => ({
-                    id: `ds-${id}`,
-                    type: 'datasource',
-                    name: `数据源 ${id.slice(-6)}`,
-                    databaseName: '',
-                    schemaName: '',
-                    children: [],
-                }));
+                const nodes: MetadataTreeNode[] = (result.data as MetadataDatasource[]).map((ds) => {
+                    const shortId = String(ds.id).slice(-6);
+                    const exists = ds.exists !== false;
+                    return {
+                        id: `ds-${ds.id}`,
+                        type: 'datasource',
+                        name: ds.name ? ds.name : `数据源 ${shortId}${exists ? '' : '（已删除）'}`,
+                        exists,
+                        databaseName: '',
+                        schemaName: '',
+                        children: [],
+                    };
+                });
                 setRoots(nodes);
-                if (nodes.length > 0) {
-                    handleToggle(nodes[0]);
-                }
             }
-        } catch {
+        } catch (err) {
+            console.error('loadRoots failed', err);
             setRoots([]);
         }
     };
@@ -52,15 +67,15 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
             try {
                 const result = await listMetadataDatabases(datasourceId);
                 if (result.code === 200) {
-                    node.children = result.data.map((db) => ({
+                    const children = result.data.map((db) => ({
                         id: `db-${datasourceId}-${db}`,
-                        type: 'database',
+                        type: 'database' as const,
                         name: db,
                         databaseName: db,
                         schemaName: '',
                         children: [],
                     }));
-                    setRoots([...roots]);
+                    setRoots(prev => updateNodeChildren(prev, node.id, children));
                 }
             } finally {
                 setLoading(null);
@@ -72,15 +87,15 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
             try {
                 const result = await listMetadataSchemas(datasourceId, databaseName);
                 if (result.code === 200) {
-                    node.children = result.data.map((schema) => ({
+                    const children = result.data.map((schema) => ({
                         id: `schema-${datasourceId}-${databaseName}-${schema}`,
-                        type: 'schema',
+                        type: 'schema' as const,
                         name: schema,
                         databaseName,
                         schemaName: schema,
                         children: [],
                     }));
-                    setRoots([...roots]);
+                    setRoots(prev => updateNodeChildren(prev, node.id, children));
                 }
             } finally {
                 setLoading(null);
@@ -93,15 +108,15 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
             try {
                 const result = await listMetadataTables(datasourceId, databaseName, schemaName);
                 if (result.code === 200) {
-                    node.children = result.data.map((table) => ({
+                    const children = result.data.map((table) => ({
                         id: `table-${table.id}`,
-                        type: 'table',
+                        type: 'table' as const,
                         name: table.tableName,
                         databaseName,
                         schemaName,
                         count: 0,
                     }));
-                    setRoots([...roots]);
+                    setRoots(prev => updateNodeChildren(prev, node.id, children));
                 }
             } finally {
                 setLoading(null);
@@ -130,10 +145,14 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
         const expandedFlag = isExpanded(node.id);
         const selectedFlag = isSelected(node);
         const paddingLeft = 12 + depth * 16;
+        const deletedFlag = node.type === 'datasource' && node.exists === false;
 
         return (
             <div key={node.id}>
                 <button
+                    data-testid={node.id}
+                    data-node-type={node.type}
+                    data-node-name={node.name}
                     onClick={() => {
                         if (hasChildren) handleToggle(node);
                         onSelect(node);
@@ -142,7 +161,9 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
                     className={`w-full flex items-center gap-ds-1.5 py-ds-2 pr-ds-2 text-left text-ds-small transition-colors ${
                         selectedFlag
                             ? 'bg-ds-accent-light text-ds-accent font-semibold'
-                            : 'text-ds-text-secondary hover:bg-ds-bg-hover hover:text-ds-text-primary'
+                            : deletedFlag
+                                ? 'text-ds-text-muted hover:bg-ds-bg-hover'
+                                : 'text-ds-text-secondary hover:bg-ds-bg-hover hover:text-ds-text-primary'
                     }`}
                 >
                     {hasChildren && (
@@ -154,6 +175,10 @@ export default function MetadataTree({selectedNode, onSelect}: MetadataTreeProps
                         <Database size={16} className="flex-shrink-0"/>}
                     {node.type === 'table' && <HiOutlineTableCells size={16} className="flex-shrink-0"/>}
                     <span className="truncate">{node.name}</span>
+                    {deletedFlag && (
+                        <span
+                            className="ml-ds-1 px-ds-1.5 py-ds-0.5 text-ds-caption bg-ds-text-muted/10 text-ds-text-muted rounded-ds-xs">已删除</span>
+                    )}
                     {loading === node.id && (
                         <span
                             className="ml-auto w-3 h-3 border-2 border-ds-accent border-t-transparent rounded-full animate-spin"/>

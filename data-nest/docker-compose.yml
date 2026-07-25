@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ============================================
   # Nacos MySQL 8.0 — Nacos 外置持久化数据库
@@ -18,6 +16,7 @@ services:
       - nacos-mysql-data:/var/lib/mysql
       - ./scripts/nacos-mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-mysql-schema.sql:ro
       - ./scripts/init-scheduler-db.sql:/docker-entrypoint-initdb.d/02-init-scheduler-db.sql:ro
+      - ./scripts/init-xxl-job-tables.sql:/docker-entrypoint-initdb.d/03-init-xxl-job-tables.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin -u root -proot123 ping | grep 'mysqld is alive'" ]
       interval: 10s
@@ -207,7 +206,6 @@ services:
 
   # ============================================
   # Test MySQL 8.0 — 数据源 E2E 测试目标库
-  # 不暴露宿主机端口，仅内部网络访问
   # ============================================
   test-mysql:
     image: mysql:8.0
@@ -217,11 +215,37 @@ services:
       MYSQL_DATABASE: testdb
       MYSQL_USER: testuser
       MYSQL_PASSWORD: testpass123
+    ports:
+      - "3307:3306"
     volumes:
       - test-mysql-data:/var/lib/mysql
       - ./scripts/test-mysql-init.sql:/docker-entrypoint-initdb.d/01-test-mysql-init.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin -u root -proot123 ping | grep 'mysqld is alive'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Test PostgreSQL 16 — 数据源 E2E 测试目标库
+  # ============================================
+  test-postgres:
+    image: postgres:16-alpine
+    container_name: datanest-test-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+      - ./scripts/test-postgres-init.sql:/docker-entrypoint-initdb.d/01-test-postgres-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -259,6 +283,8 @@ services:
         condition: service_healthy
       test-mysql:
         condition: service_healthy
+      test-postgres:
+        condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8082" ]
       interval: 10s
@@ -288,6 +314,7 @@ services:
       - REDIS_PORT=6379
       - XXL_JOB_HOST=xxl-job-admin
       - XXL_JOB_PORT=8080
+      - XXL_JOB_EXECUTOR_IP=datanest-governance
     depends_on:
       nacos:
         condition: service_healthy
@@ -358,6 +385,7 @@ volumes:
   pgdata:
   redisdata:
   test-mysql-data:
+  test-postgres-data:
   xxl-job-admin-data:
 
 networks:

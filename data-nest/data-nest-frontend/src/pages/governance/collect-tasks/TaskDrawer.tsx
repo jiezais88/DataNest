@@ -115,7 +115,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
     };
 
     const buildPayload = (): CollectTaskCreateRequest => {
-        return {
+        const base = {
             name: form.name.trim(),
             datasourceId: form.datasourceId,
             scope: form.scope.length > 0 ? form.scope : [],
@@ -124,6 +124,10 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
             cronExpression: form.triggerType === 'CRON' ? form.cronExpression.trim() : undefined,
             description: form.description.trim() || undefined,
         };
+        if (editItem) {
+            return {...base, status: editItem.status} as CollectTaskCreateRequest;
+        }
+        return base;
     };
 
     const handleSubmit = async () => {
@@ -155,12 +159,14 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
             footer={
                 <>
                     <button
+                        data-testid="collect-task-cancel"
                         onClick={onClose}
                         className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         取消
                     </button>
                     <button
+                        data-testid="collect-task-submit"
                         onClick={handleSubmit}
                         disabled={submitting}
                         className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
@@ -176,6 +182,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         任务名称 <span className="text-ds-danger">*</span>
                     </label>
                     <input
+                        data-testid="collect-task-name"
                         value={form.name}
                         onChange={(e) => updateField('name', e.target.value)}
                         className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
@@ -189,13 +196,14 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         数据源 <span className="text-ds-danger">*</span>
                     </label>
                     <select
+                        data-testid="collect-task-datasource"
                         value={form.datasourceId}
                         onChange={(e) => handleDatasourceChange(e.target.value)}
                         className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                     >
                         <option value="">请选择</option>
                         {dataSources.map((ds) => (
-                            <option key={ds.id} value={ds.id}>
+                            <option key={ds.id} value={ds.id} data-testid={`collect-task-datasource-option-${ds.id}`}>
                                 {ds.name} ({ds.host}:{ds.port}/{ds.databaseName})
                             </option>
                         ))}
@@ -220,6 +228,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                                         <button
                                             key={schema}
                                             type="button"
+                                            data-testid={`collect-task-scope-${schema}`}
                                             onClick={() => toggleSchema(schema)}
                                             className={`px-ds-2 py-ds-1 rounded-ds-sm text-ds-small transition-colors ${
                                                 selected

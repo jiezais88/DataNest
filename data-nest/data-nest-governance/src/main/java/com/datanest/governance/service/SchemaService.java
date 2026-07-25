@@ -28,7 +28,7 @@ public class SchemaService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
 
-        String password = encryptionConfig.decrypt(connection.getPassword());
+        String password = encryptionConfig.decrypt(connection.getEncryptedPassword());
         return JdbcSchemaExtractor.extractSchemas(
                 connection.getType(),
                 connection.getHost(),

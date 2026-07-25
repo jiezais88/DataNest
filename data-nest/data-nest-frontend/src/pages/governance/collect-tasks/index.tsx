@@ -117,9 +117,13 @@ export default function CollectTasksPage() {
     };
 
     const handleSubmit = async (payload: CollectTaskCreateRequest) => {
-        return editItem
+        const result = editItem
             ? await updateCollectTask(editItem.id, payload)
             : await createCollectTask(payload);
+        if (result.code === 200) {
+            loadData();
+        }
+        return result;
     };
 
     const handleExecute = async (item: CollectTask) => {
@@ -201,6 +205,7 @@ export default function CollectTasksPage() {
                 </div>
                 {canWrite && (
                     <button
+                        data-testid="collect-task-create"
                         onClick={openCreate}
                         className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
                     >
@@ -286,6 +291,8 @@ export default function CollectTasksPage() {
                             return (
                                 <tr
                                     key={item.id}
+                                    data-testid={`collect-task-row-${item.name}`}
+                                    data-task-id={item.id}
                                     className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors"
                                 >
                                     <td className="px-ds-4 py-ds-3">
@@ -311,6 +318,7 @@ export default function CollectTasksPage() {
                                     <td className="px-ds-4 py-ds-3">
                                         <div className="flex items-center justify-end gap-1">
                                             <button
+                                                data-testid={`collect-task-history-${item.name}`}
                                                 onClick={() => navigate(`/governance/collect-tasks/${item.id}/history`)}
                                                 className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
                                                 title="历史记录"
@@ -321,6 +329,7 @@ export default function CollectTasksPage() {
                                             {canWrite && (
                                                 <>
                                                     <button
+                                                        data-testid={`collect-task-execute-${item.name}`}
                                                         onClick={() => handleExecute(item)}
                                                         disabled={executingId === item.id}
                                                         className="p-1.5 text-ds-text-muted hover:text-ds-success hover:bg-ds-success-light rounded transition-colors disabled:opacity-60"
@@ -330,6 +339,7 @@ export default function CollectTasksPage() {
                                                         <HiOutlinePlay size={16}/>
                                                     </button>
                                                     <button
+                                                        data-testid={`collect-task-edit-${item.name}`}
                                                         onClick={() => openEdit(item)}
                                                         className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
                                                         title="编辑"
@@ -338,6 +348,7 @@ export default function CollectTasksPage() {
                                                         <HiOutlinePencilSquare size={16}/>
                                                     </button>
                                                     <button
+                                                        data-testid={`collect-task-delete-${item.name}`}
                                                         onClick={() => {
                                                             setDeleteTarget(item);
                                                             setDeleteOpen(true);
@@ -408,7 +419,7 @@ export default function CollectTasksPage() {
             <ConfirmDialog
                 open={deleteOpen}
                 title="删除采集任务"
-                message={`确定要删除采集任务 "${deleteTarget?.name}" 吗？删除后将不再调度执行，但历史记录与已采集元数据会保留。`}
+                message={`确定要删除采集任务 "${deleteTarget?.name}" 吗？删除后将不再调度执行，历史记录将一并删除，已采集元数据仍保留。`}
                 confirmLabel="确认删除"
                 danger
                 onConfirm={handleDelete}

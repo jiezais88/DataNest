@@ -116,6 +116,7 @@ export default function MetadataPage() {
                 <div className="flex items-center gap-ds-2">
                     <input
                         autoFocus
+                        data-testid={type === 'table' ? 'metadata-table-comment' : `metadata-column-comment-${id}`}
                         value={editingComment.value}
                         onChange={(e) => setEditingComment({...editingComment, value: e.target.value})}
                         onBlur={() => type === 'table' ? handleSaveTableComment() : handleSaveColumnComment(columns.find((c) => c.id === id)!)}
@@ -134,6 +135,7 @@ export default function MetadataPage() {
                 <span className="text-ds-small text-ds-text-secondary truncate">{value || '-'}</span>
                 {canWrite && (
                     <button
+                        data-testid={`metadata-edit-comment-${type}-${id}`}
                         onClick={() => startEditComment(type, id, value || '')}
                         className="opacity-0 group-hover:opacity-100 p-1 text-ds-text-muted hover:text-ds-accent transition-opacity"
                         aria-label="编辑注释"
@@ -184,6 +186,7 @@ export default function MetadataPage() {
                                     {tables.map((table) => (
                                         <button
                                             key={table.id}
+                                            data-testid={`metadata-table-card-${table.id}`}
                                             onClick={() => setSelectedNode({
                                                 id: `table-${table.id}`,
                                                 type: 'table',

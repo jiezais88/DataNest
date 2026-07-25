@@ -37,10 +37,13 @@ public class CollectExecutor {
     private final ExtractorFactory extractorFactory;
 
     @XxlJob("collectTaskHandler")
-    public void execute(String param) {
+    public void execute() {
+        String param = XxlJobHelper.getJobParam();
+        logger.info("CollectExecutor 开始执行，param={}", param);
         Long taskId = parseTaskId(param);
         String triggerType = parseTriggerType(param);
         if (taskId == null) {
+            logger.error("CollectExecutor 参数无效，缺少任务ID: param={}", param);
             XxlJobHelper.handleFail("缺少任务ID参数");
             return;
         }
@@ -68,27 +71,34 @@ public class CollectExecutor {
 
     @Transactional(rollbackFor = Exception.class)
     public void runTask(Long taskId, String triggerType) {
+        logger.info("runTask 开始执行，taskId={}，triggerType={}", taskId, triggerType);
         CollectTask task = collectTaskMapper.selectById(taskId);
         if (task == null) {
+            logger.error("runTask 任务不存在: taskId={}", taskId);
             XxlJobHelper.handleFail("任务不存在: " + taskId);
             return;
         }
         if ("PAUSED".equals(task.getStatus())) {
+            logger.warn("runTask 任务已暂停，跳过: taskId={}", taskId);
             XxlJobHelper.handleFail("任务已暂停，跳过执行: " + taskId);
             return;
         }
 
         DataSourceConnection ds = dataSourceConnectionMapper.selectById(task.getDatasourceId());
         if (ds == null) {
+            logger.error("runTask 数据源不存在: taskId={}, datasourceId={}", taskId, task.getDatasourceId());
             failTask(task, triggerType, "数据源不存在: " + task.getDatasourceId());
             return;
         }
         if (!"NORMAL".equals(ds.getStatus())) {
+            logger.error("runTask 数据源状态异常: taskId={}, datasourceId={}, status={}", taskId, task.getDatasourceId(), ds.getStatus());
             failTask(task, triggerType, "数据源状态异常，无法采集: " + ds.getStatus());
             return;
         }
 
+        logger.info("runTask 准备初始化历史记录，taskId={}", taskId);
         CollectHistory history = initHistory(task, triggerType);
+        logger.info("runTask 历史记录已初始化，historyId={}", history.getId());
         List<String> scope = task.getScope() != null && !task.getScope().isEmpty()
                 ? task.getScope()
                 : Collections.singletonList(null);
@@ -141,6 +151,7 @@ public class CollectExecutor {
     }
 
     private CollectHistory initHistory(CollectTask task, String triggerType) {
+        logger.info("initHistory 开始，taskId={}，triggerType={}", task.getId(), triggerType);
         CollectHistory history = new CollectHistory();
         history.setTaskId(task.getId());
         history.setTaskName(task.getName());
@@ -157,7 +168,9 @@ public class CollectExecutor {
         history.setAddedColumnCount(0);
         history.setUpdatedColumnCount(0);
         history.setDeletedColumnCount(0);
+        logger.info("initHistory 准备插入 collect_history，taskId={}", task.getId());
         collectHistoryMapper.insert(history);
+        logger.info("initHistory 插入完成，historyId={}", history.getId());
         return history;
     }
 

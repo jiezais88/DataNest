@@ -38,7 +38,7 @@ public class MysqlMetadataExtractor implements MetadataExtractor {
     public List<TableMetadata> extractTables(DataSourceConnection ds, String schema) throws SQLException {
         List<TableMetadata> tables = new ArrayList<>();
         String jdbcUrl = buildUrl(ds, schema);
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, ds.getUsername(), encryptionConfig.decrypt(ds.getPassword()))) {
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()))) {
             DatabaseMetaData metaData = conn.getMetaData();
             try (ResultSet rs = metaData.getTables(schema, null, null, new String[]{"TABLE", "VIEW"})) {
                 while (rs.next()) {
@@ -73,7 +73,7 @@ public class MysqlMetadataExtractor implements MetadataExtractor {
     }
 
     private Connection openConnection(DataSourceConnection ds) throws SQLException {
-        return DriverManager.getConnection(buildUrl(ds, ds.getDatabaseName()), ds.getUsername(), encryptionConfig.decrypt(ds.getPassword()));
+        return DriverManager.getConnection(buildUrl(ds, ds.getDatabaseName()), ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()));
     }
 
     private String buildUrl(DataSourceConnection ds, String database) {

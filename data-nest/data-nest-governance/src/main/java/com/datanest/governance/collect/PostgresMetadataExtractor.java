@@ -96,6 +96,6 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
     private Connection openConnection(DataSourceConnection ds) throws SQLException {
         String url = "jdbc:postgresql://" + ds.getHost() + ":" + ds.getPort() + "/" + ds.getDatabaseName()
                 + "?useSSL=false&applicationName=data-nest-governance";
-        return DriverManager.getConnection(url, ds.getUsername(), encryptionConfig.decrypt(ds.getPassword()));
+        return DriverManager.getConnection(url, ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()));
     }
 }

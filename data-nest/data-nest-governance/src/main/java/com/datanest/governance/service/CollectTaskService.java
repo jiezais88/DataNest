@@ -12,7 +12,11 @@ import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
 import com.datanest.governance.dto.CollectTaskUpdateRequest;
+import com.datanest.governance.entity.CollectExecutionLog;
+import com.datanest.governance.entity.CollectHistory;
 import com.datanest.governance.entity.CollectTask;
+import com.datanest.governance.mapper.CollectExecutionLogMapper;
+import com.datanest.governance.mapper.CollectHistoryMapper;
 import com.datanest.governance.mapper.CollectTaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,10 +39,16 @@ public class CollectTaskService {
 
     private final CollectTaskMapper collectTaskMapper;
     private final SchedulerService schedulerService;
+    private final CollectHistoryMapper collectHistoryMapper;
+    private final CollectExecutionLogMapper collectExecutionLogMapper;
 
-    public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService) {
+    public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService,
+                              CollectHistoryMapper collectHistoryMapper,
+                              CollectExecutionLogMapper collectExecutionLogMapper) {
         this.collectTaskMapper = collectTaskMapper;
         this.schedulerService = schedulerService;
+        this.collectHistoryMapper = collectHistoryMapper;
+        this.collectExecutionLogMapper = collectExecutionLogMapper;
     }
 
     @Transactional
@@ -111,6 +121,10 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
+
+        // 级联删除执行日志与历史记录
+        collectExecutionLogMapper.delete(new QueryWrapper<CollectExecutionLog>().eq("task_id", id));
+        collectHistoryMapper.delete(new QueryWrapper<CollectHistory>().eq("task_id", id));
 
         if (task.getXxlJobId() != null) {
             schedulerService.unregisterJob(task.getXxlJobId());

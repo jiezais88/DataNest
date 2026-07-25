@@ -287,6 +287,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     Schema {form.type === 'POSTGRESQL' && <span className="text-ds-danger">*</span>}
                                 </label>
                                 <input
+                                    data-testid="datasource-schema-input"
                                     value={form.schemaName}
                                     onChange={(e) => updateField('schemaName', e.target.value)}
                                     className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
