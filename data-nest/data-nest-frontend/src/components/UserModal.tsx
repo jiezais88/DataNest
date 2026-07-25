@@ -5,6 +5,7 @@ import type {CreateUserParams, UpdateUserParams, UserVO} from '../api/auth';
 interface Props {
     open: boolean;
     editUser?: UserVO | null;
+    submitting?: boolean;
     onClose: () => void;
     onSubmit: (data: CreateUserParams | UpdateUserParams) => void;
 }
@@ -16,7 +17,7 @@ const ALL_ROLES = [
     {code: 'GOVERNANCE_ADMIN', name: '治理管理员'},
 ];
 
-export default function UserModal({open, editUser, onClose, onSubmit}: Props) {
+export default function UserModal({open, editUser, submitting = false, onClose, onSubmit}: Props) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -133,13 +134,22 @@ export default function UserModal({open, editUser, onClose, onSubmit}: Props) {
                 </div>
 
                 <div className="flex justify-end gap-ds-2 mt-ds-5">
-                    <button onClick={onClose}
-                            className="px-ds-4 py-ds-2 text-ds-small text-ds-text-secondary hover:bg-ds-bg-hover rounded-ds-sm transition-colors ds-fast">
+                    <button onClick={onClose} disabled={submitting}
+                            className="px-ds-4 py-ds-2 text-ds-small text-ds-text-secondary hover:bg-ds-bg-hover rounded-ds-sm transition-colors ds-fast disabled:opacity-50 disabled:cursor-not-allowed">
                         取消
                     </button>
-                    <button type="button" onClick={handleSubmit} disabled={!canSubmit}
-                            className="px-ds-4 py-ds-2 text-ds-small text-white bg-ds-accent hover:bg-ds-accent-hover rounded-ds-sm font-semibold transition-colors ds-fast disabled:opacity-50 disabled:cursor-not-allowed">
-                        {isEdit ? '保存修改' : '创建用户'}
+                    <button type="button" onClick={handleSubmit} disabled={!canSubmit || submitting}
+                            className="px-ds-4 py-ds-2 text-ds-small text-white bg-ds-accent hover:bg-ds-accent-hover rounded-ds-sm font-semibold transition-colors ds-fast disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
+                        {submitting && (
+                            <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                 viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                        strokeWidth="4"/>
+                                <path className="opacity-75" fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                            </svg>
+                        )}
+                        {submitting ? '处理中...' : (isEdit ? '保存修改' : '创建用户')}
                     </button>
                 </div>
             </div>

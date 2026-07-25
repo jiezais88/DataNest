@@ -14,6 +14,8 @@ import com.datanest.engineering.entity.CollectTask;
 import com.datanest.engineering.entity.DataSourceConnection;
 import com.datanest.engineering.mapper.CollectTaskMapper;
 import com.datanest.engineering.mapper.DataSourceMapper;
+import com.datanest.engineering.mapper.MetadataColumnMapper;
+import com.datanest.engineering.mapper.MetadataTableMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,13 +37,18 @@ public class DataSourceService {
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
     private final CollectTaskMapper collectTaskMapper;
+    private final MetadataTableMapper metadataTableMapper;
+    private final MetadataColumnMapper metadataColumnMapper;
 
     public DataSourceService(DataSourceMapper dataSourceMapper, EncryptionConfig encryptionConfig,
-                             ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper) {
+                             ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
+                             MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
         this.collectTaskMapper = collectTaskMapper;
+        this.metadataTableMapper = metadataTableMapper;
+        this.metadataColumnMapper = metadataColumnMapper;
     }
 
     @Transactional
@@ -110,6 +117,13 @@ public class DataSourceService {
         if (!references.isEmpty()) {
             throw new BusinessException(ErrorCode.HAS_REFERENCES, "数据源被采集任务引用，无法删除", references);
         }
+
+        // 级联删除已采集的元数据：先删子表字段，再删父表
+        List<Long> tableIds = metadataTableMapper.selectIdsByDatasourceId(id);
+        if (!tableIds.isEmpty()) {
+            metadataColumnMapper.deleteByTableIds(tableIds);
+        }
+        metadataTableMapper.deleteByDatasourceId(id);
 
         dataSourceMapper.deleteById(id);
     }

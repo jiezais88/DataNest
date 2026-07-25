@@ -50,6 +50,7 @@ export default function CollectHistoryPage() {
     const [status, setStatus] = useState<ExecutionStatus | ''>('');
     const [draftStatus, setDraftStatus] = useState<ExecutionStatus | ''>('');
     const [loading, setLoading] = useState(false);
+    const [searchTrigger, setSearchTrigger] = useState(0);
 
     const [selectedHistory, setSelectedHistory] = useState<CollectTaskExecution | null>(null);
     const [logOpen, setLogOpen] = useState(false);
@@ -86,7 +87,7 @@ export default function CollectHistoryPage() {
         } finally {
             setLoading(false);
         }
-    }, [taskId, page, pageSize, status]);
+    }, [taskId, page, pageSize, status, searchTrigger]);
 
     useEffect(() => {
         loadTask();
@@ -99,6 +100,7 @@ export default function CollectHistoryPage() {
     const handleSearch = () => {
         setStatus(draftStatus);
         setPage(1);
+        setSearchTrigger((v) => v + 1);
     };
 
     const handleReset = () => {

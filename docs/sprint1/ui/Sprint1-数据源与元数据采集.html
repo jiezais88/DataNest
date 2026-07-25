@@ -1168,6 +1168,200 @@
             margin-bottom: 12px
         }
 
+        /* ── Structured Change Log ── */
+        .chg-category {
+            margin-bottom: 16px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            overflow: hidden
+        }
+
+        .chg-cat-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            padding: 10px 16px;
+            background: var(--bg-root);
+            border-bottom: 1px solid var(--border-subtle);
+            text-transform: uppercase;
+            letter-spacing: .5px
+        }
+
+        .chg-cat-title .count {
+            font-weight: 800;
+            color: var(--text-primary)
+        }
+
+        .chg-cat-none {
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 13px;
+            padding: 12px 16px
+        }
+
+        .chg-item {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .chg-item:last-child {
+            border-bottom: none
+        }
+
+        /* change table (per modified table) */
+        .chg-tbl {
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .chg-tbl:last-child {
+            border-bottom: none
+        }
+
+        .chg-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-primary);
+            user-select: none;
+            transition: background var(--transition-fast)
+        }
+
+        .chg-toggle:hover {
+            background: var(--bg-hover)
+        }
+
+        .chg-toggle-arrow {
+            font-size: 10px;
+            color: var(--text-muted);
+            transition: transform var(--transition-fast);
+            width: 12px;
+            text-align: center
+        }
+
+        .chg-toggle-arrow.expanded {
+            transform: rotate(90deg)
+        }
+
+        .chg-tbl-name {
+            font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+            font-weight: 600
+        }
+
+        .chg-summary {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: 4px
+        }
+
+        .chg-fields {
+            display: none;
+            padding: 0 16px 12px
+        }
+
+        .chg-fields.open {
+            display: block
+        }
+
+        .chg-field-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px
+        }
+
+        .chg-field-table th {
+            text-align: left;
+            padding: 6px 10px;
+            background: var(--bg-root);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .chg-field-table td {
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border-subtle);
+            vertical-align: top
+        }
+
+        .chg-field-table tr:last-child td {
+            border-bottom: none
+        }
+
+        .chg-field-type {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600
+        }
+
+        .chg-field-type.add {
+            background: var(--success-light);
+            color: var(--success)
+        }
+
+        .chg-field-type.del {
+            background: var(--danger-light);
+            color: var(--danger)
+        }
+
+        .chg-field-type.mod {
+            background: var(--warning-light);
+            color: var(--warning)
+        }
+
+        /* raw log collapse */
+        .log-collapse {
+            margin-top: 24px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            overflow: hidden
+        }
+
+        .log-collapse-hd {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: var(--bg-root);
+            cursor: pointer;
+            user-select: none;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary)
+        }
+
+        .log-collapse-hd:hover {
+            background: var(--bg-hover)
+        }
+
+        .log-collapse-arrow {
+            font-size: 10px;
+            color: var(--text-muted);
+            transition: transform var(--transition-fast)
+        }
+
+        .log-collapse-arrow.open {
+            transform: rotate(90deg)
+        }
+
+        .log-collapse-body {
+            display: none
+        }
+
+        .log-collapse-body.open {
+            display: block
+        }
+
         @media (max-width: 768px) {
             .sb {
                 width: 56px;
@@ -1480,7 +1674,7 @@
                     <td>—</td>
                     <td>
                         <button class="btn btn-gh" onclick="om('detail')">详情</button>
-                        <button class="btn btn-gh" onclick="om('log')">日志</button>
+                        <button class="btn btn-gh" onclick="om('log','failed')">日志</button>
                     </td>
                 </tr>
                 </tbody>
@@ -1858,28 +2052,191 @@
     </div>
 </div>
 
-<!-- ═══════════ MODAL: Execution Log ═══════════ -->
+<!-- ═══════════ MODAL: Change Log ═══════════ -->
 <div class="mo" id="md-log">
-    <div class="mdl" style="width:640px">
+    <div class="mdl" style="width:720px;max-width:96vw;max-height:92vh">
         <div class="mh">
-            <div class="mt">执行日志</div>
+            <div class="mt" id="log-title">变更日志 — 核心库采集 / 2026-07-24 14:32:18</div>
             <button class="mcbtn" onclick="cm()">&times;</button>
         </div>
-        <div class="log-box"><span class="log-time">[2026-07-24 14:32:18]</span> <span class="log-info">INFO</span>
-            开始执行采集任务：核心库采集
-            <span class="log-time">[2026-07-24 14:32:18]</span> <span class="log-info">INFO</span> 调度触发成功
-            <span class="log-time">[2026-07-24 14:32:19]</span> <span class="log-info">INFO</span> 开始采集
-            order_db.production
-            <span class="log-time">[2026-07-24 14:32:20]</span> <span class="log-info">INFO</span> 共发现 30 张表，210
-            个字段
-            <span class="log-time">[2026-07-24 14:32:25]</span> <span class="log-info">INFO</span> 开始采集
-            order_db.user_db
-            <span class="log-time">[2026-07-24 14:32:27]</span> <span class="log-info">INFO</span> 共发现 15 张表，110
-            个字段
-            <span class="log-time">[2026-07-24 14:32:30]</span> <span class="log-info">INFO</span> 任务执行完成
+
+        <!-- ══ Structured Change Details ══ -->
+        <div id="log-changes">
+
+            <!-- ── Added Tables ── -->
+            <div class="chg-category">
+                <div class="chg-cat-title">新增表（<span class="count">3</span>）</div>
+                <div class="chg-item">order_db.production.user_profiles</div>
+                <div class="chg-item">order_db.production.order_logs</div>
+                <div class="chg-item">order_db.production.payment_records</div>
+            </div>
+
+            <!-- ── Deleted Tables ── -->
+            <div class="chg-category">
+                <div class="chg-cat-title">删除表（<span class="count">1</span>）</div>
+                <div class="chg-item">order_db.production.legacy_cache</div>
+            </div>
+
+            <!-- ── Modified Tables ── -->
+            <div class="chg-category">
+                <div class="chg-cat-title">变化表（<span class="count">2</span>）</div>
+
+                <!-- table: users -->
+                <div class="chg-tbl">
+                    <div class="chg-toggle" onclick="toggleChg(this)">
+                        <span class="chg-toggle-arrow expanded">&#9654;</span>
+                        <span class="chg-tbl-name">order_db.production.users</span>
+                        <span class="chg-summary">新增字段 2 个，修改字段 3 个，删除字段 1 个</span>
+                    </div>
+                    <div class="chg-fields open">
+                        <table class="chg-field-table">
+                            <thead>
+                            <tr>
+                                <th style="width:72px">变更类型</th>
+                                <th style="width:80px">字段名</th>
+                                <th>变化详情</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td><span class="chg-field-type add">新增字段</span></td>
+                                <td>phone</td>
+                                <td>varchar(20)，可为空</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type add">新增字段</span></td>
+                                <td>avatar</td>
+                                <td>varchar(256)，可为空</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type mod">修改字段</span></td>
+                                <td>age</td>
+                                <td>类型：int → bigint</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type mod">修改字段</span></td>
+                                <td>status</td>
+                                <td>注释："0-禁用" → "是否启用"</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type mod">修改字段</span></td>
+                                <td>status</td>
+                                <td>可空性：YES → NO</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type del">删除字段</span></td>
+                                <td>old_tag</td>
+                                <td>varchar(32)，原注释"旧标签"</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- table: orders (collapsed) -->
+                <div class="chg-tbl">
+                    <div class="chg-toggle" onclick="toggleChg(this)">
+                        <span class="chg-toggle-arrow">&#9654;</span>
+                        <span class="chg-tbl-name">order_db.production.orders</span>
+                        <span class="chg-summary">修改字段 2 个，新增字段 1 个</span>
+                    </div>
+                    <div class="chg-fields">
+                        <table class="chg-field-table">
+                            <thead>
+                            <tr>
+                                <th style="width:72px">变更类型</th>
+                                <th style="width:80px">字段名</th>
+                                <th>变化详情</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td><span class="chg-field-type add">新增字段</span></td>
+                                <td>refund_status</td>
+                                <td>varchar(16)，可为空</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type mod">修改字段</span></td>
+                                <td>total_amount</td>
+                                <td>类型：decimal(10,2) → decimal(12,2)</td>
+                            </tr>
+                            <tr>
+                                <td><span class="chg-field-type mod">修改字段</span></td>
+                                <td>discount</td>
+                                <td>注释："" → "优惠金额"</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <!-- ══ No Changes Info (hidden by default) ══ -->
+        <div id="log-no-changes" style="display:none">
+            <div class="chg-category">
+                <div class="chg-cat-title">新增表</div>
+                <div class="chg-cat-none">无</div>
+            </div>
+            <div class="chg-category">
+                <div class="chg-cat-title">删除表</div>
+                <div class="chg-cat-none">无</div>
+            </div>
+            <div class="chg-category">
+                <div class="chg-cat-title">变化表</div>
+                <div class="chg-cat-none">无</div>
+            </div>
+        </div>
+
+        <!-- ══ Raw Log (collapsible) ══ -->
+        <div class="log-collapse">
+            <div class="log-collapse-hd" onclick="toggleRawLog(this)">
+                <span class="log-collapse-arrow">&#9654;</span> 原始日志
+            </div>
+            <div class="log-collapse-body">
+                <div class="log-box" style="border-radius:0;max-height:280px">
+                    <span class="log-time">[2026-07-24 14:32:18]</span> <span class="log-info">INFO</span>
+                    开始执行采集任务：核心库采集
+                    <span class="log-time">[2026-07-24 14:32:18]</span> <span class="log-info">INFO</span> 调度触发成功
+                    <span class="log-time">[2026-07-24 14:32:19]</span> <span class="log-info">INFO</span> 开始采集
+                    order_db.production
+                    <span class="log-time">[2026-07-24 14:32:20]</span> <span class="log-info">INFO</span> 共发现 30
+                    张表，210 个字段
+                    <span class="log-time">[2026-07-24 14:32:25]</span> <span class="log-info">INFO</span> 开始采集
+                    order_db.user_db
+                    <span class="log-time">[2026-07-24 14:32:27]</span> <span class="log-info">INFO</span> 共发现 15
+                    张表，110 个字段
+                    <span class="log-time">[2026-07-24 14:32:30]</span> <span class="log-info">INFO</span> 任务执行完成，耗时
+                    12s
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Failed Raw Log (auto-expanded with ERROR highlight) ══ -->
+        <div id="log-failed-block" style="display:none">
+            <div class="log-collapse">
+                <div class="log-collapse-hd" onclick="toggleRawLog(this)"
+                     style="background:var(--danger-light);color:var(--danger)">
+                    <span class="log-collapse-arrow open">&#9654;</span> 原始日志（执行失败）
+                </div>
+                <div class="log-collapse-body open">
+                    <div class="log-box" style="border-radius:0;max-height:280px">
+                        <span class="log-time">[2026-07-23 13:10:05]</span> <span class="log-info">INFO</span>
+                        开始执行采集任务：核心库采集
+                        <span class="log-time">[2026-07-23 13:10:05]</span> <span class="log-info">INFO</span> 调度触发成功
+                        <span class="log-time">[2026-07-23 13:10:05]</span> <span class="log-info">INFO</span> 开始采集
+                        order_db.production
+                        <span class="log-time">[2026-07-23 13:10:06]</span> <span class="log-info">INFO</span> 连接数据源
+                        order_db 成功
+                        <span class="log-time">[2026-07-23 13:10:07]</span> <span class="log-err">ERROR</span> 采集
+                        order_db.production 失败：连接被拒绝 (Connection refused)
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
-            <button class="btn btn-o">复制日志</button>
+            <button class="btn btn-o" onclick="copyLog()">复制日志</button>
             <button class="btn btn-o" onclick="cm()">关闭</button>
         </div>
     </div>
@@ -1932,12 +2289,84 @@
     }
 
     // modal
-    function om(type) {
-        document.getElementById(type === 'detail' ? 'md-detail' : 'md-log').classList.add('op')
+    function om(type, status) {
+        const el = document.getElementById(type === 'detail' ? 'md-detail' : 'md-log');
+        el.classList.add('op');
+
+        if (type === 'log') {
+            const changeBlock = document.getElementById('log-changes');
+            const noChangeBlock = document.getElementById('log-no-changes');
+            const successLogBlock = document.querySelector('.log-collapse');
+            const failedLogBlock = document.getElementById('log-failed-block');
+
+            if (status === 'failed') {
+                // failed: hide changes, show raw log with error, auto-expand
+                changeBlock.style.display = 'none';
+                noChangeBlock.style.display = 'none';
+                if (successLogBlock) successLogBlock.style.display = 'none';
+                if (failedLogBlock) failedLogBlock.style.display = 'block';
+                document.getElementById('log-title').textContent = '执行日志 — 核心库采集 / 2026-07-23 13:10:05';
+            } else {
+                // success: show structured changes, collapse raw log
+                changeBlock.style.display = 'block';
+                noChangeBlock.style.display = 'none';
+                if (successLogBlock) successLogBlock.style.display = 'block';
+                if (failedLogBlock) failedLogBlock.style.display = 'none';
+                document.getElementById('log-title').textContent = '变更日志 — 核心库采集 / 2026-07-24 14:32:18';
+                const arrow = document.querySelector('.log-collapse-hd .log-collapse-arrow');
+                const body = document.querySelector('.log-collapse-body');
+                if (arrow) arrow.classList.remove('open');
+                if (body) body.classList.remove('open');
+            }
+        }
     }
 
     function cm() {
         document.querySelectorAll('.mo').forEach(m => m.classList.remove('op'))
+    }
+
+    // toggle modification table expand/collapse
+    function toggleChg(el) {
+        const arrow = el.querySelector('.chg-toggle-arrow');
+        const fields = el.nextElementSibling;
+        const isOpen = fields.classList.contains('open');
+        if (isOpen) {
+            fields.classList.remove('open');
+            arrow.classList.remove('expanded');
+        } else {
+            fields.classList.add('open');
+            arrow.classList.add('expanded');
+        }
+    }
+
+    // toggle raw log expand/collapse
+    function toggleRawLog(el) {
+        const arrow = el.querySelector('.log-collapse-arrow');
+        const body = el.nextElementSibling;
+        const isOpen = body.classList.contains('open');
+        if (isOpen) {
+            body.classList.remove('open');
+            arrow.classList.remove('open');
+        } else {
+            body.classList.add('open');
+            arrow.classList.add('open');
+        }
+    }
+
+    // copy raw log to clipboard
+    function copyLog() {
+        const logBox = document.querySelector('.log-box');
+        const text = logBox.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = event.target;
+            const orig = btn.textContent;
+            btn.textContent = '已复制';
+            btn.style.color = 'var(--success)';
+            setTimeout(() => {
+                btn.textContent = orig;
+                btn.style.color = '';
+            }, 1500);
+        });
     }
 
     document.querySelectorAll('.mo').forEach(m => m.addEventListener('click', function (e) {

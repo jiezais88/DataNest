@@ -69,6 +69,7 @@ export default function CollectTasksPage() {
 
     const [deleteTarget, setDeleteTarget] = useState<CollectTask | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
+    const [searchTrigger, setSearchTrigger] = useState(0);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -87,7 +88,7 @@ export default function CollectTasksPage() {
         } finally {
             setLoading(false);
         }
-    }, [page, pageSize, keyword, status]);
+    }, [page, pageSize, keyword, status, searchTrigger]);
 
     useEffect(() => {
         loadData();
@@ -156,6 +157,7 @@ export default function CollectTasksPage() {
         setKeyword(draftKeyword);
         setStatus(draftStatus);
         setPage(1);
+        setSearchTrigger((v) => v + 1);
     };
 
     const handleReset = () => {

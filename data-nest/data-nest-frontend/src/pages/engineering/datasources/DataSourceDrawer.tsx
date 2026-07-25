@@ -7,6 +7,7 @@ import type {
 } from '../../../types/datasource';
 import {testConnection} from '../../../api/datasource';
 import {HiOutlineEye, HiOutlineEyeSlash, HiOutlineXMark} from 'react-icons/hi2';
+import TestResultModal from '../../../components/TestResultModal';
 
 type FormData = {
     name: string;
@@ -60,7 +61,9 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
     const [form, setForm] = useState<FormData>(EMPTY_FORM);
     const [showPassword, setShowPassword] = useState(false);
     const [testing, setTesting] = useState(false);
-    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [testModalOpen, setTestModalOpen] = useState(false);
+    const [testModalSuccess, setTestModalSuccess] = useState(false);
+    const [testModalMessage, setTestModalMessage] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
 
@@ -84,7 +87,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
             } else {
                 setForm(EMPTY_FORM);
             }
-            setTestResult(null);
+            setTestModalOpen(false);
+            setTesting(false);
             setErrors({});
             setShowPassword(false);
         }
@@ -120,22 +124,40 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
 
     const handleTest = async () => {
         if (!validate()) return;
+
+        // 编辑模式下未修改密码时提示
+        if (isEdit && !form.password) {
+            setTestModalSuccess(false);
+            setTestModalMessage('编辑模式下测试连接需要输入密码');
+            setTestModalOpen(true);
+            return;
+        }
+
         setTesting(true);
-        setTestResult(null);
-        const result = await testConnection({
-            type: form.type as DataSourceType,
-            host: form.host.trim(),
-            port: Number(form.port),
-            databaseName: form.databaseName.trim(),
-            schemaName: form.schemaName.trim() || undefined,
-            username: form.username.trim(),
-            password: form.password,
-        });
-        setTesting(false);
-        if (result && result.code === 200) {
-            setTestResult({success: result.data.success, message: result.data.message});
-        } else {
-            setTestResult({success: false, message: result?.message || '测试请求失败'});
+        try {
+            const result = await testConnection({
+                type: form.type as DataSourceType,
+                host: form.host.trim(),
+                port: Number(form.port),
+                databaseName: form.databaseName.trim(),
+                schemaName: form.schemaName.trim() || undefined,
+                username: form.username.trim(),
+                password: form.password,
+            });
+            if (result && result.code === 200) {
+                setTestModalSuccess(result.data.success);
+                setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
+            } else {
+                setTestModalSuccess(false);
+                setTestModalMessage(result?.message || '测试请求失败');
+            }
+        } catch {
+            // API 拦截器已弹 message.error，这里确保弹窗展示失败
+            setTestModalSuccess(false);
+            setTestModalMessage('测试请求失败，请检查参数');
+        } finally {
+            setTesting(false);
+            setTestModalOpen(true);
         }
     };
 
@@ -193,16 +215,6 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                 </div>
 
                 <div className="flex-1 overflow-auto p-ds-6">
-                    {testResult && (
-                        <div className={`mb-ds-4 px-ds-4 py-ds-3 rounded-ds-sm text-ds-small ${
-                            testResult.success
-                                ? 'bg-ds-success-light text-ds-success'
-                                : 'bg-ds-danger-light text-ds-danger'
-                        }`}>
-                            {testResult.success ? '连接成功：' : '连接失败：'}{testResult.message}
-                        </div>
-                    )}
-
                     <div className="space-y-ds-4">
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
@@ -388,6 +400,13 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                     </button>
                 </div>
             </div>
+
+            <TestResultModal
+                open={testModalOpen}
+                success={testModalSuccess}
+                message={testModalMessage}
+                onClose={() => setTestModalOpen(false)}
+            />
         </div>
     );
 }

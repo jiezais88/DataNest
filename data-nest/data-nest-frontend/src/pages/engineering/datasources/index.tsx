@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useState} from 'react';
+import {message} from 'antd';
 import {
     createDataSource,
     deleteDataSource,
@@ -16,6 +17,9 @@ import type {
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DataSourceDrawer from './DataSourceDrawer';
+import TypeBadge from '../../../components/TypeBadge';
+import TestResultModal from '../../../components/TestResultModal';
+import {formatRelativeTime} from '../../../utils/time';
 import {useAuthStore} from '../../../store/useAuthStore';
 import {
     HiChevronRight,
@@ -46,7 +50,7 @@ function formatDateTime(value?: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 export default function DataSourcesPage() {
@@ -72,6 +76,11 @@ export default function DataSourcesPage() {
     const [deleteTarget, setDeleteTarget] = useState<DataSource | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [testingId, setTestingId] = useState<string | null>(null);
+    const [searchTrigger, setSearchTrigger] = useState(0);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [testModalOpen, setTestModalOpen] = useState(false);
+    const [testModalSuccess, setTestModalSuccess] = useState(false);
+    const [testModalMessage, setTestModalMessage] = useState('');
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -90,7 +99,7 @@ export default function DataSourcesPage() {
         } finally {
             setLoading(false);
         }
-    }, [page, pageSize, keyword, type, status]);
+    }, [page, pageSize, keyword, type, status, searchTrigger]);
 
     useEffect(() => {
         loadData();
@@ -101,6 +110,7 @@ export default function DataSourcesPage() {
         setType(draftType);
         setStatus(draftStatus);
         setPage(1);
+        setSearchTrigger((v) => v + 1);
     };
 
     const handleReset = () => {
@@ -122,6 +132,7 @@ export default function DataSourcesPage() {
     const handleCreate = async (data: DataSourceCreateRequest | DataSourceUpdateRequest) => {
         const result = await createDataSource(data as DataSourceCreateRequest);
         if (result.code === 200) {
+            message.success('数据源创建成功');
             setDrawerOpen(false);
             setEditItem(null);
             loadData();
@@ -133,6 +144,7 @@ export default function DataSourcesPage() {
         if (!editItem) return;
         const result = await updateDataSource(editItem.id, data as DataSourceUpdateRequest);
         if (result.code === 200) {
+            message.success('数据源更新成功');
             setDrawerOpen(false);
             setEditItem(null);
             loadData();
@@ -142,21 +154,27 @@ export default function DataSourcesPage() {
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
+        setDeleteLoading(true);
         const result = await deleteDataSource(deleteTarget.id);
         if (result.code === 200) {
+            message.success('数据源已删除');
             setDeleteOpen(false);
             setDeleteTarget(null);
             loadData();
         }
+        setDeleteLoading(false);
     };
 
     const handleTest = async (item: DataSource) => {
         setTestingId(item.id);
         const result = await testSavedDataSource(item.id);
+        setTestingId(null);
         if (result.code === 200) {
+            setTestModalSuccess(result.data.success);
+            setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
+            setTestModalOpen(true);
             loadData();
         }
-        setTestingId(null);
     };
 
     const getTypeLabel = (value: DataSourceType) => TYPE_OPTIONS.find((o) => o.value === value)?.label || value;
@@ -306,8 +324,8 @@ export default function DataSourcesPage() {
                                         <span
                                             className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
                                     </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
-                                        {getTypeLabel(item.type)}
+                                    <td className="px-ds-4 py-ds-3">
+                                        <TypeBadge type={item.type}/>
                                     </td>
                                     <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
                                         {item.host}:{item.port}/{item.databaseName}
@@ -321,8 +339,9 @@ export default function DataSourcesPage() {
                                             {statusStyle.label}
                                         </span>
                                     </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                        {formatDateTime(item.lastTestTime)}
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary"
+                                        title={formatDateTime(item.lastTestTime)}>
+                                        {formatRelativeTime(item.lastTestTime)}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         <div className="flex items-center justify-end gap-1">
@@ -369,7 +388,7 @@ export default function DataSourcesPage() {
                                 </tr>
                             );
                         })}
-                        {items.length === 0 && (
+                        {items.length === 0 && !loading && (
                             <tr>
                                 <td colSpan={6}
                                     className="px-ds-4 py-ds-16 text-center text-ds-text-muted text-ds-body">
@@ -416,14 +435,28 @@ export default function DataSourcesPage() {
             <ConfirmDialog
                 open={deleteOpen}
                 title="删除数据源"
-                message={`确定要删除数据源 "${deleteTarget?.name}" 吗？删除后不可恢复。`}
+                message={
+                    <div>
+                        <p>确定要删除数据源 <strong>"{deleteTarget?.name}"</strong> 吗？</p>
+                        <p className="mt-2 text-ds-danger">将同步清理该数据源下已采集的元数据，删除后不可恢复。</p>
+                    </div>
+                }
                 confirmLabel="确认删除"
                 danger
+                loading={deleteLoading}
                 onConfirm={handleDelete}
                 onCancel={() => {
+                    if (deleteLoading) return;
                     setDeleteOpen(false);
                     setDeleteTarget(null);
                 }}
+            />
+
+            <TestResultModal
+                open={testModalOpen}
+                success={testModalSuccess}
+                message={testModalMessage}
+                onClose={() => setTestModalOpen(false)}
             />
         </div>
     );
