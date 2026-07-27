@@ -42,6 +42,8 @@ public class CollectTask {
 
     private Integer xxlJobId;
 
+    private Integer scheduleEnabled;
+
     private Long createdBy;
 
     private Long updatedBy;

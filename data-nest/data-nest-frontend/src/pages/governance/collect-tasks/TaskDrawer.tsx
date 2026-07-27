@@ -3,6 +3,7 @@ import type {CollectMode, CollectTask, CollectTaskCreateRequest, TaskTriggerType
 import type {DataSource} from '../../../types/datasource';
 import {getDataSourceSchemas} from '../../../api/engineering';
 import Drawer from '../../../components/Drawer';
+import CronPicker from '../../../components/CronPicker';
 
 interface TaskFormData {
     name: string;
@@ -187,6 +188,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         onChange={(e) => updateField('name', e.target.value)}
                         className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                         placeholder="例如：订单库元数据采集"
+                        disabled={isEdit}
                     />
                     {errors.name && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.name}</p>}
                 </div>
@@ -292,11 +294,9 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             Cron 表达式 <span className="text-ds-danger">*</span>
                         </label>
-                        <input
+                        <CronPicker
                             value={form.cronExpression}
-                            onChange={(e) => updateField('cronExpression', e.target.value)}
-                            className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                            placeholder="0 0 2 * * ?"
+                            onChange={(v) => updateField('cronExpression', v)}
                         />
                         {errors.cronExpression &&
                             <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.cronExpression}</p>}

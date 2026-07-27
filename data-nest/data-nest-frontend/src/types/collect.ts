@@ -1,6 +1,6 @@
 export type CollectMode = 'FULL' | 'FULL_INCREMENT';
 export type TaskTriggerType = 'MANUAL' | 'CRON';
-export type TaskStatus = 'NORMAL' | 'PAUSED' | 'ERROR';
+export type TaskStatus = 'NEVER_EXECUTED' | 'RUNNING' | 'SUCCESS' | 'FAILED';
 export type ExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL';
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
@@ -16,6 +16,7 @@ export interface CollectTask {
     status: TaskStatus;
     lastHistoryId?: string;
     lastExecuteTime?: string;
+    scheduleEnabled?: number;
     description?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -60,6 +61,7 @@ export interface CollectTaskExecution {
     deletedColumnCount: number;
     errorMessage?: string;
     createdAt?: string;
+    changeDetails?: CollectChangeDetailDTO[];
 }
 
 export interface CollectHistoryQueryParams {
@@ -75,6 +77,19 @@ export interface CollectExecutionLog {
     taskId?: string;
     level: LogLevel;
     message: string;
+    createdAt?: string;
+}
+
+export interface CollectChangeDetailDTO {
+    id: string;
+    historyId: string;
+    changeType: 'ADDED_TABLE' | 'DELETED_TABLE' | 'MODIFIED_TABLE';
+    databaseName: string;
+    schemaName?: string;
+    tableName: string;
+    columnName?: string;
+    oldValue?: string;
+    newValue?: string;
     createdAt?: string;
 }
 

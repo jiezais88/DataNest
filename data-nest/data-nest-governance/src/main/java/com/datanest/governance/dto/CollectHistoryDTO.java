@@ -3,6 +3,7 @@ package com.datanest.governance.dto;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class CollectHistoryDTO {
@@ -46,4 +47,6 @@ public class CollectHistoryDTO {
     private String errorMessage;
 
     private LocalDateTime createdAt;
+
+    private List<CollectChangeDetailDTO> changeDetails;
 }

@@ -1,5 +1,7 @@
 import {useCallback, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
+import {message} from 'antd';
+import parseExpression from 'cron-parser';
 import {useAuthStore} from '../../../store/useAuthStore';
 import {getDataSources} from '../../../api/datasource';
 import {
@@ -7,18 +9,22 @@ import {
     deleteCollectTask,
     executeCollectTask,
     queryCollectTasks,
+    startCollectTaskSchedule,
+    stopCollectTaskSchedule,
     updateCollectTask,
 } from '../../../api/collect';
 import type {CollectTask, CollectTaskCreateRequest, CollectTaskQueryParams, TaskStatus} from '../../../types/collect';
 import type {DataSource} from '../../../types/datasource';
+import {formatRelativeTime} from '../../../utils/time';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import EmptyState from '../../../components/EmptyState';
+import SearchInput from '../../../components/SearchInput';
 import TaskDrawer from './TaskDrawer';
 import {
     HiChevronRight,
     HiOutlineClock,
-    HiOutlineMagnifyingGlass,
+    HiOutlinePause,
     HiOutlinePencilSquare,
     HiOutlinePlay,
     HiOutlinePlus,
@@ -27,9 +33,10 @@ import {
 
 const STATUS_OPTIONS: { value: TaskStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
-    {value: 'NORMAL', label: '正常'},
-    {value: 'PAUSED', label: '已暂停'},
-    {value: 'ERROR', label: '异常'},
+    {value: 'NEVER_EXECUTED', label: '未执行'},
+    {value: 'RUNNING', label: '运行中'},
+    {value: 'SUCCESS', label: '成功'},
+    {value: 'FAILED', label: '失败'},
 ];
 
 function formatDateTime(value?: string) {
@@ -37,7 +44,34 @@ function formatDateTime(value?: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function computeNextExecutionTime(triggerType: string, cronExpression?: string): string {
+    if (triggerType !== 'CRON' || !cronExpression) return '-';
+    try {
+        const interval = parseExpression.parse(cronExpression);
+        return formatDateTime(interval.next().toDate().toISOString());
+    } catch {
+        return '-';
+    }
+}
+
+function collectModeBadge(collectMode?: string) {
+    if (collectMode === 'FULL_INCREMENT') {
+        return (
+            <span
+                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-purple-50 text-purple-700">
+                {'全量+增量'}
+            </span>
+        );
+    }
+    return (
+        <span
+            className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-emerald-50 text-emerald-700">
+            {'全量采集'}
+        </span>
+    );
 }
 
 function formatScope(items?: string[]) {
@@ -66,9 +100,11 @@ export default function CollectTasksPage() {
     const [editItem, setEditItem] = useState<CollectTask | null>(null);
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [executingId, setExecutingId] = useState<string | null>(null);
+    const [schedulingId, setSchedulingId] = useState<string | null>(null);
 
     const [deleteTarget, setDeleteTarget] = useState<CollectTask | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleteLoading, setDeleteLoading] = useState(false);
     const [searchTrigger, setSearchTrigger] = useState(0);
 
     const loadData = useCallback(async () => {
@@ -122,6 +158,7 @@ export default function CollectTasksPage() {
             ? await updateCollectTask(editItem.id, payload)
             : await createCollectTask(payload);
         if (result.code === 200) {
+            message.success(editItem ? '采集任务更新成功' : '采集任务创建成功');
             loadData();
         }
         return result;
@@ -132,6 +169,7 @@ export default function CollectTasksPage() {
         try {
             const result = await executeCollectTask(item.id);
             if (result.code === 200) {
+                message.success(`采集任务 "${item.name}" 已触发执行`);
                 loadData();
             }
         } finally {
@@ -139,17 +177,35 @@ export default function CollectTasksPage() {
         }
     };
 
+    const handleToggleSchedule = async (item: CollectTask) => {
+        setSchedulingId(item.id);
+        try {
+            const isEnabled = item.scheduleEnabled === 1;
+            const result = isEnabled
+                ? await stopCollectTaskSchedule(item.id)
+                : await startCollectTaskSchedule(item.id);
+            if (result.code === 200) {
+                message.success(`采集任务 "${item.name}" 已${isEnabled ? '停止调度' : '开启调度'}`);
+                loadData();
+            }
+        } finally {
+            setSchedulingId(null);
+        }
+    };
+
     const handleDelete = async () => {
         if (!deleteTarget) return;
+        setDeleteLoading(true);
         try {
             const result = await deleteCollectTask(deleteTarget.id);
             if (result.code === 200) {
+                message.success('采集任务已删除');
                 setDeleteOpen(false);
                 setDeleteTarget(null);
                 loadData();
             }
         } finally {
-            // ignored
+            setDeleteLoading(false);
         }
     };
 
@@ -174,28 +230,49 @@ export default function CollectTasksPage() {
     };
 
     const statusClass = (value: TaskStatus) => {
-        if (value === 'NORMAL') return {
+        if (value === 'SUCCESS') return {
             dot: 'bg-ds-success',
             bg: 'bg-ds-success-light',
             text: 'text-ds-success',
-            label: '正常'
+            label: '成功'
         };
-        if (value === 'PAUSED') return {
-            dot: 'bg-ds-warning',
-            bg: 'bg-ds-warning-light',
-            text: 'text-ds-warning',
-            label: '已暂停'
+        if (value === 'RUNNING') return {
+            dot: 'bg-blue-500 animate-pulse',
+            bg: 'bg-blue-50',
+            text: 'text-blue-600',
+            label: '运行中'
         };
-        if (value === 'ERROR') return {
+        if (value === 'FAILED') return {
             dot: 'bg-ds-danger',
             bg: 'bg-ds-danger-light',
             text: 'text-ds-danger',
-            label: '异常'
+            label: '失败'
+        };
+        if (value === 'NEVER_EXECUTED') return {
+            dot: 'bg-gray-400',
+            bg: 'bg-gray-100',
+            text: 'text-gray-500',
+            label: '未执行'
         };
         return {dot: 'bg-ds-text-muted', bg: 'bg-ds-bg-hover', text: 'text-ds-text-muted', label: '未知'};
     };
 
-    const triggerLabel = (value: string) => (value === 'CRON' ? 'Cron 定时' : '手动触发');
+    const triggerBadge = (triggerType: string) => {
+        if (triggerType === 'MANUAL') {
+            return (
+                <span
+                    className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-blue-50 text-blue-700">
+                    {'手动'}
+                </span>
+            );
+        }
+        return (
+            <span
+                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-slate-100 text-blue-600">
+                {'Cron 定时'}
+            </span>
+        );
+    };
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
@@ -220,22 +297,12 @@ export default function CollectTasksPage() {
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
                 <div className="flex items-center gap-ds-3 flex-wrap">
-                    <div className="relative flex-1 min-w-[220px] max-w-[360px]">
-                        <HiOutlineMagnifyingGlass
-                            size={16}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-text-muted"
-                        />
-                        <input
-                            value={draftKeyword}
-                            onChange={(e) => setDraftKeyword(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSearch();
-                            }}
-                            aria-label="搜索任务名称"
-                            className="w-full pl-9 pr-ds-3 py-ds-2 bg-ds-bg-hover border border-transparent rounded-ds-sm text-ds-body text-ds-text-primary placeholder:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:bg-ds-bg-surface focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors ds-fast"
-                            placeholder="搜索任务名称..."
-                        />
-                    </div>
+                    <SearchInput
+                        value={draftKeyword}
+                        onChange={(e) => setDraftKeyword(e.target.value)}
+                        onEnter={handleSearch}
+                        placeholder="搜索任务名称..."
+                    />
 
                     <div className="relative">
                         <select
@@ -282,6 +349,8 @@ export default function CollectTasksPage() {
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">任务名称</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">采集范围</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">触发方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">采集模式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">下次执行时间</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">状态</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">最近执行</th>
                             <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">操作</th>
@@ -304,8 +373,14 @@ export default function CollectTasksPage() {
                                     <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
                                         {formatScope(item.scope)}
                                     </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
-                                        {triggerLabel(item.triggerType)}
+                                    <td className="px-ds-4 py-ds-3">
+                                        {triggerBadge(item.triggerType)}
+                                    </td>
+                                    <td className="px-ds-4 py-ds-3">
+                                        {collectModeBadge(item.collectMode)}
+                                    </td>
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
+                                        {computeNextExecutionTime(item.triggerType, item.cronExpression)}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         <span
@@ -314,8 +389,9 @@ export default function CollectTasksPage() {
                                             {statusStyle.label}
                                         </span>
                                     </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                        {formatDateTime(item.lastExecuteTime)}
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary"
+                                        title={item.lastExecuteTime ? new Date(item.lastExecuteTime).toLocaleString('zh-CN') : ''}>
+                                        {formatRelativeTime(item.lastExecuteTime)}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         <div className="flex items-center justify-end gap-1">
@@ -330,6 +406,26 @@ export default function CollectTasksPage() {
                                             </button>
                                             {canWrite && (
                                                 <>
+                                                    {item.triggerType === 'CRON' && (
+                                                        <button
+                                                            data-testid={`collect-task-schedule-${item.name}`}
+                                                            onClick={() => handleToggleSchedule(item)}
+                                                            disabled={schedulingId === item.id}
+                                                            className={`p-1.5 rounded transition-colors disabled:opacity-60 ${
+                                                                item.scheduleEnabled === 1
+                                                                    ? 'text-ds-success hover:text-ds-success hover:bg-ds-success-light'
+                                                                    : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
+                                                            }`}
+                                                            title={item.scheduleEnabled === 1 ? '停止调度' : '开启调度'}
+                                                            aria-label={item.scheduleEnabled === 1 ? '停止调度' : '开启调度'}
+                                                        >
+                                                            {item.scheduleEnabled === 1 ? (
+                                                                <HiOutlinePause size={16}/>
+                                                            ) : (
+                                                                <HiOutlinePlay size={16}/>
+                                                            )}
+                                                        </button>
+                                                    )}
                                                     <button
                                                         data-testid={`collect-task-execute-${item.name}`}
                                                         onClick={() => handleExecute(item)}
@@ -420,12 +516,28 @@ export default function CollectTasksPage() {
 
             <ConfirmDialog
                 open={deleteOpen}
-                title="删除采集任务"
-                message={`确定要删除采集任务 "${deleteTarget?.name}" 吗？删除后将不再调度执行，历史记录将一并删除，已采集元数据仍保留。`}
+                title="删除确认"
+                message={
+                    <div>
+                        <p className="text-ds-body text-ds-text-secondary">
+                            确定删除任务 <strong>"{deleteTarget?.name}"</strong> 吗？
+                        </p>
+                        <div className="mt-2 text-ds-small text-ds-text-muted leading-relaxed">
+                            <p>删除后：</p>
+                            <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                                <li>该任务不再执行</li>
+                                <li>该任务的所有历史记录将被删除</li>
+                                <li>已采集的元数据记录仍保留</li>
+                            </ul>
+                        </div>
+                    </div>
+                }
                 confirmLabel="确认删除"
                 danger
+                loading={deleteLoading}
                 onConfirm={handleDelete}
                 onCancel={() => {
+                    if (deleteLoading) return;
                     setDeleteOpen(false);
                     setDeleteTarget(null);
                 }}

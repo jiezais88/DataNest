@@ -19,16 +19,10 @@ import ConfirmDialog from '../../../components/ConfirmDialog';
 import DataSourceDrawer from './DataSourceDrawer';
 import TypeBadge from '../../../components/TypeBadge';
 import TestResultModal from '../../../components/TestResultModal';
+import SearchInput from '../../../components/SearchInput';
 import {formatRelativeTime} from '../../../utils/time';
 import {useAuthStore} from '../../../store/useAuthStore';
-import {
-    HiChevronRight,
-    HiOutlineBolt,
-    HiOutlineMagnifyingGlass,
-    HiOutlinePencilSquare,
-    HiOutlinePlus,
-    HiOutlineTrash,
-} from 'react-icons/hi2';
+import {HiChevronRight, HiOutlineBolt, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
 
 const TYPE_OPTIONS: { value: DataSourceType | ''; label: string }[] = [
     {value: '', label: '全部类型'},
@@ -226,23 +220,13 @@ export default function DataSourcesPage() {
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
                 <div className="flex items-center gap-ds-3 flex-wrap">
-                    <div className="relative flex-1 min-w-[220px] max-w-[360px]">
-                        <HiOutlineMagnifyingGlass
-                            size={16}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-text-muted"
-                        />
-                        <input
-                            data-testid="datasource-search-input"
-                            value={draftKeyword}
-                            onChange={(e) => setDraftKeyword(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSearch();
-                            }}
-                            aria-label="搜索数据源名称或主机"
-                            className="w-full pl-9 pr-ds-3 py-ds-2 bg-ds-bg-hover border border-transparent rounded-ds-sm text-ds-body text-ds-text-primary placeholder:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:bg-ds-bg-surface focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors ds-fast"
-                            placeholder="🔍 搜索数据源名称或主机..."
-                        />
-                    </div>
+                    <SearchInput
+                        data-testid="datasource-search-input"
+                        value={draftKeyword}
+                        onChange={(e) => setDraftKeyword(e.target.value)}
+                        onEnter={handleSearch}
+                        placeholder="搜索数据源名称或主机..."
+                    />
 
                     <div className="relative">
                         <select

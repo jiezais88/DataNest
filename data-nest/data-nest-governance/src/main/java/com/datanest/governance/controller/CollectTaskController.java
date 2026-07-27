@@ -63,6 +63,20 @@ public class CollectTaskController {
         return Result.ok(null);
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @PostMapping("/{id}/schedule/start")
+    public Result<Void> startSchedule(@PathVariable Long id) {
+        collectTaskService.startSchedule(id);
+        return Result.ok(null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @PostMapping("/{id}/schedule/stop")
+    public Result<Void> stopSchedule(@PathVariable Long id) {
+        collectTaskService.stopSchedule(id);
+        return Result.ok(null);
+    }
+
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @GetMapping("/datasources/{datasourceId}/references")
     public Result<List<DataSourceReferenceDTO>> getReferencesByDataSource(@PathVariable Long datasourceId) {

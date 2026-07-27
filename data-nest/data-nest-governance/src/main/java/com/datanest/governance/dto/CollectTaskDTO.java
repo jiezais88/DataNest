@@ -34,6 +34,8 @@ public class CollectTaskDTO {
 
     private Integer xxlJobId;
 
+    private Integer scheduleEnabled;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

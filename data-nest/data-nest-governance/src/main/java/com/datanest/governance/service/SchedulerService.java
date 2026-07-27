@@ -59,21 +59,21 @@ public class SchedulerService {
         System.setProperty("http.followRedirects", "false");
     }
 
-    public Integer registerJob(String name, String cronExpression, String scheduleType) {
+    public Integer registerJob(Long taskId, String name, String cronExpression, String scheduleType, boolean start) {
         int jobGroup = ensureJobGroup();
-        MultiValueMap<String, String> params = buildJobParams(null, jobGroup, name, cronExpression, scheduleType, true);
+        MultiValueMap<String, String> params = buildJobParams(null, jobGroup, name, cronExpression, scheduleType, true, taskId, start);
         JsonNode response = postWithAuth("/jobinfo/insert", params, "注册调度任务失败");
         Integer jobId = parseJobId(response);
-        logger.info("Registered XXL-JOB job: name={}, jobGroup={}, jobId={}", name, jobGroup, jobId);
+        logger.info("Registered XXL-JOB job: name={}, jobGroup={}, jobId={}, taskId={}, start={}", name, jobGroup, jobId, taskId, start);
         return jobId;
     }
 
-    public void updateJob(Integer jobId, String name, String cronExpression, String scheduleType) {
+    public void updateJob(Integer jobId, Long taskId, String name, String cronExpression, String scheduleType, boolean start) {
         int jobGroup = ensureJobGroup();
-        MultiValueMap<String, String> params = buildJobParams(jobId, jobGroup, name, cronExpression, scheduleType, false);
+        MultiValueMap<String, String> params = buildJobParams(jobId, jobGroup, name, cronExpression, scheduleType, false, taskId, start);
         params.add("id", String.valueOf(jobId));
         postWithAuth("/jobinfo/update", params, "更新调度任务失败");
-        logger.info("Updated XXL-JOB job: jobId={}, name={}", jobId, name);
+        logger.info("Updated XXL-JOB job: jobId={}, name={}, taskId={}, start={}", jobId, name, taskId, start);
     }
 
     public void unregisterJob(Integer jobId) {
@@ -81,6 +81,20 @@ public class SchedulerService {
         params.add("ids[]", String.valueOf(jobId));
         postWithAuth("/jobinfo/delete", params, "删除调度任务失败");
         logger.info("Removed XXL-JOB job: jobId={}", jobId);
+    }
+
+    public void startJob(Integer jobId) {
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("id", String.valueOf(jobId));
+        postWithAuth("/jobinfo/start", params, "启动调度任务失败");
+        logger.info("Started XXL-JOB job: jobId={}", jobId);
+    }
+
+    public void stopJob(Integer jobId) {
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("id", String.valueOf(jobId));
+        postWithAuth("/jobinfo/stop", params, "停止调度任务失败");
+        logger.info("Stopped XXL-JOB job: jobId={}", jobId);
     }
 
     public void triggerJob(Integer jobId, String executorParam) {
@@ -94,7 +108,7 @@ public class SchedulerService {
 
     private MultiValueMap<String, String> buildJobParams(Integer jobId, int jobGroup, String name,
                                                          String cronExpression, String scheduleType,
-                                                         boolean isNew) {
+                                                         boolean isNew, Long taskId, boolean start) {
         boolean cron = "CRON".equalsIgnoreCase(scheduleType);
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("jobGroup", String.valueOf(jobGroup));
@@ -104,14 +118,14 @@ public class SchedulerService {
         params.add("scheduleConf", cron && StringUtils.hasText(cronExpression) ? cronExpression : "");
         params.add("glueType", GLUE_TYPE_BEAN);
         params.add("executorHandler", HANDLER_NAME);
-        params.add("executorParam", "");
+        params.add("executorParam", String.valueOf(taskId));
         params.add("executorRouteStrategy", ROUTE_STRATEGY);
         params.add("misfireStrategy", MISFIRE_STRATEGY);
         params.add("executorBlockStrategy", BLOCK_STRATEGY);
         params.add("executorTimeout", "0");
         params.add("executorFailRetryCount", "0");
         params.add("childJobId", "");
-        params.add("triggerStatus", cron ? "1" : "0");
+        params.add("triggerStatus", cron && start ? "1" : "0");
         return params;
     }
 

@@ -12,9 +12,11 @@ import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
 import com.datanest.governance.dto.CollectTaskUpdateRequest;
+import com.datanest.governance.entity.CollectChangeDetail;
 import com.datanest.governance.entity.CollectExecutionLog;
 import com.datanest.governance.entity.CollectHistory;
 import com.datanest.governance.entity.CollectTask;
+import com.datanest.governance.mapper.CollectChangeDetailMapper;
 import com.datanest.governance.mapper.CollectExecutionLogMapper;
 import com.datanest.governance.mapper.CollectHistoryMapper;
 import com.datanest.governance.mapper.CollectTaskMapper;
@@ -26,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class CollectTaskService {
@@ -41,14 +44,17 @@ public class CollectTaskService {
     private final SchedulerService schedulerService;
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper collectExecutionLogMapper;
+    private final CollectChangeDetailMapper changeDetailMapper;
 
     public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService,
                               CollectHistoryMapper collectHistoryMapper,
-                              CollectExecutionLogMapper collectExecutionLogMapper) {
+                              CollectExecutionLogMapper collectExecutionLogMapper,
+                              CollectChangeDetailMapper changeDetailMapper) {
         this.collectTaskMapper = collectTaskMapper;
         this.schedulerService = schedulerService;
         this.collectHistoryMapper = collectHistoryMapper;
         this.collectExecutionLogMapper = collectExecutionLogMapper;
+        this.changeDetailMapper = changeDetailMapper;
     }
 
     @Transactional
@@ -65,20 +71,23 @@ public class CollectTaskService {
         task.setCollectMode(request.getCollectMode());
         task.setTriggerType(request.getTriggerType());
         task.setCronExpression(request.getCronExpression());
-        task.setStatus("NORMAL");
+        task.setStatus("NEVER_EXECUTED");
         task.setDescription(request.getDescription());
+        task.setScheduleEnabled(0);
         task.setCreatedBy(currentUserId());
         task.setUpdatedBy(currentUserId());
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
 
-        // 注册到 XXL-JOB
+        collectTaskMapper.insert(task);
+
+        // 注册到 XXL-JOB（需要 task.getId()），默认不启动调度
         String scheduleType = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? SCHEDULE_TYPE_CRON : SCHEDULE_TYPE_NONE;
         String cron = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
-        Integer xxlJobId = schedulerService.registerJob(request.getName(), cron, scheduleType);
+        Integer xxlJobId = schedulerService.registerJob(task.getId(), request.getName(), cron, scheduleType, false);
         task.setXxlJobId(xxlJobId);
+        collectTaskMapper.updateById(task);
 
-        collectTaskMapper.insert(task);
         logger.info("Collect task created: id={}, name={}, xxlJobId={}", task.getId(), task.getName(), xxlJobId);
         return toDTO(task);
     }
@@ -108,11 +117,52 @@ public class CollectTaskService {
         if (task.getXxlJobId() != null) {
             String scheduleType = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? SCHEDULE_TYPE_CRON : SCHEDULE_TYPE_NONE;
             String cron = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
-            schedulerService.updateJob(task.getXxlJobId(), request.getName(), cron, scheduleType);
+            boolean start = task.getScheduleEnabled() != null && task.getScheduleEnabled() == 1;
+            schedulerService.updateJob(task.getXxlJobId(), task.getId(), request.getName(), cron, scheduleType, start);
         }
 
         collectTaskMapper.updateById(task);
         return toDTO(task);
+    }
+
+    @Transactional
+    public void startSchedule(Long id) {
+        CollectTask task = collectTaskMapper.selectById(id);
+        if (task == null) {
+            throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
+        }
+        if (!TRIGGER_TYPE_CRON.equalsIgnoreCase(task.getTriggerType())) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "仅 Cron 任务支持调度开关");
+        }
+        if (task.getXxlJobId() == null) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务未注册到调度中心");
+        }
+        schedulerService.startJob(task.getXxlJobId());
+        task.setScheduleEnabled(1);
+        task.setUpdatedAt(LocalDateTime.now());
+        task.setUpdatedBy(currentUserId());
+        collectTaskMapper.updateById(task);
+        logger.info("Collect task schedule started: taskId={}", id);
+    }
+
+    @Transactional
+    public void stopSchedule(Long id) {
+        CollectTask task = collectTaskMapper.selectById(id);
+        if (task == null) {
+            throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
+        }
+        if (!TRIGGER_TYPE_CRON.equalsIgnoreCase(task.getTriggerType())) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "仅 Cron 任务支持调度开关");
+        }
+        if (task.getXxlJobId() == null) {
+            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务未注册到调度中心");
+        }
+        schedulerService.stopJob(task.getXxlJobId());
+        task.setScheduleEnabled(0);
+        task.setUpdatedAt(LocalDateTime.now());
+        task.setUpdatedBy(currentUserId());
+        collectTaskMapper.updateById(task);
+        logger.info("Collect task schedule stopped: taskId={}", id);
     }
 
     @Transactional
@@ -122,7 +172,13 @@ public class CollectTaskService {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
 
-        // 级联删除执行日志与历史记录
+        // 级联删除：变更明细 → 执行日志 → 历史记录
+        List<Long> historyIds = collectHistoryMapper.selectList(new QueryWrapper<CollectHistory>()
+                        .eq("task_id", id).select("id"))
+                .stream().map(CollectHistory::getId).collect(Collectors.toList());
+        if (!historyIds.isEmpty()) {
+            changeDetailMapper.delete(new QueryWrapper<CollectChangeDetail>().in("history_id", historyIds));
+        }
         collectExecutionLogMapper.delete(new QueryWrapper<CollectExecutionLog>().eq("task_id", id));
         collectHistoryMapper.delete(new QueryWrapper<CollectHistory>().eq("task_id", id));
 
@@ -172,9 +228,6 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
-        if ("PAUSED".equals(task.getStatus())) {
-            throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务已暂停，无法执行");
-        }
         if (task.getXxlJobId() == null) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务未注册到调度中心");
         }
@@ -218,6 +271,7 @@ public class CollectTaskService {
         dto.setLastHistoryId(task.getLastHistoryId());
         dto.setDescription(task.getDescription());
         dto.setXxlJobId(task.getXxlJobId());
+        dto.setScheduleEnabled(task.getScheduleEnabled());
         dto.setCreatedAt(task.getCreatedAt());
         dto.setUpdatedAt(task.getUpdatedAt());
         return dto;

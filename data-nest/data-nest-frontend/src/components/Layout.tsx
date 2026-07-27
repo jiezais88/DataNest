@@ -1,15 +1,48 @@
-import {Outlet, useNavigate} from 'react-router-dom';
-import {useState} from 'react';
+import {Outlet, useLocation, useNavigate} from 'react-router-dom';
+import {useEffect, useState} from 'react';
 import Sidebar from './Sidebar';
 import {useAuthStore} from '../store/useAuthStore';
 import ChangePasswordModal from './ChangePasswordModal';
 import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/hi2';
 
+type BreadcrumbEntry = { group?: string; label: string };
+
+const breadcrumbMap: Record<string, BreadcrumbEntry> = {
+    '/': {label: '首页'},
+    '/system/users': {group: '系统管理', label: '用户管理'},
+    '/engineering/datasources': {group: '数据工程', label: '数据源'},
+    '/governance/collect-tasks': {group: '数据治理', label: '采集任务'},
+    '/governance/metadata': {group: '数据治理', label: '元数据管理'},
+};
+
+function resolveBreadcrumb(pathname: string): string {
+    const entry = breadcrumbMap[pathname];
+    if (entry) {
+        return entry.group ? `${entry.group} / ${entry.label}` : entry.label;
+    }
+    // 动态子路由：/governance/collect-tasks/:id/history
+    const match = pathname.match(/^(.+\/\w+)\/(\d+)\/(\w+)$/);
+    if (match) {
+        const parent = breadcrumbMap[match[1]];
+        if (parent) {
+            const prefix = parent.group ? `${parent.group} / ${parent.label}` : parent.label;
+            return `${prefix} / 历史记录`;
+        }
+    }
+    return '';
+}
+
 export default function Layout() {
     const {userInfo, logout} = useAuthStore();
     const navigate = useNavigate();
+    const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
     const [pwdModalOpen, setPwdModalOpen] = useState(false);
+
+    useEffect(() => {
+        const breadcrumb = resolveBreadcrumb(location.pathname);
+        document.title = breadcrumb ? `DataNest — ${breadcrumb}` : 'DataNest';
+    }, [location.pathname]);
 
     const handleLogout = () => {
         logout();

@@ -6,15 +6,19 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.governance.dto.CollectChangeDetailDTO;
 import com.datanest.governance.dto.CollectExecutionLogDTO;
 import com.datanest.governance.dto.CollectHistoryDTO;
 import com.datanest.governance.dto.CollectHistoryQueryRequest;
+import com.datanest.governance.entity.CollectChangeDetail;
 import com.datanest.governance.entity.CollectExecutionLog;
 import com.datanest.governance.entity.CollectHistory;
+import com.datanest.governance.mapper.CollectChangeDetailMapper;
 import com.datanest.governance.mapper.CollectExecutionLogMapper;
 import com.datanest.governance.mapper.CollectHistoryMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -22,11 +26,14 @@ public class CollectHistoryService {
 
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper logMapper;
+    private final CollectChangeDetailMapper changeDetailMapper;
 
     public CollectHistoryService(CollectHistoryMapper collectHistoryMapper,
-                                 CollectExecutionLogMapper logMapper) {
+                                 CollectExecutionLogMapper logMapper,
+                                 CollectChangeDetailMapper changeDetailMapper) {
         this.collectHistoryMapper = collectHistoryMapper;
         this.logMapper = logMapper;
+        this.changeDetailMapper = changeDetailMapper;
     }
 
     public PageResult<CollectHistoryDTO> list(CollectHistoryQueryRequest request) {
@@ -52,7 +59,29 @@ public class CollectHistoryService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.HISTORY_NOT_FOUND);
         }
-        return toHistoryDTO(entity);
+        CollectHistoryDTO dto = toHistoryDTO(entity);
+
+        List<CollectChangeDetail> details = changeDetailMapper.selectList(
+                new QueryWrapper<CollectChangeDetail>().eq("history_id", historyId));
+        if (!details.isEmpty()) {
+            List<CollectChangeDetailDTO> detailDTOs = new ArrayList<>();
+            for (CollectChangeDetail d : details) {
+                CollectChangeDetailDTO dd = new CollectChangeDetailDTO();
+                dd.setId(d.getId());
+                dd.setHistoryId(d.getHistoryId());
+                dd.setChangeType(d.getChangeType());
+                dd.setDatabaseName(d.getDatabaseName());
+                dd.setSchemaName(d.getSchemaName());
+                dd.setTableName(d.getTableName());
+                dd.setColumnName(d.getColumnName());
+                dd.setOldValue(d.getOldValue());
+                dd.setNewValue(d.getNewValue());
+                dd.setCreatedAt(d.getCreatedAt());
+                detailDTOs.add(dd);
+            }
+            dto.setChangeDetails(detailDTOs);
+        }
+        return dto;
     }
 
     public List<CollectExecutionLogDTO> getLogs(Long historyId) {

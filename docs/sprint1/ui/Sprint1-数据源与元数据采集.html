@@ -2,8 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml"
+          href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%20width%3D%2232%22%20height%3D%2232%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22hg%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%234f46e5%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23818cf8%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%3C/defs%3E%0A%20%20%3C%21--%20outermost%20hexagon%3A%20light%20purple%20thin%20outline%20--%3E%0A%20%20%3Cpolygon%20points%3D%2216%2C2%2028.12%2C9%2028.12%2C23%2016%2C30%203.88%2C23%203.88%2C9%22%0A%20%20%20%20%20%20%20%20%20%20%20fill%3D%22none%22%20stroke%3D%22%23a5b4fc%22%20stroke-width%3D%221.2%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3C%21--%20middle%20hexagon%3A%20indigo%20medium%20outline%20--%3E%0A%20%20%3Cpolygon%20points%3D%2216%2C6%2024.66%2C11%2024.66%2C21%2016%2C26%207.34%2C21%207.34%2C11%22%0A%20%20%20%20%20%20%20%20%20%20%20fill%3D%22none%22%20stroke%3D%22%236366f1%22%20stroke-width%3D%221.6%22%20stroke-linejoin%3D%22round%22/%3E%0A%20%20%3C%21--%20innermost%20hexagon%3A%20solid%20indigo-purple%20gradient%20--%3E%0A%20%20%3Cpolygon%20points%3D%2216%2C10%2021.20%2C13%2021.20%2C19%2016%2C22%2010.80%2C19%2010.80%2C13%22%0A%20%20%20%20%20%20%20%20%20%20%20fill%3D%22url%28%23hg%29%22%20stroke%3D%22none%22/%3E%0A%3C/svg%3E">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DataNest Sprint 1 — 数据源与元数据采集</title>
+    <title>DataNest — 数据源与元数据采集</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2251,6 +2253,14 @@
             e.classList.toggle('ac', v === view);
             e.style.display = v === view ? 'flex' : 'none';
         });
+        // update browser tab title
+        const titles = {
+            ds: 'DataNest — 数据源',
+            task: 'DataNest — 元数据采集任务',
+            meta: 'DataNest — 元数据管理',
+            history: 'DataNest — 元数据采集 / 历史记录'
+        };
+        document.title = titles[view] || 'DataNest — 数据源与元数据采集';
     }
 
     // drawer open

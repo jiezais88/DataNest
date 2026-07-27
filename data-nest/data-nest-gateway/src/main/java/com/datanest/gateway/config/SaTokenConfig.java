@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.server.reactive.ServerHttpResponse;
 
 @Configuration
 public class SaTokenConfig {
@@ -40,15 +41,16 @@ public class SaTokenConfig {
                 })
                 .setError(e -> {
                     SaHolder.getResponse().setHeader("Content-Type", CONTENT_TYPE_JSON);
+                    ServerHttpResponse nativeResponse = (ServerHttpResponse) SaHolder.getResponse().getSource();
                     if (e instanceof NotLoginException) {
-                        SaHolder.getResponse().setStatus(HttpStatus.UNAUTHORIZED.value());
+                        nativeResponse.setStatusCode(HttpStatus.UNAUTHORIZED);
                         return writeResult(Result.fail(ErrorCode.UNAUTHORIZED.getCode(), ErrorCode.UNAUTHORIZED.getMessage()));
                     }
                     if (e instanceof NotRoleException || e instanceof NotPermissionException) {
-                        SaHolder.getResponse().setStatus(HttpStatus.FORBIDDEN.value());
+                        nativeResponse.setStatusCode(HttpStatus.FORBIDDEN);
                         return writeResult(Result.fail(ErrorCode.FORBIDDEN.getCode(), ErrorCode.FORBIDDEN.getMessage()));
                     }
-                    SaHolder.getResponse().setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+                    nativeResponse.setStatusCode(HttpStatus.INTERNAL_SERVER_ERROR);
                     return writeResult(Result.fail(ErrorCode.INTERNAL_ERROR.getCode(), ErrorCode.INTERNAL_ERROR.getMessage()));
                 });
     }

@@ -5,11 +5,11 @@ import {createUser, getUsers, resetPassword, toggleUserStatus, updateUser} from 
 import UserModal from '../../../components/UserModal';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import Pagination from '../../../components/Pagination';
+import SearchInput from '../../../components/SearchInput';
 import {
     HiChevronRight,
     HiOutlineCheck,
     HiOutlineKey,
-    HiOutlineMagnifyingGlass,
     HiOutlineNoSymbol,
     HiOutlinePencilSquare,
     HiOutlinePlus,
@@ -197,22 +197,12 @@ export default function UsersPage() {
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
                 <div className="flex items-center gap-ds-3 flex-wrap">
-                    <div className="relative flex-1 min-w-[220px] max-w-[360px]">
-                        <HiOutlineMagnifyingGlass
-                            size={16}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-text-muted"
-                        />
-                        <input
-                            value={draftKeyword}
-                            onChange={(e) => setDraftKeyword(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSearch();
-                            }}
-                            aria-label="搜索用户名或邮箱"
-                            className="w-full pl-9 pr-ds-3 py-ds-2 bg-ds-bg-hover border border-transparent rounded-ds-sm text-ds-body text-ds-text-primary placeholder:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:bg-ds-bg-surface focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors ds-fast"
-                            placeholder="🔍 搜索用户名或邮箱..."
-                        />
-                    </div>
+                    <SearchInput
+                        value={draftKeyword}
+                        onChange={(e) => setDraftKeyword(e.target.value)}
+                        onEnter={handleSearch}
+                        placeholder="搜索用户名或邮箱..."
+                    />
 
                     <div className="relative">
                         <select

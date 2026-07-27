@@ -31,6 +31,7 @@ public class CollectExecutor {
     private final CollectTaskMapper collectTaskMapper;
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper logMapper;
+    private final CollectChangeDetailMapper changeDetailMapper;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
@@ -78,11 +79,10 @@ public class CollectExecutor {
             XxlJobHelper.handleFail("任务不存在: " + taskId);
             return;
         }
-        if ("PAUSED".equals(task.getStatus())) {
-            logger.warn("runTask 任务已暂停，跳过: taskId={}", taskId);
-            XxlJobHelper.handleFail("任务已暂停，跳过执行: " + taskId);
-            return;
-        }
+        // 设置运行中状态
+        task.setStatus("RUNNING");
+        collectTaskMapper.updateById(task);
+        logger.info("runTask 任务状态已更新为 RUNNING: taskId={}", taskId);
 
         DataSourceConnection ds = dataSourceConnectionMapper.selectById(task.getDatasourceId());
         if (ds == null) {
@@ -125,7 +125,7 @@ public class CollectExecutor {
                     if (change.added) addedTables++;
                     if (change.updated) updatedTables++;
                     tableCount++;
-                    ColumnChange colChange = upsertColumns(change.tableId, table, history.getId());
+                    ColumnChange colChange = upsertColumns(change.tableId, table, history.getId(), change.added);
                     addedColumns += colChange.added;
                     updatedColumns += colChange.updated;
                     columnCount += table.getColumns().size();
@@ -200,19 +200,28 @@ public class CollectExecutor {
             mt.setTableComment(table.getTableComment());
             mt.setLastCollectHistoryId(historyId);
             metadataTableMapper.insert(mt);
+
+            // 记录新增表变更明细
+            writeChangeDetail(historyId, "ADDED_TABLE", table.getDatabaseName(),
+                    table.getSchemaName(), table.getTableName(), null, null, null);
             return new TableChange(mt.getId(), true, false);
         } else {
             boolean updated = !Objects.equals(existing.getTableComment(), table.getTableComment());
             if (updated) {
+                String oldComment = existing.getTableComment();
                 existing.setTableComment(table.getTableComment());
                 existing.setLastCollectHistoryId(historyId);
                 metadataTableMapper.updateById(existing);
+
+                // 记录表注释变更
+                writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
+                        table.getSchemaName(), table.getTableName(), null, oldComment, table.getTableComment());
             }
             return new TableChange(existing.getId(), false, updated);
         }
     }
 
-    private ColumnChange upsertColumns(Long tableId, TableMetadata table, Long historyId) {
+    private ColumnChange upsertColumns(Long tableId, TableMetadata table, Long historyId, boolean tableIsNew) {
         List<MetadataColumn> existingColumns = metadataColumnMapper.selectList(
                 new QueryWrapper<MetadataColumn>().eq("table_id", tableId));
         Map<String, MetadataColumn> existingMap = existingColumns.stream()
@@ -234,6 +243,21 @@ public class CollectExecutor {
                 col.setLastCollectHistoryId(historyId);
                 metadataColumnMapper.insert(col);
                 added++;
+
+                // 新增表的字段随表一起作为 ADDED_TABLE，便于前端展开；
+                // 已存在表新增的字段仍属于变化，记为 MODIFIED_TABLE。
+                if (tableIsNew) {
+                    String newValue = cm.getDataType() + "|"
+                            + (cm.getNullable() != null && cm.getNullable() ? "true" : "false") + "|"
+                            + (cm.getColumnComment() == null ? "" : cm.getColumnComment());
+                    writeChangeDetail(historyId, "ADDED_TABLE", table.getDatabaseName(),
+                            table.getSchemaName(), table.getTableName(), cm.getColumnName(),
+                            null, newValue);
+                } else {
+                    writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
+                            table.getSchemaName(), table.getTableName(), cm.getColumnName(),
+                            null, "新增: " + cm.getDataType() + (cm.getNullable() != null && cm.getNullable() ? ", 可为空" : ""));
+                }
             } else {
                 boolean changed = !Objects.equals(existing.getDataType(), cm.getDataType())
                         || !Objects.equals(existing.getColumnComment(), cm.getColumnComment())
@@ -241,6 +265,13 @@ public class CollectExecutor {
                         || !Objects.equals(existing.getNullable(), cm.getNullable())
                         || !Objects.equals(existing.getColumnDefault(), cm.getColumnDefault());
                 if (changed) {
+                    String oldInfo = existing.getDataType();
+                    String newInfo = cm.getDataType();
+                    if (!Objects.equals(existing.getNullable(), cm.getNullable())) {
+                        oldInfo += ", " + (Boolean.TRUE.equals(existing.getNullable()) ? "可为空" : "不可为空");
+                        newInfo += ", " + (Boolean.TRUE.equals(cm.getNullable()) ? "可为空" : "不可为空");
+                    }
+
                     existing.setColumnComment(cm.getColumnComment());
                     existing.setDataType(cm.getDataType());
                     existing.setOrdinalPosition(cm.getOrdinalPosition());
@@ -249,6 +280,11 @@ public class CollectExecutor {
                     existing.setLastCollectHistoryId(historyId);
                     metadataColumnMapper.updateById(existing);
                     updated++;
+
+                    // 记录字段变更
+                    writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
+                            table.getSchemaName(), table.getTableName(), cm.getColumnName(),
+                            oldInfo, newInfo);
                 }
             }
         }
@@ -277,9 +313,7 @@ public class CollectExecutor {
     private void updateTaskStatus(CollectTask task, CollectHistory history, String status) {
         task.setLastHistoryId(history.getId());
         task.setLastExecuteTime(LocalDateTime.now());
-        if ("FAILED".equals(status)) {
-            task.setStatus("ERROR");
-        }
+        task.setStatus(status);
         collectTaskMapper.updateById(task);
     }
 
@@ -288,6 +322,22 @@ public class CollectExecutor {
         finishHistory(history, 0, 0, 0, 0, 0, 0, 0, message, "FAILED");
         updateTaskStatus(task, history, "FAILED");
         XxlJobHelper.handleFail(message);
+    }
+
+    private void writeChangeDetail(Long historyId, String changeType, String dbName,
+                                   String schemaName, String tableName, String columnName,
+                                   String oldValue, String newValue) {
+        CollectChangeDetail detail = new CollectChangeDetail();
+        detail.setHistoryId(historyId);
+        detail.setChangeType(changeType);
+        detail.setDatabaseName(dbName);
+        detail.setSchemaName(schemaName);
+        detail.setTableName(tableName);
+        detail.setColumnName(columnName);
+        detail.setOldValue(oldValue);
+        detail.setNewValue(newValue);
+        detail.setCreatedAt(LocalDateTime.now());
+        changeDetailMapper.insert(detail);
     }
 
     private static class TableChange {

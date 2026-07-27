@@ -34,6 +34,15 @@ export function executeCollectTask(id: string) {
     return request.post<Result<null>>(`/governance/collect-tasks/${id}/execute`);
 }
 
+export function startCollectTaskSchedule(id: string) {
+    return request.post<Result<null>>(`/governance/collect-tasks/${id}/schedule/start`);
+}
+
+export function stopCollectTaskSchedule(id: string) {
+    return request.post<Result<null>>(`/governance/collect-tasks/${id}/schedule/stop`);
+}
+
+
 export function getDataSourceReferences(datasourceId: string) {
     return request.get<Result<DataSourceReferenceDTO[]>>(`/governance/collect-tasks/datasources/${datasourceId}/references`);
 }
