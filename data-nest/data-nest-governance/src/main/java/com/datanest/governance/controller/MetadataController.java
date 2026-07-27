@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.MetadataCommentRequest;
 import com.datanest.governance.dto.MetadataDatasourceDTO;
+import com.datanest.governance.dto.MetadataRemarkRequest;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.service.MetadataService;
@@ -13,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
 @RestController
 @RequestMapping("/metadata")
 public class MetadataController {
@@ -73,6 +74,13 @@ public class MetadataController {
     @PutMapping("/columns/{columnId}/comment")
     public Result<Void> updateColumnComment(@PathVariable Long columnId, @Valid @RequestBody MetadataCommentRequest request) {
         metadataService.updateColumnComment(columnId, request.getManualComment());
+        return Result.ok(null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @PutMapping("/columns/{columnId}/remark")
+    public Result<Void> updateColumnRemark(@PathVariable Long columnId, @Valid @RequestBody MetadataRemarkRequest request) {
+        metadataService.updateColumnRemark(columnId, request.getRemark());
         return Result.ok(null);
     }
 }

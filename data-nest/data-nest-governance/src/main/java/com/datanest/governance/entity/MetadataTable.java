@@ -1,6 +1,7 @@
 package com.datanest.governance.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -29,6 +30,21 @@ public class MetadataTable {
     private String sourceStatus;
 
     private Long lastCollectHistoryId;
+
+    @TableField(exist = false)
+    private Integer columnCount;
+
+    @TableField(exist = false)
+    private LocalDateTime lastCollectTime;
+
+    @TableField(exist = false)
+    private String sourceTaskName;
+
+    @TableField(exist = false)
+    private String datasourceName;
+
+    @TableField(exist = false)
+    private String datasourceType;
 
     private Long createdBy;
 

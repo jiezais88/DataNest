@@ -371,6 +371,9 @@ export default function CollectTasksPage() {
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">任务名称</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">采集范围</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">触发方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">Cron
+                                表达式
+                            </th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">调度状态</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">采集模式</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">下次执行时间</th>
@@ -398,6 +401,9 @@ export default function CollectTasksPage() {
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         {triggerBadge(item.triggerType)}
+                                    </td>
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary font-mono">
+                                        {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         {scheduleStatusBadge(item)}

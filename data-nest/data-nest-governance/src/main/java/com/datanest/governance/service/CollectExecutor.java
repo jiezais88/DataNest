@@ -210,13 +210,14 @@ public class CollectExecutor {
             if (updated) {
                 String oldComment = existing.getTableComment();
                 existing.setTableComment(table.getTableComment());
-                existing.setLastCollectHistoryId(historyId);
-                metadataTableMapper.updateById(existing);
 
                 // 记录表注释变更
                 writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
                         table.getSchemaName(), table.getTableName(), null, oldComment, table.getTableComment());
             }
+            // 无论表结构是否变化，都更新 last_collect_history_id，确保最近采集信息准确
+            existing.setLastCollectHistoryId(historyId);
+            metadataTableMapper.updateById(existing);
             return new TableChange(existing.getId(), false, updated);
         }
     }

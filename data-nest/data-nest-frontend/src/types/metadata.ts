@@ -6,6 +6,11 @@ export interface MetadataTable {
     tableName: string;
     tableComment?: string;
     manualComment?: string;
+    columnCount?: number;
+    lastCollectTime?: string;
+    sourceTaskName?: string;
+    datasourceName?: string;
+    datasourceType?: string;
     lastCollectHistoryId?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -18,9 +23,10 @@ export interface MetadataColumn {
     columnComment?: string;
     dataType?: string;
     ordinalPosition?: number;
-    isNullable?: boolean;
+    nullable?: boolean;
     columnDefault?: string;
     manualComment?: string;
+    remark?: string;
     lastCollectHistoryId?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -33,6 +39,7 @@ export interface MetadataCommentRequest {
 export interface MetadataDatasource {
     id: string;
     name?: string;
+    type?: string;
     exists: boolean;
 }
 
@@ -45,4 +52,5 @@ export interface MetadataTreeNode {
     count?: number;
     databaseName?: string;
     schemaName?: string;
+    datasourceType?: string;
 }

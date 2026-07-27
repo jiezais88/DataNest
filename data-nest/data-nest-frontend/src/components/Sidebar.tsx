@@ -40,7 +40,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: '元数据管理',
                 path: '/governance/metadata',
                 icon: <HiOutlineBookOpen size={18}/>,
-                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN', 'DATA_ANALYST']
+                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN', 'DATA_ENGINEER', 'DATA_ANALYST']
             },
         ],
     },

@@ -24,6 +24,8 @@ public class MetadataColumn {
 
     private String manualComment;
 
+    private String remark;
+
     private Boolean nullable;
 
     private String columnDefault;

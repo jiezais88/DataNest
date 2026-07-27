@@ -2,6 +2,10 @@ import request from './request';
 import type {MetadataColumn, MetadataCommentRequest, MetadataDatasource, MetadataTable} from '../types/metadata';
 import type {Result} from './datasource';
 
+interface MetadataRemarkRequest {
+    remark: string;
+}
+
 export function listMetadataDatasourceIds() {
     return request.get<Result<MetadataDatasource[]>>('/governance/metadata/datasources');
 }
@@ -32,4 +36,8 @@ export function updateTableComment(tableId: string, manualComment: string) {
 
 export function updateColumnComment(columnId: string, manualComment: string) {
     return request.put<Result<null>>(`/governance/metadata/columns/${columnId}/comment`, {manualComment} as MetadataCommentRequest);
+}
+
+export function updateColumnRemark(columnId: string, remark: string) {
+    return request.put<Result<null>>(`/governance/metadata/columns/${columnId}/remark`, {remark} as MetadataRemarkRequest);
 }

@@ -56,9 +56,11 @@ public class MetadataService {
                     .orElse(null);
             if (conn != null) {
                 dto.setName(conn.getName());
+                dto.setType(conn.getType());
                 dto.setExists(true);
             } else {
                 dto.setName(null);
+                dto.setType(null);
                 dto.setExists(false);
             }
             return dto;
@@ -82,7 +84,7 @@ public class MetadataService {
 
     @Transactional(readOnly = true)
     public MetadataTable getTable(Long tableId) {
-        MetadataTable table = metadataTableMapper.selectById(tableId);
+        MetadataTable table = metadataTableMapper.selectTableDetailById(tableId);
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
@@ -110,6 +112,18 @@ public class MetadataService {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
         column.setManualComment(manualComment);
+        column.setUpdatedBy(currentUserId());
+        column.setUpdatedAt(LocalDateTime.now());
+        metadataColumnMapper.updateById(column);
+    }
+
+    @Transactional
+    public void updateColumnRemark(Long columnId, String remark) {
+        MetadataColumn column = metadataColumnMapper.selectById(columnId);
+        if (column == null) {
+            throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
+        }
+        column.setRemark(remark);
         column.setUpdatedBy(currentUserId());
         column.setUpdatedAt(LocalDateTime.now());
         metadataColumnMapper.updateById(column);

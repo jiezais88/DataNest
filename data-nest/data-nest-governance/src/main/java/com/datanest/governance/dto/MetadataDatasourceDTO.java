@@ -9,5 +9,7 @@ public class MetadataDatasourceDTO {
 
     private String name;
 
+    private String type;
+
     private Boolean exists;
 }
