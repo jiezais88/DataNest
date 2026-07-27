@@ -23,8 +23,8 @@ import SearchInput from '../../../components/SearchInput';
 import TaskDrawer from './TaskDrawer';
 import {
     HiChevronRight,
+    HiOutlineCalendar,
     HiOutlineClock,
-    HiOutlinePause,
     HiOutlinePencilSquare,
     HiOutlinePlay,
     HiOutlinePlus,
@@ -274,6 +274,28 @@ export default function CollectTasksPage() {
         );
     };
 
+    function scheduleStatusBadge(item: CollectTask) {
+        if (item.triggerType === 'MANUAL') {
+            return <span className="text-ds-small text-ds-text-muted">{'—'}</span>;
+        }
+        if (item.scheduleEnabled === 1) {
+            return (
+                <span
+                    className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-emerald-50 text-emerald-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>
+                    {'已启用'}
+                </span>
+            );
+        }
+        return (
+            <span
+                className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-gray-100 text-gray-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400"/>
+                {'已停用'}
+            </span>
+        );
+    }
+
     return (
         <div className="h-full flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
@@ -349,6 +371,7 @@ export default function CollectTasksPage() {
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">任务名称</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">采集范围</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">触发方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">调度状态</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">采集模式</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">下次执行时间</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">状态</th>
@@ -375,6 +398,9 @@ export default function CollectTasksPage() {
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         {triggerBadge(item.triggerType)}
+                                    </td>
+                                    <td className="px-ds-4 py-ds-3">
+                                        {scheduleStatusBadge(item)}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         {collectModeBadge(item.collectMode)}
@@ -413,17 +439,13 @@ export default function CollectTasksPage() {
                                                             disabled={schedulingId === item.id}
                                                             className={`p-1.5 rounded transition-colors disabled:opacity-60 ${
                                                                 item.scheduleEnabled === 1
-                                                                    ? 'text-ds-success hover:text-ds-success hover:bg-ds-success-light'
+                                                                    ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
                                                                     : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
                                                             }`}
-                                                            title={item.scheduleEnabled === 1 ? '停止调度' : '开启调度'}
-                                                            aria-label={item.scheduleEnabled === 1 ? '停止调度' : '开启调度'}
+                                                            title={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
+                                                            aria-label={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
                                                         >
-                                                            {item.scheduleEnabled === 1 ? (
-                                                                <HiOutlinePause size={16}/>
-                                                            ) : (
-                                                                <HiOutlinePlay size={16}/>
-                                                            )}
+                                                            <HiOutlineCalendar size={16}/>
                                                         </button>
                                                     )}
                                                     <button

@@ -85,14 +85,14 @@ public class SchedulerService {
 
     public void startJob(Integer jobId) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("id", String.valueOf(jobId));
+        params.add("ids[]", String.valueOf(jobId));
         postWithAuth("/jobinfo/start", params, "启动调度任务失败");
         logger.info("Started XXL-JOB job: jobId={}", jobId);
     }
 
     public void stopJob(Integer jobId) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("id", String.valueOf(jobId));
+        params.add("ids[]", String.valueOf(jobId));
         postWithAuth("/jobinfo/stop", params, "停止调度任务失败");
         logger.info("Stopped XXL-JOB job: jobId={}", jobId);
     }
