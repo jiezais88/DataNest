@@ -5,11 +5,13 @@ services:
   nacos-mysql:
     image: mysql:8.0
     container_name: datanest-nacos-mysql
+    command: --default-time-zone=+08:00
     environment:
       MYSQL_ROOT_PASSWORD: root123
       MYSQL_DATABASE: nacos
       MYSQL_USER: nacos
       MYSQL_PASSWORD: nacos123
+      TZ: Asia/Shanghai
     ports:
       - "3306:3306"
     volumes:
@@ -95,10 +97,12 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: datanest-postgres
+    command: postgres -c timezone=Asia/Shanghai
     environment:
       POSTGRES_USER: datanest
       POSTGRES_PASSWORD: datanest123
       POSTGRES_DB: datanest
+      TZ: Asia/Shanghai
     ports:
       - "5432:5432"
     volumes:
@@ -210,11 +214,13 @@ services:
   test-mysql:
     image: mysql:8.0
     container_name: datanest-test-mysql
+    command: --default-time-zone=+08:00
     environment:
       MYSQL_ROOT_PASSWORD: root123
       MYSQL_DATABASE: testdb
       MYSQL_USER: testuser
       MYSQL_PASSWORD: testpass123
+      TZ: Asia/Shanghai
     ports:
       - "3307:3306"
     volumes:
@@ -235,10 +241,12 @@ services:
   test-postgres:
     image: postgres:16-alpine
     container_name: datanest-test-postgres
+    command: postgres -c timezone=Asia/Shanghai
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
       POSTGRES_DB: postgres
+      TZ: Asia/Shanghai
     ports:
       - "5433:5432"
     volumes:
