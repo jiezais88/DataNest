@@ -29,6 +29,7 @@ export interface DataSourceCreateRequest {
     username: string;
     password: string;
     description?: string;
+    autoCollectOnSave?: boolean;
 }
 
 export interface DataSourceUpdateRequest {
@@ -41,6 +42,7 @@ export interface DataSourceUpdateRequest {
     password?: string;
     passwordChanged: boolean;
     description?: string;
+    autoCollectOnSave?: boolean;
 }
 
 export interface TestConnectionRequest {
@@ -64,4 +66,14 @@ export interface DataSourceQueryParams {
     status?: DataSourceStatus | '';
     page: number;
     pageSize: number;
+}
+
+export interface DataSourceReference {
+    taskId: string;
+    taskName: string;
+    status?: string;
+    type: 'COLLECT' | 'SYNC';
+    sourceDatabase?: string;
+    targetDatabase?: string;
+    targetTable?: string;
 }

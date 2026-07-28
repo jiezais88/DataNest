@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {useAuthStore} from '../../../store/useAuthStore';
 import {
     getMetadataTable,
@@ -14,18 +14,25 @@ import {
 import type {MetadataColumn, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
 import MetadataTree from './MetadataTree';
 import EmptyState from '../../../components/EmptyState';
-import {HiOutlineBookOpen, HiOutlineCircleStack, HiOutlineTableCells} from 'react-icons/hi2';
+import {previewMetadataTable} from '../../../api/preview';
+import PreviewModal from '../../../components/PreviewModal';
+import {HiOutlineBookOpen, HiOutlineCircleStack, HiOutlineEye, HiOutlineTableCells} from 'react-icons/hi2';
+import {formatDateTime} from '../../../utils/time';
 
 const DB_TYPES_WITHOUT_SCHEMA = new Set(['MYSQL', 'DORIS']);
 
 export default function MetadataPage() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const tableIdParam = searchParams.get('tableId');
+    const columnIdParam = searchParams.get('columnId');
     const {userInfo} = useAuthStore();
     const roles = userInfo?.roles || [];
     const canWrite = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN');
 
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [selectedNode, setSelectedNode] = useState<MetadataTreeNode | null>(null);
+    const [highlightedColumnId, setHighlightedColumnId] = useState<string | null>(null);
     const [databases, setDatabases] = useState<string[]>([]);
     const [databasesLoading, setDatabasesLoading] = useState(false);
     const [schemas, setSchemas] = useState<string[]>([]);
@@ -42,9 +49,21 @@ export default function MetadataPage() {
     } | null>(null);
     const [hasRoots, setHasRoots] = useState(false);
 
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewResult, setPreviewResult] = useState<{
+        columns: string[];
+        rows: Array<Record<string, any>>;
+        rowCount: number
+    } | null>(null);
+    const [previewTitle, setPreviewTitle] = useState('');
+
+    const canPreview = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN') || roles.includes('DATA_ENGINEER') || roles.includes('DATA_ANALYST');
+
     const resetDetail = () => {
         setSelectedTable(null);
         setColumns([]);
+        setHighlightedColumnId(null);
     };
 
     const resetLists = () => {
@@ -52,6 +71,49 @@ export default function MetadataPage() {
         setSchemas([]);
         setTables([]);
     };
+
+    // 根据 URL query 参数自动选中指定表并展开祖先节点
+    useEffect(() => {
+        if (!tableIdParam) return;
+        let cancelled = false;
+        const autoSelect = async () => {
+            try {
+                const result = await getMetadataTable(tableIdParam);
+                if (cancelled || result.code !== 200 || !result.data) return;
+                const table = result.data;
+                const datasourceId = table.datasourceId;
+                const databaseName = table.databaseName;
+                const schemaName = table.schemaName;
+                const withoutSchema = table.datasourceType && DB_TYPES_WITHOUT_SCHEMA.has(table.datasourceType.toUpperCase());
+                setExpanded((prev) => {
+                    const nextExpanded = new Set(prev);
+                    nextExpanded.add(`ds-${datasourceId}`);
+                    nextExpanded.add(`db-${datasourceId}-${databaseName}`);
+                    if (!withoutSchema && schemaName) {
+                        nextExpanded.add(`schema-${datasourceId}-${databaseName}-${schemaName}`);
+                    }
+                    return nextExpanded;
+                });
+                const node: MetadataTreeNode = {
+                    id: `table-${table.id}`,
+                    type: 'table',
+                    name: table.tableName,
+                    databaseName,
+                    schemaName: schemaName || databaseName,
+                    datasourceId: String(datasourceId),
+                    datasourceType: table.datasourceType,
+                };
+                setSelectedNode(node);
+                setHighlightedColumnId(columnIdParam || null);
+            } catch (err) {
+                console.error('auto select table failed', err);
+            }
+        };
+        autoSelect();
+        return () => {
+            cancelled = true;
+        };
+    }, [tableIdParam, columnIdParam]);
 
     useEffect(() => {
         if (!selectedNode) {
@@ -81,6 +143,7 @@ export default function MetadataPage() {
     const isWithoutSchema = (type?: string) => type && DB_TYPES_WITHOUT_SCHEMA.has(type.toUpperCase());
 
     const extractDatasourceId = (node: MetadataTreeNode) => {
+        if (node.datasourceId) return node.datasourceId;
         if (node.type === 'datasource') return node.id.replace('ds-', '');
         return node.id.split('-')[1];
     };
@@ -195,6 +258,7 @@ export default function MetadataPage() {
             name: table.tableName,
             databaseName: table.databaseName,
             schemaName: table.schemaName,
+            datasourceId: selectedNode?.datasourceId,
             datasourceType: selectedNode?.datasourceType,
         };
         expandAncestors(node);
@@ -288,11 +352,24 @@ export default function MetadataPage() {
         );
     };
 
-    const formatDateTime = (value?: string) => {
-        if (!value) return '-';
-        const [date, time] = value.split('T');
-        if (!time) return value;
-        return `${date} ${time.split('.')[0].split('+')[0].split('Z')[0]}`;
+    const handlePreviewTable = async (table: MetadataTable) => {
+        if (!table.id || !canPreview) return;
+        setPreviewOpen(true);
+        setPreviewLoading(true);
+        setPreviewTitle(`${table.databaseName}${table.schemaName && table.schemaName !== table.databaseName ? ` / ${table.schemaName}` : ''} / ${table.tableName}`);
+        setPreviewResult(null);
+        try {
+            const result = await previewMetadataTable(table.id);
+            if (result.code === 200 && result.data) {
+                setPreviewResult({
+                    columns: result.data.columns,
+                    rows: result.data.rows,
+                    rowCount: result.data.rowCount,
+                });
+            }
+        } finally {
+            setPreviewLoading(false);
+        }
     };
 
     const renderDatabaseList = () => (
@@ -384,9 +461,20 @@ export default function MetadataPage() {
                 </div>
 
                 <div className="mb-ds-6">
-                    <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-3">
-                        表信息
-                    </h3>
+                    <div className="flex items-center justify-between mb-ds-3">
+                        <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-0">
+                            表信息
+                        </h3>
+                        {canPreview && (
+                            <button
+                                onClick={() => handlePreviewTable(selectedTable)}
+                                className="inline-flex items-center gap-ds-1 px-ds-3 py-ds-1.5 text-ds-small font-medium text-ds-accent hover:bg-ds-accent-light rounded-ds-sm transition-colors"
+                            >
+                                <HiOutlineEye size={16}/>
+                                预览
+                            </button>
+                        )}
+                    </div>
                     <div className="grid grid-cols-[100px_1fr] gap-y-ds-3 text-ds-small">
                         <span className="text-ds-text-muted">表名</span>
                         <span className="text-ds-text-primary font-medium">{selectedTable.tableName}</span>
@@ -434,7 +522,7 @@ export default function MetadataPage() {
                                 <tbody>
                                 {columns.map((column) => (
                                     <tr key={column.id}
-                                        className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover">
+                                        className={`border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover ${column.id === highlightedColumnId ? 'bg-ds-warning/10' : ''}`}>
                                         <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-primary font-medium">{column.columnName}</td>
                                         <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{column.dataType || '-'}</td>
                                         <td className="px-ds-4 py-ds-3 min-w-[180px]">
@@ -581,6 +669,7 @@ export default function MetadataPage() {
                         expanded={expanded}
                         onExpandedChange={setExpanded}
                         onRootsLoaded={setHasRoots}
+                        autoSelectFirst={!tableIdParam && !selectedNode}
                     />
                 </div>
 
@@ -588,6 +677,14 @@ export default function MetadataPage() {
                     {renderRightPanel()}
                 </div>
             </div>
+
+            <PreviewModal
+                open={previewOpen}
+                loading={previewLoading}
+                title={previewTitle}
+                result={previewResult}
+                onClose={() => setPreviewOpen(false)}
+            />
         </div>
     );
 }

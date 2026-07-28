@@ -36,7 +36,11 @@ public class DataSourceController {
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping
     public Result<DataSourceDTO> create(@Valid @RequestBody DataSourceCreateRequest request) {
-        return Result.ok(dataSourceService.create(request));
+        DataSourceDTO dto = dataSourceService.create(request);
+        if (dto.getMessage() != null && !dto.getMessage().isBlank()) {
+            return Result.ok(dto.getMessage(), dto);
+        }
+        return Result.ok(dto);
     }
 
     /**

@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class MetadataService {
@@ -35,9 +37,12 @@ public class MetadataService {
     @Transactional(readOnly = true)
     public List<MetadataDatasourceDTO> listDatasourceIds() {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
-        wrapper.select("DISTINCT datasource_id").orderByAsc("datasource_id");
-        List<Long> ids = metadataTableMapper.selectObjs(wrapper).stream()
-                .map(o -> ((Number) o).longValue())
+        wrapper.select("DISTINCT datasource_id, source_type").orderByAsc("datasource_id");
+        List<MetadataTable> rows = metadataTableMapper.selectList(wrapper);
+
+        List<Long> ids = rows.stream()
+                .map(MetadataTable::getDatasourceId)
+                .distinct()
                 .toList();
 
         if (ids.isEmpty()) {
@@ -46,6 +51,15 @@ public class MetadataService {
 
         List<DataSourceConnection> connections = dataSourceConnectionMapper.selectList(
                 Wrappers.<DataSourceConnection>query().in("id", ids));
+
+        Map<Long, String> sourceTypeMap = rows.stream()
+                .collect(Collectors.toMap(
+                        MetadataTable::getDatasourceId,
+                        MetadataTable::getSourceType,
+                        (existing, replacement) -> sourceTypePriority(existing) >= sourceTypePriority(replacement)
+                                ? existing
+                                : replacement
+                ));
 
         return ids.stream().map(id -> {
             MetadataDatasourceDTO dto = new MetadataDatasourceDTO();
@@ -63,6 +77,7 @@ public class MetadataService {
                 dto.setType(null);
                 dto.setExists(false);
             }
+            dto.setSourceType(sourceTypeMap.getOrDefault(id, "EXTERNAL"));
             return dto;
         }).toList();
     }
@@ -133,7 +148,11 @@ public class MetadataService {
         try {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
-            return null;
+            return 0L;
         }
+    }
+
+    private int sourceTypePriority(String sourceType) {
+        return "BUILTIN_DORIS".equals(sourceType) ? 1 : 0;
     }
 }

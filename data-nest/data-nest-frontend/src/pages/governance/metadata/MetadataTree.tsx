@@ -1,4 +1,5 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
+import {ChevronRight, Database, Folder, Table} from 'lucide-react';
 import {
     listMetadataDatabases,
     listMetadataDatasourceIds,
@@ -13,6 +14,7 @@ interface MetadataTreeProps {
     expanded: Set<string>;
     onExpandedChange: (next: Set<string>) => void;
     onRootsLoaded?: (hasRoots: boolean) => void;
+    autoSelectFirst?: boolean;
 }
 
 const DB_TYPES_WITHOUT_SCHEMA = new Set(['MYSQL', 'DORIS']);
@@ -23,13 +25,34 @@ export default function MetadataTree({
                                          expanded,
                                          onExpandedChange,
                                          onRootsLoaded,
+                                         autoSelectFirst,
                                      }: MetadataTreeProps) {
     const [roots, setRoots] = useState<MetadataTreeNode[]>([]);
     const [loading, setLoading] = useState<string | null>(null);
+    const autoSelectRef = useRef<{ active: boolean; pendingId: string | null }>({active: false, pendingId: null});
+    const loadedRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         loadRoots();
     }, []);
+
+    // 当外部通过 expanded 展开尚未加载子节点的节点时，自动加载其子节点
+    useEffect(() => {
+        const collectNodes = (nodes: MetadataTreeNode[]): MetadataTreeNode[] => {
+            return nodes.reduce<MetadataTreeNode[]>((acc, n) => {
+                acc.push(n);
+                if (n.children) acc.push(...collectNodes(n.children));
+                return acc;
+            }, []);
+        };
+        const allNodes = collectNodes(roots);
+        for (const node of allNodes) {
+            if (expanded.has(node.id) && (!node.children || node.children.length === 0) && !loadedRef.current.has(node.id) && loading !== node.id) {
+                loadedRef.current.add(node.id);
+                loadChildren(node);
+            }
+        }
+    }, [expanded, roots, loading]);
 
     const isExpanded = (id: string) => expanded.has(id);
     const setExpanded = (id: string, value: boolean) => {
@@ -71,19 +94,36 @@ export default function MetadataTree({
                     const shortId = String(ds.id).slice(-6);
                     const exists = ds.exists !== false;
                     const typeSuffix = ds.type ? ` (${ds.type})` : '';
+                    const isBuiltin = ds.sourceType === 'BUILTIN_DORIS';
                     return {
                         id: `ds-${ds.id}`,
                         type: 'datasource',
-                        name: ds.name ? `${ds.name}${typeSuffix}` : `数据源 ${shortId}${exists ? '' : '（已删除）'}`,
+                        name: isBuiltin ? 'Doris（内置）' : (ds.name ? `${ds.name}${typeSuffix}` : `数据源 ${shortId}${exists ? '' : '（已删除）'}`),
                         exists,
+                        datasourceId: ds.id,
                         datasourceType: ds.type,
+                        sourceType: ds.sourceType,
                         databaseName: '',
                         schemaName: '',
                         children: [],
                     };
                 });
+                nodes.sort((a, b) => {
+                    const aBuiltin = a.sourceType === 'BUILTIN_DORIS' ? 1 : 0;
+                    const bBuiltin = b.sourceType === 'BUILTIN_DORIS' ? 1 : 0;
+                    if (aBuiltin !== bBuiltin) return bBuiltin - aBuiltin;
+                    return a.name.localeCompare(b.name, 'zh-CN');
+                });
                 setRoots(nodes);
                 onRootsLoaded?.(nodes.length > 0);
+                if (autoSelectFirst && nodes.length > 0 && !selectedNode && !autoSelectRef.current.active) {
+                    const root = nodes[0];
+                    autoSelectRef.current = {active: true, pendingId: root.id};
+                    const nextExpanded = new Set([root.id]);
+                    onExpandedChange(nextExpanded);
+                    onSelect(root);
+                    loadChildren(root);
+                }
             } else {
                 onRootsLoaded?.(false);
             }
@@ -96,7 +136,7 @@ export default function MetadataTree({
 
     const loadChildren = async (node: MetadataTreeNode) => {
         if (node.type === 'datasource') {
-            const datasourceId = node.id.replace('ds-', '');
+            const datasourceId = node.datasourceId!;
             setLoading(node.id);
             try {
                 const result = await listMetadataDatabases(datasourceId);
@@ -107,16 +147,18 @@ export default function MetadataTree({
                         name: db,
                         databaseName: db,
                         schemaName: '',
+                        datasourceId,
                         datasourceType: node.datasourceType,
                         children: [],
                     }));
                     setRoots(prev => updateNodeChildren(prev, node.id, children));
+                    handleAutoSelectChildren(node, children);
                 }
             } finally {
                 setLoading(null);
             }
         } else if (node.type === 'database') {
-            const datasourceId = node.id.split('-')[1];
+            const datasourceId = node.datasourceId!;
             const databaseName = node.databaseName!;
             const datasourceType = node.datasourceType;
             // MySQL / Doris 的 database 与 schema 等价，直接加载表作为叶子
@@ -131,6 +173,7 @@ export default function MetadataTree({
                             name: table.tableName,
                             databaseName,
                             schemaName: databaseName,
+                            datasourceId,
                             datasourceType,
                             count: table.columnCount ?? 0,
                         }));
@@ -153,16 +196,18 @@ export default function MetadataTree({
                         name: schema,
                         databaseName,
                         schemaName: schema,
+                        datasourceId,
                         datasourceType,
                         children: [],
                     }));
                     setRoots(prev => updateNodeChildren(prev, node.id, children));
+                    setRoots(prev => updateNodeCount(prev, node.id, children.length));
                 }
             } finally {
                 setLoading(null);
             }
         } else if (node.type === 'schema') {
-            const datasourceId = node.id.split('-')[1];
+            const datasourceId = node.datasourceId!;
             const databaseName = node.databaseName!;
             const schemaName = node.schemaName!;
             const datasourceType = node.datasourceType;
@@ -176,6 +221,7 @@ export default function MetadataTree({
                         name: table.tableName,
                         databaseName,
                         schemaName,
+                        datasourceId,
                         datasourceType,
                         count: table.columnCount ?? 0,
                     }));
@@ -188,6 +234,21 @@ export default function MetadataTree({
         }
     };
 
+    const handleAutoSelectChildren = (node: MetadataTreeNode, children: MetadataTreeNode[]) => {
+        if (!autoSelectRef.current.active || autoSelectRef.current.pendingId !== node.id || children.length === 0) {
+            return;
+        }
+        const firstChild = children[0];
+        if (firstChild.type === 'database') {
+            autoSelectRef.current = {active: false, pendingId: null};
+            onSelect(firstChild);
+            const nextExpanded = new Set(expanded);
+            nextExpanded.add(firstChild.id);
+            onExpandedChange(nextExpanded);
+            loadChildren(firstChild);
+        }
+    };
+
     const handleToggle = (node: MetadataTreeNode) => {
         if (!node.children || node.children.length === 0) {
             loadChildren(node);
@@ -197,18 +258,14 @@ export default function MetadataTree({
 
     const isSelected = (node: MetadataTreeNode) => selectedNode?.id === node.id;
 
-    const renderPrefix = (node: MetadataTreeNode, expandedFlag: boolean) => {
+    const renderIcon = (node: MetadataTreeNode) => {
         if (node.type === 'datasource') {
-            return (
-                <span className="w-4 text-ds-text-muted flex-shrink-0 text-[10px]">
-                    {expandedFlag ? '▼' : '▶'}
-                </span>
-            );
+            return <Database size={16} className="text-ds-accent flex-shrink-0"/>;
         }
         if (node.type === 'database' || node.type === 'schema') {
-            return <span className="w-4 text-ds-text-muted flex-shrink-0 text-[10px]">▪</span>;
+            return <Folder size={16} className="text-ds-warning flex-shrink-0"/>;
         }
-        return <span className="w-4 flex-shrink-0"/>;
+        return <Table size={16} className="text-ds-text-muted flex-shrink-0"/>;
     };
 
     const renderNode = (node: MetadataTreeNode, depth = 0) => {
@@ -229,7 +286,7 @@ export default function MetadataTree({
                         onSelect(node);
                     }}
                     style={{paddingLeft}}
-                    className={`w-full flex items-center gap-ds-1 py-ds-2 pr-ds-2 text-left text-ds-small transition-colors ${
+                    className={`w-full flex items-center gap-ds-2 py-ds-2 pr-ds-2 text-left text-ds-small transition-colors ${
                         selectedFlag
                             ? 'bg-ds-accent-light text-ds-accent font-semibold'
                             : deletedFlag
@@ -237,7 +294,14 @@ export default function MetadataTree({
                                 : 'text-ds-text-secondary hover:bg-ds-bg-hover hover:text-ds-text-primary'
                     }`}
                 >
-                    {renderPrefix(node, expandedFlag)}
+                    {hasChildren && (
+                        <span
+                            className={`w-4 flex-shrink-0 text-ds-text-muted transition-transform ${expandedFlag ? 'rotate-90' : ''}`}>
+                            <ChevronRight size={14}/>
+                        </span>
+                    )}
+                    {!hasChildren && <span className="w-4 flex-shrink-0"/>}
+                    {renderIcon(node)}
                     <span className="truncate">{node.name}</span>
                     {node.count !== undefined && node.count > 0 && (
                         <span

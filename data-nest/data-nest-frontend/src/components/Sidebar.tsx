@@ -1,6 +1,6 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {HiOutlineBookOpen, HiOutlineClock, HiOutlineHome, HiOutlineServer, HiOutlineUsers,} from 'react-icons/hi2';
+import {ArrowLeftRight, ClipboardList, Clock, Database, Home, Ruler, Users,} from 'lucide-react';
 
 interface MenuItem {
     label: string;
@@ -13,7 +13,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
     {
         group: '数据平台',
         items: [
-            {label: '首页', path: '/', icon: <HiOutlineHome size={18}/>},
+            {label: '首页', path: '/', icon: <Home size={18}/>},
         ],
     },
     {
@@ -22,8 +22,14 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
             {
                 label: '数据源',
                 path: '/engineering/datasources',
-                icon: <HiOutlineServer size={18}/>,
+                icon: <Database size={18}/>,
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER', 'GOVERNANCE_ADMIN']
+            },
+            {
+                label: '批量数据同步',
+                path: '/engineering/sync-jobs',
+                icon: <ArrowLeftRight size={18}/>,
+                roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
             },
         ],
     },
@@ -31,23 +37,29 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         group: '数据治理',
         items: [
             {
-                label: '采集任务',
+                label: '元数据采集任务',
                 path: '/governance/collect-tasks',
-                icon: <HiOutlineClock size={18}/>,
+                icon: <Clock size={18}/>,
                 roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
             },
             {
                 label: '元数据管理',
                 path: '/governance/metadata',
-                icon: <HiOutlineBookOpen size={18}/>,
+                icon: <ClipboardList size={18}/>,
                 roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN', 'DATA_ENGINEER', 'DATA_ANALYST']
+            },
+            {
+                label: '数据标准',
+                path: '/governance/data-standards',
+                icon: <Ruler size={18}/>,
+                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
             },
         ],
     },
     {
         group: '系统管理',
         items: [
-            {label: '用户管理', path: '/system/users', icon: <HiOutlineUsers size={18}/>, roles: ['SUPER_ADMIN']},
+            {label: '用户管理', path: '/system/users', icon: <Users size={18}/>, roles: ['SUPER_ADMIN']},
         ],
     },
 ];

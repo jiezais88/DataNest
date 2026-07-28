@@ -11,8 +11,10 @@ const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/': {label: '首页'},
     '/system/users': {group: '系统管理', label: '用户管理'},
     '/engineering/datasources': {group: '数据工程', label: '数据源'},
+    '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步'},
     '/governance/collect-tasks': {group: '数据治理', label: '采集任务'},
     '/governance/metadata': {group: '数据治理', label: '元数据管理'},
+    '/governance/data-standards': {group: '数据治理', label: '数据标准'},
 };
 
 function resolveBreadcrumb(pathname: string): string {
@@ -21,7 +23,7 @@ function resolveBreadcrumb(pathname: string): string {
         return entry.group ? `${entry.group} / ${entry.label}` : entry.label;
     }
     // 动态子路由：/governance/collect-tasks/:id/history
-    const match = pathname.match(/^(.+\/\w+)\/(\d+)\/(\w+)$/);
+    const match = pathname.match(/^(.+\/\w+)\/([^/]+)\/(\w+)$/);
     if (match) {
         const parent = breadcrumbMap[match[1]];
         if (parent) {

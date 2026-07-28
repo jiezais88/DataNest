@@ -39,6 +39,8 @@ public class DataSourceCreateRequest {
     @Size(max = 500, message = "描述最多 500 个字符")
     private String description;
 
+    private Boolean autoCollectOnSave;
+
     public String getName() {
         return name;
     }
@@ -109,5 +111,13 @@ public class DataSourceCreateRequest {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public Boolean getAutoCollectOnSave() {
+        return autoCollectOnSave;
+    }
+
+    public void setAutoCollectOnSave(Boolean autoCollectOnSave) {
+        this.autoCollectOnSave = autoCollectOnSave;
     }
 }

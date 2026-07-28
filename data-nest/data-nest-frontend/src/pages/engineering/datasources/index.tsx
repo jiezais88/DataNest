@@ -10,6 +10,7 @@ import {
 import type {
     DataSource,
     DataSourceCreateRequest,
+    DataSourceReference,
     DataSourceStatus,
     DataSourceType,
     DataSourceUpdateRequest,
@@ -22,7 +23,17 @@ import TestResultModal from '../../../components/TestResultModal';
 import SearchInput from '../../../components/SearchInput';
 import {formatRelativeTime} from '../../../utils/time';
 import {useAuthStore} from '../../../store/useAuthStore';
-import {HiChevronRight, HiOutlineBolt, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
+import {previewDataSource} from '../../../api/preview';
+import PreviewModal from '../../../components/PreviewModal';
+import DatasourcePreviewSelector from './DatasourcePreviewSelector';
+import {
+    HiChevronRight,
+    HiOutlineBolt,
+    HiOutlineEye,
+    HiOutlinePencilSquare,
+    HiOutlinePlus,
+    HiOutlineTrash,
+} from 'react-icons/hi2';
 
 const TYPE_OPTIONS: { value: DataSourceType | ''; label: string }[] = [
     {value: '', label: '全部类型'},
@@ -69,12 +80,26 @@ export default function DataSourcesPage() {
     const [editItem, setEditItem] = useState<DataSource | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<DataSource | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+    const [deleteReferences, setDeleteReferences] = useState<DataSourceReference[]>([]);
+    const [deleteLoading, setDeleteLoading] = useState(false);
     const [testingId, setTestingId] = useState<string | null>(null);
     const [searchTrigger, setSearchTrigger] = useState(0);
-    const [deleteLoading, setDeleteLoading] = useState(false);
     const [testModalOpen, setTestModalOpen] = useState(false);
     const [testModalSuccess, setTestModalSuccess] = useState(false);
     const [testModalMessage, setTestModalMessage] = useState('');
+    const [previewSelectorOpen, setPreviewSelectorOpen] = useState(false);
+    const [previewTarget, setPreviewTarget] = useState<DataSource | null>(null);
+    const [previewModalOpen, setPreviewModalOpen] = useState(false);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewResult, setPreviewResult] = useState<{
+        columns: string[];
+        rows: Array<Record<string, any>>;
+        rowCount: number
+    } | null>(null);
+    const [previewTitle, setPreviewTitle] = useState('');
+
+    const canPreview = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN') || roles.includes('DATA_ENGINEER');
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -126,7 +151,11 @@ export default function DataSourcesPage() {
     const handleCreate = async (data: DataSourceCreateRequest | DataSourceUpdateRequest) => {
         const result = await createDataSource(data as DataSourceCreateRequest);
         if (result.code === 200) {
-            message.success('数据源创建成功');
+            if (result.message) {
+                message.success(result.message);
+            } else {
+                message.success('数据源创建成功');
+            }
             setDrawerOpen(false);
             setEditItem(null);
             loadData();
@@ -138,7 +167,11 @@ export default function DataSourcesPage() {
         if (!editItem) return;
         const result = await updateDataSource(editItem.id, data as DataSourceUpdateRequest);
         if (result.code === 200) {
-            message.success('数据源更新成功');
+            if (result.message) {
+                message.success(result.message);
+            } else {
+                message.success('数据源更新成功');
+            }
             setDrawerOpen(false);
             setEditItem(null);
             loadData();
@@ -149,14 +182,23 @@ export default function DataSourcesPage() {
     const handleDelete = async () => {
         if (!deleteTarget) return;
         setDeleteLoading(true);
-        const result = await deleteDataSource(deleteTarget.id);
-        if (result.code === 200) {
-            message.success('数据源已删除');
-            setDeleteOpen(false);
-            setDeleteTarget(null);
-            loadData();
+        try {
+            const result = await deleteDataSource(deleteTarget.id);
+            if (result.code === 200) {
+                message.success('数据源已删除');
+                setDeleteOpen(false);
+                setDeleteTarget(null);
+                loadData();
+            }
+        } catch (err: any) {
+            const errorData = err?.response?.data;
+            if (errorData?.code === 3005 && Array.isArray(errorData?.data)) {
+                setDeleteReferences(errorData.data);
+                setDeleteBlockedOpen(true);
+            }
+        } finally {
+            setDeleteLoading(false);
         }
-        setDeleteLoading(false);
     };
 
     const handleTest = async (item: DataSource) => {
@@ -193,6 +235,26 @@ export default function DataSourcesPage() {
             label: '已下线'
         };
         return {dot: 'bg-ds-text-muted', bg: 'bg-ds-bg-hover', text: 'text-ds-text-muted', label: '未检测'};
+    };
+    const handlePreview = async (database: string, schema: string | undefined, table: string) => {
+        if (!previewTarget) return;
+        setPreviewSelectorOpen(false);
+        setPreviewModalOpen(true);
+        setPreviewLoading(true);
+        setPreviewResult(null);
+        setPreviewTitle(`${previewTarget.name} / ${database}${schema && schema !== database ? ` / ${schema}` : ''} / ${table}`);
+        try {
+            const result = await previewDataSource(previewTarget.id, database, schema, table);
+            if (result.code === 200 && result.data) {
+                setPreviewResult({
+                    columns: result.data.columns,
+                    rows: result.data.rows,
+                    rowCount: result.data.rowCount,
+                });
+            }
+        } finally {
+            setPreviewLoading(false);
+        }
     };
 
     return (
@@ -354,6 +416,18 @@ export default function DataSourcesPage() {
                                                         <HiOutlineBolt size={16}/>
                                                     </button>
                                                     <button
+                                                        data-testid={`datasource-preview-btn-${item.name}`}
+                                                        onClick={() => {
+                                                            setPreviewTarget(item);
+                                                            setPreviewSelectorOpen(true);
+                                                        }}
+                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                        title="预览数据"
+                                                        aria-label="预览数据"
+                                                    >
+                                                        <HiOutlineEye size={16}/>
+                                                    </button>
+                                                    <button
                                                         data-testid={`datasource-delete-btn-${item.name}`}
                                                         onClick={() => {
                                                             setDeleteTarget(item);
@@ -436,11 +510,75 @@ export default function DataSourcesPage() {
                 }}
             />
 
+            {deleteBlockedOpen && (
+                <div className="fixed inset-0 z-ds-dialog flex items-center justify-center p-ds-6">
+                    <div className="absolute inset-0 bg-black/30" onClick={() => setDeleteBlockedOpen(false)}/>
+                    <div
+                        className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xl w-[520px] max-h-[85vh] flex flex-col">
+                        <div className="px-ds-5 py-ds-4 border-b border-ds-border-subtle">
+                            <h3 className="text-ds-subhead text-ds-text-primary font-semibold">无法删除数据源</h3>
+                        </div>
+                        <div className="p-ds-5 overflow-auto">
+                            <p className="text-ds-body text-ds-text-secondary mb-ds-4">
+                                数据源 <strong>"{deleteTarget?.name}"</strong> 已被以下任务引用，请先删除或修改这些任务后再删除数据源。
+                            </p>
+                            {deleteReferences.filter(r => r.type === 'COLLECT').length > 0 && (
+                                <div className="mb-ds-4">
+                                    <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">元数据采集任务：</h4>
+                                    <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
+                                        {deleteReferences.filter(r => r.type === 'COLLECT').map(r => (
+                                            <li key={r.taskId}>{r.taskName}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {deleteReferences.filter(r => r.type === 'SYNC').length > 0 && (
+                                <div className="mb-ds-4">
+                                    <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">批量数据同步任务：</h4>
+                                    <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
+                                        {deleteReferences.filter(r => r.type === 'SYNC').map(r => (
+                                            <li key={r.taskId}>{r.taskName}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-ds-5 py-ds-4 border-t border-ds-border-subtle flex justify-end">
+                            <button
+                                onClick={() => {
+                                    setDeleteBlockedOpen(false);
+                                    setDeleteTarget(null);
+                                    setDeleteReferences([]);
+                                }}
+                                className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                            >
+                                我知道了
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <TestResultModal
                 open={testModalOpen}
                 success={testModalSuccess}
                 message={testModalMessage}
                 onClose={() => setTestModalOpen(false)}
+            />
+
+            <DatasourcePreviewSelector
+                datasource={previewTarget}
+                open={previewSelectorOpen}
+                onClose={() => setPreviewSelectorOpen(false)}
+                onPreview={handlePreview}
+            />
+
+            <PreviewModal
+                open={previewModalOpen}
+                loading={previewLoading}
+                title={previewTitle}
+                result={previewResult}
+                onClose={() => setPreviewModalOpen(false)}
             />
         </div>
     );

@@ -29,6 +29,8 @@ public class MetadataTable {
 
     private String sourceStatus;
 
+    private String sourceType;
+
     private Long lastCollectHistoryId;
 
     @TableField(exist = false)

@@ -44,6 +44,8 @@ public class CollectTask {
 
     private Integer scheduleEnabled;
 
+    private LocalDateTime nextExecutionTime;
+
     private Long createdBy;
 
     private Long updatedBy;

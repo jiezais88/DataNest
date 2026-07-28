@@ -33,6 +33,21 @@ public enum ErrorCode {
     HISTORY_NOT_FOUND(4005, "采集历史不存在"),
     METADATA_NOT_FOUND(4006, "元数据不存在"),
 
+    // Data standard errors (5xxx)
+    NAMING_STANDARD_NOT_FOUND(5001, "命名规范不存在"),
+    NAMING_STANDARD_NAME_EXISTS(5002, "命名规范名称已存在"),
+    FIELD_TYPE_STANDARD_NOT_FOUND(5003, "字段类型标准不存在"),
+    FIELD_TYPE_STANDARD_NAME_EXISTS(5004, "字段类型标准名称已存在"),
+
+    INVALID_COMPLIANCE_SCOPE(5005, "合规检查删除范围必须指定数据源或表"),
+    INVALID_NAMING_STANDARD_PARAM(5006, "命名规范参数非法"),
+
+    // Batch sync errors (6xxx)
+    SYNC_JOB_NAME_EXISTS(6001, "同步任务名称已存在"),
+    SYNC_JOB_NOT_FOUND(6002, "同步任务不存在"),
+    ADDAX_EXECUTION_FAILED(6003, "Addax 执行失败"),
+    TARGET_DATASOURCE_NOT_FOUND(6004, "目标数据源不存在"),
+
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");
 

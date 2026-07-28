@@ -38,6 +38,8 @@ public class DataSourceConnection {
 
     private String errorMessage;
 
+    private Integer autoCollectOnSave;
+
     private Long createdBy;
 
     private Long updatedBy;

@@ -20,6 +20,7 @@ type FormData = {
     password: string;
     passwordChanged: boolean;
     description: string;
+    autoCollectOnSave: boolean;
 };
 
 const TYPE_OPTIONS: { value: DataSourceType; label: string }[] = [
@@ -45,6 +46,7 @@ const EMPTY_FORM: FormData = {
     password: '',
     passwordChanged: false,
     description: '',
+    autoCollectOnSave: true,
 };
 
 interface DataSourceDrawerProps {
@@ -83,6 +85,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                     password: '',
                     passwordChanged: false,
                     description: editItem.description || '',
+                    autoCollectOnSave: false,
                 });
             } else {
                 setForm(EMPTY_FORM);
@@ -175,6 +178,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                 password: form.password,
                 passwordChanged: form.passwordChanged,
                 description: form.description.trim() || undefined,
+                autoCollectOnSave: form.autoCollectOnSave,
             }
             : {
                 name: form.name.trim(),
@@ -186,6 +190,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                 username: form.username.trim(),
                 password: form.password,
                 description: form.description.trim() || undefined,
+                autoCollectOnSave: form.autoCollectOnSave,
             };
         const result = await onSubmit(payload as DataSourceCreateRequest | DataSourceUpdateRequest);
         setSubmitting(false);
@@ -370,6 +375,18 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                 placeholder="可选：填写数据源用途或备注"
                             />
                         </div>
+
+                        {!isEdit && (
+                            <label className="flex items-center gap-ds-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={form.autoCollectOnSave}
+                                    onChange={(e) => updateField('autoCollectOnSave', e.target.checked)}
+                                    className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent"
+                                />
+                                <span className="text-ds-small text-ds-text-secondary">保存后立即采集元数据</span>
+                            </label>
+                        )}
                     </div>
                 </div>
 

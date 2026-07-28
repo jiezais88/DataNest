@@ -13,6 +13,8 @@ spring:
       - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-mybatis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-addax.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:
@@ -22,4 +24,16 @@ spring:
         server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
         file-extension: yaml
 
+xxl:
+  job:
+    executor:
+      appname: data-nest-engineering-executor
+      port: 9998
 
+datanest:
+  engineering:
+    addax:
+      container-name: addax
+      job-path: /opt/addax/job
+      log-path: /opt/addax/log
+      target-database: datanest

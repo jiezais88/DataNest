@@ -50,6 +50,11 @@ public class ConnectionTester {
         );
     }
 
+    public String buildJdbcUrl(DataSourceConnection connection) {
+        return buildJdbcUrl(connection.getType(), connection.getHost(), connection.getPort(),
+                connection.getDatabaseName(), connection.getSchemaName());
+    }
+
     private String buildJdbcUrl(TestConnectionRequest request) {
         return buildJdbcUrl(request.getType(), request.getHost(), request.getPort(), request.getDatabaseName(), request.getSchemaName());
     }

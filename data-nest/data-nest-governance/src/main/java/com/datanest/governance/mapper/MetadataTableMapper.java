@@ -20,7 +20,7 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
 
     @Select("""
             SELECT t.*,
-                   (SELECT COUNT(*) FROM metadata_column c WHERE c.table_id = t.id) AS column_count,
+                   t.column_count AS column_count,
                    h.ended_at AS last_collect_time,
                    h.task_name AS source_task_name,
                    ds.name AS datasource_name,
@@ -39,7 +39,7 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
 
     @Select("""
             SELECT t.*,
-                   (SELECT COUNT(*) FROM metadata_column c WHERE c.table_id = t.id) AS column_count,
+                   t.column_count AS column_count,
                    h.ended_at AS last_collect_time,
                    h.task_name AS source_task_name,
                    ds.name AS datasource_name,

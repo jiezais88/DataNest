@@ -12,4 +12,6 @@ public class MetadataDatasourceDTO {
     private String type;
 
     private Boolean exists;
+
+    private String sourceType;
 }

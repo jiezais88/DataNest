@@ -22,8 +22,10 @@ import com.datanest.governance.mapper.CollectHistoryMapper;
 import com.datanest.governance.mapper.CollectTaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -78,6 +80,7 @@ public class CollectTaskService {
         task.setUpdatedBy(currentUserId());
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
+        task.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
 
         collectTaskMapper.insert(task);
 
@@ -113,6 +116,7 @@ public class CollectTaskService {
         task.setDescription(request.getDescription());
         task.setUpdatedBy(currentUserId());
         task.setUpdatedAt(LocalDateTime.now());
+        task.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
 
         if (task.getXxlJobId() != null) {
             String scheduleType = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? SCHEDULE_TYPE_CRON : SCHEDULE_TYPE_NONE;
@@ -139,6 +143,7 @@ public class CollectTaskService {
         }
         schedulerService.startJob(task.getXxlJobId());
         task.setScheduleEnabled(1);
+        task.setNextExecutionTime(computeNextExecutionTime(task.getTriggerType(), task.getCronExpression()));
         task.setUpdatedAt(LocalDateTime.now());
         task.setUpdatedBy(currentUserId());
         collectTaskMapper.updateById(task);
@@ -159,6 +164,7 @@ public class CollectTaskService {
         }
         schedulerService.stopJob(task.getXxlJobId());
         task.setScheduleEnabled(0);
+        task.setNextExecutionTime(null);
         task.setUpdatedAt(LocalDateTime.now());
         task.setUpdatedBy(currentUserId());
         collectTaskMapper.updateById(task);
@@ -256,6 +262,19 @@ public class CollectTaskService {
         return collectTaskMapper.selectCount(new QueryWrapper<CollectTask>().eq("name", name));
     }
 
+    private LocalDateTime computeNextExecutionTime(String triggerType, String cronExpression) {
+        if (!TRIGGER_TYPE_CRON.equalsIgnoreCase(triggerType) || !StringUtils.hasText(cronExpression)) {
+            return null;
+        }
+        try {
+            CronExpression cron = CronExpression.parse(cronExpression);
+            return cron.next(LocalDateTime.now());
+        } catch (Exception e) {
+            logger.warn("Invalid cron expression, cannot compute next execution time: {}", cronExpression);
+            return null;
+        }
+    }
+
     private CollectTaskDTO toDTO(CollectTask task) {
         CollectTaskDTO dto = new CollectTaskDTO();
         dto.setId(task.getId());
@@ -272,6 +291,7 @@ public class CollectTaskService {
         dto.setDescription(task.getDescription());
         dto.setXxlJobId(task.getXxlJobId());
         dto.setScheduleEnabled(task.getScheduleEnabled());
+        dto.setNextExecutionTime(task.getNextExecutionTime());
         dto.setCreatedAt(task.getCreatedAt());
         dto.setUpdatedAt(task.getUpdatedAt());
         return dto;
@@ -281,7 +301,7 @@ public class CollectTaskService {
         try {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
-            return null;
+            return 0L;
         }
     }
 }

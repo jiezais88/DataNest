@@ -3,6 +3,8 @@ xxl:
     accessToken: ${XXL_JOB_ACCESS_TOKEN:default_token}
     admin:
       addresses: http://${XXL_JOB_HOST:localhost}:${XXL_JOB_PORT:8088}
+      username: ${XXL_JOB_USERNAME:admin}
+      password: ${XXL_JOB_PASSWORD:123456}
     executor:
       appname: data-nest-governance
       ip: ${XXL_JOB_EXECUTOR_IP:}

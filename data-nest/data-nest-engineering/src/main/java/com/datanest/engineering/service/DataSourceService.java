@@ -9,19 +9,25 @@ import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.scheduler.SchedulerClient;
 import com.datanest.engineering.dto.*;
 import com.datanest.engineering.entity.CollectTask;
 import com.datanest.engineering.entity.DataSourceConnection;
-import com.datanest.engineering.mapper.CollectTaskMapper;
-import com.datanest.engineering.mapper.DataSourceMapper;
-import com.datanest.engineering.mapper.MetadataColumnMapper;
-import com.datanest.engineering.mapper.MetadataTableMapper;
+import com.datanest.engineering.entity.SyncJob;
+import com.datanest.engineering.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -31,24 +37,36 @@ public class DataSourceService {
     private static final String MASKED_PASSWORD = "********";
     private static final String STATUS_NORMAL = "NORMAL";
     private static final String STATUS_ERROR = "ERROR";
-    private static final String STATUS_OFFLINE = "OFFLINE";
+    private static final String TRIGGER_TYPE_MANUAL = "MANUAL";
+    private static final String COLLECT_MODE_FULL = "FULL";
+    private static final String COLLECT_TASK_HANDLER = "collectTaskHandler";
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+    @Value("${datanest.engineering.auto-collect.xxl-appname:data-nest-governance}")
+    private String governanceExecutorAppName;
 
     private final DataSourceMapper dataSourceMapper;
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
     private final CollectTaskMapper collectTaskMapper;
+    private final SyncJobMapper syncJobMapper;
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
+    private final SchedulerClient schedulerClient;
 
     public DataSourceService(DataSourceMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
-                             MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper) {
+                             SyncJobMapper syncJobMapper,
+                             MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
+                             SchedulerClient schedulerClient) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
         this.collectTaskMapper = collectTaskMapper;
+        this.syncJobMapper = syncJobMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
+        this.schedulerClient = schedulerClient;
     }
 
     @Transactional
@@ -68,13 +86,80 @@ public class DataSourceService {
         entity.setEncryptedPassword(encryptionConfig.encrypt(request.getPassword()));
         entity.setDescription(request.getDescription());
         entity.setStatus(STATUS_NORMAL);
+        entity.setAutoCollectOnSave(Boolean.TRUE.equals(request.getAutoCollectOnSave()) ? 1 : 0);
         entity.setCreatedBy(currentUserId());
         entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
 
         dataSourceMapper.insert(entity);
-        return toDTO(entity);
+
+        DataSourceDTO dto = toDTO(entity);
+        if (Boolean.TRUE.equals(request.getAutoCollectOnSave())) {
+            DataSourceConnection savedEntity = entity;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    autoCreateAndRunCollectTask(savedEntity);
+                }
+            });
+            dto.setMessage("数据源保存成功，自动采集任务将在事务提交后触发");
+        }
+        return dto;
+    }
+
+    private String autoCreateAndRunCollectTask(DataSourceConnection entity) {
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            String prefix = "自动采集-";
+            String suffix = "-" + now.format(TIMESTAMP_FORMATTER);
+            String dsName = entity.getName();
+            int maxDsNameLen = 100 - prefix.length() - suffix.length();
+            if (maxDsNameLen < 0) {
+                maxDsNameLen = 0;
+            }
+            if (dsName.length() > maxDsNameLen) {
+                dsName = dsName.substring(0, maxDsNameLen);
+            }
+            String taskName = prefix + dsName + suffix;
+            List<String> scope = resolveCollectScope(entity);
+
+            CollectTask task = new CollectTask();
+            task.setName(taskName);
+            task.setDatasourceId(entity.getId());
+            task.setDatasourceName(entity.getName());
+            task.setScope(scope);
+            task.setCollectMode(COLLECT_MODE_FULL);
+            task.setTriggerType(TRIGGER_TYPE_MANUAL);
+            task.setStatus(STATUS_NORMAL);
+            task.setDescription("数据源保存时自动创建的元数据采集任务");
+            task.setScheduleEnabled(0);
+            task.setCreatedBy(currentUserIdOrZero());
+            task.setUpdatedBy(currentUserIdOrZero());
+            task.setCreatedAt(now);
+            task.setUpdatedAt(now);
+            collectTaskMapper.insert(task);
+
+            Integer xxlJobId = schedulerClient.registerJob(governanceExecutorAppName, COLLECT_TASK_HANDLER,
+                    task.getId(), taskName, "", TRIGGER_TYPE_MANUAL, false, 0, 0);
+            task.setXxlJobId(xxlJobId);
+            collectTaskMapper.updateById(task);
+
+            schedulerClient.triggerJob(xxlJobId, task.getId() + ",MANUAL");
+            logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}, xxlJobId={}",
+                    entity.getId(), task.getId(), xxlJobId);
+            return null;
+        } catch (Exception e) {
+            logger.error("数据源保存后自动采集异常: datasourceId={}", entity.getId(), e);
+            return "自动采集任务触发失败: " + e.getMessage();
+        }
+    }
+
+    private List<String> resolveCollectScope(DataSourceConnection entity) {
+        String scope = "POSTGRESQL".equalsIgnoreCase(entity.getType()) && StringUtils.hasText(entity.getSchemaName())
+                ? entity.getSchemaName()
+                : entity.getDatabaseName();
+        return StringUtils.hasText(scope) ? Collections.singletonList(scope) : Collections.emptyList();
     }
 
     @Transactional
@@ -99,6 +184,9 @@ public class DataSourceService {
         }
 
         entity.setDescription(request.getDescription());
+        if (request.getAutoCollectOnSave() != null) {
+            entity.setAutoCollectOnSave(request.getAutoCollectOnSave());
+        }
         entity.setUpdatedBy(currentUserId());
         entity.setUpdatedAt(LocalDateTime.now());
 
@@ -115,7 +203,7 @@ public class DataSourceService {
 
         List<DataSourceReferenceDTO> references = getReferences(id);
         if (!references.isEmpty()) {
-            throw new BusinessException(ErrorCode.HAS_REFERENCES, "数据源被采集任务引用，无法删除", references);
+            throw new BusinessException(ErrorCode.HAS_REFERENCES, "数据源已被引用，无法删除", references);
         }
 
         // 级联删除已采集的元数据：先删子表字段，再删父表
@@ -196,16 +284,35 @@ public class DataSourceService {
     }
 
     public List<DataSourceReferenceDTO> getReferences(Long id) {
-        List<CollectTask> tasks = collectTaskMapper.selectActiveByDatasourceId(id);
-        return tasks.stream()
-                .map(task -> {
-                    DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
-                    dto.setTaskId(task.getId());
-                    dto.setTaskName(task.getName());
-                    dto.setStatus(task.getStatus());
-                    return dto;
-                })
-                .toList();
+        List<DataSourceReferenceDTO> references = new ArrayList<>();
+
+        List<CollectTask> collectTasks = collectTaskMapper.selectActiveByDatasourceId(id);
+        for (CollectTask task : collectTasks) {
+            DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
+            dto.setTaskId(task.getId());
+            dto.setTaskName(task.getName());
+            dto.setStatus(task.getStatus());
+            dto.setType("COLLECT");
+            references.add(dto);
+        }
+
+        List<SyncJob> syncJobs = syncJobMapper.selectBySourceDatasourceId(id);
+        for (SyncJob job : syncJobs) {
+            DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
+            dto.setTaskId(job.getId());
+            dto.setTaskName(job.getName());
+            dto.setStatus(job.getStatus());
+            dto.setType("SYNC");
+            dto.setSourceDatabase(job.getSourceDatabase());
+            dto.setSourceSchema(job.getSourceSchema());
+            dto.setTargetDatabase(job.getTargetDatabase());
+            dto.setTargetTable(job.getTargetTable());
+            dto.setSyncMode(job.getSyncMode());
+            dto.setTriggerType(job.getTriggerType());
+            references.add(dto);
+        }
+
+        return references;
     }
 
     public void refreshAllStatuses() {
@@ -250,6 +357,7 @@ public class DataSourceService {
         dto.setStatus(entity.getStatus());
         dto.setLastTestTime(entity.getLastTestTime());
         dto.setErrorMessage(entity.getErrorMessage());
+        dto.setAutoCollectOnSave(entity.getAutoCollectOnSave());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         return dto;
@@ -263,7 +371,12 @@ public class DataSourceService {
         try {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
-            return null;
+            return 0L;
         }
+    }
+
+    private long currentUserIdOrZero() {
+        Long userId = currentUserId();
+        return userId == null ? 0L : userId;
     }
 }

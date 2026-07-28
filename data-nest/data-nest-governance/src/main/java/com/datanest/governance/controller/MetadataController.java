@@ -5,9 +5,11 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.MetadataCommentRequest;
 import com.datanest.governance.dto.MetadataDatasourceDTO;
+import com.datanest.governance.dto.MetadataPreviewResult;
 import com.datanest.governance.dto.MetadataRemarkRequest;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
+import com.datanest.governance.service.MetadataPreviewService;
 import com.datanest.governance.service.MetadataService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -20,9 +22,11 @@ import java.util.List;
 public class MetadataController {
 
     private final MetadataService metadataService;
+    private final MetadataPreviewService metadataPreviewService;
 
-    public MetadataController(MetadataService metadataService) {
+    public MetadataController(MetadataService metadataService, MetadataPreviewService metadataPreviewService) {
         this.metadataService = metadataService;
+        this.metadataPreviewService = metadataPreviewService;
     }
 
     @GetMapping("/datasources")
@@ -82,5 +86,11 @@ public class MetadataController {
     public Result<Void> updateColumnRemark(@PathVariable Long columnId, @Valid @RequestBody MetadataRemarkRequest request) {
         metadataService.updateColumnRemark(columnId, request.getRemark());
         return Result.ok(null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+    @GetMapping("/tables/{tableId}/preview")
+    public Result<MetadataPreviewResult> previewTable(@PathVariable Long tableId) {
+        return Result.ok(metadataPreviewService.preview(tableId));
     }
 }

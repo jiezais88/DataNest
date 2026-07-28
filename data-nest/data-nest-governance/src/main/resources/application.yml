@@ -26,6 +26,4 @@ spring:
 datanest:
   governance:
     xxl-job:
-      username: ${XXL_JOB_USERNAME:admin}
-      password: ${XXL_JOB_PASSWORD:123456}
       job-group-id: ${XXL_JOB_GROUP_ID:1}

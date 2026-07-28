@@ -17,6 +17,8 @@ public class DataSourceDTO {
     private String status;
     private LocalDateTime lastTestTime;
     private String errorMessage;
+    private Integer autoCollectOnSave;
+    private String message;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -122,6 +124,22 @@ public class DataSourceDTO {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public Integer getAutoCollectOnSave() {
+        return autoCollectOnSave;
+    }
+
+    public void setAutoCollectOnSave(Integer autoCollectOnSave) {
+        this.autoCollectOnSave = autoCollectOnSave;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
     }
 
     public LocalDateTime getCreatedAt() {

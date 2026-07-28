@@ -40,6 +40,7 @@ export interface MetadataDatasource {
     id: string;
     name?: string;
     type?: string;
+    sourceType?: string;
     exists: boolean;
 }
 
@@ -48,6 +49,8 @@ export interface MetadataTreeNode {
     type: 'datasource' | 'database' | 'schema' | 'table';
     name: string;
     exists?: boolean;
+    sourceType?: string;
+    datasourceId?: string;
     children?: MetadataTreeNode[];
     count?: number;
     databaseName?: string;

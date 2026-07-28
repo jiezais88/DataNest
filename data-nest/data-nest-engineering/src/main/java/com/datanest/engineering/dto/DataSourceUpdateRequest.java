@@ -37,6 +37,8 @@ public class DataSourceUpdateRequest {
     @Size(max = 500, message = "描述最多 500 个字符")
     private String description;
 
+    private Integer autoCollectOnSave;
+
     public String getType() {
         return type;
     }
@@ -107,5 +109,13 @@ public class DataSourceUpdateRequest {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public Integer getAutoCollectOnSave() {
+        return autoCollectOnSave;
+    }
+
+    public void setAutoCollectOnSave(Integer autoCollectOnSave) {
+        this.autoCollectOnSave = autoCollectOnSave;
     }
 }
