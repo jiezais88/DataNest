@@ -14,8 +14,8 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
     private static final String TABLE_SQL =
             "SELECT t.table_schema, t.table_name, obj_description(c.oid, 'pg_class') AS table_comment " +
                     "FROM information_schema.tables t " +
-                    "JOIN pg_class c ON c.relname = t.table_name " +
-                    "JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema " +
+                    "JOIN pg_namespace n ON n.nspname = t.table_schema " +
+                    "JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = t.table_name " +
                     "WHERE t.table_schema = ? AND t.table_type IN ('BASE TABLE', 'VIEW') " +
                     "ORDER BY t.table_name";
 
@@ -23,8 +23,8 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
             "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, c.ordinal_position, " +
                     "       col_description(pgc.oid, a.attnum) AS column_comment " +
                     "FROM information_schema.columns c " +
-                    "JOIN pg_class pgc ON pgc.relname = c.table_name " +
-                    "JOIN pg_namespace pgn ON pgn.oid = pgc.relnamespace AND pgn.nspname = c.table_schema " +
+                    "JOIN pg_namespace pgn ON pgn.nspname = c.table_schema " +
+                    "JOIN pg_class pgc ON pgc.relnamespace = pgn.oid AND pgc.relname = c.table_name " +
                     "JOIN pg_attribute a ON a.attrelid = pgc.oid AND a.attname = c.column_name " +
                     "WHERE c.table_schema = ? AND c.table_name = ? " +
                     "ORDER BY c.ordinal_position, c.column_name";
@@ -53,6 +53,9 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
 
     @Override
     public List<TableMetadata> extractTables(DataSourceConnection ds, String schema) throws SQLException {
+        if (schema == null || schema.isBlank()) {
+            throw new IllegalArgumentException("PostgreSQL 采集必须指定 Schema，不能为 null 或空");
+        }
         List<TableMetadata> tables = new ArrayList<>();
         try (Connection conn = openConnection(ds);
              PreparedStatement ps = conn.prepareStatement(TABLE_SQL)) {
@@ -95,7 +98,7 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
 
     private Connection openConnection(DataSourceConnection ds) throws SQLException {
         String url = "jdbc:postgresql://" + ds.getHost() + ":" + ds.getPort() + "/" + ds.getDatabaseName()
-                + "?useSSL=false&applicationName=data-nest-governance";
+                + "?applicationName=data-nest-governance";
         return DriverManager.getConnection(url, ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()));
     }
 }

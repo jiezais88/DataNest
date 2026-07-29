@@ -23,7 +23,7 @@ public enum ErrorCode {
     DATASOURCE_NAME_EXISTS(3002, "数据源名称已存在"),
     DATASOURCE_CONNECTION_FAILED(3003, "数据源连接失败"),
     DATASOURCE_UNSUPPORTED_TYPE(3004, "不支持的数据源类型"),
-    HAS_REFERENCES(3005, "数据源被采集任务引用"),
+    HAS_REFERENCES(3005, "数据源已被其他任务引用"),
 
     // Governance errors (4xxx)
     TASK_NOT_FOUND(4001, "采集任务不存在"),

@@ -156,9 +156,11 @@ public class DataSourceService {
     }
 
     private List<String> resolveCollectScope(DataSourceConnection entity) {
-        String scope = "POSTGRESQL".equalsIgnoreCase(entity.getType()) && StringUtils.hasText(entity.getSchemaName())
-                ? entity.getSchemaName()
-                : entity.getDatabaseName();
+        if ("POSTGRESQL".equalsIgnoreCase(entity.getType())) {
+            String schema = StringUtils.hasText(entity.getSchemaName()) ? entity.getSchemaName() : "public";
+            return Collections.singletonList(schema);
+        }
+        String scope = entity.getDatabaseName();
         return StringUtils.hasText(scope) ? Collections.singletonList(scope) : Collections.emptyList();
     }
 

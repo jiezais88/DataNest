@@ -1,18 +1,19 @@
 package com.datanest.engineering.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public class DataPreviewResult {
 
     private List<String> columns;
-    private List<List<Object>> rows;
+    private List<Map<String, Object>> rows;
     private int rowCount;
     private long totalRowCount;
 
     public DataPreviewResult() {
     }
 
-    public DataPreviewResult(List<String> columns, List<List<Object>> rows, int rowCount, long totalRowCount) {
+    public DataPreviewResult(List<String> columns, List<Map<String, Object>> rows, int rowCount, long totalRowCount) {
         this.columns = columns;
         this.rows = rows;
         this.rowCount = rowCount;
@@ -27,11 +28,11 @@ public class DataPreviewResult {
         this.columns = columns;
     }
 
-    public List<List<Object>> getRows() {
+    public List<Map<String, Object>> getRows() {
         return rows;
     }
 
-    public void setRows(List<List<Object>> rows) {
+    public void setRows(List<Map<String, Object>> rows) {
         this.rows = rows;
     }
 

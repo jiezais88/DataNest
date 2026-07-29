@@ -291,13 +291,13 @@ export default function CollectHistoryPage() {
                     <table className="w-full">
                         <thead className="sticky top-0 z-10">
                         <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">执行时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">执行方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">耗时</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">扫描的库/表/字段</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">是否有变化</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">操作</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">执行时间</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">执行方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">耗时</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">扫描的库/表/字段</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">是否有变化</th>
+                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -389,10 +389,10 @@ export default function CollectHistoryPage() {
                                 <table className="w-full text-ds-small border border-ds-border-subtle rounded-ds-sm">
                                     <thead>
                                     <tr className="bg-ds-bg-hover">
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-muted font-medium">库/Schema</th>
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-muted font-medium">表数</th>
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-muted font-medium">字段数</th>
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-muted font-medium">状态</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">库/Schema</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">表数</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">字段数</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">状态</th>
                                     </tr>
                                     </thead>
                                     <tbody>

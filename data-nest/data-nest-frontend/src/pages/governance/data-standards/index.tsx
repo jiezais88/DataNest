@@ -19,10 +19,10 @@ import SearchInput from '../../../components/SearchInput';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import {
     HiOutlineBookOpen,
-    HiOutlineCheck,
     HiOutlineDocumentText,
     HiOutlinePencilSquare,
     HiOutlinePlus,
+    HiOutlineShieldCheck,
     HiOutlineTrash,
     HiOutlineXMark,
 } from 'react-icons/hi2';
@@ -134,6 +134,20 @@ export default function DataStandardsPage() {
             setFieldTypeLoading(false);
         }
     }, [fieldTypePage, fieldTypePageSize, fieldTypeKeyword]);
+
+    const resetNamingFilters = () => {
+        setNamingKeyword('');
+        setNamingAppliesTo('');
+        setNamingEnabled(undefined);
+        setNamingPage(1);
+        loadNamingStandards();
+    };
+
+    const resetFieldTypeFilters = () => {
+        setFieldTypeKeyword('');
+        setFieldTypePage(1);
+        loadFieldTypeStandards();
+    };
 
     useEffect(() => {
         if (activeTab === 'naming') loadNamingStandards();
@@ -279,23 +293,23 @@ export default function DataStandardsPage() {
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">定义命名规范与字段类型标准，对元数据进行合规检查</p>
                 </div>
                 <div className="flex items-center gap-ds-2">
-                    {activeTab === 'naming' && canWrite && (
-                        <button
-                            onClick={openComplianceModal}
-                            className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent text-ds-accent text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
-                        >
-                            <HiOutlineCheck size={16}/>
-                            合规检查
-                        </button>
-                    )}
                     {canWrite && (
-                        <button
-                            onClick={activeTab === 'naming' ? openNamingCreate : openFieldTypeCreate}
-                            className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
-                        >
-                            <HiOutlinePlus size={16}/>
-                            {activeTab === 'naming' ? '新建命名规范' : '新建字段类型标准'}
-                        </button>
+                        <>
+                            <button
+                                onClick={activeTab === 'naming' ? openNamingCreate : openFieldTypeCreate}
+                                className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
+                            >
+                                <HiOutlinePlus size={16}/>
+                                {activeTab === 'naming' ? '新建规范' : '新建类型标准'}
+                            </button>
+                            <button
+                                onClick={openComplianceModal}
+                                className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
+                            >
+                                <HiOutlineShieldCheck size={16}/>
+                                合规检查
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -352,29 +366,37 @@ export default function DataStandardsPage() {
                                 <option value="1">启用</option>
                                 <option value="0">停用</option>
                             </select>
-                            <button
-                                onClick={() => {
-                                    setNamingPage(1);
-                                    loadNamingStandards();
-                                }}
-                                disabled={namingLoading}
-                                className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                            >
-                                {namingLoading ? '查询中...' : '查询'}
-                            </button>
+                            <div className="ml-auto flex items-center gap-ds-2">
+                                <button
+                                    onClick={() => {
+                                        setNamingPage(1);
+                                        loadNamingStandards();
+                                    }}
+                                    disabled={namingLoading}
+                                    className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                >
+                                    {namingLoading ? '查询中...' : '查询'}
+                                </button>
+                                <button
+                                    onClick={resetNamingFilters}
+                                    className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                >
+                                    重置
+                                </button>
+                            </div>
                         </div>
 
                         <table className="w-full">
                             <thead className="sticky top-0 z-10">
                             <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">规范名称</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">适用对象</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">匹配方式</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">规范值</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">关联字段类型标准</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">优先级</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">状态</th>
-                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">操作</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">规范名称</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">适用对象</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">匹配方式</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">规范值</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">关联字段类型标准</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">优先级</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
+                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -473,26 +495,34 @@ export default function DataStandardsPage() {
                                 onChange={(e) => setFieldTypeKeyword(e.target.value)}
                                 placeholder="搜索标准名称..."
                             />
-                            <button
-                                onClick={() => {
-                                    setFieldTypePage(1);
-                                    loadFieldTypeStandards();
-                                }}
-                                disabled={fieldTypeLoading}
-                                className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                            >
-                                {fieldTypeLoading ? '查询中...' : '查询'}
-                            </button>
+                            <div className="ml-auto flex items-center gap-ds-2">
+                                <button
+                                    onClick={() => {
+                                        setFieldTypePage(1);
+                                        loadFieldTypeStandards();
+                                    }}
+                                    disabled={fieldTypeLoading}
+                                    className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                >
+                                    {fieldTypeLoading ? '查询中...' : '查询'}
+                                </button>
+                                <button
+                                    onClick={resetFieldTypeFilters}
+                                    className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                >
+                                    重置
+                                </button>
+                            </div>
                         </div>
 
                         <table className="w-full">
                             <thead className="sticky top-0 z-10">
                             <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">标准名称</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">分类</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">允许类型</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">描述</th>
-                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">操作</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">标准名称</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">分类</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">允许类型</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">描述</th>
+                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
                             </tr>
                             </thead>
                             <tbody>

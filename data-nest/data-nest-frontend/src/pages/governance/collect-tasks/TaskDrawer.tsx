@@ -43,6 +43,8 @@ interface TaskDrawerProps {
     onSubmit: (payload: CollectTaskCreateRequest) => Promise<{ code: number; message?: string } | undefined>;
 }
 
+const DB_TYPES_WITHOUT_SCHEMA = new Set(['MYSQL', 'DORIS']);
+
 export default function TaskDrawer({open, editItem, dataSources, onClose, onSubmit}: TaskDrawerProps) {
     const [form, setForm] = useState<TaskFormData>(EMPTY_FORM);
     const [errors, setErrors] = useState<Partial<Record<keyof TaskFormData, string>>>({});
@@ -215,13 +217,24 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                 </div>
 
                 <div>
-                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">库 /
-                        Schema</label>
+                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                        {(() => {
+                            const ds = dataSources.find((d) => String(d.id) === form.datasourceId);
+                            if (!ds) return '库 / Schema';
+                            return DB_TYPES_WITHOUT_SCHEMA.has(ds.type) ? '数据库' : 'Schema';
+                        })()}
+                    </label>
                     <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 min-h-[120px] bg-ds-bg-hover">
                         {schemasLoading ? (
                             <p className="text-ds-small text-ds-text-muted">加载中...</p>
                         ) : schemas.length === 0 ? (
-                            <p className="text-ds-small text-ds-text-muted">请先选择数据源</p>
+                            <p className="text-ds-small text-ds-text-muted">
+                                {(() => {
+                                    const ds = dataSources.find((d) => String(d.id) === form.datasourceId);
+                                    if (!ds) return '请先选择数据源';
+                                    return DB_TYPES_WITHOUT_SCHEMA.has(ds.type) ? '暂无数据库' : '暂无 Schema';
+                                })()}
+                            </p>
                         ) : (
                             <div className="flex flex-wrap gap-ds-2">
                                 {schemas.map((schema) => {

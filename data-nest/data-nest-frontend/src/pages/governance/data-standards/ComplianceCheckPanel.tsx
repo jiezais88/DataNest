@@ -57,11 +57,12 @@ function ResultTable({items, columns, onView}: {
                 <thead className="bg-ds-bg-hover/80 sticky top-0">
                 <tr className="border-b border-ds-border-subtle">
                     {columns.map((c) => (
-                        <th key={c.key} className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-muted font-semibold">
+                        <th key={c.key}
+                            className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-secondary font-semibold">
                             {c.label}
                         </th>
                     ))}
-                    <th className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-muted font-semibold text-right">操作</th>
+                    <th className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-secondary font-semibold text-right">操作</th>
                 </tr>
                 </thead>
                 <tbody>

@@ -102,6 +102,11 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
             const next = {...prev, [field]: value};
             if (field === 'type' && value && !isEdit) {
                 next.port = DEFAULT_PORTS[value as DataSourceType];
+                if (value === 'POSTGRESQL') {
+                    next.schemaName = prev.schemaName || 'public';
+                } else {
+                    next.schemaName = '';
+                }
             }
             return next;
         });
@@ -284,7 +289,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                             {errors.host && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.host}</p>}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-ds-4">
+                        <div className={`grid gap-ds-4 ${form.type === 'POSTGRESQL' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                             <div>
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     数据库名 <span className="text-ds-danger">*</span>
@@ -299,20 +304,23 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                 {errors.databaseName &&
                                     <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.databaseName}</p>}
                             </div>
-                            <div>
-                                <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                                    Schema {form.type === 'POSTGRESQL' && <span className="text-ds-danger">*</span>}
-                                </label>
-                                <input
-                                    data-testid="datasource-schema-input"
-                                    value={form.schemaName}
-                                    onChange={(e) => updateField('schemaName', e.target.value)}
-                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                                    placeholder="例如：public"
-                                />
-                                {errors.schemaName &&
-                                    <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.schemaName}</p>}
-                            </div>
+                            {form.type === 'POSTGRESQL' && (
+                                <div>
+                                    <label
+                                        className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                        Schema <span className="text-ds-danger">*</span>
+                                    </label>
+                                    <input
+                                        data-testid="datasource-schema-input"
+                                        value={form.schemaName}
+                                        onChange={(e) => updateField('schemaName', e.target.value)}
+                                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                        placeholder="例如：public"
+                                    />
+                                    {errors.schemaName &&
+                                        <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.schemaName}</p>}
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-ds-4">

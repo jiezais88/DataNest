@@ -19,8 +19,13 @@ instance.interceptors.response.use(
         const data = res.data;
         if (data && typeof data === 'object' && 'code' in data && data.code !== 200) {
             const msg = data.message || '请求失败';
-            message.error(msg);
-            return Promise.reject(new Error(msg));
+            // 3005 数据源存在引用时，由调用方弹窗展示详细引用列表，不显示通用错误提示
+            if (data.code !== 3005) {
+                message.error(msg);
+            }
+            const error = new Error(msg) as any;
+            error.response = {data};
+            return Promise.reject(error);
         }
         return data;
     },

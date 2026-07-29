@@ -194,6 +194,7 @@ export default function DataSourcesPage() {
             const errorData = err?.response?.data;
             if (errorData?.code === 3005 && Array.isArray(errorData?.data)) {
                 setDeleteReferences(errorData.data);
+                setDeleteOpen(false);
                 setDeleteBlockedOpen(true);
             }
         } finally {
@@ -349,12 +350,13 @@ export default function DataSourcesPage() {
                     <table className="w-full">
                         <thead className="sticky top-0 z-10">
                         <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">数据源名称</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">类型</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">主机地址</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">最近连接时间</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-muted uppercase tracking-wider">操作</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">数据源名称</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">类型</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">主机地址</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">描述</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">最近连接时间</th>
+                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -375,6 +377,10 @@ export default function DataSourcesPage() {
                                     </td>
                                     <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
                                         {item.host}:{item.port}/{item.databaseName}
+                                    </td>
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary truncate max-w-[200px]"
+                                        title={item.description || ''}>
+                                        {item.description || '-'}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         <span
@@ -448,7 +454,7 @@ export default function DataSourcesPage() {
                         })}
                         {items.length === 0 && !loading && (
                             <tr>
-                                <td colSpan={6}
+                                <td colSpan={7}
                                     className="px-ds-4 py-ds-16 text-center text-ds-text-muted text-ds-body">
                                     暂无数据源
                                 </td>

@@ -1,18 +1,19 @@
 package com.datanest.governance.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public class MetadataPreviewResult {
 
     private List<String> columns;
-    private List<List<Object>> rows;
+    private List<Map<String, Object>> rows;
     private int rowCount;
     private long totalRowCount;
 
     public MetadataPreviewResult() {
     }
 
-    public MetadataPreviewResult(List<String> columns, List<List<Object>> rows, int rowCount, long totalRowCount) {
+    public MetadataPreviewResult(List<String> columns, List<Map<String, Object>> rows, int rowCount, long totalRowCount) {
         this.columns = columns;
         this.rows = rows;
         this.rowCount = rowCount;
@@ -27,11 +28,11 @@ public class MetadataPreviewResult {
         this.columns = columns;
     }
 
-    public List<List<Object>> getRows() {
+    public List<Map<String, Object>> getRows() {
         return rows;
     }
 
-    public void setRows(List<List<Object>> rows) {
+    public void setRows(List<Map<String, Object>> rows) {
         this.rows = rows;
     }
 

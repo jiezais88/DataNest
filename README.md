@@ -136,6 +136,55 @@ docker-compose up -d
 
 ---
 
+## 数据库连接信息
+
+所有数据库默认仅对宿主机暴露端口，可通过 `localhost` + 映射端口访问。
+
+### PostgreSQL 业务数据库
+
+| 项       | 值                                          |
+|----------|---------------------------------------------|
+| Host     | `localhost`                                 |
+| Port     | `5432`                                      |
+| Database | `datanest`                                  |
+| Username | `datanest`                                  |
+| Password | `datanest123`                               |
+| JDBC URL | `jdbc:postgresql://localhost:5432/datanest` |
+
+### Nacos + XXL-JOB MySQL
+
+| 项       | 值                             |
+|----------|--------------------------------|
+| Host     | `localhost`                    |
+| Port     | `3306`                         |
+| Database | `nacos` / `datanest_scheduler` |
+| Username | `nacos`                        |
+| Password | `nacos123`                     |
+
+### Test MySQL（数据源测试目标库）
+
+| 项       | 值                                   |
+|----------|--------------------------------------|
+| Host     | `localhost`                          |
+| Port     | `3307`                               |
+| Database | `testdb`                             |
+| Username | `testuser`                           |
+| Password | `testpass123`                        |
+| JDBC URL | `jdbc:mysql://localhost:3307/testdb` |
+
+### Test PostgreSQL（数据源测试目标库）
+
+| 项       | 值                                          |
+|----------|---------------------------------------------|
+| Host     | `localhost`                                 |
+| Port     | `5433`                                      |
+| Database | `postgres`                                  |
+| Username | `postgres`                                  |
+| Password | `postgres123`                               |
+| JDBC URL | `jdbc:postgresql://localhost:5433/postgres` |
+
+---
+
 ## 角色与权限
 
 | 能力            | 超级管理员 | 数据工程师 | 治理管理员 | 数据分析师 |

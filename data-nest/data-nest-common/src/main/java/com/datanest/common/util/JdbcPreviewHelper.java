@@ -5,7 +5,9 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 跨服务复用的 JDBC 数据预览工具。
@@ -58,12 +60,12 @@ public final class JdbcPreviewHelper {
                     columns.add(metaData.getColumnLabel(i));
                 }
 
-                List<List<Object>> rows = new ArrayList<>();
+                List<Map<String, Object>> rows = new ArrayList<>();
                 int rowCount = 0;
                 while (rs.next() && rowCount < limit) {
-                    List<Object> row = new ArrayList<>(columnCount);
+                    Map<String, Object> row = new LinkedHashMap<>(columnCount);
                     for (int i = 1; i <= columnCount; i++) {
-                        row.add(rs.getObject(i));
+                        row.put(columns.get(i - 1), rs.getObject(i));
                     }
                     rows.add(row);
                     rowCount++;
@@ -152,6 +154,7 @@ public final class JdbcPreviewHelper {
         return "查询失败: " + message;
     }
 
-    public record PreviewResult(List<String> columns, List<List<Object>> rows, int rowCount, long totalRowCount) {
+    public record PreviewResult(List<String> columns, List<Map<String, Object>> rows, int rowCount,
+                                long totalRowCount) {
     }
 }

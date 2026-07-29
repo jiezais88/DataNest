@@ -44,7 +44,7 @@ public class MysqlMetadataExtractor implements MetadataExtractor {
                 while (rs.next()) {
                     TableMetadata table = new TableMetadata();
                     table.setDatabaseName(schema);
-                    table.setSchemaName(schema);
+                    table.setSchemaName(null);
                     table.setTableName(rs.getString("TABLE_NAME"));
                     table.setTableComment(rs.getString("REMARKS"));
                     table.setColumns(extractColumns(metaData, schema, table.getTableName()));
