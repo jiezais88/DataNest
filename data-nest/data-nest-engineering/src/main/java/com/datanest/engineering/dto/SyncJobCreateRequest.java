@@ -1,5 +1,6 @@
 package com.datanest.engineering.dto;
 
+import com.datanest.task.core.dto.FieldMappingItem;
 import jakarta.validation.constraints.*;
 
 import java.util.List;

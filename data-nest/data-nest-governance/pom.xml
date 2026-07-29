@@ -27,6 +27,13 @@
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
+        <!-- DataNest Task Core -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-task-core</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
         <!-- Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

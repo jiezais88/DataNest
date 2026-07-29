@@ -2,10 +2,10 @@ package com.datanest.engineering.service;
 
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
-import com.datanest.engineering.entity.SyncJob;
-import com.datanest.engineering.entity.SyncJobHistory;
-import com.datanest.engineering.mapper.SyncJobHistoryMapper;
-import com.datanest.engineering.mapper.SyncJobMapper;
+import com.datanest.task.core.entity.SyncJob;
+import com.datanest.task.core.entity.SyncJobHistory;
+import com.datanest.task.core.mapper.SyncJobHistoryMapper;
+import com.datanest.task.core.mapper.SyncJobMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

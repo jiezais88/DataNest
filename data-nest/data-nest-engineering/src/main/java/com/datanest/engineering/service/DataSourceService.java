@@ -10,11 +10,18 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.scheduler.SchedulerClient;
-import com.datanest.engineering.dto.*;
-import com.datanest.engineering.entity.CollectTask;
-import com.datanest.engineering.entity.DataSourceConnection;
-import com.datanest.engineering.entity.SyncJob;
-import com.datanest.engineering.mapper.*;
+import com.datanest.engineering.dto.DataSourceCreateRequest;
+import com.datanest.engineering.dto.DataSourceDTO;
+import com.datanest.engineering.dto.DataSourceQueryRequest;
+import com.datanest.engineering.dto.DataSourceUpdateRequest;
+import com.datanest.task.core.dto.TestConnectionRequest;
+import com.datanest.task.core.dto.TestConnectionResult;
+import com.datanest.task.core.entity.CollectTask;
+import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.entity.SyncJob;
+import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.ConnectionTester;
+import com.datanest.task.core.service.DataSourceRefreshService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,15 +44,16 @@ public class DataSourceService {
     private static final String MASKED_PASSWORD = "********";
     private static final String STATUS_NORMAL = "NORMAL";
     private static final String STATUS_ERROR = "ERROR";
+    private static final String STATUS_NEVER_EXECUTED = "NEVER_EXECUTED";
     private static final String TRIGGER_TYPE_MANUAL = "MANUAL";
     private static final String COLLECT_MODE_FULL = "FULL";
     private static final String COLLECT_TASK_HANDLER = "collectTaskHandler";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
-    @Value("${datanest.engineering.auto-collect.xxl-appname:data-nest-governance}")
-    private String governanceExecutorAppName;
+    @Value("${datanest.engineering.auto-collect.worker-appname:data-nest-worker}")
+    private String workerExecutorAppName;
 
-    private final DataSourceMapper dataSourceMapper;
+    private final DataSourceConnectionMapper dataSourceMapper;
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
     private final CollectTaskMapper collectTaskMapper;
@@ -53,12 +61,13 @@ public class DataSourceService {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final SchedulerClient schedulerClient;
+    private final DataSourceRefreshService dataSourceRefreshService;
 
-    public DataSourceService(DataSourceMapper dataSourceMapper, EncryptionConfig encryptionConfig,
+    public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
                              SyncJobMapper syncJobMapper,
                              MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                             SchedulerClient schedulerClient) {
+                             SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
@@ -67,6 +76,7 @@ public class DataSourceService {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.schedulerClient = schedulerClient;
+        this.dataSourceRefreshService = dataSourceRefreshService;
     }
 
     @Transactional
@@ -131,7 +141,7 @@ public class DataSourceService {
             task.setScope(scope);
             task.setCollectMode(COLLECT_MODE_FULL);
             task.setTriggerType(TRIGGER_TYPE_MANUAL);
-            task.setStatus(STATUS_NORMAL);
+            task.setStatus(STATUS_NEVER_EXECUTED);
             task.setDescription("数据源保存时自动创建的元数据采集任务");
             task.setScheduleEnabled(0);
             task.setCreatedBy(currentUserIdOrZero());
@@ -140,7 +150,7 @@ public class DataSourceService {
             task.setUpdatedAt(now);
             collectTaskMapper.insert(task);
 
-            Integer xxlJobId = schedulerClient.registerJob(governanceExecutorAppName, COLLECT_TASK_HANDLER,
+            Integer xxlJobId = schedulerClient.registerJob(workerExecutorAppName, COLLECT_TASK_HANDLER,
                     task.getId(), taskName, "", TRIGGER_TYPE_MANUAL, false, 0, 0);
             task.setXxlJobId(xxlJobId);
             collectTaskMapper.updateById(task);
@@ -336,22 +346,7 @@ public class DataSourceService {
     }
 
     public void refreshAllStatuses() {
-        List<DataSourceConnection> list = dataSourceMapper.selectList(new QueryWrapper<DataSourceConnection>()
-                .in("status", STATUS_NORMAL, STATUS_ERROR));
-
-        for (DataSourceConnection entity : list) {
-            try {
-                TestConnectionResult result = testAndUpdateStatus(entity.getId());
-                logger.info("Refreshed data source status: id={}, name={}, success={}",
-                        entity.getId(), entity.getName(), result.isSuccess());
-            } catch (Exception e) {
-                logger.error("Failed to refresh data source status: id={}, name={}", entity.getId(), entity.getName(), e);
-                entity.setStatus(STATUS_ERROR);
-                entity.setErrorMessage("定时刷新异常: " + e.getMessage());
-                entity.setLastTestTime(LocalDateTime.now());
-                dataSourceMapper.updateById(entity);
-            }
-        }
+        dataSourceRefreshService.refreshAllStatuses();
     }
 
     private void updateStatus(DataSourceConnection entity, TestConnectionResult result) {

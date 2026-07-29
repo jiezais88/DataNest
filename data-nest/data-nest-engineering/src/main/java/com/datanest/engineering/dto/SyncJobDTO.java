@@ -1,5 +1,7 @@
 package com.datanest.engineering.dto;
 
+import com.datanest.task.core.dto.FieldMappingItem;
+
 import java.time.LocalDateTime;
 import java.util.List;
 

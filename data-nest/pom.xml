@@ -13,10 +13,13 @@
 
     <modules>
         <module>data-nest-common</module>
+        <module>data-nest-task-core</module>
         <module>data-nest-gateway</module>
         <module>data-nest-system</module>
         <module>data-nest-engineering</module>
         <module>data-nest-governance</module>
+        <module>data-nest-worker</module>
+        <module>data-nest-job</module>
     </modules>
 
     <properties>
@@ -111,6 +114,13 @@
             <dependency>
                 <groupId>com.datanest</groupId>
                 <artifactId>data-nest-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Task Core -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-task-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

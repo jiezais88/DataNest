@@ -8,14 +8,14 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.engineering.dto.*;
-import com.datanest.engineering.entity.DataSourceConnection;
-import com.datanest.engineering.entity.SyncJob;
-import com.datanest.engineering.entity.SyncJobHistory;
-import com.datanest.engineering.entity.SyncJobLog;
-import com.datanest.engineering.mapper.DataSourceMapper;
-import com.datanest.engineering.mapper.SyncJobHistoryMapper;
-import com.datanest.engineering.mapper.SyncJobLogMapper;
-import com.datanest.engineering.mapper.SyncJobMapper;
+import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.entity.SyncJob;
+import com.datanest.task.core.entity.SyncJobHistory;
+import com.datanest.task.core.entity.SyncJobLog;
+import com.datanest.task.core.mapper.DataSourceConnectionMapper;
+import com.datanest.task.core.mapper.SyncJobHistoryMapper;
+import com.datanest.task.core.mapper.SyncJobLogMapper;
+import com.datanest.task.core.mapper.SyncJobMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -36,30 +36,23 @@ public class SyncJobService {
     private static final String STATUS_PAUSED = "PAUSED";
     private static final String EXECUTION_STATUS_PENDING = "PENDING";
     private static final String EXECUTION_STATUS_RUNNING = "RUNNING";
-    private static final String EXECUTION_STATUS_SUCCESS = "SUCCESS";
-    private static final String EXECUTION_STATUS_FAILED = "FAILED";
     private static final String TRIGGER_CRON = "CRON";
     private static final String TRIGGER_MANUAL = "MANUAL";
 
     private final SyncJobMapper syncJobMapper;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
     private final SyncJobLogMapper syncJobLogMapper;
-    private final DataSourceMapper dataSourceMapper;
-    private final AddaxJobService addaxJobService;
-    private final MetadataRegistrationService metadataRegistrationService;
+    private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final SchedulerServiceForEngineering schedulerService;
     private final RetryService retryService;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
-                          SyncJobLogMapper syncJobLogMapper, DataSourceMapper dataSourceMapper,
-                          AddaxJobService addaxJobService, MetadataRegistrationService metadataRegistrationService,
+                          SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                           SchedulerServiceForEngineering schedulerService, RetryService retryService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
-        this.dataSourceMapper = dataSourceMapper;
-        this.addaxJobService = addaxJobService;
-        this.metadataRegistrationService = metadataRegistrationService;
+        this.dataSourceConnectionMapper = dataSourceConnectionMapper;
         this.schedulerService = schedulerService;
         this.retryService = retryService;
     }
@@ -284,156 +277,6 @@ public class SyncJobService {
         return logs.stream().map(this::toLogDTO).toList();
     }
 
-    public void runSyncJob(Long syncJobId, String triggerType, Long historyId) {
-        SyncJob job = syncJobMapper.selectById(syncJobId);
-        if (job == null) {
-            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
-        }
-        SyncJobHistory history = syncJobHistoryMapper.selectById(historyId);
-        if (history == null) {
-            history = initHistory(syncJobId, triggerType);
-            historyId = history.getId();
-        }
-
-        updateExecutionStatus(job, EXECUTION_STATUS_RUNNING);
-        logInfo(history, "开始 Addax 同步执行, syncJobId=" + syncJobId + ", triggerType=" + triggerType);
-
-        AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId);
-        writeLogLines(history, result.logLines());
-
-        if (result.success()) {
-            finishHistory(history, result, "SUCCESS");
-            updateExecutionStatus(job, EXECUTION_STATUS_SUCCESS);
-            updateJobLastExecute(job, history.getId());
-            metadataRegistrationService.register(syncJobId);
-            logInfo(history, "同步成功，已注册 Doris 元数据");
-            return;
-        }
-
-        logError(history, "Addax 执行失败: " + result.errorMessage());
-        int retryTimes = job.getRetryTimes() == null ? 0 : job.getRetryTimes();
-        int retryInterval = job.getRetryInterval() == null ? 0 : job.getRetryInterval();
-        int currentRetryCount = history.getRetryCount() == null ? 0 : history.getRetryCount();
-
-        if (retryInterval > 0 && currentRetryCount < retryTimes) {
-            logInfo(history, "准备 " + retryInterval + " 分钟后第 " + (currentRetryCount + 1) + " 次重试");
-            finishHistory(history, result, "FAILED");
-            updateExecutionStatus(job, EXECUTION_STATUS_FAILED);
-            updateJobLastExecute(job, history.getId());
-            retryService.scheduleRetry(syncJobId, historyId, retryInterval);
-            return;
-        }
-
-        finishHistory(history, result, "FAILED");
-        String finalError = "同步任务最终失败" + (currentRetryCount > 0 ? "，已重试 " + currentRetryCount + " 次" : "");
-        updateHistoryError(history, finalError);
-        updateExecutionStatus(job, EXECUTION_STATUS_FAILED);
-        updateJobLastExecute(job, history.getId());
-        logError(history, finalError);
-    }
-
-    private SyncJobHistory initHistory(Long syncJobId, String triggerType) {
-        SyncJobHistory history = new SyncJobHistory();
-        history.setSyncJobId(syncJobId);
-        history.setTriggerType(triggerType);
-        history.setStatus("RUNNING");
-        history.setStartTime(LocalDateTime.now());
-        history.setRetryCount(0);
-        history.setSourceRows(0L);
-        history.setTargetRows(0L);
-        history.setCreatedAt(LocalDateTime.now());
-        syncJobHistoryMapper.insert(history);
-        return history;
-    }
-
-    private void updateJobLastExecute(SyncJob job, Long historyId) {
-        job.setLastExecuteTime(LocalDateTime.now());
-        job.setLastHistoryId(historyId);
-        job.setUpdatedAt(LocalDateTime.now());
-        syncJobMapper.updateById(job);
-    }
-
-    private void finishHistory(SyncJobHistory history, AddaxJobService.AddaxExecutionResult result, String status) {
-        LocalDateTime now = LocalDateTime.now();
-        history.setStatus(status);
-        history.setEndTime(now);
-        if (history.getStartTime() != null) {
-            history.setDurationMs(java.time.Duration.between(history.getStartTime(), now).toMillis());
-        }
-        if (result != null) {
-            history.setSourceRows(result.readRows());
-            history.setTargetRows(result.writeRows());
-        }
-        syncJobHistoryMapper.updateById(history);
-    }
-
-    private void updateHistoryError(SyncJobHistory history, String errorMessage) {
-        history.setErrorMessage(errorMessage);
-        syncJobHistoryMapper.updateById(history);
-    }
-
-    private void writeLogLines(SyncJobHistory history, List<String> lines) {
-        if (lines == null || lines.isEmpty()) {
-            return;
-        }
-        int lineNum = nextLineNum(history.getId());
-        LocalDateTime now = LocalDateTime.now();
-        for (String line : lines) {
-            SyncJobLog log = new SyncJobLog();
-            log.setHistoryId(history.getId());
-            log.setSyncJobId(history.getSyncJobId());
-            log.setLevel(detectLevel(line));
-            log.setMessage(line);
-            log.setLineNum(lineNum++);
-            log.setCreatedAt(now);
-            syncJobLogMapper.insert(log);
-        }
-    }
-
-    private String detectLevel(String line) {
-        if (line == null) {
-            return "INFO";
-        }
-        String upper = line.toUpperCase();
-        if (upper.contains("ERROR") || upper.contains("EXCEPTION") || upper.contains("FAILED") || upper.contains("失败")) {
-            return "ERROR";
-        }
-        if (upper.contains("WARN")) {
-            return "WARN";
-        }
-        return "INFO";
-    }
-
-    private void logInfo(SyncJobHistory history, String message) {
-        insertLog(history, "INFO", message);
-    }
-
-    private void logError(SyncJobHistory history, String message) {
-        insertLog(history, "ERROR", message);
-    }
-
-    private void insertLog(SyncJobHistory history, String level, String message) {
-        SyncJobLog log = new SyncJobLog();
-        log.setHistoryId(history.getId());
-        log.setSyncJobId(history.getSyncJobId());
-        log.setLevel(level);
-        log.setMessage(message);
-        log.setLineNum(nextLineNum(history.getId()));
-        log.setCreatedAt(LocalDateTime.now());
-        syncJobLogMapper.insert(log);
-    }
-
-    private int nextLineNum(Long historyId) {
-        return (int) (syncJobLogMapper.selectCount(
-                new QueryWrapper<SyncJobLog>().eq("history_id", historyId)) + 1L);
-    }
-
-    private void updateExecutionStatus(SyncJob job, String executionStatus) {
-        job.setExecutionStatus(executionStatus);
-        job.setUpdatedAt(LocalDateTime.now());
-        syncJobMapper.updateById(job);
-    }
-
     private LocalDateTime computeNextExecutionTime(String triggerType, String cronExpression) {
         if (!TRIGGER_CRON.equalsIgnoreCase(triggerType) || !StringUtils.hasText(cronExpression)) {
             return null;
@@ -466,7 +309,7 @@ public class SyncJobService {
     }
 
     private void checkDataSource(Long sourceDatasourceId) {
-        DataSourceConnection source = dataSourceMapper.selectById(sourceDatasourceId);
+        DataSourceConnection source = dataSourceConnectionMapper.selectById(sourceDatasourceId);
         if (source == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: " + sourceDatasourceId);
         }

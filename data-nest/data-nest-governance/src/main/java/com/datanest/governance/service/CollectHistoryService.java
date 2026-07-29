@@ -10,12 +10,12 @@ import com.datanest.governance.dto.CollectChangeDetailDTO;
 import com.datanest.governance.dto.CollectExecutionLogDTO;
 import com.datanest.governance.dto.CollectHistoryDTO;
 import com.datanest.governance.dto.CollectHistoryQueryRequest;
-import com.datanest.governance.entity.CollectChangeDetail;
-import com.datanest.governance.entity.CollectExecutionLog;
-import com.datanest.governance.entity.CollectHistory;
-import com.datanest.governance.mapper.CollectChangeDetailMapper;
-import com.datanest.governance.mapper.CollectExecutionLogMapper;
-import com.datanest.governance.mapper.CollectHistoryMapper;
+import com.datanest.task.core.entity.CollectChangeDetail;
+import com.datanest.task.core.entity.CollectExecutionLog;
+import com.datanest.task.core.entity.CollectHistory;
+import com.datanest.task.core.mapper.CollectChangeDetailMapper;
+import com.datanest.task.core.mapper.CollectExecutionLogMapper;
+import com.datanest.task.core.mapper.CollectHistoryMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

@@ -25,16 +25,6 @@ spring:
         server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
         file-extension: yaml
 
-xxl:
-  job:
-    executor:
-      appname: data-nest-engineering-executor
-      port: 9998
-
 datanest:
   engineering:
-    addax:
-      container-name: addax
-      job-path: /opt/addax/job
-      log-path: /opt/addax/log
-      target-database: datanest
+    worker-appname: data-nest-worker

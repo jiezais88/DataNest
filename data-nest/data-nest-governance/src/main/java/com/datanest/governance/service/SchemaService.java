@@ -4,8 +4,8 @@ import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcSchemaExtractor;
-import com.datanest.governance.entity.DataSourceConnection;
-import com.datanest.governance.mapper.DataSourceConnectionMapper;
+import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;

@@ -92,12 +92,64 @@ public class SchedulerClient {
     }
 
     public void triggerJob(Integer xxlJobId, String executorParam) {
+        triggerJob(xxlJobId, executorParam, true);
+    }
+
+    public void triggerJob(Integer xxlJobId, String executorParam, boolean waitExecutorReady) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("id", String.valueOf(xxlJobId));
         params.add("executorParam", executorParam == null ? "" : executorParam);
         params.add("addressList", "");
+
+        if (waitExecutorReady) {
+            waitExecutorReady(xxlJobId);
+        }
+
         postWithAuth("/jobinfo/trigger", params, "触发调度任务失败");
         logger.info("Triggered XXL-JOB job: jobId={}, executorParam={}", xxlJobId, executorParam);
+    }
+
+    /**
+     * 等待指定任务的执行器地址就绪。XXL-JOB worker 启动后需要向 admin 注册地址，
+     * 首次创建任务并立即触发时可能地址尚未同步，导致 address route fail。
+     */
+    private void waitExecutorReady(Integer xxlJobId) {
+        JsonNode jobInfo = getJobInfo(xxlJobId);
+        if (jobInfo == null) {
+            return;
+        }
+        int jobGroup = jobInfo.path("data").path("jobGroup").asInt(-1);
+        if (jobGroup <= 0) {
+            return;
+        }
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline) {
+            JsonNode groupPage = getWithAuth("/jobgroup/pageList?offset=0&pagesize=10&id=" + jobGroup, "查询执行器分组失败");
+            List<JsonNode> groups = extractPageList(groupPage);
+            if (!groups.isEmpty()) {
+                String addressList = groups.get(0).path("addressList").asText("");
+                if (StringUtils.hasText(addressList)) {
+                    return;
+                }
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        logger.warn("等待 XXL-JOB 执行器地址就绪超时: jobId={}, jobGroup={}", xxlJobId, jobGroup);
+    }
+
+    private JsonNode getJobInfo(Integer xxlJobId) {
+        try {
+            return getWithAuth("/jobinfo/info?id=" + xxlJobId, "查询调度任务失败");
+        } catch (Exception e) {
+            logger.warn("查询 XXL-JOB 任务信息失败: jobId={}", xxlJobId, e);
+            return null;
+        }
     }
 
     public void startJob(Integer xxlJobId) {
@@ -146,8 +198,8 @@ public class SchedulerClient {
         return params;
     }
 
-    private int ensureJobGroup(String appName) {
-        JsonNode page = getWithAuth("/jobgroup/pageList?start=0&length=10&appname=" + appName, "查询执行器失败");
+    public int ensureJobGroup(String appName) {
+        JsonNode page = getWithAuth("/jobgroup/pageList?offset=0&pagesize=10&appname=" + appName, "查询执行器失败");
         List<JsonNode> groups = extractPageList(page);
         if (!groups.isEmpty()) {
             return groups.get(0).path("id").asInt();
@@ -160,7 +212,7 @@ public class SchedulerClient {
         params.add("addressType", "0");
         postWithAuth("/jobgroup/insert", params, "创建执行器失败");
 
-        JsonNode reloaded = getWithAuth("/jobgroup/pageList?start=0&length=10&appname=" + appName, "查询执行器失败");
+        JsonNode reloaded = getWithAuth("/jobgroup/pageList?offset=0&pagesize=10&appname=" + appName, "查询执行器失败");
         List<JsonNode> reloadedGroups = extractPageList(reloaded);
         if (reloadedGroups.isEmpty()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法获取 XXL-JOB 执行器分组");

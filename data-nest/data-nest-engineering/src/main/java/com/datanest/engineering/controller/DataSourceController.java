@@ -4,8 +4,13 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
-import com.datanest.engineering.dto.*;
+import com.datanest.engineering.dto.DataSourceCreateRequest;
+import com.datanest.engineering.dto.DataSourceDTO;
+import com.datanest.engineering.dto.DataSourceQueryRequest;
+import com.datanest.engineering.dto.DataSourceUpdateRequest;
 import com.datanest.engineering.service.DataSourceService;
+import com.datanest.task.core.dto.TestConnectionRequest;
+import com.datanest.task.core.dto.TestConnectionResult;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 

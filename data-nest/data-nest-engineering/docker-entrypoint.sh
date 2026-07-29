@@ -10,13 +10,6 @@ if [ -n "${NACOS_HOST}" ] && [ -n "${NACOS_PORT}" ]; then
     echo "Nacos is available."
 fi
 
-# 验证 Addax 可用
-if [ ! -d "${ADDAX_HOME}" ]; then
-    echo "ADDAX_HOME directory ${ADDAX_HOME} does not exist"
-    exit 1
-fi
-
-echo "ADDAX_HOME=${ADDAX_HOME}"
 echo "Starting DataNest Engineering Service..."
 
 exec java -jar /app/app.jar "$@"

@@ -16,7 +16,7 @@ public class SchedulerServiceForEngineering {
     private static final Logger logger = LoggerFactory.getLogger(SchedulerServiceForEngineering.class);
     private static final String HANDLER_NAME = "syncJobHandler";
 
-    @Value("${xxl.job.executor.appname}")
+    @Value("${datanest.engineering.worker-appname:data-nest-worker}")
     private String appName;
 
     private final SchedulerClient schedulerClient;

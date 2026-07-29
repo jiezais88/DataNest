@@ -6,8 +6,8 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcPreviewHelper;
 import com.datanest.common.util.JdbcSchemaExtractor;
 import com.datanest.engineering.dto.DataPreviewResult;
-import com.datanest.engineering.entity.DataSourceConnection;
-import com.datanest.engineering.mapper.DataSourceMapper;
+import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -17,10 +17,10 @@ import java.util.Map;
 @Service
 public class DataPreviewService {
 
-    private final DataSourceMapper dataSourceMapper;
+    private final DataSourceConnectionMapper dataSourceMapper;
     private final EncryptionConfig encryptionConfig;
 
-    public DataPreviewService(DataSourceMapper dataSourceMapper, EncryptionConfig encryptionConfig) {
+    public DataPreviewService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
     }

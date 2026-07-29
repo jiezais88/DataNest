@@ -5,9 +5,9 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcPreviewHelper;
 import com.datanest.governance.dto.MetadataPreviewResult;
-import com.datanest.governance.entity.DataSourceConnection;
-import com.datanest.governance.entity.MetadataTable;
-import com.datanest.governance.mapper.DataSourceConnectionMapper;
+import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.entity.MetadataTable;
+import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 

@@ -1,0 +1,34 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /worker
+
+spring:
+  application:
+    name: data-nest-worker
+
+  config:
+    import:
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-mybatis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-addax.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        file-extension: yaml
+
+xxl:
+  job:
+    executor:
+      appname: data-nest-worker
+      port: 9997
+      logpath: /data/applogs/xxl-job/jobhandler
+      logretentiondays: 30

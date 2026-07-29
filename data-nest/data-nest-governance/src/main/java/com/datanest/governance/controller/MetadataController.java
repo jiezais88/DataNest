@@ -7,10 +7,10 @@ import com.datanest.governance.dto.MetadataCommentRequest;
 import com.datanest.governance.dto.MetadataDatasourceDTO;
 import com.datanest.governance.dto.MetadataPreviewResult;
 import com.datanest.governance.dto.MetadataRemarkRequest;
-import com.datanest.governance.entity.MetadataColumn;
-import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.service.MetadataPreviewService;
 import com.datanest.governance.service.MetadataService;
+import com.datanest.task.core.entity.MetadataColumn;
+import com.datanest.task.core.entity.MetadataTable;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 

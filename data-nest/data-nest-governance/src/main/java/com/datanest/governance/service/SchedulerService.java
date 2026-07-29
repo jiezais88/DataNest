@@ -15,7 +15,7 @@ public class SchedulerService {
     private static final Logger logger = LoggerFactory.getLogger(SchedulerService.class);
     private static final String HANDLER_NAME = "collectTaskHandler";
 
-    @Value("${xxl.job.executor.appname}")
+    @Value("${datanest.governance.worker-appname:data-nest-worker}")
     private String appName;
 
     private final SchedulerClient schedulerClient;

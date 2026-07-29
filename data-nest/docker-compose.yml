@@ -340,7 +340,6 @@ services:
       - REDIS_PORT=6379
       - XXL_JOB_HOST=xxl-job-admin
       - XXL_JOB_PORT=8080
-      - XXL_JOB_EXECUTOR_IP=datanest-governance
     depends_on:
       nacos:
         condition: service_healthy
@@ -354,6 +353,94 @@ services:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8084" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Worker — 同步任务与元数据采集执行器
+  # ============================================
+  worker:
+    build:
+      context: ./data-nest-worker
+      dockerfile: Dockerfile
+    container_name: datanest-worker
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_PORT=8080
+    depends_on:
+      nacos:
+        condition: service_healthy
+      nacos-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      xxl-job-admin:
+        condition: service_healthy
+      test-mysql:
+        condition: service_healthy
+      test-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8085" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Job — 平台定时任务执行器
+  # ============================================
+  job:
+    build:
+      context: ./data-nest-job
+      dockerfile: Dockerfile
+    container_name: datanest-job
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=nacos
+      - NACOS_PORT=8848
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_PORT=8080
+    depends_on:
+      nacos:
+        condition: service_healthy
+      nacos-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      xxl-job-admin:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8086" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -379,6 +466,10 @@ services:
       engineering:
         condition: service_healthy
       governance:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      job:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1" ]
