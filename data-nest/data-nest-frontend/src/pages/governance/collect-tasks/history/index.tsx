@@ -4,6 +4,7 @@ import {useAuthStore} from '../../../../store/useAuthStore';
 import {getCollectHistory, getCollectHistoryLogs, getCollectTask, queryCollectHistory} from '../../../../api/collect';
 import type {
     CollectChangeDetailDTO,
+    CollectChangeType,
     CollectExecutionLog,
     CollectHistoryQueryParams,
     CollectTaskExecution,
@@ -43,22 +44,91 @@ function formatDuration(ms?: number) {
     return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function formatTablePath(databaseName: string, schemaName: string | undefined | null, tableName: string): string {
+    if (!schemaName || schemaName === databaseName) {
+        return `${databaseName}.${tableName}`;
+    }
+    return `${databaseName}.${schemaName}.${tableName}`;
+}
+
+function formatColumnChangeTypeLabel(changeType: CollectChangeType): string {
+    switch (changeType) {
+        case 'ADDED_COLUMN':
+            return '新增字段';
+        case 'DELETED_COLUMN':
+            return '删除字段';
+        case 'MODIFIED_COLUMN_TYPE':
+            return '字段类型';
+        case 'MODIFIED_COLUMN_COMMENT':
+            return '字段注释';
+        case 'MODIFIED_COLUMN_ORDINAL':
+            return '字段顺序';
+        case 'MODIFIED_COLUMN_NULLABLE':
+            return '是否可空';
+        case 'MODIFIED_COLUMN_DEFAULT':
+            return '默认值';
+        default:
+            return '字段变更';
+    }
+}
+
+function parseColumnValue(value: string | undefined): {
+    dataType: string;
+    nullable: string;
+    comment: string;
+} {
+    if (!value) {
+        return {dataType: '-', nullable: '-', comment: '-'};
+    }
+    const [dataType, nullableRaw, ...commentParts] = value.split('|');
+    const nullable = nullableRaw === 'true' ? '是' : nullableRaw === 'false' ? '否' : '-';
+    return {dataType: dataType || '-', nullable, comment: commentParts.join('|') || '-'};
+}
+
+function formatColumnValueCell(value: string | undefined): string {
+    const {dataType, nullable, comment} = parseColumnValue(value);
+    return `${dataType} / ${nullable} / ${comment}`;
+}
+
 type AddedTableGroup = {
     tableDetail: CollectChangeDetailDTO;
     columns: CollectChangeDetailDTO[];
 };
 
+type ChangedTableGroup = {
+    commentChanges: CollectChangeDetailDTO[];
+    addedColumns: CollectChangeDetailDTO[];
+    deletedColumns: CollectChangeDetailDTO[];
+    modifiedColumns: CollectChangeDetailDTO[];
+};
+
 function groupChangeDetails(details?: CollectChangeDetailDTO[]) {
     if (!details || details.length === 0) {
-        return {addedTables: {} as Record<string, AddedTableGroup>, deletedTables: [], modifiedTables: {}};
+        return {
+            addedTables: {} as Record<string, AddedTableGroup>,
+            deletedTables: [] as CollectChangeDetailDTO[],
+            changedTables: {} as Record<string, ChangedTableGroup>,
+        };
     }
 
     const addedTablesMap: Record<string, AddedTableGroup> = {};
     const deletedTables: CollectChangeDetailDTO[] = [];
-    const modifiedTablesMap: Record<string, CollectChangeDetailDTO[]> = {};
+    const changedTablesMap: Record<string, ChangedTableGroup> = {};
+
+    const ensureChangedTable = (key: string): ChangedTableGroup => {
+        if (!changedTablesMap[key]) {
+            changedTablesMap[key] = {
+                commentChanges: [],
+                addedColumns: [],
+                deletedColumns: [],
+                modifiedColumns: [],
+            };
+        }
+        return changedTablesMap[key];
+    };
 
     for (const d of details) {
-        const key = `${d.databaseName}.${d.schemaName || ''}.${d.tableName}`;
+        const key = formatTablePath(d.databaseName, d.schemaName, d.tableName);
         if (d.changeType === 'ADDED_TABLE') {
             if (!addedTablesMap[key]) {
                 addedTablesMap[key] = {tableDetail: d, columns: []};
@@ -71,12 +141,29 @@ function groupChangeDetails(details?: CollectChangeDetailDTO[]) {
         } else if (d.changeType === 'DELETED_TABLE') {
             deletedTables.push(d);
         } else if (d.changeType === 'MODIFIED_TABLE') {
-            if (!modifiedTablesMap[key]) modifiedTablesMap[key] = [];
-            modifiedTablesMap[key].push(d);
+            ensureChangedTable(key).commentChanges.push(d);
+        } else if (d.changeType === 'ADDED_COLUMN') {
+            ensureChangedTable(key).addedColumns.push(d);
+        } else if (d.changeType === 'DELETED_COLUMN') {
+            ensureChangedTable(key).deletedColumns.push(d);
+        } else if (d.changeType.startsWith('MODIFIED_COLUMN_')) {
+            ensureChangedTable(key).modifiedColumns.push(d);
         }
     }
 
-    return {addedTables: addedTablesMap, deletedTables, modifiedTables: modifiedTablesMap};
+    return {
+        addedTables: addedTablesMap,
+        deletedTables,
+        changedTables: changedTablesMap,
+    };
+}
+
+function hasFieldChanges(group: ChangedTableGroup): boolean {
+    return (
+        group.addedColumns.length +
+        group.deletedColumns.length +
+        group.modifiedColumns.length
+    ) > 0;
 }
 
 function hasChanges(item: CollectTaskExecution): boolean {
@@ -111,8 +198,8 @@ export default function CollectHistoryPage() {
     const [logOpen, setLogOpen] = useState(false);
     const [logs, setLogs] = useState<CollectExecutionLog[]>([]);
     const [logsLoading, setLogsLoading] = useState(false);
-    const [expandedModifiedTables, setExpandedModifiedTables] = useState<Record<string, boolean>>({});
     const [expandedAddedTables, setExpandedAddedTables] = useState<Record<string, boolean>>({});
+    const [expandedChangedTables, setExpandedChangedTables] = useState<Record<string, boolean>>({});
     const [rawLogExpanded, setRawLogExpanded] = useState(false);
 
     const loadTask = useCallback(async () => {
@@ -168,8 +255,8 @@ export default function CollectHistoryPage() {
         setSelectedHistory(item);
         setLogOpen(true);
         setLogsLoading(true);
-        setExpandedModifiedTables({});
         setExpandedAddedTables({});
+        setExpandedChangedTables({});
         if (!taskId) return;
         const [historyResult, logsResult] = await Promise.all([
             getCollectHistory(taskId, item.id),
@@ -235,8 +322,8 @@ export default function CollectHistoryPage() {
 
     const changeGroups = selectedHistory ? groupChangeDetails(selectedHistory.changeDetails) : {
         addedTables: {} as Record<string, AddedTableGroup>,
-        deletedTables: [],
-        modifiedTables: {}
+        deletedTables: [] as CollectChangeDetailDTO[],
+        changedTables: {} as Record<string, ChangedTableGroup>,
     };
 
     return (
@@ -291,13 +378,13 @@ export default function CollectHistoryPage() {
                     <table className="w-full">
                         <thead className="sticky top-0 z-10">
                         <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">执行时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">执行方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">耗时</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">扫描的库/表/字段</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">是否有变化</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">执行时间</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">执行方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">耗时</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">扫描的库/表/字段</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">是否有变化</th>
+                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -389,10 +476,10 @@ export default function CollectHistoryPage() {
                                 <table className="w-full text-ds-small border border-ds-border-subtle rounded-ds-sm">
                                     <thead>
                                     <tr className="bg-ds-bg-hover">
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">库/Schema</th>
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">表数</th>
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">字段数</th>
-                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-secondary font-medium">状态</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-primary font-medium">库/Schema</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-primary font-medium">表数</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-primary font-medium">字段数</th>
+                                        <th className="text-left px-ds-2 py-ds-1 text-ds-text-primary font-medium">状态</th>
                                     </tr>
                                     </thead>
                                     <tbody>
@@ -547,7 +634,7 @@ export default function CollectHistoryPage() {
                                         {changeGroups.deletedTables.map((d) => (
                                             <span key={d.id}
                                                   className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-sm text-ds-small bg-red-50 text-red-700">
-                                                {d.schemaName ? `${d.databaseName}.${d.schemaName}.${d.tableName}` : `${d.databaseName}.${d.tableName}`}
+                                                {formatTablePath(d.databaseName, d.schemaName, d.tableName)}
                                             </span>
                                         ))}
                                     </div>
@@ -557,19 +644,21 @@ export default function CollectHistoryPage() {
                             {/* 变化表 */}
                             <div>
                                 <div
-                                    className="text-ds-caption text-ds-text-muted font-semibold mb-ds-2">变化表（{Object.keys(changeGroups.modifiedTables).length}）
+                                    className="text-ds-caption text-ds-text-muted font-semibold mb-ds-2">变化表（{Object.keys(changeGroups.changedTables).length}）
                                 </div>
-                                {Object.keys(changeGroups.modifiedTables).length === 0 ? (
+                                {Object.keys(changeGroups.changedTables).length === 0 ? (
                                     <div className="text-ds-small text-ds-text-muted">无</div>
                                 ) : (
                                     <div className="space-y-ds-2">
-                                        {Object.entries(changeGroups.modifiedTables).map(([key, details]) => {
-                                            const expanded = !!expandedModifiedTables[key];
+                                        {Object.entries(changeGroups.changedTables).map(([key, group]) => {
+                                            const expanded = !!expandedChangedTables[key];
+                                            const hasCommentChanges = group.commentChanges.length > 0;
+                                            const fieldChangesExist = hasFieldChanges(group);
                                             return (
                                                 <div key={key}
                                                      className="border border-ds-border-subtle rounded-ds-sm overflow-hidden">
                                                     <button
-                                                        onClick={() => setExpandedModifiedTables((prev) => ({
+                                                        onClick={() => setExpandedChangedTables((prev) => ({
                                                             ...prev,
                                                             [key]: !expanded
                                                         }))}
@@ -581,31 +670,67 @@ export default function CollectHistoryPage() {
                                                                        className={`text-ds-text-muted transition-transform ${expanded ? 'rotate-180' : ''}`}/>
                                                     </button>
                                                     {expanded && (
-                                                        <div className="px-ds-3 py-ds-2">
-                                                            <table className="w-full text-ds-small">
-                                                                <thead>
-                                                                <tr className="border-b border-ds-border-subtle text-ds-text-muted">
-                                                                    <th className="text-left py-ds-1 font-medium">字段名</th>
-                                                                    <th className="text-left py-ds-1 font-medium">变更类型</th>
-                                                                    <th className="text-left py-ds-1 font-medium">旧值</th>
-                                                                    <th className="text-left py-ds-1 font-medium">新值</th>
-                                                                </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                {details.map((d) => {
-                                                                    const isTableComment = d.changeType === 'MODIFIED_TABLE' && !d.columnName;
-                                                                    return (
-                                                                        <tr key={d.id}
-                                                                            className="border-b border-ds-border-subtle last:border-0">
-                                                                            <td className="py-ds-1 text-ds-text-primary">{d.columnName || '表注释'}</td>
-                                                                            <td className="py-ds-1 text-ds-text-secondary">{isTableComment ? '表注释变更' : '字段变更'}</td>
-                                                                            <td className="py-ds-1 text-ds-text-secondary">{d.oldValue || '-'}</td>
-                                                                            <td className="py-ds-1 text-ds-text-secondary">{d.newValue || '-'}</td>
+                                                        <div className="px-ds-3 py-ds-2 space-y-ds-3">
+                                                            {hasCommentChanges && (
+                                                                <div>
+                                                                    <div
+                                                                        className="text-ds-small text-ds-text-muted font-medium mb-ds-1">表注释变更
+                                                                    </div>
+                                                                    <table className="w-full text-ds-small">
+                                                                        <thead>
+                                                                        <tr className="border-b border-ds-border-subtle text-ds-text-muted">
+                                                                            <th className="text-left py-ds-1 font-medium">旧注释</th>
+                                                                            <th className="text-left py-ds-1 font-medium">新注释</th>
                                                                         </tr>
-                                                                    );
-                                                                })}
-                                                                </tbody>
-                                                            </table>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                        {group.commentChanges.map((d) => (
+                                                                            <tr key={d.id}
+                                                                                className="border-b border-ds-border-subtle last:border-0">
+                                                                                <td className="py-ds-1 text-ds-text-secondary">{d.oldValue || '-'}</td>
+                                                                                <td className="py-ds-1 text-ds-text-secondary">{d.newValue || '-'}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            )}
+                                                            {fieldChangesExist && (
+                                                                <div>
+                                                                    <div
+                                                                        className="text-ds-small text-ds-text-muted font-medium mb-ds-1">字段变更
+                                                                    </div>
+                                                                    <table className="w-full text-ds-small">
+                                                                        <thead>
+                                                                        <tr className="border-b border-ds-border-subtle text-ds-text-muted">
+                                                                            <th className="text-left py-ds-1 font-medium">字段名</th>
+                                                                            <th className="text-left py-ds-1 font-medium">变更项</th>
+                                                                            <th className="text-left py-ds-1 font-medium">旧值</th>
+                                                                            <th className="text-left py-ds-1 font-medium">新值</th>
+                                                                        </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                        {[
+                                                                            ...group.addedColumns,
+                                                                            ...group.deletedColumns,
+                                                                            ...group.modifiedColumns
+                                                                        ].map((d) => {
+                                                                            const isAdded = d.changeType === 'ADDED_COLUMN';
+                                                                            const isDeleted = d.changeType === 'DELETED_COLUMN';
+                                                                            return (
+                                                                                <tr key={d.id}
+                                                                                    className="border-b border-ds-border-subtle last:border-0">
+                                                                                    <td className="py-ds-1 text-ds-text-primary">{d.columnName}</td>
+                                                                                    <td className="py-ds-1 text-ds-text-secondary">{formatColumnChangeTypeLabel(d.changeType)}</td>
+                                                                                    <td className="py-ds-1 text-ds-text-secondary">{isAdded ? '-' : (isDeleted ? formatColumnValueCell(d.oldValue) : (d.oldValue || '-'))}</td>
+                                                                                    <td className="py-ds-1 text-ds-text-secondary">{isDeleted ? '-' : (isAdded ? formatColumnValueCell(d.newValue) : (d.newValue || '-'))}</td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>

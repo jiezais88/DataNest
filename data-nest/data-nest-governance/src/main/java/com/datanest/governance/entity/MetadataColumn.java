@@ -34,6 +34,8 @@ public class MetadataColumn {
 
     private Long lastCollectHistoryId;
 
+    private String sourceStatus;
+
     private Long createdBy;
 
     private Long updatedBy;

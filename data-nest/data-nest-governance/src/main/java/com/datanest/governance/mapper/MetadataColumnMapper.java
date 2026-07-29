@@ -11,6 +11,6 @@ import java.util.List;
 @Mapper
 public interface MetadataColumnMapper extends BaseMapper<MetadataColumn> {
 
-    @Select("SELECT * FROM metadata_column WHERE table_id = #{tableId} ORDER BY ordinal_position, column_name")
+    @Select("SELECT * FROM metadata_column WHERE table_id = #{tableId} AND source_status = 'ONLINE' ORDER BY ordinal_position, column_name")
     List<MetadataColumn> selectByTableId(@Param("tableId") Long tableId);
 }

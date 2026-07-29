@@ -1,6 +1,11 @@
 import {useEffect, useState} from 'react';
 import {HiOutlineXMark} from 'react-icons/hi2';
-import {listMetadataDatabases, listMetadataSchemas, listMetadataTables} from '../../../api/metadata';
+import {
+    listMetadataDatabases,
+    listMetadataSchemas,
+    listMetadataTables,
+    listMetadataTablesWithoutSchema
+} from '../../../api/metadata';
 import type {DataSource, DataSourceType} from '../../../types/datasource';
 import type {MetadataTable} from '../../../types/metadata';
 
@@ -55,7 +60,7 @@ export default function DatasourcePreviewSelector({
         setSchemas([]);
         setTables([]);
         if (TYPES_WITHOUT_SCHEMA.has(datasource.type)) {
-            loadTables(datasource.id, selectedDatabase, selectedDatabase);
+            loadTablesWithoutSchema(datasource.id, selectedDatabase);
         } else {
             setSchemaLoading(true);
             listMetadataSchemas(datasource.id, selectedDatabase)
@@ -77,6 +82,17 @@ export default function DatasourcePreviewSelector({
     const loadTables = (datasourceId: string, database: string, schema: string) => {
         setTableLoading(true);
         listMetadataTables(datasourceId, database, schema)
+            .then((res) => {
+                if (res.code === 200) {
+                    setTables(res.data);
+                }
+            })
+            .finally(() => setTableLoading(false));
+    };
+
+    const loadTablesWithoutSchema = (datasourceId: string, database: string) => {
+        setTableLoading(true);
+        listMetadataTablesWithoutSchema(datasourceId, database)
             .then((res) => {
                 if (res.code === 200) {
                     setTables(res.data);

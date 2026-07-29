@@ -16,10 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
@@ -108,8 +105,10 @@ public class CollectExecutor {
         int columnCount = 0;
         int addedTables = 0;
         int updatedTables = 0;
+        int deletedTables = 0;
         int addedColumns = 0;
         int updatedColumns = 0;
+        int deletedColumns = 0;
         String errorMessage = null;
         String lastStatus = "SUCCESS";
 
@@ -120,6 +119,9 @@ public class CollectExecutor {
                 List<TableMetadata> tables = extractor.extractTables(ds, schema);
                 dbCount++;
                 log(history, "INFO", "采集到 " + tables.size() + " 张表，范围：" + (schema == null ? "默认" : schema));
+                Set<String> collectedTableNames = tables.stream()
+                        .map(TableMetadata::getTableName)
+                        .collect(Collectors.toSet());
                 for (TableMetadata table : tables) {
                     TableChange change = upsertTable(task, ds, table, history.getId());
                     if (change.added) addedTables++;
@@ -128,10 +130,15 @@ public class CollectExecutor {
                     ColumnChange colChange = upsertColumns(change.tableId, table, history.getId(), change.added);
                     addedColumns += colChange.added;
                     updatedColumns += colChange.updated;
+                    deletedColumns += colChange.deleted;
                     columnCount += table.getColumns().size();
                 }
+                int deletedInSchema = detectDeletedTables(ds, tables, collectedTableNames, history.getId());
+                deletedTables += deletedInSchema;
             }
-            log(history, "INFO", "采集完成：库/表/字段 = " + dbCount + "/" + tableCount + "/" + columnCount);
+            log(history, "INFO", "采集完成：库/表/字段 = " + dbCount + "/" + tableCount + "/" + columnCount
+                    + "，新增/修改/删除表 = " + addedTables + "/" + updatedTables + "/" + deletedTables
+                    + "，新增/修改/删除字段 = " + addedColumns + "/" + updatedColumns + "/" + deletedColumns);
         } catch (Exception e) {
             logger.error("采集任务执行失败: taskId={}", taskId, e);
             errorMessage = e.getMessage();
@@ -139,8 +146,8 @@ public class CollectExecutor {
             log(history, "ERROR", "采集失败：" + errorMessage);
         }
 
-        finishHistory(history, tableCount, columnCount, dbCount, addedTables, updatedTables,
-                addedColumns, updatedColumns, errorMessage, lastStatus);
+        finishHistory(history, tableCount, columnCount, dbCount, addedTables, updatedTables, deletedTables,
+                addedColumns, updatedColumns, deletedColumns, errorMessage, lastStatus);
         updateTaskStatus(task, history, lastStatus);
 
         if ("FAILED".equals(lastStatus)) {
@@ -198,6 +205,7 @@ public class CollectExecutor {
             mt.setSchemaName(table.getSchemaName());
             mt.setTableName(table.getTableName());
             mt.setTableComment(table.getTableComment());
+            mt.setSourceStatus("ONLINE");
             mt.setLastCollectHistoryId(historyId);
             metadataTableMapper.insert(mt);
 
@@ -206,8 +214,9 @@ public class CollectExecutor {
                     table.getSchemaName(), table.getTableName(), null, null, null);
             return new TableChange(mt.getId(), true, false);
         } else {
-            boolean updated = !Objects.equals(existing.getTableComment(), table.getTableComment());
-            if (updated) {
+            boolean wasOffline = !"ONLINE".equals(existing.getSourceStatus());
+            boolean commentChanged = !Objects.equals(existing.getTableComment(), table.getTableComment());
+            if (commentChanged) {
                 String oldComment = existing.getTableComment();
                 existing.setTableComment(table.getTableComment());
 
@@ -215,10 +224,13 @@ public class CollectExecutor {
                 writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
                         table.getSchemaName(), table.getTableName(), null, oldComment, table.getTableComment());
             }
+            if (wasOffline) {
+                existing.setSourceStatus("ONLINE");
+            }
             // 无论表结构是否变化，都更新 last_collect_history_id，确保最近采集信息准确
             existing.setLastCollectHistoryId(historyId);
             metadataTableMapper.updateById(existing);
-            return new TableChange(existing.getId(), false, updated);
+            return new TableChange(existing.getId(), false, commentChanged);
         }
     }
 
@@ -230,6 +242,7 @@ public class CollectExecutor {
 
         int added = 0;
         int updated = 0;
+        int deleted = 0;
         for (ColumnMetadata cm : table.getColumns()) {
             MetadataColumn existing = existingMap.get(cm.getColumnName());
             if (existing == null) {
@@ -241,38 +254,54 @@ public class CollectExecutor {
                 col.setOrdinalPosition(cm.getOrdinalPosition());
                 col.setNullable(cm.getNullable());
                 col.setColumnDefault(cm.getColumnDefault());
+                col.setSourceStatus("ONLINE");
                 col.setLastCollectHistoryId(historyId);
                 metadataColumnMapper.insert(col);
                 added++;
 
                 // 新增表的字段随表一起作为 ADDED_TABLE，便于前端展开；
-                // 已存在表新增的字段仍属于变化，记为 MODIFIED_TABLE。
+                // 已存在表新增的字段属于字段变更，记为 ADDED_COLUMN。
+                String newValue = formatColumnValue(cm.getDataType(), cm.getNullable(), cm.getColumnComment());
                 if (tableIsNew) {
-                    String newValue = cm.getDataType() + "|"
-                            + (cm.getNullable() != null && cm.getNullable() ? "true" : "false") + "|"
-                            + (cm.getColumnComment() == null ? "" : cm.getColumnComment());
                     writeChangeDetail(historyId, "ADDED_TABLE", table.getDatabaseName(),
                             table.getSchemaName(), table.getTableName(), cm.getColumnName(),
                             null, newValue);
                 } else {
-                    writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
+                    writeChangeDetail(historyId, "ADDED_COLUMN", table.getDatabaseName(),
                             table.getSchemaName(), table.getTableName(), cm.getColumnName(),
-                            null, "新增: " + cm.getDataType() + (cm.getNullable() != null && cm.getNullable() ? ", 可为空" : ""));
+                            null, newValue);
                 }
             } else {
-                boolean changed = !Objects.equals(existing.getDataType(), cm.getDataType())
-                        || !Objects.equals(existing.getColumnComment(), cm.getColumnComment())
-                        || !Objects.equals(existing.getOrdinalPosition(), cm.getOrdinalPosition())
-                        || !Objects.equals(existing.getNullable(), cm.getNullable())
-                        || !Objects.equals(existing.getColumnDefault(), cm.getColumnDefault());
-                if (changed) {
-                    String oldInfo = existing.getDataType();
-                    String newInfo = cm.getDataType();
-                    if (!Objects.equals(existing.getNullable(), cm.getNullable())) {
-                        oldInfo += ", " + (Boolean.TRUE.equals(existing.getNullable()) ? "可为空" : "不可为空");
-                        newInfo += ", " + (Boolean.TRUE.equals(cm.getNullable()) ? "可为空" : "不可为空");
-                    }
+                boolean wasOffline = !"ONLINE".equals(existing.getSourceStatus());
+                String oldDataType = existing.getDataType();
+                String oldComment = existing.getColumnComment();
+                Integer oldOrdinal = existing.getOrdinalPosition();
+                Boolean oldNullable = existing.getNullable();
+                String oldDefault = existing.getColumnDefault();
 
+                boolean dataTypeChanged = !Objects.equals(oldDataType, cm.getDataType());
+                boolean commentChanged = !Objects.equals(oldComment, cm.getColumnComment());
+                boolean ordinalChanged = !Objects.equals(oldOrdinal, cm.getOrdinalPosition());
+                boolean nullableChanged = !Objects.equals(oldNullable, cm.getNullable());
+                boolean defaultChanged = !Objects.equals(oldDefault, cm.getColumnDefault());
+
+                if (wasOffline) {
+                    // 之前被标记为删除的字段重新出现，按新增字段处理
+                    existing.setColumnComment(cm.getColumnComment());
+                    existing.setDataType(cm.getDataType());
+                    existing.setOrdinalPosition(cm.getOrdinalPosition());
+                    existing.setNullable(cm.getNullable());
+                    existing.setColumnDefault(cm.getColumnDefault());
+                    existing.setSourceStatus("ONLINE");
+                    existing.setLastCollectHistoryId(historyId);
+                    metadataColumnMapper.updateById(existing);
+                    added++;
+
+                    String newValue = formatColumnValue(cm.getDataType(), cm.getNullable(), cm.getColumnComment());
+                    writeChangeDetail(historyId, tableIsNew ? "ADDED_TABLE" : "ADDED_COLUMN",
+                            table.getDatabaseName(), table.getSchemaName(), table.getTableName(),
+                            cm.getColumnName(), null, newValue);
+                } else if (dataTypeChanged || commentChanged || ordinalChanged || nullableChanged || defaultChanged) {
                     existing.setColumnComment(cm.getColumnComment());
                     existing.setDataType(cm.getDataType());
                     existing.setOrdinalPosition(cm.getOrdinalPosition());
@@ -282,19 +311,67 @@ public class CollectExecutor {
                     metadataColumnMapper.updateById(existing);
                     updated++;
 
-                    // 记录字段变更
-                    writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
-                            table.getSchemaName(), table.getTableName(), cm.getColumnName(),
-                            oldInfo, newInfo);
+                    // 表变更与字段变更分开；字段内部按属性分项记录
+                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_TYPE", dataTypeChanged,
+                            oldDataType, cm.getDataType());
+                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_COMMENT", commentChanged,
+                            oldComment, cm.getColumnComment());
+                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_ORDINAL", ordinalChanged,
+                            String.valueOf(oldOrdinal), String.valueOf(cm.getOrdinalPosition()));
+                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_NULLABLE", nullableChanged,
+                            formatNullable(oldNullable), formatNullable(cm.getNullable()));
+                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_DEFAULT", defaultChanged,
+                            formatDefault(oldDefault), formatDefault(cm.getColumnDefault()));
                 }
+                // 从已有字段集合中移除，剩余即为已删除字段
+                existingMap.remove(cm.getColumnName());
             }
         }
-        return new ColumnChange(added, updated);
+
+        // 剩余字段为源库中已不存在的字段
+        for (MetadataColumn remaining : existingMap.values()) {
+            if (!"ONLINE".equals(remaining.getSourceStatus())) {
+                continue;
+            }
+            String oldValue = formatColumnValue(remaining.getDataType(), remaining.getNullable(), remaining.getColumnComment());
+            remaining.setSourceStatus("OFFLINE");
+            remaining.setLastCollectHistoryId(historyId);
+            metadataColumnMapper.updateById(remaining);
+            deleted++;
+
+            writeChangeDetail(historyId, "DELETED_COLUMN", table.getDatabaseName(), table.getSchemaName(),
+                    table.getTableName(), remaining.getColumnName(), oldValue, null);
+        }
+        return new ColumnChange(added, updated, deleted);
+    }
+
+    private String formatColumnValue(String dataType, Boolean nullable, String comment) {
+        return dataType + "|"
+                + (Boolean.TRUE.equals(nullable) ? "true" : "false") + "|"
+                + (comment == null ? "" : comment);
+    }
+
+    private void writeColumnChangeDetail(Long historyId, TableMetadata table, MetadataColumn existing,
+                                         ColumnMetadata cm, String changeType, boolean changed,
+                                         String oldValue, String newValue) {
+        if (!changed) {
+            return;
+        }
+        writeChangeDetail(historyId, changeType, table.getDatabaseName(), table.getSchemaName(),
+                table.getTableName(), cm.getColumnName(), oldValue, newValue);
+    }
+
+    private String formatNullable(Boolean nullable) {
+        return Boolean.TRUE.equals(nullable) ? "可为空" : "不可为空";
+    }
+
+    private String formatDefault(String defaultValue) {
+        return defaultValue == null ? "NULL" : defaultValue;
     }
 
     private void finishHistory(CollectHistory history, int tableCount, int columnCount, int dbCount,
-                               int addedTables, int updatedTables,
-                               int addedColumns, int updatedColumns,
+                               int addedTables, int updatedTables, int deletedTables,
+                               int addedColumns, int updatedColumns, int deletedColumns,
                                String errorMessage, String status) {
         LocalDateTime now = LocalDateTime.now();
         history.setStatus(status);
@@ -305,10 +382,50 @@ public class CollectExecutor {
         history.setDbCount(dbCount);
         history.setAddedTableCount(addedTables);
         history.setUpdatedTableCount(updatedTables);
+        history.setDeletedTableCount(deletedTables);
         history.setAddedColumnCount(addedColumns);
         history.setUpdatedColumnCount(updatedColumns);
+        history.setDeletedColumnCount(deletedColumns);
         history.setErrorMessage(errorMessage);
         collectHistoryMapper.updateById(history);
+    }
+
+    private int detectDeletedTables(DataSourceConnection ds, List<TableMetadata> collectedTables,
+                                    Set<String> collectedTableNames, Long historyId) {
+        if (collectedTables.isEmpty()) {
+            return 0;
+        }
+        TableMetadata first = collectedTables.get(0);
+        String databaseName = first.getDatabaseName();
+        String schemaName = first.getSchemaName();
+
+        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.eq("datasource_id", ds.getId())
+                .eq("database_name", databaseName)
+                .eq("COALESCE(schema_name, '')", schemaName == null ? "" : schemaName)
+                .eq("source_status", "ONLINE");
+        List<MetadataTable> existingTables = metadataTableMapper.selectList(wrapper);
+
+        int deleted = 0;
+        for (MetadataTable existing : existingTables) {
+            if (!collectedTableNames.contains(existing.getTableName())) {
+                existing.setSourceStatus("OFFLINE");
+                existing.setLastCollectHistoryId(historyId);
+                metadataTableMapper.updateById(existing);
+
+                // 同步把该表下的字段也标记为已删除
+                MetadataColumn columnUpdate = new MetadataColumn();
+                columnUpdate.setSourceStatus("OFFLINE");
+                metadataColumnMapper.update(columnUpdate,
+                        new QueryWrapper<MetadataColumn>().eq("table_id", existing.getId()));
+
+                writeChangeDetail(historyId, "DELETED_TABLE", existing.getDatabaseName(),
+                        existing.getSchemaName(), existing.getTableName(), null,
+                        existing.getTableComment(), null);
+                deleted++;
+            }
+        }
+        return deleted;
     }
 
     private void updateTaskStatus(CollectTask task, CollectHistory history, String status) {
@@ -320,7 +437,7 @@ public class CollectExecutor {
 
     private void failTask(CollectTask task, String triggerType, String message) {
         CollectHistory history = initHistory(task, triggerType);
-        finishHistory(history, 0, 0, 0, 0, 0, 0, 0, message, "FAILED");
+        finishHistory(history, 0, 0, 0, 0, 0, 0, 0, 0, 0, message, "FAILED");
         updateTaskStatus(task, history, "FAILED");
         XxlJobHelper.handleFail(message);
     }
@@ -356,10 +473,12 @@ public class CollectExecutor {
     private static class ColumnChange {
         final int added;
         final int updated;
+        final int deleted;
 
-        ColumnChange(int added, int updated) {
+        ColumnChange(int added, int updated, int deleted) {
             this.added = added;
             this.updated = updated;
+            this.deleted = deleted;
         }
     }
 }

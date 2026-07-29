@@ -83,7 +83,7 @@ export interface CollectExecutionLog {
 export interface CollectChangeDetailDTO {
     id: string;
     historyId: string;
-    changeType: 'ADDED_TABLE' | 'DELETED_TABLE' | 'MODIFIED_TABLE';
+    changeType: CollectChangeType;
     databaseName: string;
     schemaName?: string;
     tableName: string;
@@ -92,6 +92,18 @@ export interface CollectChangeDetailDTO {
     newValue?: string;
     createdAt?: string;
 }
+
+export type CollectChangeType =
+    | 'ADDED_TABLE'
+    | 'DELETED_TABLE'
+    | 'MODIFIED_TABLE'
+    | 'ADDED_COLUMN'
+    | 'DELETED_COLUMN'
+    | 'MODIFIED_COLUMN_TYPE'
+    | 'MODIFIED_COLUMN_COMMENT'
+    | 'MODIFIED_COLUMN_ORDINAL'
+    | 'MODIFIED_COLUMN_NULLABLE'
+    | 'MODIFIED_COLUMN_DEFAULT';
 
 export interface DataSourceReferenceDTO {
     taskId: string;

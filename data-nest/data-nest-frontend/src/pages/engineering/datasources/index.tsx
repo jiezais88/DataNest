@@ -350,13 +350,13 @@ export default function DataSourcesPage() {
                     <table className="w-full">
                         <thead className="sticky top-0 z-10">
                         <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">数据源名称</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">类型</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">主机地址</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">描述</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">最近连接时间</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">数据源名称</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">类型</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">主机地址</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">描述</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">最近连接时间</th>
+                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
                         </tr>
                         </thead>
                         <tbody>

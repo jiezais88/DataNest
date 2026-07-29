@@ -158,6 +158,7 @@ public class ComplianceCheckService {
 
     private List<MetadataTable> listTables(Long datasourceId, String databaseName, String schemaName) {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.eq("source_status", "ONLINE");
         if (datasourceId != null) {
             wrapper.eq("datasource_id", datasourceId);
         }
@@ -178,6 +179,7 @@ public class ComplianceCheckService {
 
     private List<Long> listTableIds(List<Long> datasourceIds, String databaseName, String schemaName) {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.eq("source_status", "ONLINE");
         if (datasourceIds != null && !datasourceIds.isEmpty()) {
             wrapper.in("datasource_id", datasourceIds);
         }

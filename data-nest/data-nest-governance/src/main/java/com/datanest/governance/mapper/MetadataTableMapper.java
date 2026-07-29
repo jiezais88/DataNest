@@ -11,10 +11,10 @@ import java.util.List;
 @Mapper
 public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
 
-    @Select("SELECT DISTINCT database_name FROM metadata_table WHERE datasource_id = #{datasourceId} ORDER BY database_name")
+    @Select("SELECT DISTINCT database_name FROM metadata_table WHERE datasource_id = #{datasourceId} AND source_status = 'ONLINE' ORDER BY database_name")
     List<String> selectDatabasesByDatasourceId(@Param("datasourceId") Long datasourceId);
 
-    @Select("SELECT DISTINCT schema_name FROM metadata_table WHERE datasource_id = #{datasourceId} AND database_name = #{databaseName} ORDER BY schema_name")
+    @Select("SELECT DISTINCT schema_name FROM metadata_table WHERE datasource_id = #{datasourceId} AND database_name = #{databaseName} AND source_status = 'ONLINE' ORDER BY schema_name")
     List<String> selectSchemasByDatasourceIdAndDatabase(@Param("datasourceId") Long datasourceId,
                                                         @Param("databaseName") String databaseName);
 
@@ -31,6 +31,7 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
             WHERE t.datasource_id = #{datasourceId}
               AND t.database_name = #{databaseName}
               AND COALESCE(t.schema_name, '') = COALESCE(#{schemaName}, '')
+              AND t.source_status = 'ONLINE'
             ORDER BY t.table_name
             """)
     List<MetadataTable> selectTablesByDatasourceDatabaseSchema(@Param("datasourceId") Long datasourceId,

@@ -42,7 +42,7 @@ public class MetadataPreviewService {
 
     public MetadataPreviewResult preview(Long tableId) {
         MetadataTable table = metadataTableMapper.selectById(tableId);
-        if (table == null) {
+        if (table == null || !"ONLINE".equals(table.getSourceStatus())) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
 

@@ -178,7 +178,7 @@ docker-compose up -d
 |----------|---------------------------------------------|
 | Host     | `localhost`                                 |
 | Port     | `5433`                                      |
-| Database | `postgres`                                  |
+| Database | `testdb`                                    |
 | Username | `postgres`                                  |
 | Password | `postgres123`                               |
 | JDBC URL | `jdbc:postgresql://localhost:5433/postgres` |

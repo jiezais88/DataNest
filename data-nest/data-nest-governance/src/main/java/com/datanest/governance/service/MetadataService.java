@@ -37,7 +37,9 @@ public class MetadataService {
     @Transactional(readOnly = true)
     public List<MetadataDatasourceDTO> listDatasourceIds() {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
-        wrapper.select("DISTINCT datasource_id, source_type").orderByAsc("datasource_id");
+        wrapper.eq("source_status", "ONLINE")
+                .select("DISTINCT datasource_id, source_type")
+                .orderByAsc("datasource_id");
         List<MetadataTable> rows = metadataTableMapper.selectList(wrapper);
 
         List<Long> ids = rows.stream()

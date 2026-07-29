@@ -58,11 +58,11 @@ function ResultTable({items, columns, onView}: {
                 <tr className="border-b border-ds-border-subtle">
                     {columns.map((c) => (
                         <th key={c.key}
-                            className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-secondary font-semibold">
+                            className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-primary font-semibold">
                             {c.label}
                         </th>
                     ))}
-                    <th className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-secondary font-semibold text-right">操作</th>
+                    <th className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-primary font-semibold text-right">操作</th>
                 </tr>
                 </thead>
                 <tbody>

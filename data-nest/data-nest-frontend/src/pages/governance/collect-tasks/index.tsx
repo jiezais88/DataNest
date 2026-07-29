@@ -368,18 +368,19 @@ export default function CollectTasksPage() {
                     <table className="w-full">
                         <thead className="sticky top-0 z-10">
                         <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">任务名称</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">采集范围</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">触发方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">Cron
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">任务名称</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">数据源</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">采集范围</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">触发方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">Cron
                                 表达式
                             </th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">调度状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">采集模式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">下次执行时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">最近执行</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">调度状态</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">采集模式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">下次执行时间</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">最近执行</th>
+                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -395,6 +396,9 @@ export default function CollectTasksPage() {
                                     <td className="px-ds-4 py-ds-3">
                                         <span
                                             className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
+                                    </td>
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
+                                        {item.datasourceName || '-'}
                                     </td>
                                     <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
                                         {formatScope(item.scope)}

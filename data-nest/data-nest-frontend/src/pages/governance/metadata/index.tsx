@@ -381,7 +381,7 @@ export default function MetadataPage() {
             <table className="w-full">
                 <thead>
                 <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">库名</th>
+                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">库名</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -404,7 +404,7 @@ export default function MetadataPage() {
             <table className="w-full">
                 <thead>
                 <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">Schema</th>
+                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">Schema</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -427,10 +427,10 @@ export default function MetadataPage() {
             <table className="w-full">
                 <thead>
                 <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">表名</th>
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">注释</th>
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">字段数</th>
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">采集来源</th>
+                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">表名</th>
+                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">注释</th>
+                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">字段数</th>
+                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">采集来源</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -516,11 +516,11 @@ export default function MetadataPage() {
                             <table className="w-full">
                                 <thead>
                                 <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">字段名</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">数据类型</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">中文注释</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">是否可空</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary font-semibold">备注</th>
+                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">字段名</th>
+                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">数据类型</th>
+                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">中文注释</th>
+                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">是否可空</th>
+                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">备注</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -673,7 +673,7 @@ export default function MetadataPage() {
                         expanded={expanded}
                         onExpandedChange={setExpanded}
                         onRootsLoaded={setHasRoots}
-                        autoSelectFirst={!tableIdParam && !selectedNode}
+                        autoSelectFirst={false}
                     />
                 </div>
 

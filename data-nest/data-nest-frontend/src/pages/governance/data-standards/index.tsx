@@ -389,14 +389,14 @@ export default function DataStandardsPage() {
                         <table className="w-full">
                             <thead className="sticky top-0 z-10">
                             <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">规范名称</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">适用对象</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">匹配方式</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">规范值</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">关联字段类型标准</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">优先级</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">状态</th>
-                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">规范名称</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">适用对象</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">匹配方式</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">规范值</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">关联字段类型标准</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">优先级</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
+                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -518,11 +518,11 @@ export default function DataStandardsPage() {
                         <table className="w-full">
                             <thead className="sticky top-0 z-10">
                             <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">标准名称</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">分类</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">允许类型</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">描述</th>
-                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-secondary uppercase tracking-wider">操作</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">标准名称</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">分类</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">允许类型</th>
+                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">描述</th>
+                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
                             </tr>
                             </thead>
                             <tbody>

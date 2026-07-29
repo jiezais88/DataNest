@@ -4,6 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -65,7 +69,7 @@ public final class JdbcPreviewHelper {
                 while (rs.next() && rowCount < limit) {
                     Map<String, Object> row = new LinkedHashMap<>(columnCount);
                     for (int i = 1; i <= columnCount; i++) {
-                        row.put(columns.get(i - 1), rs.getObject(i));
+                        row.put(columns.get(i - 1), formatValue(rs.getObject(i)));
                     }
                     rows.add(row);
                     rowCount++;
@@ -85,6 +89,31 @@ public final class JdbcPreviewHelper {
         if (!value.matches(IDENTIFIER_PATTERN)) {
             throw new IllegalArgumentException(label + "包含非法字符: " + value);
         }
+    }
+
+    private static Object formatValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Timestamp ts) {
+            return ts.toLocalDateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        }
+        if (value instanceof java.sql.Time time) {
+            return time.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        }
+        if (value instanceof LocalDateTime ldt) {
+            return ldt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (value instanceof LocalDate ld) {
+            return ld.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        }
+        if (value instanceof LocalTime lt) {
+            return lt.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        }
+        return value;
     }
 
     private static String buildJdbcUrl(String type, String host, int port, String database, String schema) {

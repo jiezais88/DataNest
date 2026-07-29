@@ -53,7 +53,7 @@ export default function PreviewModal({open, title, loading, result, onClose}: Pr
                                     <tr>
                                         {result.columns.map((col) => (
                                             <th key={col}
-                                                className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-muted font-semibold whitespace-nowrap">
+                                                className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-primary font-semibold whitespace-nowrap">
                                                 {col}
                                             </th>
                                         ))}

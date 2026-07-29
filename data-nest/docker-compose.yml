@@ -124,6 +124,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: datanest-redis
+    command: redis-server --appendonly yes --appendfsync everysec
     environment:
       TZ: Asia/Shanghai
     ports:
