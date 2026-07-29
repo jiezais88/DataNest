@@ -22,6 +22,10 @@ export function listMetadataTables(datasourceId: string, databaseName: string, s
     return request.get<Result<MetadataTable[]>>(`/governance/metadata/datasources/${datasourceId}/databases/${databaseName}/schemas/${schemaName}/tables`);
 }
 
+export function listMetadataTablesWithoutSchema(datasourceId: string, databaseName: string) {
+    return request.get<Result<MetadataTable[]>>(`/governance/metadata/datasources/${datasourceId}/databases/${databaseName}/tables`);
+}
+
 export function getMetadataTable(tableId: string) {
     return request.get<Result<MetadataTable>>(`/governance/metadata/tables/${tableId}`);
 }

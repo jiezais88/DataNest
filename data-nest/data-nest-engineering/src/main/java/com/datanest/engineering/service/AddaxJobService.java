@@ -10,12 +10,12 @@ import com.datanest.engineering.entity.SyncJobHistory;
 import com.datanest.engineering.mapper.DataSourceMapper;
 import com.datanest.engineering.mapper.SyncJobHistoryMapper;
 import com.datanest.engineering.mapper.SyncJobMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -273,26 +273,38 @@ public class AddaxJobService {
 
     private Map<String, Object> buildWriter(SyncJob job, String targetTableName) {
         List<String> columns = buildWriterColumns(job);
+        String targetDb = resolveTargetDatabase(job);
 
         Map<String, Object> loadProps = new HashMap<>();
         loadProps.put("format", loadPropsFormat);
-        loadProps.put("strip_outer_array", Boolean.parseBoolean(loadPropsStripOuterArray));
+        loadProps.put("strip_outer_array", String.valueOf(Boolean.parseBoolean(loadPropsStripOuterArray)));
         loadProps.put("line_delimiter", lineDelimiter);
 
+        Map<String, Object> connectionItem = new HashMap<>();
+        connectionItem.put("jdbcUrl", String.format("jdbc:mysql://%s:%d/%s?useSSL=false&serverTimezone=UTC",
+                dorisFeHost, dorisFeQueryPort, targetDb));
+        connectionItem.put("database", targetDb);
+        connectionItem.put("table", List.of(targetTableName));
+
         Map<String, Object> parameter = new HashMap<>();
-        parameter.put("feLoadUrl", List.of(dorisFeLoadUrl));
-        parameter.put("beLoadUrl", List.of(dorisBeLoadUrl));
+        parameter.put("loadUrl", List.of(stripProtocol(dorisFeLoadUrl)));
         parameter.put("username", dorisUsername);
         parameter.put("password", dorisPassword);
-        parameter.put("database", resolveTargetDatabase(job));
-        parameter.put("table", targetTableName);
         parameter.put("column", columns);
+        parameter.put("connection", List.of(connectionItem));
         parameter.put("loadProps", loadProps);
 
         Map<String, Object> writer = new HashMap<>();
         writer.put("name", "doriswriter");
         writer.put("parameter", parameter);
         return writer;
+    }
+
+    private String stripProtocol(String url) {
+        if (url == null) {
+            return "";
+        }
+        return url.replaceFirst("^https?://", "");
     }
 
     private String resolveTargetDatabase(SyncJob job) {
@@ -330,7 +342,7 @@ public class AddaxJobService {
     private AddaxExecutionResult runAddax(Long syncJobId, Path jobFilePath, Path logFilePath,
                                           SyncJob job, DataSourceConnection source) {
         String addaxSh = Paths.get(addaxHome, "bin", "addax.sh").toString();
-        List<String> command = List.of(addaxSh, "-p", jobFilePath.toString());
+        List<String> command = List.of(addaxSh, jobFilePath.toString());
         logger.info("启动 Addax: syncJobId={}, command={}, workDir={}", syncJobId, command, addaxHome);
 
         ProcessBuilder processBuilder = new ProcessBuilder(command);

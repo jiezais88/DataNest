@@ -1,6 +1,6 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {ArrowLeftRight, ClipboardList, Clock, Database, Home, Ruler, Users,} from 'lucide-react';
+import {ArrowLeftRight, ClipboardList, Clock, Database, Home, Ruler, UserCog,} from 'lucide-react';
 
 interface MenuItem {
     label: string;
@@ -59,7 +59,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
     {
         group: '系统管理',
         items: [
-            {label: '用户管理', path: '/system/users', icon: <Users size={18}/>, roles: ['SUPER_ADMIN']},
+            {label: '用户管理', path: '/system/users', icon: <UserCog size={18}/>, roles: ['SUPER_ADMIN']},
         ],
     },
 ];

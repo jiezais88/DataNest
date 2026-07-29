@@ -60,13 +60,15 @@ public class ComplianceCheckService {
 
         List<NamingStandard> tableStandards = namingStandardMapper.selectEnabledByAppliesTo("TABLE");
         List<NamingStandard> columnStandards = namingStandardMapper.selectEnabledByAppliesTo("COLUMN");
-        Map<Long, FieldTypeStandard> standardMap = fieldTypeStandardMapper.selectBatchIds(
-                Stream.concat(tableStandards.stream(), columnStandards.stream())
-                        .map(NamingStandard::getTargetStandardId)
-                        .filter(Objects::nonNull)
-                        .distinct()
-                        .collect(Collectors.toList())
-        ).stream().collect(Collectors.toMap(FieldTypeStandard::getId, s -> s));
+        List<Long> standardIds = Stream.concat(tableStandards.stream(), columnStandards.stream())
+                .map(NamingStandard::getTargetStandardId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, FieldTypeStandard> standardMap = standardIds.isEmpty()
+                ? Map.of()
+                : fieldTypeStandardMapper.selectBatchIds(standardIds)
+                .stream().collect(Collectors.toMap(FieldTypeStandard::getId, s -> s));
 
         List<ComplianceCheckResult> results = new ArrayList<>();
         LocalDateTime checkedAt = LocalDateTime.now();

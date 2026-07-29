@@ -54,7 +54,7 @@ public class MetadataController {
     @GetMapping("/datasources/{datasourceId}/databases/{databaseName}/tables")
     public Result<List<MetadataTable>> listTablesWithoutSchema(@PathVariable Long datasourceId,
                                                                @PathVariable String databaseName) {
-        return Result.ok(metadataService.listTables(datasourceId, databaseName, databaseName));
+        return Result.ok(metadataService.listTables(datasourceId, databaseName, ""));
     }
 
     @GetMapping("/tables/{tableId}")

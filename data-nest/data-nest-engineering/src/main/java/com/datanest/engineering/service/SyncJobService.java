@@ -319,8 +319,9 @@ public class SyncJobService {
 
         if (retryInterval > 0 && currentRetryCount < retryTimes) {
             logInfo(history, "准备 " + retryInterval + " 分钟后第 " + (currentRetryCount + 1) + " 次重试");
-            retryService.scheduleRetry(syncJobId, historyId, retryInterval);
             finishHistory(history, result, "FAILED");
+            updateExecutionStatus(job, EXECUTION_STATUS_FAILED);
+            retryService.scheduleRetry(syncJobId, historyId, retryInterval);
             return;
         }
 

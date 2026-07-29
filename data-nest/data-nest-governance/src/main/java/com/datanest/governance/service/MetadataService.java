@@ -68,16 +68,21 @@ public class MetadataService {
                     .filter(c -> id.equals(c.getId()))
                     .findFirst()
                     .orElse(null);
+            String sourceType = sourceTypeMap.getOrDefault(id, "EXTERNAL");
             if (conn != null) {
                 dto.setName(conn.getName());
                 dto.setType(conn.getType());
+                dto.setExists(true);
+            } else if ("BUILTIN_DORIS".equals(sourceType)) {
+                dto.setName("Doris（内置）");
+                dto.setType("DORIS");
                 dto.setExists(true);
             } else {
                 dto.setName(null);
                 dto.setType(null);
                 dto.setExists(false);
             }
-            dto.setSourceType(sourceTypeMap.getOrDefault(id, "EXTERNAL"));
+            dto.setSourceType(sourceType);
             return dto;
         }).toList();
     }

@@ -126,9 +126,14 @@ public class NamingStandardService {
         wrapper.orderByDesc("priority").orderByAsc("id");
         IPage<NamingStandard> result = namingStandardMapper.selectPage(page, wrapper);
 
-        Map<Long, String> standardNameMap = fieldTypeStandardMapper.selectBatchIds(
-                result.getRecords().stream().map(NamingStandard::getTargetStandardId).distinct().toList()
-        ).stream().collect(Collectors.toMap(
+        List<Long> standardIds = result.getRecords().stream()
+                .map(NamingStandard::getTargetStandardId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        Map<Long, String> standardNameMap = standardIds.isEmpty()
+                ? Map.of()
+                : fieldTypeStandardMapper.selectBatchIds(standardIds).stream().collect(Collectors.toMap(
                 com.datanest.governance.entity.FieldTypeStandard::getId,
                 com.datanest.governance.entity.FieldTypeStandard::getName
         ));
@@ -136,7 +141,8 @@ public class NamingStandardService {
         List<NamingStandardDTO> records = result.getRecords().stream()
                 .map(e -> {
                     NamingStandardDTO dto = toDTO(e);
-                    dto.setTargetStandardName(standardNameMap.get(e.getTargetStandardId()));
+                    Long targetStandardId = e.getTargetStandardId();
+                    dto.setTargetStandardName(targetStandardId != null ? standardNameMap.get(targetStandardId) : null);
                     return dto;
                 })
                 .toList();

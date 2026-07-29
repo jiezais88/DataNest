@@ -185,7 +185,7 @@ public class DataSourceService {
 
         entity.setDescription(request.getDescription());
         if (request.getAutoCollectOnSave() != null) {
-            entity.setAutoCollectOnSave(request.getAutoCollectOnSave());
+            entity.setAutoCollectOnSave(Boolean.TRUE.equals(request.getAutoCollectOnSave()) ? 1 : 0);
         }
         entity.setUpdatedBy(currentUserId());
         entity.setUpdatedAt(LocalDateTime.now());

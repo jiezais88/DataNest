@@ -13,6 +13,7 @@ spring:
       - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-mybatis.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
@@ -22,6 +23,15 @@ spring:
       config:
         server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
         file-extension: yaml
+
+xxl:
+  job:
+    executor:
+      appname: data-nest-governance
+      ip: ${XXL_JOB_EXECUTOR_IP:}
+      port: 9999
+      logpath: /data/applogs/xxl-job/jobhandler
+      logretentiondays: 30
 
 datanest:
   governance:

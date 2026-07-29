@@ -8,11 +8,15 @@ datanest:
     home: /opt/addax
     bin: ${datanest.addax.home}/bin/addax.sh
   doris:
+    fe-host: 192.168.119.135
+    fe-query-port: 9030
+    user: root
+    password: password
     writer:
-      fe-load-url: http://doris-fe:8030
-      be-load-url: http://doris-be:8040
+      fe-load-url: http://192.168.119.135:8030
+      be-load-url: http://192.168.119.135:8040
       username: root
-      password: ""
+      password: password
       database: datanest
       load-props:
         format: json

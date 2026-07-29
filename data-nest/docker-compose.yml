@@ -290,6 +290,8 @@ services:
       - PG_DATABASE=datanest
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_PORT=8080
     # 不暴露宿主机端口，仅通过 Gateway 访问
     depends_on:
       nacos:
@@ -299,6 +301,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      xxl-job-admin:
         condition: service_healthy
       test-mysql:
         condition: service_healthy

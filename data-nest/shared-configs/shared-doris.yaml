@@ -5,7 +5,7 @@
 # ============================================
 datanest:
   doris:
-    fe-host: ${DORIS_FE_HOST:localhost}
-    fe-query-port: ${DORIS_FE_PORT:9030}
-    user: ${DORIS_USER:root}
-    password: ${DORIS_PASSWORD:}
+    fe-host: 192.168.119.135
+    fe-query-port: 9030
+    user: root
+    password: password

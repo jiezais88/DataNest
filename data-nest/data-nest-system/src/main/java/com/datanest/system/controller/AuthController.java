@@ -6,7 +6,10 @@ import com.datanest.common.model.Result;
 import com.datanest.common.model.UserLoginDTO;
 import com.datanest.system.service.UserService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -29,7 +32,8 @@ public class AuthController {
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
         UserLoginDTO user = userService.verify(req.username(), req.password());
 
-        StpUtil.login(user.userId(), req.rememberMe());
+        StpUtil.login(user.userId(), req.rememberMe() == Boolean.TRUE);
+        StpUtil.getSession().set("roles", user.roles());
 
         Map<String, Object> result = new HashMap<>();
         result.put("token", StpUtil.getTokenValue());

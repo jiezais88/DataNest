@@ -5,6 +5,7 @@ import {
     listMetadataDatasourceIds,
     listMetadataSchemas,
     listMetadataTables,
+    listMetadataTablesWithoutSchema,
 } from '../../../api/metadata';
 import type {MetadataDatasource, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
 
@@ -165,7 +166,7 @@ export default function MetadataTree({
             if (datasourceType && DB_TYPES_WITHOUT_SCHEMA.has(datasourceType.toUpperCase())) {
                 setLoading(node.id);
                 try {
-                    const result = await listMetadataTables(datasourceId, databaseName, databaseName);
+                    const result = await listMetadataTablesWithoutSchema(datasourceId, databaseName);
                     if (result.code === 200) {
                         const children = (result.data as MetadataTable[]).map((table) => ({
                             id: `table-${table.id}`,

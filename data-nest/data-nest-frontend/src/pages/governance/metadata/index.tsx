@@ -7,6 +7,7 @@ import {
     listMetadataDatabases,
     listMetadataSchemas,
     listMetadataTables,
+    listMetadataTablesWithoutSchema,
     updateColumnComment,
     updateColumnRemark,
     updateTableComment,
@@ -193,7 +194,9 @@ export default function MetadataPage() {
         const databaseName = node.databaseName!;
         setTablesLoading(true);
         try {
-            const result = await listMetadataTables(datasourceId, databaseName, schemaName);
+            const result = isWithoutSchema(node.datasourceType)
+                ? await listMetadataTablesWithoutSchema(datasourceId, databaseName)
+                : await listMetadataTables(datasourceId, databaseName, schemaName);
             if (result.code === 200) {
                 setTables(result.data);
             }
@@ -322,6 +325,7 @@ export default function MetadataPage() {
             return (
                 <input
                     autoFocus
+                    data-testid="metadata-comment-input"
                     value={editingCell.value}
                     onChange={(e) => setEditingCell({...editingCell, value: e.target.value})}
                     onBlur={handleFinish}
