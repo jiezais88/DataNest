@@ -57,6 +57,16 @@ public class MetadataController {
         return Result.ok(metadataService.listTables(datasourceId, databaseName, ""));
     }
 
+    @GetMapping("/builtin-doris/databases")
+    public Result<List<String>> listBuiltinDorisDatabases() {
+        return Result.ok(metadataService.listBuiltinDorisDatabases());
+    }
+
+    @GetMapping("/builtin-doris/databases/{databaseName}/tables")
+    public Result<List<String>> listBuiltinDorisTables(@PathVariable String databaseName) {
+        return Result.ok(metadataService.listBuiltinDorisTables(databaseName));
+    }
+
     @GetMapping("/tables/{tableId}")
     public Result<MetadataTable> getTable(@PathVariable Long tableId) {
         return Result.ok(metadataService.getTable(tableId));

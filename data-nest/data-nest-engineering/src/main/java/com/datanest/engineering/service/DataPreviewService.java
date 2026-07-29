@@ -4,10 +4,15 @@ import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcPreviewHelper;
+import com.datanest.common.util.JdbcSchemaExtractor;
 import com.datanest.engineering.dto.DataPreviewResult;
 import com.datanest.engineering.entity.DataSourceConnection;
 import com.datanest.engineering.mapper.DataSourceMapper;
 import org.springframework.stereotype.Service;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class DataPreviewService {
@@ -26,12 +31,32 @@ public class DataPreviewService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         String password = encryptionConfig.decrypt(ds.getEncryptedPassword());
+        String effectiveDatabase = database != null ? database : ds.getDatabaseName();
         JdbcPreviewHelper.PreviewResult result = JdbcPreviewHelper.preview(
                 ds.getType(), ds.getHost(), ds.getPort(),
-                database != null ? database : ds.getDatabaseName(),
+                effectiveDatabase,
                 schema,
                 ds.getUsername(), password,
                 tableName);
-        return new DataPreviewResult(result.columns(), result.rows(), result.rowCount(), result.totalRowCount());
+        Map<String, String> columnTypes = extractColumnTypes(ds, effectiveDatabase, schema, tableName, password);
+        return new DataPreviewResult(result.columns(), columnTypes, result.rows(), result.rowCount(), result.totalRowCount());
+    }
+
+    private Map<String, String> extractColumnTypes(DataSourceConnection ds, String database, String schema,
+                                                   String tableName, String password) {
+        try {
+            List<JdbcSchemaExtractor.ColumnInfo> columns = JdbcSchemaExtractor.extractColumns(
+                    ds.getType(), ds.getHost(), ds.getPort(),
+                    database, schema,
+                    ds.getUsername(), password,
+                    tableName);
+            Map<String, String> types = new LinkedHashMap<>();
+            for (JdbcSchemaExtractor.ColumnInfo column : columns) {
+                types.put(column.columnName(), column.dataType());
+            }
+            return types;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

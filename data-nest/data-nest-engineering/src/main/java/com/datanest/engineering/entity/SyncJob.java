@@ -56,15 +56,15 @@ public class SyncJob {
 
     private LocalDateTime nextExecutionTime;
 
-    private Integer retryCount;
-
-    private LocalDateTime nextRetryAt;
-
     private Integer scheduleEnabled;
 
     private Integer xxlJobId;
 
     private String description;
+
+    private LocalDateTime lastExecuteTime;
+
+    private Long lastHistoryId;
 
     private Long createdBy;
 

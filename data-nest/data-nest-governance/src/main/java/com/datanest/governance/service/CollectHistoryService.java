@@ -45,6 +45,9 @@ public class CollectHistoryService {
         if (request.getStatus() != null && !request.getStatus().isBlank()) {
             wrapper.eq("status", request.getStatus());
         }
+        if (request.getStartTimeFrom() != null && request.getStartTimeTo() != null) {
+            wrapper.between("started_at", request.getStartTimeFrom(), request.getStartTimeTo());
+        }
         wrapper.orderByDesc("started_at");
 
         IPage<CollectHistory> result = collectHistoryMapper.selectPage(page, wrapper);

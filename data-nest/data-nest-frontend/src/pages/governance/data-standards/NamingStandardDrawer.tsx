@@ -77,7 +77,13 @@ export default function NamingStandardDrawer({
     }, [open, editItem]);
 
     const updateField = <K extends keyof NamingStandardFormData>(field: K, value: NamingStandardFormData[K]) => {
-        setForm((prev) => ({...prev, [field]: value}));
+        setForm((prev) => {
+            const next = {...prev, [field]: value} as NamingStandardFormData;
+            if (field === 'appliesTo' && value === 'TABLE') {
+                next.targetStandardId = '';
+            }
+            return next;
+        });
         if (errors[field]) {
             setErrors((prev) => ({...prev, [field]: undefined}));
         }
@@ -94,11 +100,18 @@ export default function NamingStandardDrawer({
         return Object.keys(nextErrors).length === 0;
     };
 
+    const buildPayload = (): NamingStandardFormData => {
+        return {
+            ...form,
+            targetStandardId: form.appliesTo === 'TABLE' ? '' : form.targetStandardId,
+        };
+    };
+
     const handleSubmit = async () => {
         if (!validate()) return;
         setSubmitting(true);
         try {
-            const result = await onSubmit(form);
+            const result = await onSubmit(buildPayload());
             if (result && result.code === 200) {
                 onClose();
             }
@@ -205,25 +218,27 @@ export default function NamingStandardDrawer({
                     </p>
                 </div>
 
-                <div>
-                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                        关联字段类型标准 <span className="text-ds-danger">*</span>
-                    </label>
-                    <select
-                        value={form.targetStandardId}
-                        onChange={(e) => updateField('targetStandardId', e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                    >
-                        <option value="">请选择</option>
-                        {standards.map((s) => (
-                            <option key={s.id} value={s.id}>
-                                {s.name}（允许：{s.allowedTypes.join('、')}）
-                            </option>
-                        ))}
-                    </select>
-                    {errors.targetStandardId &&
-                        <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetStandardId}</p>}
-                </div>
+                {form.appliesTo === 'COLUMN' && (
+                    <div>
+                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                            关联字段类型标准 <span className="text-ds-danger">*</span>
+                        </label>
+                        <select
+                            value={form.targetStandardId}
+                            onChange={(e) => updateField('targetStandardId', e.target.value)}
+                            className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        >
+                            <option value="">请选择</option>
+                            {standards.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}（允许：{s.allowedTypes.join('、')}）
+                                </option>
+                            ))}
+                        </select>
+                        {errors.targetStandardId &&
+                            <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetStandardId}</p>}
+                    </div>
+                )}
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">优先级</label>

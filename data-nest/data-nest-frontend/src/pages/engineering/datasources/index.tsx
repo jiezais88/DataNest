@@ -262,7 +262,7 @@ export default function DataSourcesPage() {
         <div className="h-full flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
-                    <h1 className="text-ds-display text-ds-text-primary">数据源</h1>
+                    <h1 className="text-ds-display text-ds-text-primary">数据源管理</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">管理 MySQL、PostgreSQL、Doris 等数据源连接</p>
                 </div>
                 {canWrite && (

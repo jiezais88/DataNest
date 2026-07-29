@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import {message} from 'antd';
 import {useAuthStore} from '../../../store/useAuthStore';
 import {
@@ -21,6 +22,7 @@ import {
     HiOutlineBookOpen,
     HiOutlineDocumentText,
     HiOutlinePencilSquare,
+    HiOutlinePlay,
     HiOutlinePlus,
     HiOutlineShieldCheck,
     HiOutlineTrash,
@@ -49,6 +51,8 @@ const MATCH_TYPE_LABEL: Record<string, string> = {
 };
 
 export default function DataStandardsPage() {
+    const [searchParams] = useSearchParams();
+    const fromCompliance = searchParams.get('from') === 'compliance';
     const {userInfo} = useAuthStore();
     const roles = userInfo?.roles || [];
     const canWrite = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN');
@@ -98,6 +102,23 @@ export default function DataStandardsPage() {
     const [complianceParams, setComplianceParams] = useState<ComplianceCheckParams | null>(null);
     const [complianceCheckedAt, setComplianceCheckedAt] = useState<string>('');
     const [showComplianceResults, setShowComplianceResults] = useState(false);
+
+    useEffect(() => {
+        if (!fromCompliance) return;
+        try {
+            const raw = sessionStorage.getItem('datanest:compliance-check-state');
+            if (!raw) return;
+            const state = JSON.parse(raw);
+            if (state.params && state.results) {
+                setComplianceParams(state.params);
+                setComplianceResults(state.results);
+                setComplianceCheckedAt(state.checkedAt || '');
+                setShowComplianceResults(true);
+            }
+        } catch {
+            // ignore
+        }
+    }, [fromCompliance]);
 
     const loadNamingStandards = useCallback(async () => {
         setNamingLoading(true);
@@ -191,11 +212,21 @@ export default function DataStandardsPage() {
             const res = await runComplianceCheck(params);
             if (res.code === 200) {
                 message.success('合规检查完成');
+                const checkedAtValue = new Date().toLocaleString('zh-CN');
                 setComplianceResults(res.data || []);
                 setComplianceParams(params);
-                setComplianceCheckedAt(new Date().toLocaleString('zh-CN'));
+                setComplianceCheckedAt(checkedAtValue);
                 setComplianceModalOpen(false);
                 setShowComplianceResults(true);
+                try {
+                    sessionStorage.setItem('datanest:compliance-check-state', JSON.stringify({
+                        params,
+                        results: res.data || [],
+                        checkedAt: checkedAtValue,
+                    }));
+                } catch {
+                    // ignore
+                }
             }
         } finally {
             setComplianceChecking(false);
@@ -208,6 +239,26 @@ export default function DataStandardsPage() {
             : await createNamingStandard(form);
         if (res.code === 200) {
             message.success(namingEditItem ? '命名规范更新成功' : '命名规范创建成功');
+            loadNamingStandards();
+        }
+        return res;
+    };
+
+    const handleToggleNamingEnabled = async (item: NamingStandard) => {
+        const nextEnabled = item.enabled === 1 ? 0 : 1;
+        const payload: NamingStandardCreateRequest = {
+            name: item.name,
+            appliesTo: item.appliesTo,
+            ruleType: item.ruleType,
+            ruleValue: item.ruleValue,
+            targetStandardId: item.targetStandardId,
+            priority: item.priority,
+            enabled: nextEnabled,
+            description: item.description,
+        };
+        const res = await updateNamingStandard(item.id, payload);
+        if (res.code === 200) {
+            message.success(nextEnabled === 1 ? '已启用' : '已停用');
             loadNamingStandards();
         }
         return res;
@@ -300,7 +351,7 @@ export default function DataStandardsPage() {
                                 className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
                             >
                                 <HiOutlinePlus size={16}/>
-                                {activeTab === 'naming' ? '新建规范' : '新建类型标准'}
+                                {activeTab === 'naming' ? '新建命名规范' : '新建字段类型标准'}
                             </button>
                             <button
                                 onClick={openComplianceModal}
@@ -428,6 +479,25 @@ export default function DataStandardsPage() {
                                         <div className="flex items-center justify-end gap-1">
                                             {canWrite && (
                                                 <>
+                                                    <button
+                                                        onClick={() => handleToggleNamingEnabled(item)}
+                                                        className={`p-1.5 rounded transition-colors ${
+                                                            item.enabled === 1
+                                                                ? 'text-ds-text-muted hover:text-ds-warning hover:bg-ds-warning-light'
+                                                                : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
+                                                        }`}
+                                                        title={item.enabled === 1 ? '停用' : '启用'}
+                                                    >
+                                                        {item.enabled === 1 ? (
+                                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                                                 fill="currentColor" className="w-4 h-4">
+                                                                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                                                                <rect x="14" y="4" width="4" height="16" rx="1"/>
+                                                            </svg>
+                                                        ) : (
+                                                            <HiOutlinePlay size={16}/>
+                                                        )}
+                                                    </button>
                                                     <button
                                                         onClick={() => openNamingEdit(item)}
                                                         className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
@@ -750,6 +820,7 @@ export default function DataStandardsPage() {
                     </div>
                 </div>
             )}
+
         </div>
     );
 }

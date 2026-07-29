@@ -8,14 +8,13 @@ import com.datanest.governance.dto.MetadataPreviewResult;
 import com.datanest.governance.entity.DataSourceConnection;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.mapper.DataSourceConnectionMapper;
-import com.datanest.governance.mapper.MetadataTableMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MetadataPreviewService {
 
-    private final MetadataTableMapper metadataTableMapper;
+    private final MetadataService metadataService;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final EncryptionConfig encryptionConfig;
 
@@ -24,14 +23,14 @@ public class MetadataPreviewService {
     private final String builtInDorisUser;
     private final String builtInDorisPassword;
 
-    public MetadataPreviewService(MetadataTableMapper metadataTableMapper,
+    public MetadataPreviewService(MetadataService metadataService,
                                   DataSourceConnectionMapper dataSourceConnectionMapper,
                                   EncryptionConfig encryptionConfig,
                                   @Value("${datanest.doris.fe-host:localhost}") String builtInDorisHost,
                                   @Value("${datanest.doris.fe-query-port:9030}") int builtInDorisQueryPort,
                                   @Value("${datanest.doris.user:root}") String builtInDorisUser,
                                   @Value("${datanest.doris.password:}") String builtInDorisPassword) {
-        this.metadataTableMapper = metadataTableMapper;
+        this.metadataService = metadataService;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
         this.encryptionConfig = encryptionConfig;
         this.builtInDorisHost = builtInDorisHost;
@@ -41,7 +40,7 @@ public class MetadataPreviewService {
     }
 
     public MetadataPreviewResult preview(Long tableId) {
-        MetadataTable table = metadataTableMapper.selectById(tableId);
+        MetadataTable table = metadataService.resolveTable(tableId);
         if (table == null || !"ONLINE".equals(table.getSourceStatus())) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }

@@ -26,6 +26,14 @@ export function listMetadataTablesWithoutSchema(datasourceId: string, databaseNa
     return request.get<Result<MetadataTable[]>>(`/governance/metadata/datasources/${datasourceId}/databases/${databaseName}/tables`);
 }
 
+export function listBuiltinDorisDatabases() {
+    return request.get<Result<string[]>>('/governance/metadata/builtin-doris/databases');
+}
+
+export function listBuiltinDorisTables(databaseName: string) {
+    return request.get<Result<string[]>>(`/governance/metadata/builtin-doris/databases/${databaseName}/tables`);
+}
+
 export function getMetadataTable(tableId: string) {
     return request.get<Result<MetadataTable>>(`/governance/metadata/tables/${tableId}`);
 }

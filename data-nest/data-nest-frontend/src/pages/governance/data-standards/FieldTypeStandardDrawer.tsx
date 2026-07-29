@@ -16,6 +16,28 @@ const EMPTY_FORM: FieldTypeStandardFormData = {
     description: '',
 };
 
+const CATEGORY_OPTIONS = [
+    {value: '数值', label: '数值'},
+    {value: '字符串', label: '字符串'},
+    {value: '时间', label: '时间'},
+    {value: '布尔', label: '布尔'},
+    {value: '二进制', label: '二进制'},
+    {value: '其他', label: '其他'},
+];
+
+const COMMON_TYPES = [
+    'INT',
+    'BIGINT',
+    'VARCHAR(255)',
+    'CHAR(50)',
+    'DECIMAL(18,2)',
+    'DATETIME',
+    'TIMESTAMP',
+    'DATE',
+    'BOOLEAN',
+    'TEXT',
+];
+
 interface FieldTypeStandardDrawerProps {
     open: boolean;
     editItem: FieldTypeStandard | null;
@@ -137,25 +159,49 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">分类</label>
-                    <input
+                    <select
                         value={form.category}
                         onChange={(e) => updateField('category', e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                        placeholder="例如：数值、字符串、时间"
-                    />
+                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                    >
+                        <option value="">请选择分类</option>
+                        {CATEGORY_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                    </select>
                 </div>
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         允许的字段类型 <span className="text-ds-danger">*</span>
                     </label>
+                    <div className="flex flex-wrap gap-ds-2 mb-ds-2">
+                        {COMMON_TYPES.map((t) => {
+                            const selected = form.allowedTypes.includes(t);
+                            return (
+                                <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => selected ? removeType(t) : updateField('allowedTypes', [...form.allowedTypes, t])}
+                                    className={`px-ds-2 py-ds-1 text-ds-small rounded-ds-sm border transition-colors ${
+                                        selected
+                                            ? 'bg-ds-accent text-white border-ds-accent'
+                                            : 'bg-white text-ds-text-secondary border-ds-border-subtle hover:border-ds-accent hover:text-ds-accent'
+                                    }`}
+                                >
+                                    {t}
+                                </button>
+                            );
+                        })}
+                    </div>
                     <div className="flex gap-ds-2">
                         <input
                             value={typeInput}
                             onChange={(e) => setTypeInput(e.target.value)}
                             onKeyDown={handleKeyDown}
+                            onBlur={addType}
                             className="flex-1 px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                            placeholder="输入类型后按回车，例如：INT"
+                            placeholder="输入自定义类型，例如 JSON"
                         />
                         <button
                             type="button"

@@ -32,11 +32,10 @@ export interface SyncJob {
     executionStatus: SyncExecutionStatus;
     scheduleEnabled: boolean;
     nextExecutionTime?: string;
-    retryCount?: number;
-    nextRetryAt?: string;
     xxlJobId?: number;
     description?: string;
     lastExecuteTime?: string;
+    lastHistoryId?: string;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -97,6 +96,8 @@ export interface SyncJobHistory {
 export interface SyncJobHistoryQueryParams {
     syncJobId?: string;
     status?: SyncHistoryStatus | '';
+    startTimeFrom?: string;
+    startTimeTo?: string;
     page: number;
     pageSize: number;
 }

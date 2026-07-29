@@ -20,13 +20,13 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         group: '数据工程',
         items: [
             {
-                label: '数据源',
+                label: '数据源管理',
                 path: '/engineering/datasources',
                 icon: <Database size={18}/>,
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER', 'GOVERNANCE_ADMIN']
             },
             {
-                label: '批量数据同步',
+                label: '批量数据同步任务',
                 path: '/engineering/sync-jobs',
                 icon: <ArrowLeftRight size={18}/>,
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER']

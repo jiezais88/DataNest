@@ -1,9 +1,20 @@
 package com.datanest.engineering.dto;
 
+import jakarta.validation.constraints.NotNull;
+
+import java.time.LocalDateTime;
+
 public class SyncJobHistoryQueryRequest {
 
     private Long syncJobId;
     private String status;
+
+    @NotNull(message = "开始时间起不能为空")
+    private LocalDateTime startTimeFrom;
+
+    @NotNull(message = "开始时间止不能为空")
+    private LocalDateTime startTimeTo;
+
     private long page = 1;
     private long pageSize = 10;
 
@@ -21,6 +32,22 @@ public class SyncJobHistoryQueryRequest {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public LocalDateTime getStartTimeFrom() {
+        return startTimeFrom;
+    }
+
+    public void setStartTimeFrom(LocalDateTime startTimeFrom) {
+        this.startTimeFrom = startTimeFrom;
+    }
+
+    public LocalDateTime getStartTimeTo() {
+        return startTimeTo;
+    }
+
+    public void setStartTimeTo(LocalDateTime startTimeTo) {
+        this.startTimeTo = startTimeTo;
     }
 
     public long getPage() {

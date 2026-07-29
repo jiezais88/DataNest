@@ -101,11 +101,13 @@ public class AddaxJobService {
     private final AddaxLogParser addaxLogParser;
     private final ObjectMapper objectMapper;
     private final EncryptionConfig encryptionConfig;
+    private final IncrementalFieldTypeResolver incrementalFieldTypeResolver;
 
     public AddaxJobService(SyncJobMapper syncJobMapper, DataSourceMapper dataSourceMapper,
                            SyncJobHistoryMapper syncJobHistoryMapper, ConnectionTester connectionTester,
                            AddaxLogParser addaxLogParser, ObjectMapper objectMapper,
-                           EncryptionConfig encryptionConfig) {
+                           EncryptionConfig encryptionConfig,
+                           IncrementalFieldTypeResolver incrementalFieldTypeResolver) {
         this.syncJobMapper = syncJobMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
@@ -113,6 +115,7 @@ public class AddaxJobService {
         this.addaxLogParser = addaxLogParser;
         this.objectMapper = objectMapper;
         this.encryptionConfig = encryptionConfig;
+        this.incrementalFieldTypeResolver = incrementalFieldTypeResolver;
     }
 
     /**
@@ -210,7 +213,7 @@ public class AddaxJobService {
         parameter.put("column", columns);
 
         if (incremental && StringUtils.hasText(job.getIncrementalField())) {
-            String maxValue = queryIncrementalMaxValue(job, sourceTable);
+            String maxValue = queryIncrementalMaxValue(job, source, sourceTable);
             String columnList = columns.isEmpty() || columns.contains("*") ? "*" : String.join(", ", columns);
             String querySql;
             if (maxValue != null) {
@@ -238,7 +241,7 @@ public class AddaxJobService {
         };
     }
 
-    private String queryIncrementalMaxValue(SyncJob job, String sourceTable) {
+    private String queryIncrementalMaxValue(SyncJob job, DataSourceConnection source, String sourceTable) {
         // 首次成功同步之前，直接全量拉取
         boolean hasSuccessHistory = syncJobHistoryMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SyncJobHistory>()
@@ -249,8 +252,19 @@ public class AddaxJobService {
             return null;
         }
 
+        IncrementalFieldTypeResolver.TypeCategory sourceCategory = incrementalFieldTypeResolver
+                .resolveSourceFieldType(source, job, sourceTable, job.getIncrementalField());
         String targetTableName = resolveTargetTableName(job, sourceTable);
         String targetDb = resolveTargetDatabase(job);
+        IncrementalFieldTypeResolver.TypeCategory targetCategory = incrementalFieldTypeResolver
+                .resolveTargetFieldType(targetDb, targetTableName, job.getIncrementalField());
+
+        if (!incrementalFieldTypeResolver.isComparable(sourceCategory, targetCategory)) {
+            logger.warn("增量字段源端与目标端类型不一致或不是可比较类型，将按全量同步处理: syncJobId={}, field={}, sourceCategory={}, targetCategory={}",
+                    job.getId(), job.getIncrementalField(), sourceCategory, targetCategory);
+            return null;
+        }
+
         String jdbcUrl = String.format("jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
                 dorisFeHost, dorisFeQueryPort, targetDb);
         String sql = "SELECT MAX(" + quoteIdentifier("DORIS", job.getIncrementalField()) + ") AS max_value FROM "
@@ -261,7 +275,7 @@ public class AddaxJobService {
             if (rs.next()) {
                 Object value = rs.getObject("max_value");
                 if (value != null) {
-                    return "'" + value.toString().replace("'", "''") + "'";
+                    return incrementalFieldTypeResolver.formatMaxValue(value, targetCategory);
                 }
             }
         } catch (Exception e) {

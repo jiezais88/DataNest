@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.util.JdbcSchemaExtractor;
 import com.datanest.governance.dto.MetadataDatasourceDTO;
 import com.datanest.governance.entity.DataSourceConnection;
 import com.datanest.governance.entity.MetadataColumn;
@@ -12,6 +13,7 @@ import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.mapper.DataSourceConnectionMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,11 +29,24 @@ public class MetadataService {
     private final MetadataColumnMapper metadataColumnMapper;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
 
+    private final String builtInDorisHost;
+    private final int builtInDorisQueryPort;
+    private final String builtInDorisUser;
+    private final String builtInDorisPassword;
+
     public MetadataService(MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                           DataSourceConnectionMapper dataSourceConnectionMapper) {
+                           DataSourceConnectionMapper dataSourceConnectionMapper,
+                           @Value("${datanest.doris.fe-host:localhost}") String builtInDorisHost,
+                           @Value("${datanest.doris.fe-query-port:9030}") int builtInDorisQueryPort,
+                           @Value("${datanest.doris.user:root}") String builtInDorisUser,
+                           @Value("${datanest.doris.password:}") String builtInDorisPassword) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
+        this.builtInDorisHost = builtInDorisHost;
+        this.builtInDorisQueryPort = builtInDorisQueryPort;
+        this.builtInDorisUser = builtInDorisUser;
+        this.builtInDorisPassword = builtInDorisPassword;
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +106,21 @@ public class MetadataService {
 
     @Transactional(readOnly = true)
     public List<String> listDatabases(Long datasourceId) {
+        if (datasourceId == null) {
+            return List.of();
+        }
         return metadataTableMapper.selectDatabasesByDatasourceId(datasourceId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> listBuiltinDorisDatabases() {
+        return JdbcSchemaExtractor.extractDatabases(
+                        "DORIS", builtInDorisHost, builtInDorisQueryPort,
+                        "information_schema", null,
+                        builtInDorisUser, builtInDorisPassword)
+                .stream()
+                .filter(db -> !"__internal_schema".equals(db))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -105,12 +134,28 @@ public class MetadataService {
     }
 
     @Transactional(readOnly = true)
+    public List<String> listBuiltinDorisTables(String databaseName) {
+        return JdbcSchemaExtractor.extractTables(
+                "DORIS", builtInDorisHost, builtInDorisQueryPort,
+                databaseName, null,
+                builtInDorisUser, builtInDorisPassword);
+    }
+
+    @Transactional(readOnly = true)
     public MetadataTable getTable(Long tableId) {
         MetadataTable table = metadataTableMapper.selectTableDetailById(tableId);
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
         return table;
+    }
+
+    /**
+     * 解析表记录，支持内置 Doris 伪 ID。
+     */
+    @Transactional(readOnly = true)
+    public MetadataTable resolveTable(Long tableId) {
+        return getTable(tableId);
     }
 
     @Transactional(readOnly = true)

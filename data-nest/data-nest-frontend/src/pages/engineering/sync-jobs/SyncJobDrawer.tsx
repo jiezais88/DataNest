@@ -1,8 +1,8 @@
 import {useEffect, useState} from 'react';
 import type {DataSource} from '../../../types/datasource';
 import type {SyncFieldMapping, SyncJob, SyncJobCreateRequest, SyncMode, SyncTriggerType,} from '../../../types/sync';
-import {getDataSourceSchemas} from '../../../api/engineering';
-import {listMetadataDatabases, listMetadataTables} from '../../../api/metadata';
+import {getDataSourceSchemas, getDataSourceTables} from '../../../api/engineering';
+import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '../../../api/metadata';
 import {previewDataSource} from '../../../api/preview';
 import Drawer from '../../../components/Drawer';
 import CronPicker from '../../../components/CronPicker';
@@ -90,10 +90,13 @@ export default function SyncJobDrawer({
     const [tables, setTables] = useState<string[]>([]);
     const [tablesLoading, setTablesLoading] = useState(false);
     const [columnOptions, setColumnOptions] = useState<string[]>([]);
+    const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
     const [columnsLoading, setColumnsLoading] = useState(false);
     const [fieldMapping, setFieldMapping] = useState<SyncFieldMapping[]>([]);
     const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
     const [targetDbsLoading, setTargetDbsLoading] = useState(false);
+    const [targetTables, setTargetTables] = useState<string[]>([]);
+    const [targetTablesLoading, setTargetTablesLoading] = useState(false);
 
     const isEdit = !!editItem;
 
@@ -123,6 +126,7 @@ export default function SyncJobDrawer({
             setSchemas([]);
             setTables([]);
             setColumnOptions([]);
+            setColumnTypes({});
             setFieldMapping([]);
         }
         loadTargetDatabases();
@@ -134,14 +138,22 @@ export default function SyncJobDrawer({
             loadTableColumns(form.sourceDatasourceId, form.selectedSchema, form.sourceTable, fieldMapping);
         } else {
             setColumnOptions([]);
+            setColumnTypes({});
         }
     }, [form.sourceDatasourceId, form.selectedSchema, form.sourceTable]);
+
+    useEffect(() => {
+        if (form.targetDatabase) {
+            loadTargetTables(form.targetDatabase, editItem?.targetTable);
+        } else {
+            setTargetTables([]);
+        }
+    }, [form.targetDatabase]);
 
     const loadTargetDatabases = async () => {
         setTargetDbsLoading(true);
         try {
-            // 内置 Doris 在元数据中的 datasourceId 约定为 -1
-            const result = await listMetadataDatabases('-1');
+            const result = await listBuiltinDorisDatabases();
             if (result.code === 200) {
                 setTargetDatabases(result.data || []);
             }
@@ -149,6 +161,28 @@ export default function SyncJobDrawer({
             setTargetDatabases([]);
         } finally {
             setTargetDbsLoading(false);
+        }
+    };
+
+    const loadTargetTables = async (database: string, preselectTable?: string) => {
+        if (!database) {
+            setTargetTables([]);
+            return;
+        }
+        setTargetTablesLoading(true);
+        try {
+            const result = await listBuiltinDorisTables(database);
+            if (result.code === 200) {
+                const names = result.data || [];
+                setTargetTables(names);
+                if (preselectTable && names.includes(preselectTable)) {
+                    setForm((prev) => ({...prev, targetTable: preselectTable}));
+                }
+            }
+        } catch {
+            setTargetTables([]);
+        } finally {
+            setTargetTablesLoading(false);
         }
     };
 
@@ -193,14 +227,17 @@ export default function SyncJobDrawer({
         }
         setTablesLoading(true);
         try {
-            const result = await listMetadataTables(
+            const result = await getDataSourceTables(
                 datasourceId,
                 resolved.sourceDatabase,
-                resolved.sourceSchema || resolved.sourceDatabase,
+                resolved.sourceSchema,
             );
             if (result.code === 200) {
-                const names = (result.data || []).map((t) => t.tableName);
+                const names = result.data || [];
                 setTables(names);
+                if (preselectTable && names.includes(preselectTable)) {
+                    setForm((prev) => ({...prev, sourceTable: preselectTable}));
+                }
             }
         } finally {
             setTablesLoading(false);
@@ -220,7 +257,9 @@ export default function SyncJobDrawer({
             );
             if (result.code === 200) {
                 const columns = result.data.columns || [];
+                const types = result.data.columnTypes || {};
                 setColumnOptions(columns);
+                setColumnTypes(types);
                 applyAutoMapping(columns, existingMapping);
                 if (form.incrementalField && !columns.includes(form.incrementalField)) {
                     setForm((prev) => ({...prev, incrementalField: ''}));
@@ -244,6 +283,14 @@ export default function SyncJobDrawer({
         setFieldMapping(next);
     };
 
+    const isIncrementalRecommended = (column: string): boolean => {
+        const type = (columnTypes[column] || '').toLowerCase();
+        if (!type) {
+            return true;
+        }
+        return /\b(int|tinyint|smallint|mediumint|bigint|decimal|numeric|float|double|real|number|serial|date|time|datetime|timestamp|year)\b/.test(type);
+    };
+
     const updateField = <K extends keyof FormData>(field: K, value: FormData[K]) => {
         setForm((prev) => ({...prev, [field]: value}));
         if (errors[field]) {
@@ -259,6 +306,7 @@ export default function SyncJobDrawer({
         updateField('incrementalField', '');
         setTables([]);
         setColumnOptions([]);
+        setColumnTypes({});
         setFieldMapping([]);
         loadSchemas(datasourceId);
     };
@@ -269,6 +317,7 @@ export default function SyncJobDrawer({
         updateField('targetTable', '');
         updateField('incrementalField', '');
         setColumnOptions([]);
+        setColumnTypes({});
         setFieldMapping([]);
         if (form.sourceDatasourceId && selectedSchema) {
             loadTables(form.sourceDatasourceId, selectedSchema);
@@ -285,6 +334,12 @@ export default function SyncJobDrawer({
             incrementalField: '',
         }));
         setFieldMapping([]);
+    };
+
+    const handleTargetDatabaseChange = (targetDatabase: string) => {
+        updateField('targetDatabase', targetDatabase);
+        updateField('targetTable', '');
+        setTargetTables([]);
     };
 
     const updateMappingField = (index: number, key: keyof SyncFieldMapping, value: string) => {
@@ -312,8 +367,8 @@ export default function SyncJobDrawer({
         if (!form.sourceDatasourceId) nextErrors.sourceDatasourceId = '请选择源数据源';
         if (!form.selectedSchema) nextErrors.selectedSchema = '请选择源库 / Schema';
         if (!form.sourceTable.trim()) nextErrors.sourceTable = '请选择源表';
-        if (!form.targetDatabase.trim()) nextErrors.targetDatabase = '请选择或输入目标 Doris 库';
-        if (!form.targetTable.trim()) nextErrors.targetTable = '请输入目标表名';
+        if (!form.targetDatabase.trim()) nextErrors.targetDatabase = '请选择目标 Doris 库';
+        if (!form.targetTable.trim()) nextErrors.targetTable = '请选择目标表名';
         if (!form.syncMode) nextErrors.syncMode = '请选择同步模式';
         if (form.syncMode === 'INCREMENTAL' && !form.incrementalField) {
             nextErrors.incrementalField = '请选择增量字段';
@@ -490,22 +545,22 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 源表 <span className="text-ds-danger">*</span>
                             </label>
-                            <div className="relative">
-                                <input
-                                    data-testid="sync-job-source-table"
-                                    list="sync-job-source-tables"
-                                    value={form.sourceTable}
-                                    onChange={(e) => handleSourceTableChange(e.target.value)}
-                                    disabled={!form.selectedSchema || tablesLoading}
-                                    placeholder={tablesLoading ? '加载中...' : '请选择或输入源表名'}
-                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                />
-                                <datalist id="sync-job-source-tables">
-                                    {tables.map((t) => (
-                                        <option key={t} value={t}/>
-                                    ))}
-                                </datalist>
-                            </div>
+                            <select
+                                data-testid="sync-job-source-table"
+                                value={form.sourceTable}
+                                onChange={(e) => handleSourceTableChange(e.target.value)}
+                                disabled={!form.selectedSchema || tablesLoading}
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                <option value="">{tablesLoading ? '加载中...' : '请选择'}</option>
+                                {form.sourceTable && !tables.includes(form.sourceTable) && (
+                                    <option value={form.sourceTable}>{form.sourceTable}</option>
+                                )}
+                                {tables.map((t) => (
+                                    <option key={t} value={t}
+                                            data-testid={`sync-job-source-table-option-${t}`}>{t}</option>
+                                ))}
+                            </select>
                             {errors.sourceTable && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.sourceTable}</p>
                             )}
@@ -521,22 +576,22 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 目标 Doris 库 <span className="text-ds-danger">*</span>
                             </label>
-                            <div className="relative">
-                                <input
-                                    data-testid="sync-job-target-database"
-                                    list="builtin-doris-dbs"
-                                    value={form.targetDatabase}
-                                    onChange={(e) => updateField('targetDatabase', e.target.value)}
-                                    disabled={targetDbsLoading}
-                                    placeholder={targetDbsLoading ? '加载中...' : '选择已有库或输入新库名'}
-                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                />
-                                <datalist id="builtin-doris-dbs">
-                                    {targetDatabases.map((db) => (
-                                        <option key={db} value={db}/>
-                                    ))}
-                                </datalist>
-                            </div>
+                            <select
+                                data-testid="sync-job-target-database"
+                                value={form.targetDatabase}
+                                onChange={(e) => handleTargetDatabaseChange(e.target.value)}
+                                disabled={targetDbsLoading}
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                <option value="">{targetDbsLoading ? '加载中...' : '请选择'}</option>
+                                {form.targetDatabase && !targetDatabases.includes(form.targetDatabase) && (
+                                    <option value={form.targetDatabase}>{form.targetDatabase}</option>
+                                )}
+                                {targetDatabases.map((db) => (
+                                    <option key={db} value={db}
+                                            data-testid={`sync-job-target-database-option-${db}`}>{db}</option>
+                                ))}
+                            </select>
                             {errors.targetDatabase && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetDatabase}</p>
                             )}
@@ -546,13 +601,22 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 目标表名 <span className="text-ds-danger">*</span>
                             </label>
-                            <input
+                            <select
                                 data-testid="sync-job-target-table"
                                 value={form.targetTable}
                                 onChange={(e) => updateField('targetTable', e.target.value)}
-                                className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                                placeholder="默认与源表名相同"
-                            />
+                                disabled={!form.targetDatabase || targetTablesLoading}
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                <option value="">{targetTablesLoading ? '加载中...' : '请选择'}</option>
+                                {form.targetTable && !targetTables.includes(form.targetTable) && (
+                                    <option value={form.targetTable}>{form.targetTable}</option>
+                                )}
+                                {targetTables.map((t) => (
+                                    <option key={t} value={t}
+                                            data-testid={`sync-job-target-table-option-${t}`}>{t}</option>
+                                ))}
+                            </select>
                             {errors.targetTable && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetTable}</p>
                             )}
@@ -654,10 +718,19 @@ export default function SyncJobDrawer({
                                     className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <option value="">请选择</option>
-                                    {columnOptions.map((col) => (
-                                        <option key={col} value={col}>{col}</option>
-                                    ))}
+                                    {columnOptions.map((col) => {
+                                        const type = columnTypes[col];
+                                        const recommended = isIncrementalRecommended(col);
+                                        return (
+                                            <option key={col} value={col} disabled={!recommended}>
+                                                {col}{type ? ` (${type})` : ''}{!recommended ? ' - 不推荐' : ''}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
+                                <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                    建议选择数值型（int / bigint / decimal 等）或时间型（date / datetime / timestamp）字段
+                                </p>
                                 {errors.incrementalField && (
                                     <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.incrementalField}</p>
                                 )}

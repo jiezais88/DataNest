@@ -30,7 +30,21 @@ function formatDuration(ms?: number, seconds?: number) {
 function formatThroughput(value?: number) {
     if (value === undefined || value === null) return '-';
     if (value >= 10000) return `${(value / 10000).toFixed(1)} 万行/秒`;
-    return `${Math.round(value)} 行/秒`;
+    if (value < 1) return `${value.toFixed(2)} 行/秒`;
+    return `${value.toFixed(1)} 行/秒`;
+}
+
+function formatDateTimeLocalInput(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function getDefaultTimeRange(): { from: string; to: string } {
+    const now = new Date();
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+    from.setHours(0, 0, 0, 0);
+    return {from: formatDateTimeLocalInput(from), to: formatDateTimeLocalInput(to)};
 }
 
 function statusClass(value: SyncHistoryStatus) {
@@ -83,6 +97,11 @@ export default function SyncJobHistoryPage() {
     const [pageSize, setPageSize] = useState(10);
     const [status, setStatus] = useState<SyncHistoryStatus | ''>('');
     const [draftStatus, setDraftStatus] = useState<SyncHistoryStatus | ''>('');
+    const defaultRange = getDefaultTimeRange();
+    const [startTimeFrom, setStartTimeFrom] = useState(defaultRange.from);
+    const [startTimeTo, setStartTimeTo] = useState(defaultRange.to);
+    const [draftStartTimeFrom, setDraftStartTimeFrom] = useState(defaultRange.from);
+    const [draftStartTimeTo, setDraftStartTimeTo] = useState(defaultRange.to);
     const [loading, setLoading] = useState(false);
     const [searchTrigger, setSearchTrigger] = useState(0);
 
@@ -109,6 +128,8 @@ export default function SyncJobHistoryPage() {
                 page,
                 pageSize,
                 status: status || undefined,
+                startTimeFrom,
+                startTimeTo,
             };
             const result = await querySyncJobHistory(params);
             if (result.code === 200) {
@@ -118,7 +139,7 @@ export default function SyncJobHistoryPage() {
         } finally {
             setLoading(false);
         }
-    }, [syncJobId, page, pageSize, status, searchTrigger]);
+    }, [syncJobId, page, pageSize, status, startTimeFrom, startTimeTo, searchTrigger]);
 
     useEffect(() => {
         loadJob();
@@ -130,14 +151,22 @@ export default function SyncJobHistoryPage() {
 
     const handleSearch = () => {
         setStatus(draftStatus);
+        setStartTimeFrom(draftStartTimeFrom);
+        setStartTimeTo(draftStartTimeTo);
         setPage(1);
         setSearchTrigger((v) => v + 1);
     };
 
     const handleReset = () => {
+        const range = getDefaultTimeRange();
         setDraftStatus('');
         setStatus('');
+        setDraftStartTimeFrom(range.from);
+        setDraftStartTimeTo(range.to);
+        setStartTimeFrom(range.from);
+        setStartTimeTo(range.to);
         setPage(1);
+        setSearchTrigger((v) => v + 1);
     };
 
     const handlePageChange = (nextPage: number, nextPageSize: number) => {
@@ -169,7 +198,7 @@ export default function SyncJobHistoryPage() {
                     onClick={() => navigate('/engineering/sync-jobs')}
                     className="flex items-center gap-ds-1 text-ds-small text-ds-text-muted hover:text-ds-accent transition-colors"
                 >
-                    <HiChevronLeft size={16}/> 批量数据同步
+                    <HiChevronLeft size={16}/> 批量数据同步任务
                 </button>
                 <HiChevronRight size={14} className="text-ds-text-muted"/>
                 <span className="text-ds-small text-ds-text-primary font-medium">{jobName || syncJobId}</span>
@@ -208,6 +237,23 @@ export default function SyncJobHistoryPage() {
                         <HiChevronRight
                             size={14}
                             className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"
+                        />
+                    </div>
+                    <div className="flex items-center gap-ds-2">
+                        <input
+                            type="datetime-local"
+                            value={draftStartTimeFrom}
+                            onChange={(e) => setDraftStartTimeFrom(e.target.value)}
+                            className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
+                            aria-label="开始时间起"
+                        />
+                        <span className="text-ds-small text-ds-text-muted">至</span>
+                        <input
+                            type="datetime-local"
+                            value={draftStartTimeTo}
+                            onChange={(e) => setDraftStartTimeTo(e.target.value)}
+                            className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
+                            aria-label="开始时间止"
                         />
                     </div>
                     <div className="flex items-center gap-ds-2 ml-auto">

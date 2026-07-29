@@ -3,6 +3,7 @@ package com.datanest.governance.dto;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class ComplianceCheckResultDTO {
@@ -33,7 +34,17 @@ public class ComplianceCheckResultDTO {
 
     private String expectedValue;
 
+    private List<ApplicableStandardDTO> applicableStandards;
+
     private Integer isCompliant;
 
     private LocalDateTime checkedAt;
+
+    @Data
+    public static class ApplicableStandardDTO {
+        private String standardName;
+        private String ruleType;
+        private String ruleValue;
+        private List<String> allowedTypes;
+    }
 }

@@ -285,6 +285,24 @@ public class DataSourceService {
         return connectionTester.extractSchemas(entity, password);
     }
 
+    public List<String> getDatabases(Long id) {
+        DataSourceConnection entity = dataSourceMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
+        }
+        String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
+        return connectionTester.extractDatabases(entity, password);
+    }
+
+    public List<String> getTables(Long id, String database, String schema) {
+        DataSourceConnection entity = dataSourceMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
+        }
+        String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
+        return connectionTester.extractTables(entity, password, database, schema);
+    }
+
     public List<DataSourceReferenceDTO> getReferences(Long id) {
         List<DataSourceReferenceDTO> references = new ArrayList<>();
 

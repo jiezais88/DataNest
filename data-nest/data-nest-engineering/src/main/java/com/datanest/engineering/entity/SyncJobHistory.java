@@ -32,5 +32,11 @@ public class SyncJobHistory {
 
     private String errorMessage;
 
+    private Long parentHistoryId;
+
+    private Integer retryCount;
+
+    private LocalDateTime nextRetryAt;
+
     private LocalDateTime createdAt;
 }

@@ -1,14 +1,17 @@
 package com.datanest.governance.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
-@TableName("compliance_check_result")
+@TableName(value = "compliance_check_result", autoResultMap = true)
 public class ComplianceCheckResult {
 
     @TableId(type = IdType.ASSIGN_ID)
@@ -40,7 +43,18 @@ public class ComplianceCheckResult {
 
     private String expectedValue;
 
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<ApplicableStandard> applicableStandards;
+
     private Integer isCompliant;
 
     private LocalDateTime checkedAt;
+
+    @Data
+    public static class ApplicableStandard {
+        private String standardName;
+        private String ruleType;
+        private String ruleValue;
+        private List<String> allowedTypes;
+    }
 }

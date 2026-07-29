@@ -47,10 +47,10 @@ function formatDateTime(value?: string) {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-function computeNextExecutionTime(triggerType: string, cronExpression?: string): string {
-    if (triggerType !== 'CRON' || !cronExpression) return '-';
+function computeNextExecutionTime(item: CollectTask): string {
+    if (item.triggerType !== 'CRON' || !item.cronExpression || item.scheduleEnabled !== 1) return '-';
     try {
-        const interval = parseExpression.parse(cronExpression);
+        const interval = parseExpression.parse(item.cronExpression);
         return formatDateTime(interval.next().toDate().toISOString());
     } catch {
         return '-';
@@ -416,7 +416,7 @@ export default function CollectTasksPage() {
                                         {collectModeBadge(item.collectMode)}
                                     </td>
                                     <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                        {computeNextExecutionTime(item.triggerType, item.cronExpression)}
+                                        {computeNextExecutionTime(item)}
                                     </td>
                                     <td className="px-ds-4 py-ds-3">
                                         <span

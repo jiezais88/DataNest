@@ -37,6 +37,54 @@ function formatObjectPath(result: ComplianceCheckResult) {
     return parts.length ? parts.join('.') : result.objectName;
 }
 
+function formatRuleTypeLabel(ruleType?: string) {
+    switch (ruleType) {
+        case 'PREFIX':
+            return '前缀';
+        case 'SUFFIX':
+            return '后缀';
+        case 'REGEX':
+            return '正则';
+        default:
+            return ruleType || '';
+    }
+}
+
+function formatNamingProblem(result: ComplianceCheckResult) {
+    const objectLabel = result.objectType === 'TABLE' ? '表名' : '字段名';
+    return `${objectLabel} ${result.objectName || ''} 未命中任何命名规范`;
+}
+
+function formatNamingStandards(result: ComplianceCheckResult) {
+    const standards = result.applicableStandards || [];
+    if (standards.length === 0) return '未配置命名规范';
+    return standards.map((s) => `${s.standardName}（${formatRuleTypeLabel(s.ruleType)}: ${s.ruleValue}）`).join('；');
+}
+
+function formatNamingSuggestion() {
+    return '请修改名称以命中上述任一命名规范';
+}
+
+function formatTypeProblem(result: ComplianceCheckResult) {
+    const standardName = result.standardName || '字段类型标准';
+    return `字段 ${result.objectName || ''} 当前类型为 ${result.actualValue || '-'}，不符合 ${standardName} 要求`;
+}
+
+function formatTypeStandards(result: ComplianceCheckResult) {
+    const standards = result.applicableStandards || [];
+    if (standards.length === 0) return '-';
+    return standards
+        .map((s) => {
+            const allowed = s.allowedTypes?.length ? s.allowedTypes.join(', ') : '-';
+            return `${s.standardName}：允许 ${allowed}`;
+        })
+        .join('；');
+}
+
+function formatTypeSuggestion(result: ComplianceCheckResult) {
+    return `请将字段类型改为 ${result.expectedValue || '符合标准的类型'}`;
+}
+
 function groupResults(results: ComplianceCheckResult[]) {
     const naming = results.filter((r) => r.violationType === 'NAMING' || (!r.violationType && r.isCompliant === 0 && r.objectType));
     const fieldType = results.filter((r) => r.violationType === 'FIELD_TYPE' || (!r.violationType && r.isCompliant === 0 && !naming.includes(r)));
@@ -102,10 +150,22 @@ export default function ComplianceCheckPanel({
     const {namingTables, namingColumns, fieldType} = groupResults(results);
     const totalNonCompliant = results.filter((r) => r.isCompliant === 0).length;
 
+    const COMPLIANCE_STATE_KEY = 'datanest:compliance-check-state';
+
+    const saveComplianceState = () => {
+        try {
+            sessionStorage.setItem(COMPLIANCE_STATE_KEY, JSON.stringify({params, results, checkedAt}));
+        } catch {
+            // ignore
+        }
+    };
+
     const handleView = (result: ComplianceCheckResult) => {
+        saveComplianceState();
         const query = new URLSearchParams();
         if (result.tableId) query.set('tableId', result.tableId);
         if (result.columnId) query.set('columnId', result.columnId);
+        query.set('from', 'compliance');
         navigate(`/governance/metadata?${query.toString()}`);
     };
 
@@ -168,8 +228,9 @@ export default function ComplianceCheckPanel({
                                                 render: (r) => <span
                                                     className="text-ds-text-primary font-medium">{formatObjectPath(r)}</span>
                                             },
-                                            {key: 'standard', label: '违反规范', render: (r) => r.standardName || '-'},
-                                            {key: 'expected', label: '规范要求', render: (r) => r.expectedValue || '-'},
+                                            {key: 'problem', label: '问题描述', render: formatNamingProblem},
+                                            {key: 'standards', label: '涉及规范', render: formatNamingStandards},
+                                            {key: 'suggestion', label: '整改建议', render: formatNamingSuggestion},
                                         ]}
                                         onView={handleView}
                                     />
@@ -188,8 +249,9 @@ export default function ComplianceCheckPanel({
                                                 render: (r) => <span
                                                     className="text-ds-text-primary font-medium">{formatObjectPath(r)}</span>
                                             },
-                                            {key: 'standard', label: '违反规范', render: (r) => r.standardName || '-'},
-                                            {key: 'expected', label: '规范要求', render: (r) => r.expectedValue || '-'},
+                                            {key: 'problem', label: '问题描述', render: formatNamingProblem},
+                                            {key: 'standards', label: '涉及规范', render: formatNamingStandards},
+                                            {key: 'suggestion', label: '整改建议', render: formatNamingSuggestion},
                                         ]}
                                         onView={handleView}
                                     />
@@ -220,8 +282,9 @@ export default function ComplianceCheckPanel({
                                             render: (r) => <span
                                                 className="text-ds-text-primary font-medium">{formatObjectPath(r)}</span>
                                         },
-                                        {key: 'actual', label: '当前类型', render: (r) => r.actualValue || '-'},
-                                        {key: 'expected', label: '标准类型', render: (r) => r.expectedValue || '-'},
+                                        {key: 'problem', label: '问题描述', render: formatTypeProblem},
+                                        {key: 'standards', label: '涉及规范', render: formatTypeStandards},
+                                        {key: 'suggestion', label: '整改建议', render: formatTypeSuggestion},
                                     ]}
                                     onView={handleView}
                                 />

@@ -23,6 +23,9 @@ public class SyncJobHistoryDTO {
     private String targetTable;
     private String syncMode;
     private String incrementalField;
+    private Long parentHistoryId;
+    private Integer retryCount;
+    private LocalDateTime nextRetryAt;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -175,6 +178,30 @@ public class SyncJobHistoryDTO {
 
     public void setIncrementalField(String incrementalField) {
         this.incrementalField = incrementalField;
+    }
+
+    public Long getParentHistoryId() {
+        return parentHistoryId;
+    }
+
+    public void setParentHistoryId(Long parentHistoryId) {
+        this.parentHistoryId = parentHistoryId;
+    }
+
+    public Integer getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(Integer retryCount) {
+        this.retryCount = retryCount;
+    }
+
+    public LocalDateTime getNextRetryAt() {
+        return nextRetryAt;
+    }
+
+    public void setNextRetryAt(LocalDateTime nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
     }
 
     public LocalDateTime getCreatedAt() {

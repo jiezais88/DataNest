@@ -67,6 +67,8 @@ export interface CollectTaskExecution {
 export interface CollectHistoryQueryParams {
     taskId?: string;
     status?: ExecutionStatus | '';
+    startTimeFrom?: string;
+    startTimeTo?: string;
     page: number;
     pageSize: number;
 }

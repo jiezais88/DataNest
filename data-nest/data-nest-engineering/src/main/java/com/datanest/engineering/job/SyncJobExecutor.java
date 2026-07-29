@@ -48,11 +48,6 @@ public class SyncJobExecutor {
             SyncJob job = syncJobMapper.selectById(syncJobId);
             if (job != null) {
                 job.setExecutionStatus("RUNNING");
-                // Cron 每次调度是新的执行，重置重试计数；手动重试由 RetryService 维护计数
-                if ("CRON".equalsIgnoreCase(triggerType)) {
-                    job.setRetryCount(0);
-                    job.setNextRetryAt(null);
-                }
                 job.setUpdatedAt(LocalDateTime.now());
                 syncJobMapper.updateById(job);
             }

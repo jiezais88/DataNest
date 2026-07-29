@@ -23,11 +23,11 @@ public class SyncJobDTO {
     private String targetDatabase;
     private String targetTable;
     private LocalDateTime nextExecutionTime;
-    private Integer retryCount;
-    private LocalDateTime nextRetryAt;
     private Boolean scheduleEnabled;
     private Integer xxlJobId;
     private String description;
+    private LocalDateTime lastExecuteTime;
+    private Long lastHistoryId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -175,22 +175,6 @@ public class SyncJobDTO {
         this.nextExecutionTime = nextExecutionTime;
     }
 
-    public Integer getRetryCount() {
-        return retryCount;
-    }
-
-    public void setRetryCount(Integer retryCount) {
-        this.retryCount = retryCount;
-    }
-
-    public LocalDateTime getNextRetryAt() {
-        return nextRetryAt;
-    }
-
-    public void setNextRetryAt(LocalDateTime nextRetryAt) {
-        this.nextRetryAt = nextRetryAt;
-    }
-
     public Boolean getScheduleEnabled() {
         return scheduleEnabled;
     }
@@ -213,6 +197,22 @@ public class SyncJobDTO {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public LocalDateTime getLastExecuteTime() {
+        return lastExecuteTime;
+    }
+
+    public void setLastExecuteTime(LocalDateTime lastExecuteTime) {
+        this.lastExecuteTime = lastExecuteTime;
+    }
+
+    public Long getLastHistoryId() {
+        return lastHistoryId;
+    }
+
+    public void setLastHistoryId(Long lastHistoryId) {
+        this.lastHistoryId = lastHistoryId;
     }
 
     public LocalDateTime getCreatedAt() {

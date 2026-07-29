@@ -50,6 +50,31 @@ public class ConnectionTester {
         );
     }
 
+    public List<String> extractDatabases(DataSourceConnection connection, String decryptedPassword) {
+        return JdbcSchemaExtractor.extractDatabases(
+                connection.getType(),
+                connection.getHost(),
+                connection.getPort(),
+                connection.getDatabaseName(),
+                connection.getSchemaName(),
+                connection.getUsername(),
+                decryptedPassword
+        );
+    }
+
+    public List<String> extractTables(DataSourceConnection connection, String decryptedPassword,
+                                      String database, String schema) {
+        return JdbcSchemaExtractor.extractTables(
+                connection.getType(),
+                connection.getHost(),
+                connection.getPort(),
+                database,
+                schema,
+                connection.getUsername(),
+                decryptedPassword
+        );
+    }
+
     public String buildJdbcUrl(DataSourceConnection connection) {
         return buildJdbcUrl(connection.getType(), connection.getHost(), connection.getPort(),
                 connection.getDatabaseName(), connection.getSchemaName());

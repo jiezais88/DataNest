@@ -3,7 +3,8 @@ import type {Result} from './datasource';
 
 export interface PreviewResult {
     columns: string[];
-    rows: Array<Record<string, any>>;
+    columnTypes?: Record<string, string>;
+    rows: Array<Record<string, unknown>>;
     rowCount: number;
 }
 

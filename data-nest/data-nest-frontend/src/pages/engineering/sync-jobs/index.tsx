@@ -137,7 +137,7 @@ function formatSourceToTarget(item: SyncJob, dataSources: DataSource[]) {
 
 function formatNextExecutionTime(item: SyncJob) {
     if (item.triggerType === 'MANUAL') return '—';
-    if (!item.scheduleEnabled) return '已停用';
+    if (!item.scheduleEnabled) return '—';
     if (!item.nextExecutionTime) return '—';
     return formatDateTime(item.nextExecutionTime);
 }
@@ -181,10 +181,16 @@ export default function SyncJobsPage() {
                 triggerType: triggerType || undefined,
                 executionStatus: executionStatus || undefined,
             };
-            const result = await querySyncJobs(params);
-            if (result.code === 200) {
-                setItems(result.data.records);
-                setTotal(result.data.total);
+            const [jobResult, dsResult] = await Promise.all([
+                querySyncJobs(params),
+                getDataSources({page: 1, pageSize: 1000}),
+            ]);
+            if (jobResult.code === 200) {
+                setItems(jobResult.data.records);
+                setTotal(jobResult.data.total);
+            }
+            if (dsResult.code === 200) {
+                setDataSources(dsResult.data.records.filter((ds) => ds.status === 'NORMAL'));
             }
         } finally {
             setLoading(false);
@@ -311,7 +317,7 @@ export default function SyncJobsPage() {
         <div className="h-full flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
-                    <h1 className="text-ds-display text-ds-text-primary">批量数据同步</h1>
+                    <h1 className="text-ds-display text-ds-text-primary">批量数据同步任务</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">管理数据源到 Doris 的批量同步任务，支持手动触发与
                         Cron 定时调度</p>
                 </div>
@@ -398,6 +404,9 @@ export default function SyncJobsPage() {
                         <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">任务名称</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">触发方式</th>
+                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">Cron
+                                表达式
+                            </th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">调度状态</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">下次执行时间</th>
                             <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">源
@@ -424,6 +433,9 @@ export default function SyncJobsPage() {
                                             className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
                                     </td>
                                     <td className="px-ds-4 py-ds-3">{triggerBadge(item.triggerType)}</td>
+                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary font-mono">
+                                        {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
+                                    </td>
                                     <td className="px-ds-4 py-ds-3">{scheduleStatusBadge(item)}</td>
                                     <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
                                         {formatNextExecutionTime(item)}

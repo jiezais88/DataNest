@@ -151,6 +151,12 @@ public class ComplianceCheckService {
                 }
             }
         }
+        if (request.getStartTime() != null) {
+            wrapper.ge("checked_at", request.getStartTime());
+        }
+        if (request.getEndTime() != null) {
+            wrapper.le("checked_at", request.getEndTime());
+        }
         wrapper.orderByDesc("checked_at");
         List<ComplianceCheckResult> list = complianceCheckResultMapper.selectList(wrapper);
         return list.stream().map(this::toDTO).collect(Collectors.toList());
@@ -200,7 +206,8 @@ public class ComplianceCheckService {
         if (matched != null) {
             return;
         }
-        results.add(buildResult(table, null, "TABLE", null, null, null, "NAMING", checkedAt));
+        results.add(buildResult(table, null, "TABLE", null, null, null, "NAMING", checkedAt,
+                toApplicableStandards(standards, null)));
     }
 
     private void checkColumn(MetadataColumn column, MetadataTable table, List<NamingStandard> standards,
@@ -208,7 +215,8 @@ public class ComplianceCheckService {
                              List<ComplianceCheckResult> results, LocalDateTime checkedAt) {
         NamingStandard matched = matchFirst(column.getColumnName(), standards);
         if (matched == null) {
-            results.add(buildResult(table, column, "COLUMN", null, null, null, "NAMING", checkedAt));
+            results.add(buildResult(table, column, "COLUMN", null, null, null, "NAMING", checkedAt,
+                    toApplicableStandards(standards, null)));
             return;
         }
         FieldTypeStandard target = standardMap.get(matched.getTargetStandardId());
@@ -220,7 +228,8 @@ public class ComplianceCheckService {
         boolean typeCompliant = target.getAllowedTypes().stream()
                 .anyMatch(t -> typeMatches(t, actualType));
         if (!typeCompliant) {
-            results.add(buildResult(table, column, "COLUMN", matched, actualType, expected, "TYPE", checkedAt));
+            results.add(buildResult(table, column, "COLUMN", matched, actualType, expected, "TYPE", checkedAt,
+                    toApplicableStandards(List.of(matched), target)));
         }
     }
 
@@ -285,7 +294,8 @@ public class ComplianceCheckService {
 
     private ComplianceCheckResult buildResult(MetadataTable table, MetadataColumn column, String objectType,
                                               NamingStandard standard, String actualValue, String expectedValue,
-                                              String violationType, LocalDateTime checkedAt) {
+                                              String violationType, LocalDateTime checkedAt,
+                                              List<ComplianceCheckResult.ApplicableStandard> applicableStandards) {
         ComplianceCheckResult r = new ComplianceCheckResult();
         r.setDatasourceId(table.getDatasourceId());
         r.setDatabaseName(table.getDatabaseName());
@@ -300,9 +310,22 @@ public class ComplianceCheckService {
         r.setViolationType(violationType);
         r.setActualValue(actualValue);
         r.setExpectedValue(expectedValue);
+        r.setApplicableStandards(applicableStandards);
         r.setIsCompliant(0);
         r.setCheckedAt(checkedAt);
         return r;
+    }
+
+    private List<ComplianceCheckResult.ApplicableStandard> toApplicableStandards(
+            List<NamingStandard> standards, FieldTypeStandard fieldTypeStandard) {
+        return standards.stream().map(s -> {
+            ComplianceCheckResult.ApplicableStandard item = new ComplianceCheckResult.ApplicableStandard();
+            item.setStandardName(s.getName());
+            item.setRuleType(s.getRuleType());
+            item.setRuleValue(s.getRuleValue());
+            item.setAllowedTypes(fieldTypeStandard != null ? fieldTypeStandard.getAllowedTypes() : null);
+            return item;
+        }).collect(Collectors.toList());
     }
 
     private String buildObjectPath(MetadataTable table, MetadataColumn column) {
@@ -372,8 +395,24 @@ public class ComplianceCheckService {
         dto.setObjectName(entity.getObjectName());
         dto.setActualValue(entity.getActualValue());
         dto.setExpectedValue(entity.getExpectedValue());
+        dto.setApplicableStandards(toDtoApplicableStandards(entity.getApplicableStandards()));
         dto.setIsCompliant(entity.getIsCompliant());
         dto.setCheckedAt(entity.getCheckedAt());
         return dto;
+    }
+
+    private List<ComplianceCheckResultDTO.ApplicableStandardDTO> toDtoApplicableStandards(
+            List<ComplianceCheckResult.ApplicableStandard> list) {
+        if (list == null) {
+            return null;
+        }
+        return list.stream().map(s -> {
+            ComplianceCheckResultDTO.ApplicableStandardDTO dto = new ComplianceCheckResultDTO.ApplicableStandardDTO();
+            dto.setStandardName(s.getStandardName());
+            dto.setRuleType(s.getRuleType());
+            dto.setRuleValue(s.getRuleValue());
+            dto.setAllowedTypes(s.getAllowedTypes());
+            return dto;
+        }).collect(Collectors.toList());
     }
 }

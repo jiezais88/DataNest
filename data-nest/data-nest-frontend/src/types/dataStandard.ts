@@ -63,6 +63,13 @@ export interface FieldTypeStandardQueryParams {
     pageSize: number;
 }
 
+export interface ApplicableStandard {
+    standardName?: string;
+    ruleType?: string;
+    ruleValue?: string;
+    allowedTypes?: string[];
+}
+
 export interface ComplianceCheckResult {
     id: string;
     standardId: string;
@@ -77,6 +84,7 @@ export interface ComplianceCheckResult {
     columnName?: string;
     actualValue?: string;
     expectedValue?: string;
+    applicableStandards?: ApplicableStandard[];
     isCompliant: number;
     checkedAt?: string;
 }
@@ -88,4 +96,6 @@ export interface ComplianceCheckParams {
     tableId?: string;
     checkNaming?: boolean;
     checkFieldType?: boolean;
+    startTime?: string;
+    endTime?: string;
 }

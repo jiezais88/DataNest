@@ -27,6 +27,7 @@ export default function MetadataPage() {
     const [searchParams] = useSearchParams();
     const tableIdParam = searchParams.get('tableId');
     const columnIdParam = searchParams.get('columnId');
+    const fromCompliance = searchParams.get('from') === 'compliance';
     const {userInfo} = useAuthStore();
     const roles = userInfo?.roles || [];
     const canWrite = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN');
@@ -525,8 +526,8 @@ export default function MetadataPage() {
                                 </thead>
                                 <tbody>
                                 {columns.map((column) => (
-                                    <tr key={column.id}
-                                        className={`border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover ${column.id === highlightedColumnId ? 'bg-ds-warning/10' : ''}`}>
+                                    <tr key={column.id || column.columnName}
+                                        className={`border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover ${(column.id && highlightedColumnId && column.id === highlightedColumnId) ? 'bg-ds-warning/10' : ''}`}>
                                         <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-primary font-medium">{column.columnName}</td>
                                         <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{column.dataType || '-'}</td>
                                         <td className="px-ds-4 py-ds-3 min-w-[180px]">
@@ -653,12 +654,22 @@ export default function MetadataPage() {
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
-            <div className="mb-ds-5 flex-shrink-0">
-                <h1 className="text-ds-display text-ds-text-primary flex items-center gap-ds-2">
-                    <HiOutlineBookOpen size={24} className="text-ds-accent"/>
-                    元数据管理
-                </h1>
-                <p className="text-ds-small text-ds-text-muted mt-ds-1">浏览已采集的数据源库表结构，编辑表与字段注释</p>
+            <div className="mb-ds-5 flex-shrink-0 flex items-start justify-between">
+                <div>
+                    <h1 className="text-ds-display text-ds-text-primary flex items-center gap-ds-2">
+                        <HiOutlineBookOpen size={24} className="text-ds-accent"/>
+                        元数据管理
+                    </h1>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">浏览已采集的数据源库表结构，编辑表与字段注释</p>
+                </div>
+                {fromCompliance && (
+                    <button
+                        onClick={() => navigate('/governance/data-standards?from=compliance')}
+                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent text-ds-accent text-ds-small font-semibold rounded-ds-sm transition-colors"
+                    >
+                        返回合规检查结果
+                    </button>
+                )}
             </div>
 
             <div

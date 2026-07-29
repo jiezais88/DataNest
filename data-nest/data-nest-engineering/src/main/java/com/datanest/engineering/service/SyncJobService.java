@@ -77,8 +77,6 @@ public class SyncJobService {
         entity.setExecutionStatus(EXECUTION_STATUS_PENDING);
         entity.setStatus(STATUS_NORMAL);
         entity.setScheduleEnabled(0);
-        entity.setRetryCount(0);
-        entity.setNextRetryAt(null);
         entity.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
         entity.setCreatedBy(currentUserId());
         entity.setUpdatedBy(currentUserId());
@@ -194,8 +192,6 @@ public class SyncJobService {
             syncJobMapper.updateById(job);
         }
         job.setExecutionStatus(EXECUTION_STATUS_RUNNING);
-        job.setRetryCount(0);
-        job.setNextRetryAt(null);
         job.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(job);
 
@@ -204,6 +200,7 @@ public class SyncJobService {
         history.setTriggerType(TRIGGER_MANUAL);
         history.setStatus("RUNNING");
         history.setStartTime(LocalDateTime.now());
+        history.setRetryCount(0);
         history.setSourceRows(0L);
         history.setTargetRows(0L);
         history.setCreatedAt(LocalDateTime.now());
@@ -260,6 +257,9 @@ public class SyncJobService {
         if (StringUtils.hasText(request.getStatus())) {
             wrapper.eq("status", request.getStatus());
         }
+        if (request.getStartTimeFrom() != null && request.getStartTimeTo() != null) {
+            wrapper.between("start_time", request.getStartTimeFrom(), request.getStartTimeTo());
+        }
         wrapper.orderByDesc("start_time");
         IPage<SyncJobHistory> result = syncJobHistoryMapper.selectPage(page, wrapper);
 
@@ -304,9 +304,7 @@ public class SyncJobService {
         if (result.success()) {
             finishHistory(history, result, "SUCCESS");
             updateExecutionStatus(job, EXECUTION_STATUS_SUCCESS);
-            job.setRetryCount(0);
-            job.setNextRetryAt(null);
-            syncJobMapper.updateById(job);
+            updateJobLastExecute(job, history.getId());
             metadataRegistrationService.register(syncJobId);
             logInfo(history, "同步成功，已注册 Doris 元数据");
             return;
@@ -315,12 +313,13 @@ public class SyncJobService {
         logError(history, "Addax 执行失败: " + result.errorMessage());
         int retryTimes = job.getRetryTimes() == null ? 0 : job.getRetryTimes();
         int retryInterval = job.getRetryInterval() == null ? 0 : job.getRetryInterval();
-        int currentRetryCount = job.getRetryCount() == null ? 0 : job.getRetryCount();
+        int currentRetryCount = history.getRetryCount() == null ? 0 : history.getRetryCount();
 
         if (retryInterval > 0 && currentRetryCount < retryTimes) {
             logInfo(history, "准备 " + retryInterval + " 分钟后第 " + (currentRetryCount + 1) + " 次重试");
             finishHistory(history, result, "FAILED");
             updateExecutionStatus(job, EXECUTION_STATUS_FAILED);
+            updateJobLastExecute(job, history.getId());
             retryService.scheduleRetry(syncJobId, historyId, retryInterval);
             return;
         }
@@ -329,6 +328,7 @@ public class SyncJobService {
         String finalError = "同步任务最终失败" + (currentRetryCount > 0 ? "，已重试 " + currentRetryCount + " 次" : "");
         updateHistoryError(history, finalError);
         updateExecutionStatus(job, EXECUTION_STATUS_FAILED);
+        updateJobLastExecute(job, history.getId());
         logError(history, finalError);
     }
 
@@ -338,11 +338,19 @@ public class SyncJobService {
         history.setTriggerType(triggerType);
         history.setStatus("RUNNING");
         history.setStartTime(LocalDateTime.now());
+        history.setRetryCount(0);
         history.setSourceRows(0L);
         history.setTargetRows(0L);
         history.setCreatedAt(LocalDateTime.now());
         syncJobHistoryMapper.insert(history);
         return history;
+    }
+
+    private void updateJobLastExecute(SyncJob job, Long historyId) {
+        job.setLastExecuteTime(LocalDateTime.now());
+        job.setLastHistoryId(historyId);
+        job.setUpdatedAt(LocalDateTime.now());
+        syncJobMapper.updateById(job);
     }
 
     private void finishHistory(SyncJobHistory history, AddaxJobService.AddaxExecutionResult result, String status) {
@@ -532,11 +540,11 @@ public class SyncJobService {
         dto.setTargetDatabase(entity.getTargetDatabase());
         dto.setTargetTable(entity.getTargetTable());
         dto.setNextExecutionTime(entity.getNextExecutionTime());
-        dto.setRetryCount(entity.getRetryCount());
-        dto.setNextRetryAt(entity.getNextRetryAt());
         dto.setScheduleEnabled(entity.getScheduleEnabled() != null && entity.getScheduleEnabled() == 1);
         dto.setXxlJobId(entity.getXxlJobId());
         dto.setDescription(entity.getDescription());
+        dto.setLastExecuteTime(entity.getLastExecuteTime());
+        dto.setLastHistoryId(entity.getLastHistoryId());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         return dto;
@@ -560,6 +568,9 @@ public class SyncJobService {
             dto.setThroughputRowsPerSecond(dto.getTargetRows().doubleValue() / dto.getDurationSeconds());
         }
         dto.setErrorMessage(entity.getErrorMessage());
+        dto.setParentHistoryId(entity.getParentHistoryId());
+        dto.setRetryCount(entity.getRetryCount());
+        dto.setNextRetryAt(entity.getNextRetryAt());
         dto.setCreatedAt(entity.getCreatedAt());
 
         if (job != null) {

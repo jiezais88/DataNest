@@ -97,4 +97,24 @@ public class DataSourceController {
     public Result<List<String>> getSchemas(@PathVariable Long id) {
         return Result.ok(dataSourceService.getSchemas(id));
     }
+
+    /**
+     * 拉取数据源下所有库/Database（超管、工程师、治理员）
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @GetMapping("/{id}/databases")
+    public Result<List<String>> getDatabases(@PathVariable Long id) {
+        return Result.ok(dataSourceService.getDatabases(id));
+    }
+
+    /**
+     * 拉取指定库/Schema 下的所有表（超管、工程师、治理员）
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @GetMapping("/{id}/tables")
+    public Result<List<String>> getTables(@PathVariable Long id,
+                                          @RequestParam(required = false) String database,
+                                          @RequestParam(required = false) String schema) {
+        return Result.ok(dataSourceService.getTables(id, database, schema));
+    }
 }

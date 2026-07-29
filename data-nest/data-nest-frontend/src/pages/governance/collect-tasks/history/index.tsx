@@ -38,6 +38,19 @@ function formatDateTime(value?: string) {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function formatDateTimeLocalInput(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function getDefaultTimeRange(): { from: string; to: string } {
+    const now = new Date();
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+    from.setHours(0, 0, 0, 0);
+    return {from: formatDateTimeLocalInput(from), to: formatDateTimeLocalInput(to)};
+}
+
 function formatDuration(ms?: number) {
     if (ms === undefined || ms === null) return '-';
     if (ms < 1000) return `${ms}ms`;
@@ -191,6 +204,11 @@ export default function CollectHistoryPage() {
     const [pageSize, setPageSize] = useState(10);
     const [status, setStatus] = useState<ExecutionStatus | ''>('');
     const [draftStatus, setDraftStatus] = useState<ExecutionStatus | ''>('');
+    const defaultRange = getDefaultTimeRange();
+    const [startTimeFrom, setStartTimeFrom] = useState(defaultRange.from);
+    const [startTimeTo, setStartTimeTo] = useState(defaultRange.to);
+    const [draftStartTimeFrom, setDraftStartTimeFrom] = useState(defaultRange.from);
+    const [draftStartTimeTo, setDraftStartTimeTo] = useState(defaultRange.to);
     const [loading, setLoading] = useState(false);
     const [searchTrigger, setSearchTrigger] = useState(0);
 
@@ -218,6 +236,8 @@ export default function CollectHistoryPage() {
             page,
             pageSize,
             status: status || undefined,
+            startTimeFrom,
+            startTimeTo,
         };
         const result = await queryCollectHistory(params);
         if (result.code === 200) {
@@ -225,7 +245,7 @@ export default function CollectHistoryPage() {
             setTotal(result.data.total);
         }
         setLoading(false);
-    }, [taskId, page, pageSize, status, searchTrigger]);
+    }, [taskId, page, pageSize, status, startTimeFrom, startTimeTo, searchTrigger]);
 
     useEffect(() => {
         loadTask();
@@ -236,14 +256,22 @@ export default function CollectHistoryPage() {
 
     const handleSearch = () => {
         setStatus(draftStatus);
+        setStartTimeFrom(draftStartTimeFrom);
+        setStartTimeTo(draftStartTimeTo);
         setPage(1);
         setSearchTrigger((v) => v + 1);
     };
 
     const handleReset = () => {
+        const range = getDefaultTimeRange();
         setDraftStatus('');
         setStatus('');
+        setDraftStartTimeFrom(range.from);
+        setDraftStartTimeTo(range.to);
+        setStartTimeFrom(range.from);
+        setStartTimeTo(range.to);
         setPage(1);
+        setSearchTrigger((v) => v + 1);
     };
 
     const handlePageChange = (nextPage: number, nextPageSize: number) => {
@@ -358,6 +386,23 @@ export default function CollectHistoryPage() {
                         </select>
                         <HiChevronRight size={14}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"/>
+                    </div>
+                    <div className="flex items-center gap-ds-2">
+                        <input
+                            type="datetime-local"
+                            value={draftStartTimeFrom}
+                            onChange={(e) => setDraftStartTimeFrom(e.target.value)}
+                            className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
+                            aria-label="开始时间起"
+                        />
+                        <span className="text-ds-small text-ds-text-muted">至</span>
+                        <input
+                            type="datetime-local"
+                            value={draftStartTimeTo}
+                            onChange={(e) => setDraftStartTimeTo(e.target.value)}
+                            className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
+                            aria-label="开始时间止"
+                        />
                     </div>
                     <div className="flex items-center gap-ds-2 ml-auto">
                         <button onClick={handleSearch} disabled={loading}
