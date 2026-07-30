@@ -51,6 +51,12 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Spring Boot Actuator (compile, brings health/liveness/readiness probes) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- SLF4J (used by shared utilities, provided by consumers) -->
         <dependency>
             <groupId>org.slf4j</groupId>

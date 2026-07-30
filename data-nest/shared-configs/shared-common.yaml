@@ -1,0 +1,63 @@
+# ============================================
+# shared-common.yaml
+# 公共运行时配置：Redis、Jackson、MVC、LoadBalancer、MyBatis-Plus、日志、Actuator
+# 消费方：gateway / system-service / engineering-service / governance-service / job / worker
+# ============================================
+
+spring:
+  jackson:
+    default-property-inclusion: non_null
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+  mvc:
+    format:
+      date: yyyy-MM-dd
+      date-time: yyyy-MM-dd HH:mm:ss
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000
+      connect-timeout: 2000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: 1000ms
+
+  cloud:
+    loadbalancer:
+      cache:
+        enabled: true
+        ttl: 5s
+        capacity: 256
+      retry:
+        avoid-previous-instance: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
+
+logging:
+  level:
+    root: info
+    com.datanest: debug
+    org.springframework.cloud.loadbalancer: info
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  info:
+    env:
+      enabled: true

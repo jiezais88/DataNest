@@ -9,10 +9,10 @@ spring:
 
   config:
     import:
+      - optional:nacos:shared-nacos.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-redis.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-mybatis.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:
@@ -26,4 +26,3 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
-

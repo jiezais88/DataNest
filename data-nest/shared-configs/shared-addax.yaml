@@ -1,22 +1,19 @@
 # ============================================
 # shared-addax.yaml
 # Addax 集成与内置 Doris Stream Load 参数配置
-# 消费方: data-nest-engineering
+# 消费方: data-nest-engineering、data-nest-worker
+# 注：Doris 连接信息（fe-host / fe-query-port / user / password）在 shared-doris.yaml 中维护，
+#     此处通过占位符引用，避免重复配置。
 # ============================================
 datanest:
   addax:
     home: /opt/addax
     bin: ${datanest.addax.home}/bin/addax.sh
-  doris:
-    fe-host: 192.168.119.135
-    fe-query-port: 9030
-    user: root
-    password: password
     writer:
-      fe-load-url: http://192.168.119.135:8030
-      be-load-url: http://192.168.119.135:8040
-      username: root
-      password: password
+      fe-load-url: http://${datanest.doris.fe-host:192.168.119.135}:8030
+      be-load-url: http://${datanest.doris.fe-host:192.168.119.135}:8040
+      username: ${datanest.doris.user:root}
+      password: ${datanest.doris.password:password}
       database: datanest
       load-props:
         format: json

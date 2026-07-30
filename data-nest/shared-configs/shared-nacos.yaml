@@ -1,0 +1,31 @@
+# ============================================
+# shared-nacos.yaml
+# Nacos 心跳、监听、元数据等共享配置
+# 注：server-addr 必须在各服务 application.yml 中指定，避免远端配置拉取悖论
+# ============================================
+spring:
+  cloud:
+    nacos:
+      discovery:
+        group: DEFAULT_GROUP
+        # 心跳发送间隔（默认 5000ms）
+        heart-beat-interval: 3000
+        # 服务端判定实例不健康的心跳超时（默认 15000ms）
+        heart-beat-timeout: 9000
+        # 实例删除超时（默认 30000ms）
+        ip-delete-timeout: 18000
+        # 使用临时实例（Nacos 3.x 默认且推荐，基于 gRPC 长连接）
+        ephemeral: true
+        # 开启服务列表监听，服务端通过 gRPC 推送变更
+        watch:
+          enabled: true
+        watch-delay: 1000
+        # 元数据：标记实例版本/区域，便于灰度
+        metadata:
+          version: ${DATANEST_SERVICE_VERSION:1.0.0}
+          region: ${DATANEST_REGION:default}
+      config:
+        group: shared-configs
+        file-extension: yaml
+        # 配置变更监听（长连接推送）
+        refresh-enabled: true
