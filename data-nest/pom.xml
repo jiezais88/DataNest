@@ -37,6 +37,7 @@
         <sa-token.version>1.45.0</sa-token.version>
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <flyway.version>10.22.0</flyway.version>
+        <fastjson2.version>2.0.52</fastjson2.version>
         <commons-pool2.version>2.12.0</commons-pool2.version>
     </properties>
 
@@ -101,6 +102,18 @@
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-jsqlparser</artifactId>
                 <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- Fastjson2（最新稳定版，Sprint 3 起替代 Jackson ObjectMapper 做 JSON 序列化） -->
+            <dependency>
+                <groupId>com.alibaba.fastjson2</groupId>
+                <artifactId>fastjson2</artifactId>
+                <version>${fastjson2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.fastjson2</groupId>
+                <artifactId>fastjson2-extension</artifactId>
+                <version>${fastjson2.version}</version>
             </dependency>
 
             <!-- Commons Pool2 -->

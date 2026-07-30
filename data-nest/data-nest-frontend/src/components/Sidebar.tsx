@@ -1,6 +1,6 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {ArrowLeftRight, ClipboardList, Clock, Database, History, Home, Ruler, UserCog,} from 'lucide-react';
+import {ArrowLeftRight, ClipboardList, Clock, Database, History, Home, Ruler, UserCog, Workflow,} from 'lucide-react';
 
 interface MenuItem {
     label: string;
@@ -29,6 +29,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: '批量数据同步任务',
                 path: '/engineering/sync-jobs',
                 icon: <ArrowLeftRight size={18}/>,
+                roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
+            },
+            {
+                label: 'DAG 编排',
+                path: '/engineering/dags',
+                icon: <Workflow size={18}/>,
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
             },
         ],

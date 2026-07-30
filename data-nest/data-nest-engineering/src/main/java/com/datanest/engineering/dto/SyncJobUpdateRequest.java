@@ -187,4 +187,48 @@ public class SyncJobUpdateRequest {
     public void setDescription(String description) {
         this.description = description;
     }
+
+    // ========== Sprint 3 Phase 8: 多表 + 限流 ==========
+
+    private String sourceTablesDetail;
+
+    @Min(value = 0, message = "读取速率不能小于 0")
+    private Integer readRateLimitMbps = 0;
+
+    @Min(value = 0, message = "写入速率不能小于 0")
+    private Integer writeRateLimitRowsPerSecond = 0;
+
+    private Boolean rateLimitEnabled = false;
+
+    public String getSourceTablesDetail() {
+        return sourceTablesDetail;
+    }
+
+    public void setSourceTablesDetail(String sourceTablesDetail) {
+        this.sourceTablesDetail = sourceTablesDetail;
+    }
+
+    public Integer getReadRateLimitMbps() {
+        return readRateLimitMbps;
+    }
+
+    public void setReadRateLimitMbps(Integer readRateLimitMbps) {
+        this.readRateLimitMbps = readRateLimitMbps;
+    }
+
+    public Integer getWriteRateLimitRowsPerSecond() {
+        return writeRateLimitRowsPerSecond;
+    }
+
+    public void setWriteRateLimitRowsPerSecond(Integer writeRateLimitRowsPerSecond) {
+        this.writeRateLimitRowsPerSecond = writeRateLimitRowsPerSecond;
+    }
+
+    public Boolean getRateLimitEnabled() {
+        return rateLimitEnabled;
+    }
+
+    public void setRateLimitEnabled(Boolean rateLimitEnabled) {
+        this.rateLimitEnabled = rateLimitEnabled;
+    }
 }

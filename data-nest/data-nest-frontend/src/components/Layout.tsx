@@ -12,6 +12,7 @@ const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/system/users': {group: '系统管理', label: '用户管理'},
     '/engineering/datasources': {group: '数据工程', label: '数据源管理'},
     '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步任务'},
+    '/engineering/dags': {group: '数据工程', label: 'DAG 编排'},
     '/governance/collect-tasks': {group: '数据治理', label: '采集任务'},
     '/governance/metadata': {group: '数据治理', label: '元数据管理'},
     '/governance/data-standards': {group: '数据治理', label: '数据标准'},

@@ -1,10 +1,18 @@
-services:
+﻿services:
   # ============================================
-  # Nacos MySQL 8.0 — Nacos 外置持久化数据库
+  # 中间件层 (middleware-*) — 基础设施服务
   # ============================================
-  nacos-mysql:
+  # 命名规范: <项目>-<模块>-<服务>
+  #   - middleware-* = 基础设施（DB/Cache/Registry/调度）
+  #   - app-*        = 业务应用（gateway/system/data/frontend/ds）
+  # volume 命名保留旧名(nacos-mysql-data/pgdata/...)以兼容历史数据
+
+  # ============================================
+  # MySQL 8.0 — 统一数据库（Nacos + XXL-JOB + DS schema + 测试库都复用）
+  # ============================================
+  middleware-mysql:
     image: mysql:8.0
-    container_name: datanest-nacos-mysql
+    container_name: datanest-middleware-mysql
     command: --default-time-zone=+08:00
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -19,6 +27,7 @@ services:
       - ./scripts/nacos-mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-mysql-schema.sql:ro
       - ./scripts/init-scheduler-db.sql:/docker-entrypoint-initdb.d/02-init-scheduler-db.sql:ro
       - ./scripts/init-xxl-job-tables.sql:/docker-entrypoint-initdb.d/03-init-xxl-job-tables.sql:ro
+      - ./scripts/init-dolphinscheduler-db.sql:/docker-entrypoint-initdb.d/04-init-ds-db.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin -u root -proot123 ping | grep 'mysqld is alive'" ]
       interval: 10s
@@ -30,18 +39,18 @@ services:
 
   # ============================================
   # Nacos 3.1.1 — 注册 + 配置中心
-  # 端口: 8848(主服务) / 9848(gRPC) / 8080(控制台)
+  # 端口: 8848(主服务) / 9848(gRPC) / 8081(控制台映射 8080)
   # ============================================
-  nacos:
+  middleware-nacos:
     image: nacos/nacos-server:v3.1.1
-    container_name: datanest-nacos
+    container_name: datanest-middleware-nacos
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
       - MODE=standalone
       - PREFER_HOST_MODE=hostname
       - SPRING_DATASOURCE_PLATFORM=mysql
-      - MYSQL_SERVICE_HOST=nacos-mysql
+      - MYSQL_SERVICE_HOST=middleware-mysql
       - MYSQL_SERVICE_PORT=3306
       - MYSQL_SERVICE_DB_NAME=nacos
       - MYSQL_SERVICE_USER=nacos
@@ -62,7 +71,7 @@ services:
       - nacos-logs:/home/nacos/logs
       - ./tmp/logs/nacos:/home/nacos/logs
     depends_on:
-      nacos-mysql:
+      middleware-mysql:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "curl -s http://localhost:8848/nacos/v1/ns/operator/metrics | grep -q 'UP'" ]
@@ -74,22 +83,22 @@ services:
       - datanest-net
 
   # ============================================
-  # XXL-JOB 3.4.2 — 统一调度中心
-  # 复用 nacos-mysql 的 datanest_scheduler 库
+  # XXL-JOB 3.4.2 — 统一调度中心（Sprint 1-2 同步/采集任务调度）
+  # 复用 middleware-mysql 的 datanest_scheduler 库
   # 端口: 8088 (Admin Web)
   # ============================================
-  xxl-job-admin:
+  middleware-xxljob:
     image: xuxueli/xxl-job-admin:3.4.2
-    container_name: datanest-xxl-job-admin
+    container_name: datanest-middleware-xxljob
     environment:
       - TZ=Asia/Shanghai
-      - PARAMS=--spring.datasource.url=jdbc:mysql://nacos-mysql:3306/datanest_scheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true --spring.datasource.username=nacos --spring.datasource.password=nacos123 --xxl.job.accessToken=default_token
+      - PARAMS=--spring.datasource.url=jdbc:mysql://middleware-mysql:3306/datanest_scheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true --spring.datasource.username=nacos --spring.datasource.password=nacos123 --xxl.job.accessToken=default_token
     ports:
       - "8088:8080"
     volumes:
       - xxl-job-admin-data:/data/applogs
     depends_on:
-      nacos-mysql:
+      middleware-mysql:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "curl -s -L http://localhost:8080/ | grep -q 'XXL-JOB'" ]
@@ -99,9 +108,13 @@ services:
       start_period: 60s
     networks:
       - datanest-net
-  postgres:
+
+  # ============================================
+  # PostgreSQL 16 — DataNest 业务数据主库（用户/权限/同步任务/DAG 等）
+  # ============================================
+  middleware-postgres:
     image: postgres:16-alpine
-    container_name: datanest-postgres
+    container_name: datanest-middleware-postgres
     command: postgres -c timezone=Asia/Shanghai
     environment:
       POSTGRES_USER: datanest
@@ -121,11 +134,11 @@ services:
       - datanest-net
 
   # ============================================
-  # Redis 7 — Sa-Token 会话存储
+  # Redis 7 — Sa-Token 会话存储 + Sprint 3 DAG 互斥锁（SETNX）
   # ============================================
-  redis:
+  middleware-redis:
     image: redis:7-alpine
-    container_name: datanest-redis
+    container_name: datanest-middleware-redis
     command: redis-server --appendonly yes --appendfsync everysec
     environment:
       TZ: Asia/Shanghai
@@ -142,94 +155,11 @@ services:
       - datanest-net
 
   # ============================================
-  # Gateway — Spring Cloud Gateway
-  # ============================================
-  gateway:
-    build:
-      context: ./data-nest-gateway
-      dockerfile: Dockerfile
-    container_name: datanest-gateway
-    environment:
-      - TZ=Asia/Shanghai
-      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
-      - NACOS_HOST=nacos
-      - NACOS_PORT=8848
-      - NACOS_USERNAME=nacos
-      - NACOS_PASSWORD=nacos
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_USER=datanest
-      - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    ports:
-      - "8080:8080"
-    depends_on:
-      nacos:
-        condition: service_healthy
-      nacos-init:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "nc -z localhost 8080" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    networks:
-      - datanest-net
-
-  # ============================================
-  # System — 用户与权限服务
-  # ============================================
-  system:
-    build:
-      context: ./data-nest-system
-      dockerfile: Dockerfile
-    container_name: datanest-system
-    environment:
-      - TZ=Asia/Shanghai
-      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
-      - NACOS_HOST=nacos
-      - NACOS_PORT=8848
-      - NACOS_USERNAME=nacos
-      - NACOS_PASSWORD=nacos
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_USER=datanest
-      - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    # 不暴露宿主机端口，仅通过 Gateway 访问
-    depends_on:
-      nacos:
-        condition: service_healthy
-      nacos-init:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "nc -z localhost 8087" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    networks:
-      - datanest-net
-
-  # ============================================
   # Test MySQL 8.0 — 数据源 E2E 测试目标库
   # ============================================
-  test-mysql:
+  middleware-test-mysql:
     image: mysql:8.0
-    container_name: datanest-test-mysql
+    container_name: datanest-middleware-test-mysql
     command: --default-time-zone=+08:00
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -254,9 +184,9 @@ services:
   # ============================================
   # Test PostgreSQL 16 — 数据源 E2E 测试目标库
   # ============================================
-  test-postgres:
+  middleware-test-postgres:
     image: postgres:16-alpine
-    container_name: datanest-test-postgres
+    container_name: datanest-middleware-test-postgres
     command: postgres -c timezone=Asia/Shanghai
     environment:
       POSTGRES_USER: postgres
@@ -277,47 +207,329 @@ services:
     networks:
       - datanest-net
 
-  # Test Oracle / SQL Server 暂时停用，仅保留 MySQL + PostgreSQL
-
   # ============================================
-  # Engineering — 数据工程服务
+  # Zookeeper 3.8 — DolphinScheduler 3.4.2 注册中心
+  # DS 3.x 必须配外部注册中心（zookeeper/etcd/nacos），standalone 模式已废弃
+  # 端口: 2181 (client) / 2888 (follower) / 3888 (election)
+  # 持久化: /data (内存数据快照) + /datalog (事务日志)
   # ============================================
-  engineering:
-    build:
-      context: ./data-nest-engineering
-      dockerfile: Dockerfile
-    container_name: datanest-engineering
+  middleware-zookeeper:
+    image: zookeeper:3.8
+    container_name: datanest-middleware-zookeeper
     environment:
       - TZ=Asia/Shanghai
-      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
-      - NACOS_HOST=nacos
+    ports:
+      - "2181:2181"
+    volumes:
+      - datanest-zk-data:/data
+      - datanest-zk-datalog:/datalog
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 2181 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # DS Schema Init — 一次性 DolphinScheduler 元数据初始化（64 张表）
+  # profiles: ["init"] 默认不启动，需要时: docker compose --profile init up middleware-ds-schema-init
+  # DS 镜像默认不带 MySQL driver（GPLv2 vs Apache 2.0 协议冲突），
+  # 需要手动挂载 mysql-connector-j jar 到 /opt/dolphinscheduler/tools/libs/
+  # ============================================
+  middleware-ds-schema-init:
+    image: apache/dolphinscheduler-tools:3.4.2
+    container_name: datanest-middleware-ds-schema-init
+    environment:
+      - TZ=Asia/Shanghai
+      - DATABASE=mysql
+      - SPRING_PROFILES_ACTIVE=mysql
+      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=nacos
+      - SPRING_DATASOURCE_PASSWORD=nacos123
+      - REGISTRY_TYPE=zookeeper
+      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
+    volumes:
+      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/tools/libs/mysql-connector-j-8.0.33.jar:ro
+    # 直接调用升级脚本（DS 镜像内 sh 不可用，但脚本本身可执行）
+    command: [ "tools/bin/upgrade-schema.sh" ]
+    depends_on:
+      middleware-mysql:
+        condition: service_healthy
+      middleware-zookeeper:
+        condition: service_healthy
+    networks:
+      - datanest-net
+    restart: "no"
+
+  # ============================================
+  # Nacos 配置初始化（一次性 Job：把 shared-configs/*.yaml 推到 Nacos 配置中心）
+  # profiles: ["init"] 默认不启动
+  # ============================================
+  middleware-nacos-init:
+    image: curlimages/curl:latest
+    container_name: datanest-middleware-nacos-init
+    environment:
+      - TZ=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=postgres
+      - CONFIG_DIR=/shared-configs
+      - NACOS_GROUP=shared-configs
+    volumes:
+      - ./scripts/init-nacos.sh:/init-nacos.sh:ro
+      - ./shared-configs:/shared-configs:ro
+    command: [ "sh", "/init-nacos.sh" ]
+    depends_on:
+      middleware-nacos:
+        condition: service_healthy
+    networks:
+      - datanest-net
+    restart: "no"
+
+  # ============================================
+  # 应用层 (app-*) — 业务服务
+  # ============================================
+
+  # ============================================
+  # Gateway — Spring Cloud Gateway（统一入口）
+  # 端口: 8080
+  # ============================================
+  app-gateway:
+    build:
+      context: ./data-nest-gateway
+      dockerfile: Dockerfile
+    container_name: datanest-app-gateway
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
+      - NACOS_PORT=8848
+      - NACOS_USERNAME=nacos
+      - NACOS_PASSWORD=nacos
+      - PG_HOST=middleware-postgres
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
       - PG_DATABASE=datanest
-      - REDIS_HOST=redis
+      - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=xxl-job-admin
-      - XXL_JOB_PORT=8080
-    # 不暴露宿主机端口，仅通过 Gateway 访问
+    ports:
+      - "8080:8080"
     depends_on:
-      nacos:
+      middleware-nacos:
         condition: service_healthy
-      nacos-init:
+      middleware-nacos-init:
         condition: service_completed_successfully
-      postgres:
+      middleware-postgres:
         condition: service_healthy
-      redis:
+      middleware-redis:
         condition: service_healthy
-      xxl-job-admin:
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8080" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # System — 用户与权限服务
+  # ============================================
+  app-system:
+    build:
+      context: ./data-nest-system
+      dockerfile: Dockerfile
+    container_name: datanest-app-system
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
+      - NACOS_PORT=8848
+      - NACOS_USERNAME=nacos
+      - NACOS_PASSWORD=nacos
+      - PG_HOST=middleware-postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=middleware-redis
+      - REDIS_PORT=6379
+    # 不暴露宿主机端口，仅通过 app-gateway 访问
+    depends_on:
+      middleware-nacos:
         condition: service_healthy
-      test-mysql:
+      middleware-nacos-init:
+        condition: service_completed_successfully
+      middleware-postgres:
         condition: service_healthy
-      test-postgres:
+      middleware-redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8087" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # DolphinScheduler 3.4.2 — DAG 调度与执行引擎
+  # Master + Worker + API + Alert 分离架构
+  # 注册中心：Zookeeper（必须）
+  # 端口: 12345 (API Web UI)
+  # 数据库复用 middleware-mysql（dolphinscheduler 库 64 张表）
+  # DS 镜像不带 MySQL JDBC（GPLv2 vs Apache 2.0 协议冲突，官方禁止内置），
+  # 3.4.2 classpath 是 $DOLPHINSCHEDULER_HOME/<server>-server/libs/*，
+  # 挂 jar 到每个 server 自己的 libs 子目录
+  # 持久化: /opt/dolphinscheduler/logs (4 服务共享), /opt/soft (master/worker 共享)
+  # ============================================
+  middleware-ds-api:
+    image: apache/dolphinscheduler-api:3.4.2
+    container_name: datanest-middleware-ds-api
+    environment:
+      - TZ=Asia/Shanghai
+      - SPRING_PROFILES_ACTIVE=mysql
+      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=nacos
+      - SPRING_DATASOURCE_PASSWORD=nacos123
+      - REGISTRY_TYPE=zookeeper
+      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
+    ports:
+      - "12345:12345"
+    volumes:
+      - datanest-ds-logs:/opt/dolphinscheduler/logs
+      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/api-server/libs/mysql-connector-j-8.0.33.jar:ro
+    depends_on:
+      middleware-mysql:
+        condition: service_healthy
+      middleware-zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s http://localhost:12345/dolphinscheduler/actuator/health | grep -q 'UP'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - datanest-net
+
+  middleware-ds-master:
+    image: apache/dolphinscheduler-master:3.4.2
+    container_name: datanest-middleware-ds-master
+    environment:
+      - TZ=Asia/Shanghai
+      - SPRING_PROFILES_ACTIVE=mysql
+      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=nacos
+      - SPRING_DATASOURCE_PASSWORD=nacos123
+      - REGISTRY_TYPE=zookeeper
+      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
+    volumes:
+      - datanest-ds-logs:/opt/dolphinscheduler/logs
+      - datanest-ds-shared:/opt/soft
+      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/master-server/libs/mysql-connector-j-8.0.33.jar:ro
+    depends_on:
+      middleware-mysql:
+        condition: service_healthy
+      middleware-zookeeper:
+        condition: service_healthy
+      middleware-ds-api:
+        condition: service_started
+    networks:
+      - datanest-net
+
+  middleware-ds-worker:
+    image: apache/dolphinscheduler-worker:3.4.2
+    container_name: datanest-middleware-ds-worker
+    environment:
+      - TZ=Asia/Shanghai
+      - SPRING_PROFILES_ACTIVE=mysql
+      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=nacos
+      - SPRING_DATASOURCE_PASSWORD=nacos123
+      - REGISTRY_TYPE=zookeeper
+      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
+      - ALERT_SERVER_HOST=middleware-ds-alert
+    volumes:
+      - datanest-ds-logs:/opt/dolphinscheduler/logs
+      - datanest-ds-shared:/opt/soft
+      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/worker-server/libs/mysql-connector-j-8.0.33.jar:ro
+    depends_on:
+      middleware-mysql:
+        condition: service_healthy
+      middleware-zookeeper:
+        condition: service_healthy
+      middleware-ds-api:
+        condition: service_started
+    networks:
+      - datanest-net
+
+  middleware-ds-alert:
+    image: apache/dolphinscheduler-alert-server:3.4.2
+    container_name: datanest-middleware-ds-alert
+    environment:
+      - TZ=Asia/Shanghai
+      - SPRING_PROFILES_ACTIVE=mysql
+      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=nacos
+      - SPRING_DATASOURCE_PASSWORD=nacos123
+      - REGISTRY_TYPE=zookeeper
+      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
+    volumes:
+      - datanest-ds-logs:/opt/dolphinscheduler/logs
+      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/alert-server/libs/mysql-connector-j-8.0.33.jar:ro
+    depends_on:
+      middleware-mysql:
+        condition: service_healthy
+      middleware-zookeeper:
+        condition: service_healthy
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Engineering — 数据工程服务（同步任务 + Sprint 3 DAG API）
+  # ============================================
+  app-engineering:
+    build:
+      context: ./data-nest-engineering
+      dockerfile: Dockerfile
+    container_name: datanest-app-engineering
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
+      - NACOS_PORT=8848
+      - NACOS_USERNAME=nacos
+      - NACOS_PASSWORD=nacos
+      - PG_HOST=middleware-postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=middleware-redis
+      - REDIS_PORT=6379
+      - XXL_JOB_HOST=middleware-xxljob
+      - XXL_JOB_PORT=8080
+    # 不暴露宿主机端口，仅通过 app-gateway 访问
+    depends_on:
+      middleware-nacos:
+        condition: service_healthy
+      middleware-nacos-init:
+        condition: service_completed_successfully
+      middleware-postgres:
+        condition: service_healthy
+      middleware-redis:
+        condition: service_healthy
+      middleware-xxljob:
+        condition: service_healthy
+      middleware-test-mysql:
+        condition: service_healthy
+      middleware-test-postgres:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8082" ]
@@ -331,37 +543,37 @@ services:
   # ============================================
   # Governance — 元数据采集与治理服务
   # ============================================
-  governance:
+  app-governance:
     build:
       context: ./data-nest-governance
       dockerfile: Dockerfile
-    container_name: datanest-governance
+    container_name: datanest-app-governance
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
-      - NACOS_HOST=nacos
+      - NACOS_HOST=middleware-nacos
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=postgres
+      - PG_HOST=middleware-postgres
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
       - PG_DATABASE=datanest
-      - REDIS_HOST=redis
+      - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
     depends_on:
-      nacos:
+      middleware-nacos:
         condition: service_healthy
-      nacos-init:
+      middleware-nacos-init:
         condition: service_completed_successfully
-      postgres:
+      middleware-postgres:
         condition: service_healthy
-      redis:
+      middleware-redis:
         condition: service_healthy
-      xxl-job-admin:
+      middleware-xxljob:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8084" ]
@@ -373,43 +585,43 @@ services:
       - datanest-net
 
   # ============================================
-  # Worker — 同步任务与元数据采集执行器
+  # Runner — 同步任务与元数据采集执行器（避免和 DS worker 重名改 runner）
   # ============================================
-  worker:
+  app-worker:
     build:
       context: ./data-nest-worker
       dockerfile: Dockerfile
-    container_name: datanest-worker
+    container_name: datanest-app-worker
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
-      - NACOS_HOST=nacos
+      - NACOS_HOST=middleware-nacos
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=postgres
+      - PG_HOST=middleware-postgres
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
       - PG_DATABASE=datanest
-      - REDIS_HOST=redis
+      - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
     depends_on:
-      nacos:
+      middleware-nacos:
         condition: service_healthy
-      nacos-init:
+      middleware-nacos-init:
         condition: service_completed_successfully
-      postgres:
+      middleware-postgres:
         condition: service_healthy
-      redis:
+      middleware-redis:
         condition: service_healthy
-      xxl-job-admin:
+      middleware-xxljob:
         condition: service_healthy
-      test-mysql:
+      middleware-test-mysql:
         condition: service_healthy
-      test-postgres:
+      middleware-test-postgres:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8085" ]
@@ -423,37 +635,37 @@ services:
   # ============================================
   # Job — 平台定时任务执行器
   # ============================================
-  job:
+  app-job:
     build:
       context: ./data-nest-job
       dockerfile: Dockerfile
-    container_name: datanest-job
+    container_name: datanest-app-job
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
-      - NACOS_HOST=nacos
+      - NACOS_HOST=middleware-nacos
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=postgres
+      - PG_HOST=middleware-postgres
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
       - PG_DATABASE=datanest
-      - REDIS_HOST=redis
+      - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=xxl-job-admin
+      - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
     depends_on:
-      nacos:
+      middleware-nacos:
         condition: service_healthy
-      nacos-init:
+      middleware-nacos-init:
         condition: service_completed_successfully
-      postgres:
+      middleware-postgres:
         condition: service_healthy
-      redis:
+      middleware-redis:
         condition: service_healthy
-      xxl-job-admin:
+      middleware-xxljob:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8086" ]
@@ -466,26 +678,27 @@ services:
 
   # ============================================
   # Frontend — Nginx 静态资源 + API 反向代理
+  # 端口: 3000
   # ============================================
-  frontend:
+  app-frontend:
     build:
       context: ./data-nest-frontend
       dockerfile: Dockerfile
-    container_name: datanest-frontend
+    container_name: datanest-app-frontend
     environment:
       - TZ=Asia/Shanghai
     ports:
       - "3000:80"
     depends_on:
-      gateway:
+      app-gateway:
         condition: service_healthy
-      engineering:
+      app-engineering:
         condition: service_healthy
-      governance:
+      app-governance:
         condition: service_healthy
-      worker:
+      app-worker:
         condition: service_healthy
-      job:
+      app-job:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1" ]
@@ -495,32 +708,12 @@ services:
     networks:
       - datanest-net
 
-  # ============================================
-  # Nacos 配置初始化（一次性 Job）
-  # ============================================
-  nacos-init:
-    image: curlimages/curl:latest
-    container_name: datanest-nacos-init
-    environment:
-      - TZ=Asia/Shanghai
-      - NACOS_HOST=nacos
-      - NACOS_PORT=8848
-      - NACOS_USERNAME=nacos
-      - NACOS_PASSWORD=nacos
-      - CONFIG_DIR=/shared-configs
-      - NACOS_GROUP=shared-configs
-    volumes:
-      - ./scripts/init-nacos.sh:/init-nacos.sh:ro
-      - ./shared-configs:/shared-configs:ro
-    command: [ "sh", "/init-nacos.sh" ]
-    depends_on:
-      nacos:
-        condition: service_healthy
-    networks:
-      - datanest-net
-    restart: "no"
-
+# ============================================
+# Volumes — 持久化数据卷
+# 中间件数据卷保留旧名以兼容历史数据；新增 DS+ZK 持久化卷
+# ============================================
 volumes:
+  # 兼容历史（保留旧名避免数据丢失）
   nacos-mysql-data:
   nacos-data:
   nacos-logs:
@@ -529,7 +722,16 @@ volumes:
   test-mysql-data:
   test-postgres-data:
   xxl-job-admin-data:
+  # 新增 — DS 日志+资源（4 个 DS 服务共享 /opt/dolphinscheduler/logs；master/worker 共享 /opt/soft）
+  datanest-ds-logs:
+  datanest-ds-shared:
+  # 新增 — ZK 持久化（/data 内存快照 + /datalog 事务日志）
+  datanest-zk-data:
+  datanest-zk-datalog:
 
+# ============================================
+# Networks — 统一网络
+# ============================================
 networks:
   datanest-net:
     name: datanest-net

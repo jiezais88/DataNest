@@ -48,6 +48,22 @@ public enum ErrorCode {
     ADDAX_EXECUTION_FAILED(6003, "Addax 执行失败"),
     TARGET_DATASOURCE_NOT_FOUND(6004, "目标数据源不存在"),
 
+    // DAG / Data development errors (7xxx) — Sprint 3
+    DAG_NOT_FOUND(7001, "DAG 不存在"),
+    DAG_NAME_EXISTS(7002, "DAG 名称在项目内已存在"),
+    DAG_CYCLE_DETECTED(7003, "DAG 存在循环依赖"),
+    DAG_ISOLATED_NODE(7004, "DAG 存在孤立节点（不与任何执行起点连通）"),
+    DAG_ALREADY_RUNNING(7005, "DAG 正在执行中"),
+    DAG_DISABLED(7006, "DAG 已停用，无法执行"),
+    NO_RUNNING_EXECUTION(7007, "当前 DAG 没有运行中的执行实例"),
+    DAG_NODE_EXECUTE_FAILED(7008, "DAG 节点执行失败"),
+    DAG_REFERENCED(7009, "同步任务已被 DAG 引用，无法删除"),
+    PROJECT_NAME_EXISTS(7010, "项目名称已存在"),
+    SQL_EXECUTE_FAILED(7011, "SQL 执行失败"),
+    SQL_PARSE_FAILED(7012, "SQL 解析失败"),
+    DS_API_ERROR(7013, "DolphinScheduler API 调用失败"),
+    METADATA_REGISTRATION_FAILED(7014, "元数据注册失败"),
+
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");
 

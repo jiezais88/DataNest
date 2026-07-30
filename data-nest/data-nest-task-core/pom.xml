@@ -97,6 +97,27 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <!-- JSqlParser (解析 SQL 提取 CREATE TABLE 等结构) -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>4.9</version>
+        </dependency>
+
+        <!-- Sprint 3 P1-4：HikariCP 连接池（DorisSqlExecutor 用） -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Sprint 3 P1-4：JDBC 抽象 + Spring 数据源基础设施（HikariCP 配置需要） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

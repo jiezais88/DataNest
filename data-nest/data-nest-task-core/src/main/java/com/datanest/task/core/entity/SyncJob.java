@@ -58,6 +58,18 @@ public class SyncJob {
 
     private Integer scheduleEnabled;
 
+    /** Sprint 3 Phase 8：多表结构化配置 JSONB（字符串直接存储） */
+    private String sourceTablesDetail;
+
+    /** Sprint 3 Phase 8：读取速率限制（MB/s，0=不限制） */
+    private Integer readRateLimitMbps;
+
+    /** Sprint 3 Phase 8：写入速率限制（行/秒，0=不限制） */
+    private Integer writeRateLimitRowsPerSecond;
+
+    /** Sprint 3 Phase 8：限流总开关 0/1 */
+    private Integer rateLimitEnabled;
+
     private Integer xxlJobId;
 
     private String description;

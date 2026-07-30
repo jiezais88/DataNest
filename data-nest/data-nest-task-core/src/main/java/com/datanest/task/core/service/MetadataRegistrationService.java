@@ -20,7 +20,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.sql.*;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,17 +41,7 @@ public class MetadataRegistrationService {
     @Value("${datanest.engineering.addax.target-database:datanest}")
     private String targetDatabase;
 
-    @Value("${datanest.doris.fe-host:localhost}")
-    private String dorisFeHost;
-
-    @Value("${datanest.doris.fe-query-port:9030}")
-    private int dorisFePort;
-
-    @Value("${datanest.doris.user:root}")
-    private String dorisUser;
-
-    @Value("${datanest.doris.password:}")
-    private String dorisPassword;
+    private final DataSource dorisDataSource;
 
     private final SyncJobMapper syncJobMapper;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
@@ -58,13 +52,15 @@ public class MetadataRegistrationService {
 
     public MetadataRegistrationService(SyncJobMapper syncJobMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                                        MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                                       EncryptionConfig encryptionConfig, ConnectionTester connectionTester) {
+                                       EncryptionConfig encryptionConfig, ConnectionTester connectionTester,
+                                       @org.springframework.beans.factory.annotation.Qualifier("dorisDataSource") DataSource dorisDataSource) {
         this.syncJobMapper = syncJobMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
+        this.dorisDataSource = dorisDataSource;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -77,11 +73,8 @@ public class MetadataRegistrationService {
         String sourceDb = StringUtils.hasText(job.getSourceDatabase()) ? job.getSourceDatabase()
                 : (StringUtils.hasText(job.getSourceSchema()) ? job.getSourceSchema() : "default");
         String targetDb = resolveTargetDatabase(job);
-        String jdbcUrl = String.format(
-                "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-                dorisFeHost, dorisFePort, targetDb);
 
-        try (Connection connection = DriverManager.getConnection(jdbcUrl, dorisUser, dorisPassword)) {
+        try (Connection connection = dorisDataSource.getConnection()) {
             for (String sourceTable : job.getSourceTables()) {
                 String targetTableName = resolveTargetTableName(job, sourceTable);
                 registerTable(targetDb, targetTableName, connection);
@@ -202,6 +195,139 @@ public class MetadataRegistrationService {
                 metadataColumnMapper.insert(column);
             }
         }
+    }
+
+    // ============================================
+    // Phase 4（Sprint 3）：registerFromSql — 从 SQL 字符串提取表结构并注册
+    // 用例：dag_node 为 SQL 节点时，回调里把用户写的 CREATE TABLE / CTAS 解析出来
+    //  注册到 metadata_table + metadata_column
+    // ============================================
+
+    /**
+     * 解析 SQL，提取其中的 CREATE TABLE / DROP TABLE 语句，
+     * 把目标库的内置 Doris 表注册到元数据表（跟 register(syncJobId) 行为一致）
+     *
+     * @param sql        完整 SQL 字符串（支持多条 SQL 用 ; 分隔）
+     * @param operatorId 操作人 ID
+     * @return 注册的表名列表
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public List<String> registerFromSql(String sql, Long operatorId) {
+        if (!StringUtils.hasText(sql)) {
+            throw new BusinessException(ErrorCode.SQL_PARSE_FAILED, "SQL 不能为空");
+        }
+
+        // 1. 先在 Doris 里执行 SQL（让表真实存在或变更）
+        String targetDb = targetDatabase;
+
+        // 2. 解析每条 SQL，分类处理
+        List<String> registeredTables = new ArrayList<>();
+        String[] statements = splitSqlStatements(sql);
+        for (String stmt : statements) {
+            String trimmed = stmt.trim();
+            if (trimmed.isEmpty()) continue;
+            try {
+                net.sf.jsqlparser.statement.Statement parsed =
+                        net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(trimmed);
+
+                if (parsed instanceof net.sf.jsqlparser.statement.create.table.CreateTable) {
+                    // CREATE TABLE xxx (col1 type, col2 type, ...) 或 CREATE TABLE xxx AS SELECT (CTAS)
+                    // Sprint 3 P2-3：CTAS 也被 JSqlParser 解析为 CreateTable，用 getSelect() != null 判断
+                    net.sf.jsqlparser.statement.create.table.CreateTable ct =
+                            (net.sf.jsqlparser.statement.create.table.CreateTable) parsed;
+                    String tableName = extractTableName(ct.getTable());
+                    if (tableName == null) {
+                        logger.warn("无法提取 CREATE TABLE 表名: {}", trimmed);
+                        continue;
+                    }
+                    if (ct.getSelect() != null) {
+                        logger.info("检测到 CTAS: {} (基于 SELECT)", tableName);
+                    }
+                    executeAndRegister(targetDb, tableName, operatorId);
+                    registeredTables.add(tableName);
+                } else if (parsed instanceof net.sf.jsqlparser.statement.drop.Drop) {
+                    // DROP TABLE xxx（暂时不主动删元数据表，避免误删；后续可加白名单）
+                    logger.info("跳过 DROP TABLE 元数据同步: {}", trimmed);
+                } else {
+                    // 其他语句（INSERT/UPDATE/DELETE/SELECT）不参与元数据注册
+                    logger.debug("非 DDL 语句，跳过元数据注册: {}", trimmed);
+                }
+            } catch (net.sf.jsqlparser.JSQLParserException e) {
+                // 解析失败的非 DDL 语句直接忽略（不抛异常，让数据执行继续）
+                logger.debug("SQL 解析失败（非 DDL 跳过）: {}", trimmed, e);
+            }
+        }
+        return registeredTables;
+    }
+
+    /**
+     * 注册单个表到元数据（含建表 / 刷新列）
+     */
+    private void executeAndRegister(String targetDb, String tableName, Long operatorId) {
+        try (Connection conn = dorisDataSource.getConnection()) {
+            // 先确保表真实存在（外部系统已执行过 SQL；这里做幂等保护）
+            if (!tableExists(conn, targetDb, tableName)) {
+                logger.warn("表 {}.{} 在 Doris 中不存在，元数据无法注册", targetDb, tableName);
+                return;
+            }
+            MetadataTable table = findOrCreateTable(targetDb, tableName);
+            table.setCreatedBy(operatorId);
+            table.setUpdatedBy(operatorId);
+            table.setUpdatedAt(LocalDateTime.now());
+            List<MetadataColumn> columns = extractColumns(conn, targetDb, tableName, table.getId());
+            refreshColumns(table.getId(), columns);
+            table.setColumnCount(columns.size());
+            metadataTableMapper.updateById(table);
+            logger.info("从 SQL 注册元数据: db={}, table={}, cols={}", targetDb, tableName, columns.size());
+        } catch (Exception e) {
+            logger.error("从 SQL 注册元数据失败: db={}, table={}", targetDb, tableName, e);
+            throw new BusinessException(ErrorCode.METADATA_REGISTRATION_FAILED,
+                    "元数据注册失败: " + e.getMessage());
+        }
+    }
+
+    private boolean tableExists(Connection conn, String db, String tableName) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ? LIMIT 1")) {
+            ps.setString(1, db);
+            ps.setString(2, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    /**
+     * 简单 SQL 切分（按 ; 分隔，忽略字符串内的 ;）
+     */
+    private String[] splitSqlStatements(String sql) {
+        List<String> result = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inString = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char c = sql.charAt(i);
+            if (c == '\'' && (i == 0 || sql.charAt(i - 1) != '\\')) {
+                inString = !inString;
+                current.append(c);
+            } else if (c == ';' && !inString) {
+                result.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) {
+            result.add(current.toString());
+        }
+        return result.toArray(new String[0]);
+    }
+
+    private String extractTableName(net.sf.jsqlparser.schema.Table table) {
+        if (table == null) return null;
+        if (table.getSchemaName() != null) {
+            return table.getSchemaName() + "." + table.getName();
+        }
+        return table.getName();
     }
 
 }

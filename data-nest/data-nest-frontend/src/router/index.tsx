@@ -12,6 +12,9 @@ import SyncJobHistoryPage from '../pages/engineering/sync-jobs/history';
 import SyncJobHistoryGlobalPage from '../pages/engineering/sync-jobs/history-global';
 import MetadataPage from '../pages/governance/metadata';
 import DataStandardsPage from '../pages/governance/data-standards';
+import DagsPage from '../pages/engineering/dags';
+import DagEditor from '../pages/engineering/dags/Editor';
+import ExecutionsPage from '../pages/engineering/dags/Executions';
 
 const ProtectedRoute = ({children}: { children: React.ReactNode }) => {
     const token = localStorage.getItem('token');
@@ -38,6 +41,10 @@ export const router = createBrowserRouter([
             {path: 'engineering/sync-jobs', element: <SyncJobsPage/>},
             {path: 'engineering/sync-jobs/:syncJobId/history', element: <SyncJobHistoryPage/>},
             {path: 'engineering/sync-job-history', element: <SyncJobHistoryGlobalPage/>},
+            {path: 'engineering/dags', element: <DagsPage/>},
+            {path: 'engineering/dags/new', element: <DagEditor/>},
+            {path: 'engineering/dags/:id/edit', element: <DagEditor/>},
+            {path: 'engineering/dags/:id/executions', element: <ExecutionsPage/>},
             {path: 'governance/collect-tasks', element: <CollectTasksPage/>},
             {path: 'governance/collect-tasks/:taskId/history', element: <CollectHistoryPage/>},
             {path: 'governance/collect-task-history', element: <CollectHistoryGlobalPage/>},

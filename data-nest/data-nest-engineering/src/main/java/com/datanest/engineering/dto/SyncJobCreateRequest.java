@@ -58,6 +58,25 @@ public class SyncJobCreateRequest {
     @Size(max = 1000, message = "描述最多 1000 个字符")
     private String description;
 
+    // ========== Sprint 3 Phase 8: 多表 + 限流 ==========
+
+    /**
+     * 多表结构化配置（JSON 数组）
+     * 形态：[{"tableName":"t1","incrementalField":"id","lastSyncTime":"2026-07-30 12:00:00"}, ...]
+     */
+    private String sourceTablesDetail;
+
+    /** 读取速率限制（MB/s，0=不限制） */
+    @Min(value = 0, message = "读取速率不能小于 0")
+    private Integer readRateLimitMbps = 0;
+
+    /** 写入速率限制（行/秒，0=不限制） */
+    @Min(value = 0, message = "写入速率不能小于 0")
+    private Integer writeRateLimitRowsPerSecond = 0;
+
+    /** 限流总开关 */
+    private Boolean rateLimitEnabled = false;
+
     @AssertTrue(message = "Cron 触发方式必须填写 Cron 表达式")
     public boolean isCronExpressionValid() {
         return !"CRON".equalsIgnoreCase(triggerType) || (cronExpression != null && !cronExpression.isBlank());
@@ -186,5 +205,37 @@ public class SyncJobCreateRequest {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getSourceTablesDetail() {
+        return sourceTablesDetail;
+    }
+
+    public void setSourceTablesDetail(String sourceTablesDetail) {
+        this.sourceTablesDetail = sourceTablesDetail;
+    }
+
+    public Integer getReadRateLimitMbps() {
+        return readRateLimitMbps;
+    }
+
+    public void setReadRateLimitMbps(Integer readRateLimitMbps) {
+        this.readRateLimitMbps = readRateLimitMbps;
+    }
+
+    public Integer getWriteRateLimitRowsPerSecond() {
+        return writeRateLimitRowsPerSecond;
+    }
+
+    public void setWriteRateLimitRowsPerSecond(Integer writeRateLimitRowsPerSecond) {
+        this.writeRateLimitRowsPerSecond = writeRateLimitRowsPerSecond;
+    }
+
+    public Boolean getRateLimitEnabled() {
+        return rateLimitEnabled;
+    }
+
+    public void setRateLimitEnabled(Boolean rateLimitEnabled) {
+        this.rateLimitEnabled = rateLimitEnabled;
     }
 }

@@ -7,24 +7,24 @@ import cn.dev33.satoken.exception.NotRoleException;
 import cn.dev33.satoken.reactor.filter.SaReactorFilter;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSON;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 
 @Configuration
 public class SaTokenConfig {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final String CONTENT_TYPE_JSON = "application/json;charset=UTF-8";
+    private static final String CONTENT_TYPE_JSON = MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8";
 
     /**
      * Sa-Token 全局过滤器 (WebFlux)
      * 校验 Token，放行登录接口，并统一处理未登录/权限异常。
+     * 决策 ADR-S3-FJ：序列化使用 fastjson2
      */
     @Bean
     public SaReactorFilter saReactorFilter() {
@@ -55,11 +55,11 @@ public class SaTokenConfig {
                 });
     }
 
+    /**
+     * Sa-Token Reactor 模式下，setError 返回 String 即可，
+     * 框架会自动用 String 写响应体。我们用 fastjson2 序列化 Result。
+     */
     private static String writeResult(Result<?> result) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(result);
-        } catch (JsonProcessingException ex) {
-            throw new RuntimeException("Failed to serialize error response", ex);
-        }
+        return JSON.toJSONString(result);
     }
 }

@@ -348,6 +348,11 @@ public class SyncJobService {
         entity.setTargetDatabase(request.getTargetDatabase());
         entity.setTargetTable(request.getTargetTable());
         entity.setDescription(request.getDescription());
+        // Sprint 3 Phase 8: 多表 + 限流
+        entity.setSourceTablesDetail(parseSourceTablesDetail(request.getSourceTablesDetail()));
+        entity.setReadRateLimitMbps(request.getReadRateLimitMbps() == null ? 0 : request.getReadRateLimitMbps());
+        entity.setWriteRateLimitRowsPerSecond(request.getWriteRateLimitRowsPerSecond() == null ? 0 : request.getWriteRateLimitRowsPerSecond());
+        entity.setRateLimitEnabled(Boolean.TRUE.equals(request.getRateLimitEnabled()) ? 1 : 0);
     }
 
     private void copyFromRequest(SyncJob entity, SyncJobUpdateRequest request) {
@@ -366,6 +371,27 @@ public class SyncJobService {
         entity.setTargetDatabase(request.getTargetDatabase());
         entity.setTargetTable(request.getTargetTable());
         entity.setDescription(request.getDescription());
+        // Sprint 3 Phase 8
+        entity.setSourceTablesDetail(parseSourceTablesDetail(request.getSourceTablesDetail()));
+        entity.setReadRateLimitMbps(request.getReadRateLimitMbps() == null ? 0 : request.getReadRateLimitMbps());
+        entity.setWriteRateLimitRowsPerSecond(request.getWriteRateLimitRowsPerSecond() == null ? 0 : request.getWriteRateLimitRowsPerSecond());
+        entity.setRateLimitEnabled(Boolean.TRUE.equals(request.getRateLimitEnabled()) ? 1 : 0);
+    }
+
+    /**
+     * 解析 sourceTablesDetail 字符串为 JSONB
+     * 输入：合法的 JSON 字符串
+     * 输出：JSONB 字符串（保留原始 JSON 结构）
+     */
+    private String parseSourceTablesDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "[]";
+        }
+        String trimmed = detail.trim();
+        if (!trimmed.startsWith("[")) {
+            return "[]";
+        }
+        return trimmed;
     }
 
     private long countByName(String name) {

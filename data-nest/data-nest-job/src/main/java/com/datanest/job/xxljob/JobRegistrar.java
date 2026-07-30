@@ -40,6 +40,8 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("dataSourceStatusRefreshHandler", "0 0/5 * * * ?");
         platformJobs.put("syncHistoryCleanupHandler", "0 0 2 * * ?");
         platformJobs.put("collectHistoryCleanupHandler", "0 30 2 * * ?");
+        // Sprint 3：DS 任务实例状态同步（5s 一次，保证 DAG 执行历史及时回写）
+        platformJobs.put("dagExecutionSyncHandler", "0/5 * * * * ?");
 
         int jobGroup = resolveJobGroup();
         logger.info("Ensuring platform jobs registered in XXL-JOB, jobGroup={}", jobGroup);
@@ -85,6 +87,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "dataSourceStatusRefreshHandler" -> "数据源状态定时刷新";
             case "syncHistoryCleanupHandler" -> "同步任务历史清理";
             case "collectHistoryCleanupHandler" -> "采集任务历史清理";
+            case "dagExecutionSyncHandler" -> "DAG 执行状态同步（DS → DataNest）";
             default -> executorHandler;
         };
     }
