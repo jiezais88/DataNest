@@ -95,45 +95,52 @@ function groupResults(results: ComplianceCheckResult[]) {
 
 function ResultTable({items, columns, onView}: {
     items: ComplianceCheckResult[];
-    columns: { key: string; label: string; render: (r: ComplianceCheckResult) => React.ReactNode }[];
+    columns: {
+        key: string;
+        label: string;
+        className?: string;
+        title?: (r: ComplianceCheckResult) => string;
+        render: (r: ComplianceCheckResult) => React.ReactNode;
+    }[];
     onView: (r: ComplianceCheckResult) => void;
 }) {
     if (items.length === 0) return null;
     return (
-        <div className="border border-ds-border-subtle rounded-ds-md overflow-auto">
-            <table className="w-full text-left">
-                <thead className="bg-ds-bg-hover/80 sticky top-0">
-                <tr className="border-b border-ds-border-subtle">
-                    {columns.map((c) => (
-                        <th key={c.key}
-                            className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-primary font-semibold">
-                            {c.label}
-                        </th>
-                    ))}
-                    <th className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-primary font-semibold text-right">操作</th>
-                </tr>
-                </thead>
-                <tbody>
-                {items.map((r) => (
-                    <tr key={r.id} className="border-b border-ds-border-subtle last:border-0">
+        <div className="ds-table-card">
+            <div className="ds-table-scroll">
+                <table className="ds-table">
+                    <thead>
+                    <tr>
                         {columns.map((c) => (
-                            <td key={c.key} className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary">
-                                {c.render(r)}
-                            </td>
+                            <th key={c.key}>
+                                {c.label}
+                            </th>
                         ))}
-                        <td className="px-ds-3 py-ds-2 text-right">
-                            <button
-                                onClick={() => onView(r)}
-                                className="inline-flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium"
-                            >
-                                <HiOutlineEye size={14}/>
-                                查看
-                            </button>
-                        </td>
+                        <th className="text-center">操作</th>
                     </tr>
-                ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {items.map((r) => (
+                        <tr key={r.id}>
+                            {columns.map((c) => (
+                                <td key={c.key} className={c.className} title={c.title?.(r)}>
+                                    {c.render(r)}
+                                </td>
+                            ))}
+                            <td className="ds-table-cell-no-truncate text-center">
+                                <button
+                                    onClick={() => onView(r)}
+                                    className="inline-flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium"
+                                >
+                                    <HiOutlineEye size={14}/>
+                                    查看
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
@@ -225,12 +232,32 @@ export default function ComplianceCheckPanel({
                                             {
                                                 key: 'path',
                                                 label: '数据源 / 库 / 表',
+                                                className: 'ds-table-cell-wide',
+                                                title: formatObjectPath,
                                                 render: (r) => <span
                                                     className="text-ds-text-primary font-medium">{formatObjectPath(r)}</span>
                                             },
-                                            {key: 'problem', label: '问题描述', render: formatNamingProblem},
-                                            {key: 'standards', label: '涉及规范', render: formatNamingStandards},
-                                            {key: 'suggestion', label: '整改建议', render: formatNamingSuggestion},
+                                            {
+                                                key: 'problem',
+                                                label: '问题描述',
+                                                className: 'ds-table-cell-truncate',
+                                                title: formatNamingProblem,
+                                                render: formatNamingProblem
+                                            },
+                                            {
+                                                key: 'standards',
+                                                label: '涉及规范',
+                                                className: 'ds-table-cell-wide',
+                                                title: formatNamingStandards,
+                                                render: formatNamingStandards
+                                            },
+                                            {
+                                                key: 'suggestion',
+                                                label: '整改建议',
+                                                className: 'ds-table-cell-truncate',
+                                                title: formatNamingSuggestion,
+                                                render: formatNamingSuggestion
+                                            },
                                         ]}
                                         onView={handleView}
                                     />
@@ -246,12 +273,32 @@ export default function ComplianceCheckPanel({
                                             {
                                                 key: 'path',
                                                 label: '数据源 / 库 / 表 / 字段',
+                                                className: 'ds-table-cell-wide',
+                                                title: formatObjectPath,
                                                 render: (r) => <span
                                                     className="text-ds-text-primary font-medium">{formatObjectPath(r)}</span>
                                             },
-                                            {key: 'problem', label: '问题描述', render: formatNamingProblem},
-                                            {key: 'standards', label: '涉及规范', render: formatNamingStandards},
-                                            {key: 'suggestion', label: '整改建议', render: formatNamingSuggestion},
+                                            {
+                                                key: 'problem',
+                                                label: '问题描述',
+                                                className: 'ds-table-cell-truncate',
+                                                title: formatNamingProblem,
+                                                render: formatNamingProblem
+                                            },
+                                            {
+                                                key: 'standards',
+                                                label: '涉及规范',
+                                                className: 'ds-table-cell-wide',
+                                                title: formatNamingStandards,
+                                                render: formatNamingStandards
+                                            },
+                                            {
+                                                key: 'suggestion',
+                                                label: '整改建议',
+                                                className: 'ds-table-cell-truncate',
+                                                title: formatNamingSuggestion,
+                                                render: formatNamingSuggestion
+                                            },
                                         ]}
                                         onView={handleView}
                                     />
@@ -279,12 +326,32 @@ export default function ComplianceCheckPanel({
                                         {
                                             key: 'path',
                                             label: '数据源 / 库 / 表 / 字段',
+                                            className: 'ds-table-cell-wide',
+                                            title: formatObjectPath,
                                             render: (r) => <span
                                                 className="text-ds-text-primary font-medium">{formatObjectPath(r)}</span>
                                         },
-                                        {key: 'problem', label: '问题描述', render: formatTypeProblem},
-                                        {key: 'standards', label: '涉及规范', render: formatTypeStandards},
-                                        {key: 'suggestion', label: '整改建议', render: formatTypeSuggestion},
+                                        {
+                                            key: 'problem',
+                                            label: '问题描述',
+                                            className: 'ds-table-cell-truncate',
+                                            title: formatTypeProblem,
+                                            render: formatTypeProblem
+                                        },
+                                        {
+                                            key: 'standards',
+                                            label: '涉及规范',
+                                            className: 'ds-table-cell-wide',
+                                            title: formatTypeStandards,
+                                            render: formatTypeStandards
+                                        },
+                                        {
+                                            key: 'suggestion',
+                                            label: '整改建议',
+                                            className: 'ds-table-cell-truncate',
+                                            title: formatTypeSuggestion,
+                                            render: formatTypeSuggestion
+                                        },
                                     ]}
                                     onView={handleView}
                                 />

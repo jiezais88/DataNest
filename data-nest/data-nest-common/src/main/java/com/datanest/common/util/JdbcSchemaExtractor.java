@@ -1,5 +1,6 @@
 package com.datanest.common.util;
 
+import com.datanest.common.constant.DataSourceType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,14 +102,18 @@ public final class JdbcSchemaExtractor {
     }
 
     private static String buildJdbcUrl(String type, String host, int port, String database, String schema) {
-        return switch (type) {
-            case "MYSQL" -> String.format(
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case MYSQL -> String.format(
                     "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
                     host, port, database);
-            case "DORIS" -> String.format(
+            case DORIS -> String.format(
                     "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
                     host, port, database);
-            case "POSTGRESQL" -> {
+            case POSTGRESQL -> {
                 if (schema != null && !schema.isBlank()) {
                     yield String.format(
                             "jdbc:postgresql://%s:%d/%s?currentSchema=%s&connectTimeout=10&socketTimeout=10",
@@ -118,48 +123,84 @@ public final class JdbcSchemaExtractor {
                         "jdbc:postgresql://%s:%d/%s?connectTimeout=10&socketTimeout=10",
                         host, port, database);
             }
-            default -> throw new IllegalArgumentException("Unsupported data source type: " + type);
+            case ORACLE -> String.format(
+                    "jdbc:oracle:thin:@//%s:%d/%s",
+                    host, port, database);
+            case SQLSERVER -> String.format(
+                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=false;trustServerCertificate=true;loginTimeout=10",
+                    host, port, database);
         };
     }
 
     private static String schemaListSql(String type) {
-        return switch (type) {
-            case "MYSQL", "DORIS" -> """
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case MYSQL, DORIS -> """
                     SELECT schema_name FROM information_schema.schemata
                     WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
                     ORDER BY schema_name
                     """;
-            case "POSTGRESQL" -> """
+            case POSTGRESQL -> """
                     SELECT schema_name FROM information_schema.schemata
                     WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                    ORDER BY schema_name
+                    AND schema_name NOT LIKE 'pg_%' ORDER BY schema_name
                     """;
-            default -> throw new IllegalArgumentException("Unsupported data source type: " + type);
+            case ORACLE -> """
+                    SELECT username FROM all_users
+                    WHERE username NOT IN ('SYS','SYSTEM','OUTLN','DBSNMP','APPQOSSYS','CTXSYS','MDSYS','OLAPSYS','ORDDATA','ORDPLUGINS','ORDSYS','SI_INFORMTN_SCHEMA','XDB','XS$NULL','WMSYS','ANONYMOUS','DIP','ORACLE_OCM','ORDSYS')
+                    ORDER BY username
+                    """;
+            case SQLSERVER -> """
+                    SELECT name FROM sys.schemas
+                    WHERE name NOT IN ('sys', 'information_schema', 'guest')
+                    ORDER BY name
+                    """;
         };
     }
 
     private static String tableListSql(String type) {
-        return switch (type) {
-            case "MYSQL", "DORIS" -> """
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case MYSQL, DORIS -> """
                     SELECT table_name FROM information_schema.tables
                     WHERE table_schema = ? AND table_type = 'BASE TABLE'
                     ORDER BY table_name
                     """;
-            case "POSTGRESQL" -> """
+            case POSTGRESQL -> """
                     SELECT table_name FROM information_schema.tables
                     WHERE table_schema = ? AND table_type = 'BASE TABLE'
                     ORDER BY table_name
                     """;
-            default -> throw new IllegalArgumentException("Unsupported data source type: " + type);
+            case ORACLE -> """
+                    SELECT table_name FROM all_tables
+                    WHERE owner = ?
+                    ORDER BY table_name
+                    """;
+            case SQLSERVER -> """
+                    SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = ? AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                    """;
         };
     }
 
     private static String resolveEffectiveSchema(String type, String database, String schema) {
-        if ("POSTGRESQL".equals(type)) {
-            return schema != null && !schema.isBlank() ? schema : "public";
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
         }
-        // MySQL / Doris 的 database 即 schema
-        return database != null && !database.isBlank() ? database : schema;
+        return switch (dataSourceType) {
+            case POSTGRESQL -> schema != null && !schema.isBlank() ? schema : "public";
+            case ORACLE -> schema != null && !schema.isBlank() ? schema : null;
+            case SQLSERVER -> schema != null && !schema.isBlank() ? schema : "dbo";
+            case MYSQL, DORIS -> database != null && !database.isBlank() ? database : schema;
+        };
     }
 
     private static String classifyError(SQLException e) {

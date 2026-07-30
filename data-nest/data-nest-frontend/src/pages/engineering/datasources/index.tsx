@@ -11,10 +11,9 @@ import type {
     DataSource,
     DataSourceCreateRequest,
     DataSourceReference,
-    DataSourceStatus,
-    DataSourceType,
     DataSourceUpdateRequest,
 } from '../../../types/datasource';
+import {DataSourceStatus, DataSourceStatusEnum, DataSourceType, TYPE_OPTIONS} from '../../../constants/datasource';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DataSourceDrawer from './DataSourceDrawer';
@@ -35,19 +34,12 @@ import {
     HiOutlineTrash,
 } from 'react-icons/hi2';
 
-const TYPE_OPTIONS: { value: DataSourceType | ''; label: string }[] = [
-    {value: '', label: '全部类型'},
-    {value: 'MYSQL', label: 'MySQL'},
-    {value: 'POSTGRESQL', label: 'PostgreSQL'},
-    {value: 'DORIS', label: 'Doris'},
-];
-
 const STATUS_OPTIONS: { value: DataSourceStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
-    {value: 'NORMAL', label: '正常'},
-    {value: 'ERROR', label: '异常'},
-    {value: 'OFFLINE', label: '已下线'},
-    {value: 'UNKNOWN', label: '未检测'},
+    {value: DataSourceStatusEnum.NORMAL, label: '正常'},
+    {value: DataSourceStatusEnum.ERROR, label: '异常'},
+    {value: DataSourceStatusEnum.OFFLINE, label: '已下线'},
+    {value: DataSourceStatusEnum.UNKNOWN, label: '未检测'},
 ];
 
 function formatDateTime(value?: string) {
@@ -217,19 +209,19 @@ export default function DataSourcesPage() {
     const getTypeLabel = (value: DataSourceType) => TYPE_OPTIONS.find((o) => o.value === value)?.label || value;
 
     const statusClass = (value: DataSourceStatus) => {
-        if (value === 'NORMAL') return {
+        if (value === DataSourceStatusEnum.NORMAL) return {
             dot: 'bg-ds-success',
             bg: 'bg-ds-success-light',
             text: 'text-ds-success',
             label: '正常'
         };
-        if (value === 'ERROR') return {
+        if (value === DataSourceStatusEnum.ERROR) return {
             dot: 'bg-ds-danger',
             bg: 'bg-ds-danger-light',
             text: 'text-ds-danger',
             label: '异常'
         };
-        if (value === 'OFFLINE') return {
+        if (value === DataSourceStatusEnum.OFFLINE) return {
             dot: 'bg-ds-text-muted',
             bg: 'bg-ds-bg-hover',
             text: 'text-ds-text-muted',
@@ -263,7 +255,8 @@ export default function DataSourcesPage() {
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">数据源管理</h1>
-                    <p className="text-ds-small text-ds-text-muted mt-ds-1">管理 MySQL、PostgreSQL、Doris 等数据源连接</p>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">管理 MySQL、PostgreSQL、Doris、Oracle、SQL
+                        Server 等数据源连接</p>
                 </div>
                 {canWrite && (
                     <button
@@ -345,58 +338,58 @@ export default function DataSourcesPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto">
-                <div
-                    className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
-                    <table className="w-full">
-                        <thead className="sticky top-0 z-10">
-                        <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">数据源名称</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">类型</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">主机地址</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">描述</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">最近连接时间</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {items.map((item) => {
-                            const statusStyle = statusClass(item.status);
-                            return (
-                                <tr
-                                    key={item.id}
-                                    data-testid={`datasource-row-${item.name}`}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors"
-                                >
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <TypeBadge type={item.type}/>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
-                                        {item.host}:{item.port}/{item.databaseName}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary truncate max-w-[200px]"
-                                        title={item.description || ''}>
-                                        {item.description || '-'}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            title={item.errorMessage || ''}
-                                            className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}
-                                        >
-                                            <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
-                                            {statusStyle.label}
-                                        </span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary"
-                                        title={formatDateTime(item.lastTestTime)}>
-                                        {formatRelativeTime(item.lastTestTime)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
+                <div className="ds-table-card">
+                    <div className="ds-table-scroll">
+                        <table className="ds-table">
+                            <thead>
+                            <tr>
+                                <th>数据源名称</th>
+                                <th>类型</th>
+                                <th>主机地址</th>
+                                <th>描述</th>
+                                <th>状态</th>
+                                <th>最近连接时间</th>
+                                <th className="text-center">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {items.map((item) => {
+                                const statusStyle = statusClass(item.status);
+                                return (
+                                    <tr
+                                        key={item.id}
+                                        data-testid={`datasource-row-${item.name}`}
+                                    >
+                                        <td className="ds-table-cell-truncate" title={item.name}>
+                                            <span
+                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
+                                        </td>
+                                        <td>
+                                            <TypeBadge type={item.type}/>
+                                        </td>
+                                        <td className="text-ds-body text-ds-text-secondary"
+                                            title={`${item.host}:${item.port}/${item.databaseName}`}>
+                                            {item.host}:{item.port}/{item.databaseName}
+                                        </td>
+                                        <td className="ds-table-cell-truncate text-ds-small text-ds-text-secondary"
+                                            title={item.description || ''}>
+                                            {item.description || '-'}
+                                        </td>
+                                        <td>
+                                            <span
+                                                title={item.errorMessage || ''}
+                                                className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                                            >
+                                                <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
+                                                {statusStyle.label}
+                                            </span>
+                                        </td>
+                                        <td className="text-ds-small text-ds-text-secondary"
+                                            title={formatDateTime(item.lastTestTime)}>
+                                            {formatRelativeTime(item.lastTestTime)}
+                                        </td>
+                                        <td className="ds-table-cell-no-truncate">
+                                            <div className="flex items-center justify-center w-full gap-1">
                                             {canWrite && (
                                                 <>
                                                     <button
@@ -452,16 +445,17 @@ export default function DataSourcesPage() {
                                 </tr>
                             );
                         })}
-                        {items.length === 0 && !loading && (
-                            <tr>
-                                <td colSpan={7}
-                                    className="px-ds-4 py-ds-16 text-center text-ds-text-muted text-ds-body">
-                                    暂无数据源
-                                </td>
-                            </tr>
-                        )}
-                        </tbody>
-                    </table>
+                            {items.length === 0 && !loading && (
+                                <tr>
+                                    <td colSpan={7}
+                                        className="py-ds-16 text-center text-ds-text-muted text-ds-body">
+                                        暂无数据源
+                                    </td>
+                                </tr>
+                            )}
+                            </tbody>
+                        </table>
+                    </div>
 
                     <Pagination
                         page={page}

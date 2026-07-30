@@ -13,10 +13,13 @@ import com.datanest.governance.dto.CollectHistoryQueryRequest;
 import com.datanest.task.core.entity.CollectChangeDetail;
 import com.datanest.task.core.entity.CollectExecutionLog;
 import com.datanest.task.core.entity.CollectHistory;
+import com.datanest.task.core.entity.CollectTask;
 import com.datanest.task.core.mapper.CollectChangeDetailMapper;
 import com.datanest.task.core.mapper.CollectExecutionLogMapper;
 import com.datanest.task.core.mapper.CollectHistoryMapper;
+import com.datanest.task.core.mapper.CollectTaskMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,13 +30,16 @@ public class CollectHistoryService {
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper logMapper;
     private final CollectChangeDetailMapper changeDetailMapper;
+    private final CollectTaskMapper collectTaskMapper;
 
     public CollectHistoryService(CollectHistoryMapper collectHistoryMapper,
                                  CollectExecutionLogMapper logMapper,
-                                 CollectChangeDetailMapper changeDetailMapper) {
+                                 CollectChangeDetailMapper changeDetailMapper,
+                                 CollectTaskMapper collectTaskMapper) {
         this.collectHistoryMapper = collectHistoryMapper;
         this.logMapper = logMapper;
         this.changeDetailMapper = changeDetailMapper;
+        this.collectTaskMapper = collectTaskMapper;
     }
 
     public PageResult<CollectHistoryDTO> list(CollectHistoryQueryRequest request) {
@@ -48,6 +54,21 @@ public class CollectHistoryService {
         if (request.getStartTimeFrom() != null && request.getStartTimeTo() != null) {
             wrapper.between("started_at", request.getStartTimeFrom(), request.getStartTimeTo());
         }
+
+        // 按采集任务名称模糊搜索：先查 collect_task 得到匹配 ID，再过滤历史
+        if (StringUtils.hasText(request.getKeyword())) {
+            QueryWrapper<CollectTask> taskWrapper = new QueryWrapper<>();
+            taskWrapper.like("name", request.getKeyword().trim());
+            List<Long> matchedTaskIds = collectTaskMapper.selectList(taskWrapper).stream()
+                    .map(CollectTask::getId)
+                    .distinct()
+                    .toList();
+            if (matchedTaskIds.isEmpty()) {
+                return PageResult.of(List.of(), 0L, request.getPage(), request.getPageSize());
+            }
+            wrapper.in("task_id", matchedTaskIds);
+        }
+
         wrapper.orderByDesc("started_at");
 
         IPage<CollectHistory> result = collectHistoryMapper.selectPage(page, wrapper);

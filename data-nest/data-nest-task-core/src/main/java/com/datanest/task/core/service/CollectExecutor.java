@@ -1,6 +1,10 @@
 package com.datanest.task.core.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.constant.DataSourceStatus;
+import com.datanest.common.constant.ExecutionStatus;
+import com.datanest.common.constant.MetadataSourceStatus;
+import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.task.core.collect.ColumnMetadata;
 import com.datanest.task.core.collect.ExtractorFactory;
 import com.datanest.task.core.collect.MetadataExtractor;
@@ -72,10 +76,10 @@ public class CollectExecutor {
 
     private String parseTriggerType(String param) {
         if (param == null || param.isBlank()) {
-            return "CRON";
+            return TaskTriggerType.CRON.getCode();
         }
         String[] parts = param.split(",");
-        return parts.length > 1 ? parts[1].trim() : "CRON";
+        return parts.length > 1 ? parts[1].trim() : TaskTriggerType.CRON.getCode();
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -87,7 +91,7 @@ public class CollectExecutor {
             throw new IllegalArgumentException("任务不存在: " + taskId);
         }
         // 设置运行中状态
-        task.setStatus("RUNNING");
+        task.setStatus(ExecutionStatus.RUNNING.getCode());
         collectTaskMapper.updateById(task);
         logger.info("runTask 任务状态已更新为 RUNNING: taskId={}", taskId);
 
@@ -97,7 +101,7 @@ public class CollectExecutor {
             failTask(task, triggerType, "数据源不存在: " + task.getDatasourceId());
             return;
         }
-        if (!"NORMAL".equals(ds.getStatus())) {
+        if (!DataSourceStatus.NORMAL.getCode().equals(ds.getStatus())) {
             logger.error("runTask 数据源状态异常: taskId={}, datasourceId={}, status={}", taskId, task.getDatasourceId(), ds.getStatus());
             failTask(task, triggerType, "数据源状态异常，无法采集: " + ds.getStatus());
             return;
@@ -120,7 +124,7 @@ public class CollectExecutor {
         int updatedColumns = 0;
         int deletedColumns = 0;
         String errorMessage = null;
-        String lastStatus = "SUCCESS";
+        String lastStatus = ExecutionStatus.SUCCESS.getCode();
 
         MetadataExtractor extractor = extractorFactory.getExtractor(ds.getType());
         try {
@@ -152,7 +156,7 @@ public class CollectExecutor {
         } catch (Exception e) {
             logger.error("采集任务执行失败: taskId={}", taskId, e);
             errorMessage = e.getMessage();
-            lastStatus = "FAILED";
+            lastStatus = ExecutionStatus.FAILED.getCode();
             log(history, "ERROR", "采集失败：" + errorMessage);
         }
 
@@ -160,7 +164,7 @@ public class CollectExecutor {
                 addedColumns, updatedColumns, deletedColumns, errorMessage, lastStatus);
         updateTaskStatus(task, history, lastStatus);
 
-        if ("FAILED".equals(lastStatus)) {
+        if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
             throw new RuntimeException(errorMessage);
         }
     }
@@ -172,7 +176,7 @@ public class CollectExecutor {
         history.setTaskName(task.getName());
         history.setDatasourceId(task.getDatasourceId());
         history.setTriggerType(triggerType);
-        history.setStatus("RUNNING");
+        history.setStatus(ExecutionStatus.RUNNING.getCode());
         history.setStartedAt(LocalDateTime.now());
         history.setDbCount(0);
         history.setTableCount(0);
@@ -213,7 +217,7 @@ public class CollectExecutor {
             mt.setSchemaName(table.getSchemaName());
             mt.setTableName(table.getTableName());
             mt.setTableComment(table.getTableComment());
-            mt.setSourceStatus("ONLINE");
+            mt.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
             mt.setLastCollectHistoryId(historyId);
             metadataTableMapper.insert(mt);
 
@@ -222,7 +226,7 @@ public class CollectExecutor {
                     table.getSchemaName(), table.getTableName(), null, null, null);
             return new TableChange(mt.getId(), true, false);
         } else {
-            boolean wasOffline = !"ONLINE".equals(existing.getSourceStatus());
+            boolean wasOffline = !MetadataSourceStatus.ONLINE.getCode().equals(existing.getSourceStatus());
             boolean commentChanged = !Objects.equals(existing.getTableComment(), table.getTableComment());
             if (commentChanged) {
                 String oldComment = existing.getTableComment();
@@ -233,7 +237,7 @@ public class CollectExecutor {
                         table.getSchemaName(), table.getTableName(), null, oldComment, table.getTableComment());
             }
             if (wasOffline) {
-                existing.setSourceStatus("ONLINE");
+                existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
             }
             // 无论表结构是否变化，都更新 last_collect_history_id，确保最近采集信息准确
             existing.setLastCollectHistoryId(historyId);
@@ -262,7 +266,7 @@ public class CollectExecutor {
                 col.setOrdinalPosition(cm.getOrdinalPosition());
                 col.setNullable(cm.getNullable());
                 col.setColumnDefault(cm.getColumnDefault());
-                col.setSourceStatus("ONLINE");
+                col.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
                 col.setLastCollectHistoryId(historyId);
                 metadataColumnMapper.insert(col);
                 added++;
@@ -280,7 +284,7 @@ public class CollectExecutor {
                             null, newValue);
                 }
             } else {
-                boolean wasOffline = !"ONLINE".equals(existing.getSourceStatus());
+                boolean wasOffline = !MetadataSourceStatus.ONLINE.getCode().equals(existing.getSourceStatus());
                 String oldDataType = existing.getDataType();
                 String oldComment = existing.getColumnComment();
                 Integer oldOrdinal = existing.getOrdinalPosition();
@@ -300,7 +304,7 @@ public class CollectExecutor {
                     existing.setOrdinalPosition(cm.getOrdinalPosition());
                     existing.setNullable(cm.getNullable());
                     existing.setColumnDefault(cm.getColumnDefault());
-                    existing.setSourceStatus("ONLINE");
+                    existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
                     existing.setLastCollectHistoryId(historyId);
                     metadataColumnMapper.updateById(existing);
                     added++;
@@ -338,11 +342,11 @@ public class CollectExecutor {
 
         // 剩余字段为源库中已不存在的字段
         for (MetadataColumn remaining : existingMap.values()) {
-            if (!"ONLINE".equals(remaining.getSourceStatus())) {
+            if (!MetadataSourceStatus.ONLINE.getCode().equals(remaining.getSourceStatus())) {
                 continue;
             }
             String oldValue = formatColumnValue(remaining.getDataType(), remaining.getNullable(), remaining.getColumnComment());
-            remaining.setSourceStatus("OFFLINE");
+            remaining.setSourceStatus(MetadataSourceStatus.OFFLINE.getCode());
             remaining.setLastCollectHistoryId(historyId);
             metadataColumnMapper.updateById(remaining);
             deleted++;
@@ -411,19 +415,19 @@ public class CollectExecutor {
         wrapper.eq("datasource_id", ds.getId())
                 .eq("database_name", databaseName)
                 .eq("COALESCE(schema_name, '')", schemaName == null ? "" : schemaName)
-                .eq("source_status", "ONLINE");
+                .eq("source_status", MetadataSourceStatus.ONLINE.getCode());
         List<MetadataTable> existingTables = metadataTableMapper.selectList(wrapper);
 
         int deleted = 0;
         for (MetadataTable existing : existingTables) {
             if (!collectedTableNames.contains(existing.getTableName())) {
-                existing.setSourceStatus("OFFLINE");
+                existing.setSourceStatus(MetadataSourceStatus.OFFLINE.getCode());
                 existing.setLastCollectHistoryId(historyId);
                 metadataTableMapper.updateById(existing);
 
                 // 同步把该表下的字段也标记为已删除
                 MetadataColumn columnUpdate = new MetadataColumn();
-                columnUpdate.setSourceStatus("OFFLINE");
+                columnUpdate.setSourceStatus(MetadataSourceStatus.OFFLINE.getCode());
                 metadataColumnMapper.update(columnUpdate,
                         new QueryWrapper<MetadataColumn>().eq("table_id", existing.getId()));
 
@@ -445,8 +449,8 @@ public class CollectExecutor {
 
     private void failTask(CollectTask task, String triggerType, String message) {
         CollectHistory history = initHistory(task, triggerType);
-        finishHistory(history, 0, 0, 0, 0, 0, 0, 0, 0, 0, message, "FAILED");
-        updateTaskStatus(task, history, "FAILED");
+        finishHistory(history, 0, 0, 0, 0, 0, 0, 0, 0, 0, message, ExecutionStatus.FAILED.getCode());
+        updateTaskStatus(task, history, ExecutionStatus.FAILED.getCode());
         throw new RuntimeException(message);
     }
 

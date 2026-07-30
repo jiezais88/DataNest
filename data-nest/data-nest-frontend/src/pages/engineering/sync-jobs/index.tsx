@@ -397,66 +397,62 @@ export default function SyncJobsPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto">
-                <div
-                    className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
-                    <table className="w-full">
-                        <thead className="sticky top-0 z-10">
-                        <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">任务名称</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">触发方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">Cron
-                                表达式
-                            </th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">调度状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">下次执行时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">源
-                                → 目标
-                            </th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">同步模式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">最近执行</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {items.map((item) => {
-                            const statusStyle = executionStatusClass(item.executionStatus);
-                            return (
-                                <tr
-                                    key={item.id}
-                                    data-testid={`sync-job-row-${item.name}`}
-                                    data-job-id={item.id}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors"
-                                >
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">{triggerBadge(item.triggerType)}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary font-mono">
-                                        {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">{scheduleStatusBadge(item)}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                        {formatNextExecutionTime(item)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary font-mono">
-                                        {formatSourceToTarget(item, dataSources)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">{syncModeBadge(item.syncMode, item.incrementalField)}</td>
-                                    <td className="px-ds-4 py-ds-3">
+                <div className="ds-table-card">
+                    <div className="ds-table-scroll">
+                        <table className="ds-table">
+                            <thead>
+                            <tr>
+                                <th>任务名称</th>
+                                <th>触发方式</th>
+                                <th>Cron 表达式</th>
+                                <th>调度状态</th>
+                                <th>下次执行时间</th>
+                                <th>源 → 目标</th>
+                                <th>同步模式</th>
+                                <th>状态</th>
+                                <th>最近执行</th>
+                                <th className="text-center">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {items.map((item) => {
+                                const statusStyle = executionStatusClass(item.executionStatus);
+                                return (
+                                    <tr
+                                        key={item.id}
+                                        data-testid={`sync-job-row-${item.name}`}
+                                        data-job-id={item.id}
+                                    >
+                                        <td className="ds-table-cell-truncate" title={item.name}>
+                                            <span
+                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
+                                        </td>
+                                        <td>{triggerBadge(item.triggerType)}</td>
+                                        <td className="text-ds-small text-ds-text-secondary font-mono">
+                                            {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
+                                        </td>
+                                        <td>{scheduleStatusBadge(item)}</td>
+                                        <td className="text-ds-small text-ds-text-secondary">
+                                            {formatNextExecutionTime(item)}
+                                        </td>
+                                        <td className="ds-table-cell-wide text-ds-small text-ds-text-secondary font-mono"
+                                            title={formatSourceToTarget(item, dataSources)}>
+                                            {formatSourceToTarget(item, dataSources)}
+                                        </td>
+                                        <td>{syncModeBadge(item.syncMode, item.incrementalField)}</td>
+                                        <td>
                                         <span
                                             className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}>
                                             <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
                                             {statusStyle.label}
                                         </span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary"
-                                        title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
-                                        {formatRelativeTime(item.lastExecuteTime)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
+                                        </td>
+                                        <td className="text-ds-small text-ds-text-secondary"
+                                            title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
+                                            {formatRelativeTime(item.lastExecuteTime)}
+                                        </td>
+                                        <td className="ds-table-cell-no-truncate">
+                                            <div className="flex items-center justify-center w-full gap-1">
                                             <button
                                                 data-testid={`sync-job-history-${item.name}`}
                                                 onClick={() => navigate(`/engineering/sync-jobs/${item.id}/history`)}
@@ -522,26 +518,27 @@ export default function SyncJobsPage() {
                                 </tr>
                             );
                         })}
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
 
-                    {items.length === 0 && !loading && (
-                        <EmptyState
-                            title="暂无同步任务"
-                            description="还没有批量数据同步任务，创建第一个任务开始同步到 Doris。"
-                            action={
-                                canWrite ? (
-                                    <button
-                                        onClick={openCreate}
-                                        className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                                    >
-                                        <HiOutlinePlus size={16}/>
-                                        创建任务
-                                    </button>
-                                ) : null
-                            }
-                        />
-                    )}
+                        {items.length === 0 && !loading && (
+                            <EmptyState
+                                title="暂无同步任务"
+                                description="还没有批量数据同步任务，创建第一个任务开始同步到 Doris。"
+                                action={
+                                    canWrite ? (
+                                        <button
+                                            onClick={openCreate}
+                                            className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                        >
+                                            <HiOutlinePlus size={16}/>
+                                            创建任务
+                                        </button>
+                                    ) : null
+                                }
+                            />
+                        )}
+                    </div>
 
                     <Pagination page={page} pageSize={pageSize} total={total} onChange={handlePageChange}/>
 

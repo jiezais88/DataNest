@@ -1,6 +1,7 @@
 package com.datanest.task.core.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.entity.SyncJob;
@@ -25,9 +26,6 @@ import java.util.List;
 public class SyncJobExecutorService {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncJobExecutorService.class);
-    private static final String EXECUTION_STATUS_RUNNING = "RUNNING";
-    private static final String EXECUTION_STATUS_SUCCESS = "SUCCESS";
-    private static final String EXECUTION_STATUS_FAILED = "FAILED";
 
     private final SyncJobMapper syncJobMapper;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
@@ -59,15 +57,15 @@ public class SyncJobExecutorService {
             historyId = history.getId();
         }
 
-        updateExecutionStatus(job, EXECUTION_STATUS_RUNNING);
+        updateExecutionStatus(job, ExecutionStatus.RUNNING.getCode());
         logInfo(history, "开始 Addax 同步执行, syncJobId=" + syncJobId + ", triggerType=" + triggerType);
 
         AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId);
         writeLogLines(history, result.logLines());
 
         if (result.success()) {
-            finishHistory(history, result, "SUCCESS");
-            updateExecutionStatus(job, EXECUTION_STATUS_SUCCESS);
+            finishHistory(history, result, ExecutionStatus.SUCCESS.getCode());
+            updateExecutionStatus(job, ExecutionStatus.SUCCESS.getCode());
             updateJobLastExecute(job, history.getId());
             metadataRegistrationService.register(syncJobId);
             logInfo(history, "同步成功，已注册 Doris 元数据");
@@ -75,8 +73,8 @@ public class SyncJobExecutorService {
         }
 
         logError(history, "Addax 执行失败: " + result.errorMessage());
-        finishHistory(history, result, "FAILED");
-        updateExecutionStatus(job, EXECUTION_STATUS_FAILED);
+        finishHistory(history, result, ExecutionStatus.FAILED.getCode());
+        updateExecutionStatus(job, ExecutionStatus.FAILED.getCode());
         updateJobLastExecute(job, history.getId());
         logError(history, "同步任务最终失败");
     }
@@ -85,7 +83,7 @@ public class SyncJobExecutorService {
         SyncJobHistory history = new SyncJobHistory();
         history.setSyncJobId(syncJobId);
         history.setTriggerType(triggerType);
-        history.setStatus("RUNNING");
+        history.setStatus(ExecutionStatus.RUNNING.getCode());
         history.setStartTime(LocalDateTime.now());
         history.setRetryCount(0);
         history.setSourceRows(0L);
@@ -112,6 +110,9 @@ public class SyncJobExecutorService {
         if (result != null) {
             history.setSourceRows(result.readRows());
             history.setTargetRows(result.writeRows());
+            if (!result.success() && result.errorMessage() != null) {
+                history.setErrorMessage(result.errorMessage());
+            }
         }
         syncJobHistoryMapper.updateById(history);
     }

@@ -1,13 +1,16 @@
 import {useEffect, useRef, useState} from 'react';
-import {ChevronRight, Database, Folder, Table} from 'lucide-react';
+import {ChevronRight, Folder, Search, Table, X} from 'lucide-react';
 import {
     listMetadataDatabases,
     listMetadataDatasourceIds,
     listMetadataSchemas,
     listMetadataTables,
     listMetadataTablesWithoutSchema,
+    searchMetadataTree,
 } from '../../../api/metadata';
 import type {MetadataDatasource, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
+import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
+import {isWithoutSchema, SourceTypeEnum} from '../../../constants/datasource';
 
 interface MetadataTreeProps {
     selectedNode: MetadataTreeNode | null;
@@ -17,8 +20,6 @@ interface MetadataTreeProps {
     onRootsLoaded?: (hasRoots: boolean) => void;
     autoSelectFirst?: boolean;
 }
-
-const DB_TYPES_WITHOUT_SCHEMA = new Set(['MYSQL', 'DORIS']);
 
 export default function MetadataTree({
                                          selectedNode,
@@ -30,6 +31,9 @@ export default function MetadataTree({
                                      }: MetadataTreeProps) {
     const [roots, setRoots] = useState<MetadataTreeNode[]>([]);
     const [loading, setLoading] = useState<string | null>(null);
+    const [searchKeyword, setSearchKeyword] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [isSearchMode, setIsSearchMode] = useState(false);
     const autoSelectRef = useRef<{ active: boolean; pendingId: string | null }>({active: false, pendingId: null});
     const loadedRef = useRef<Set<string>>(new Set());
 
@@ -89,17 +93,19 @@ export default function MetadataTree({
 
     const loadRoots = async () => {
         try {
+            setSearchLoading(false);
+            setIsSearchMode(false);
+            loadedRef.current.clear();
             const result = await listMetadataDatasourceIds();
             if (result.code === 200) {
                 const nodes: MetadataTreeNode[] = (result.data as MetadataDatasource[]).map((ds) => {
                     const shortId = String(ds.id).slice(-6);
                     const exists = ds.exists !== false;
-                    const typeSuffix = ds.type ? ` (${ds.type})` : '';
-                    const isBuiltin = ds.sourceType === 'BUILTIN_DORIS';
+                    const isBuiltin = ds.sourceType === SourceTypeEnum.BUILTIN_DORIS;
                     return {
                         id: `ds-${ds.id}`,
                         type: 'datasource',
-                        name: isBuiltin ? 'Doris（内置）' : (ds.name ? `${ds.name}${typeSuffix}` : `数据源 ${shortId}${exists ? '' : '（已删除）'}`),
+                        name: isBuiltin ? 'Doris（内置）' : (ds.name ? ds.name : `数据源 ${shortId}${exists ? '' : '（已删除）'}`),
                         exists,
                         datasourceId: ds.id,
                         datasourceType: ds.type,
@@ -110,8 +116,8 @@ export default function MetadataTree({
                     };
                 });
                 nodes.sort((a, b) => {
-                    const aBuiltin = a.sourceType === 'BUILTIN_DORIS' ? 1 : 0;
-                    const bBuiltin = b.sourceType === 'BUILTIN_DORIS' ? 1 : 0;
+                    const aBuiltin = a.sourceType === SourceTypeEnum.BUILTIN_DORIS ? 1 : 0;
+                    const bBuiltin = b.sourceType === SourceTypeEnum.BUILTIN_DORIS ? 1 : 0;
                     if (aBuiltin !== bBuiltin) return bBuiltin - aBuiltin;
                     return a.name.localeCompare(b.name, 'zh-CN');
                 });
@@ -135,7 +141,54 @@ export default function MetadataTree({
         }
     };
 
+    const handleSearch = async () => {
+        const keyword = searchKeyword.trim();
+        if (!keyword) {
+            handleClearSearch();
+            return;
+        }
+        setSearchLoading(true);
+        try {
+            const result = await searchMetadataTree(keyword);
+            if (result.code === 200 && result.data) {
+                const searchRoots = result.data;
+                setRoots(searchRoots);
+                setIsSearchMode(true);
+                loadedRef.current.clear();
+                // 搜索模式下默认展开所有非叶子节点
+                const allExpanded = new Set<string>();
+                const collectIds = (nodes: MetadataTreeNode[]) => {
+                    for (const node of nodes) {
+                        if (node.type !== 'table') {
+                            allExpanded.add(node.id);
+                        }
+                        if (node.children) {
+                            collectIds(node.children);
+                        }
+                    }
+                };
+                collectIds(searchRoots);
+                onExpandedChange(allExpanded);
+                onRootsLoaded?.(searchRoots.length > 0);
+            }
+        } catch (err) {
+            console.error('search metadata tree failed', err);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    const handleClearSearch = () => {
+        setSearchKeyword('');
+        onExpandedChange(new Set());
+        onSelect(selectedNode && selectedNode.type === 'table' ? selectedNode : null as unknown as MetadataTreeNode);
+        loadRoots();
+    };
+
     const loadChildren = async (node: MetadataTreeNode) => {
+        if (node.type === 'table') {
+            return;
+        }
         if (node.type === 'datasource') {
             const datasourceId = node.datasourceId!;
             setLoading(node.id);
@@ -163,7 +216,7 @@ export default function MetadataTree({
             const databaseName = node.databaseName!;
             const datasourceType = node.datasourceType;
             // MySQL / Doris 的 database 与 schema 等价，直接加载表作为叶子
-            if (datasourceType && DB_TYPES_WITHOUT_SCHEMA.has(datasourceType.toUpperCase())) {
+            if (isWithoutSchema(datasourceType)) {
                 setLoading(node.id);
                 try {
                     const result = await listMetadataTablesWithoutSchema(datasourceId, databaseName);
@@ -261,7 +314,7 @@ export default function MetadataTree({
 
     const renderIcon = (node: MetadataTreeNode) => {
         if (node.type === 'datasource') {
-            return <Database size={16} className="text-ds-accent flex-shrink-0"/>;
+            return <DatabaseTypeIcon type={node.datasourceType || ''} size={16} showLabel={false}/>;
         }
         if (node.type === 'database' || node.type === 'schema') {
             return <Folder size={16} className="text-ds-warning flex-shrink-0"/>;
@@ -327,11 +380,57 @@ export default function MetadataTree({
     };
 
     return (
-        <div className="w-full h-full overflow-auto py-ds-2">
-            {roots.length === 0 && (
-                <p className="px-ds-4 py-ds-3 text-ds-small text-ds-text-muted">暂无元数据，请先执行采集任务。</p>
-            )}
-            {roots.map((root) => renderNode(root))}
+        <div className="w-full h-full flex flex-col overflow-hidden">
+            <div className="px-ds-3 py-ds-2 border-b border-ds-border-subtle">
+                <div className="relative">
+                    <input
+                        type="text"
+                        value={searchKeyword}
+                        onChange={(e) => setSearchKeyword(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handleSearch();
+                            }
+                        }}
+                        placeholder="搜索库 / 模式 / 表"
+                        className="w-full pl-ds-8 pr-ds-7 py-ds-1.5 text-ds-small bg-ds-bg-surface border border-ds-border-subtle rounded-ds-sm focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent"
+                    />
+                    <Search size={14} className="absolute left-ds-2.5 top-1/2 -translate-y-1/2 text-ds-text-muted"/>
+                    {searchKeyword && (
+                        <button
+                            onClick={handleClearSearch}
+                            className="absolute right-ds-2 top-1/2 -translate-y-1/2 text-ds-text-muted hover:text-ds-text-primary"
+                        >
+                            <X size={14}/>
+                        </button>
+                    )}
+                    {!searchKeyword && (
+                        <button
+                            onClick={handleSearch}
+                            disabled={searchLoading}
+                            className="absolute right-ds-2 top-1/2 -translate-y-1/2 text-ds-text-muted hover:text-ds-accent disabled:opacity-50"
+                        >
+                            <Search size={14}/>
+                        </button>
+                    )}
+                </div>
+                {isSearchMode && (
+                    <p className="mt-ds-1 text-ds-caption text-ds-text-muted truncate">
+                        搜索结果：{roots.length > 0 ? `找到 ${roots.length} 个数据源` : '无匹配结果'}
+                    </p>
+                )}
+            </div>
+            <div className="flex-1 overflow-auto py-ds-2">
+                {roots.length === 0 && !searchLoading && (
+                    <p className="px-ds-4 py-ds-3 text-ds-small text-ds-text-muted">
+                        {isSearchMode ? '未找到匹配的库 / 模式 / 表' : '暂无元数据，请先执行采集任务。'}
+                    </p>
+                )}
+                {searchLoading && (
+                    <p className="px-ds-4 py-ds-3 text-ds-small text-ds-text-muted">搜索中...</p>
+                )}
+                {roots.map((root) => renderNode(root))}
+            </div>
         </div>
     );
 }

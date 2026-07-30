@@ -3,10 +3,7 @@ package com.datanest.governance.controller;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
-import com.datanest.governance.dto.MetadataCommentRequest;
-import com.datanest.governance.dto.MetadataDatasourceDTO;
-import com.datanest.governance.dto.MetadataPreviewResult;
-import com.datanest.governance.dto.MetadataRemarkRequest;
+import com.datanest.governance.dto.*;
 import com.datanest.governance.service.MetadataPreviewService;
 import com.datanest.governance.service.MetadataService;
 import com.datanest.task.core.entity.MetadataColumn;
@@ -32,6 +29,11 @@ public class MetadataController {
     @GetMapping("/datasources")
     public Result<List<MetadataDatasourceDTO>> listDatasourceIds() {
         return Result.ok(metadataService.listDatasourceIds());
+    }
+
+    @GetMapping("/search-tree")
+    public Result<List<MetadataTreeNodeDTO>> searchTree(@RequestParam String keyword) {
+        return Result.ok(metadataService.searchTree(keyword));
     }
 
     @GetMapping("/datasources/{datasourceId}/databases")

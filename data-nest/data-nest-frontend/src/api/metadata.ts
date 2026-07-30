@@ -1,5 +1,11 @@
 import request from './request';
-import type {MetadataColumn, MetadataCommentRequest, MetadataDatasource, MetadataTable} from '../types/metadata';
+import type {
+    MetadataColumn,
+    MetadataCommentRequest,
+    MetadataDatasource,
+    MetadataTable,
+    MetadataTreeNode
+} from '../types/metadata';
 import type {Result} from './datasource';
 
 interface MetadataRemarkRequest {
@@ -8,6 +14,10 @@ interface MetadataRemarkRequest {
 
 export function listMetadataDatasourceIds() {
     return request.get<Result<MetadataDatasource[]>>('/governance/metadata/datasources');
+}
+
+export function searchMetadataTree(keyword: string) {
+    return request.get<Result<MetadataTreeNode[]>>(`/governance/metadata/search-tree?keyword=${encodeURIComponent(keyword)}`);
 }
 
 export function listMetadataDatabases(datasourceId: string) {

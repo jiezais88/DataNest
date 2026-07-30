@@ -48,7 +48,14 @@ export function getDataSourceReferences(datasourceId: string) {
 }
 
 export function queryCollectHistory(params: CollectHistoryQueryParams) {
-    return request.post<Result<PageResult<CollectTaskExecution>>>(`/governance/collect-tasks/${params.taskId}/history/page`, params);
+    if (params.taskId) {
+        return request.post<Result<PageResult<CollectTaskExecution>>>(`/governance/collect-tasks/${params.taskId}/history/page`, params);
+    }
+    return request.post<Result<PageResult<CollectTaskExecution>>>('/governance/collect-tasks/global-history/page', params);
+}
+
+export function queryAllCollectHistory(params: CollectHistoryQueryParams) {
+    return request.post<Result<PageResult<CollectTaskExecution>>>('/governance/collect-tasks/global-history/page', params);
 }
 
 export function getCollectHistory(taskId: string, historyId: string) {

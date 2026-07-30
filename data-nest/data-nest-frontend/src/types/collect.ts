@@ -1,5 +1,7 @@
-export type CollectMode = 'FULL' | 'FULL_INCREMENT';
-export type TaskTriggerType = 'MANUAL' | 'CRON';
+import type {CollectMode, TaskTriggerType} from '../constants/task';
+
+export type {CollectMode, TaskTriggerType};
+
 export type TaskStatus = 'NEVER_EXECUTED' | 'RUNNING' | 'SUCCESS' | 'FAILED';
 export type ExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL';
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
@@ -67,6 +69,7 @@ export interface CollectTaskExecution {
 export interface CollectHistoryQueryParams {
     taskId?: string;
     status?: ExecutionStatus | '';
+    keyword?: string;
     startTimeFrom?: string;
     startTimeTo?: string;
     page: number;

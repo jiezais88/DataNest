@@ -33,3 +33,61 @@ body {
     color: var(--color-text-primary);
     -webkit-font-smoothing: antialiased;
 }
+
+@layer components {
+    /**
+     * 统一表格样式：默认不换行，超出截断，表头固定。
+     * 长文本列请额外添加 .ds-table-cell-truncate 或 .ds-table-cell-wide，并加 title。
+     */
+    .ds-table {
+        @apply w-full border-collapse;
+        table-layout: auto;
+    }
+
+    .ds-table thead {
+        @apply sticky top-0 z-10;
+    }
+
+    .ds-table th {
+        @apply px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider;
+        @apply border-b border-ds-border-subtle bg-ds-bg-hover/80;
+        white-space: nowrap;
+    }
+
+    .ds-table td {
+        @apply px-ds-4 py-ds-3;
+        vertical-align: middle;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .ds-table tbody tr {
+        @apply border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors;
+    }
+
+    /* 长文本列截断 */
+    .ds-table-cell-truncate {
+        max-width: 180px;
+    }
+
+    /* 较宽列截断 */
+    .ds-table-cell-wide {
+        max-width: 280px;
+    }
+
+    /* 取消截断，用于操作列或需要完整展示的数字列 */
+    .ds-table-cell-no-truncate {
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    /* 表格卡片容器：带阴影圆角，内部可横向滚动 */
+    .ds-table-card {
+        @apply relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden;
+    }
+
+    .ds-table-scroll {
+        @apply overflow-auto;
+    }
+}

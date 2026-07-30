@@ -1,6 +1,7 @@
 package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.DataSourceType;
 import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.SyncJob;
 import org.slf4j.Logger;
@@ -101,7 +102,7 @@ public class IncrementalFieldTypeResolver {
                 "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
                 dorisFeHost, dorisFeQueryPort, targetDb);
         try (Connection connection = DriverManager.getConnection(jdbcUrl, dorisQueryUser, dorisQueryPassword)) {
-            String typeName = queryColumnTypeName(connection, "DORIS", targetDb, null, targetTable, fieldName);
+            String typeName = queryColumnTypeName(connection, DataSourceType.DORIS.getCode(), targetDb, null, targetTable, fieldName);
             if (typeName != null) {
                 return classifyType(typeName);
             }
@@ -228,18 +229,24 @@ public class IncrementalFieldTypeResolver {
     }
 
     private String resolveCatalog(String dbType, String catalog) {
-        return switch (dbType) {
-            case "POSTGRESQL" -> catalog;
-            case "MYSQL", "DORIS" -> catalog;
-            default -> catalog;
+        DataSourceType type = DataSourceType.fromCode(dbType);
+        if (type == null) {
+            return catalog;
+        }
+        return switch (type) {
+            case POSTGRESQL, ORACLE, SQLSERVER -> catalog;
+            case MYSQL, DORIS -> catalog;
         };
     }
 
     private String resolveSchema(String dbType, String schema) {
-        return switch (dbType) {
-            case "POSTGRESQL" -> schema;
-            case "MYSQL", "DORIS" -> null;
-            default -> null;
+        DataSourceType type = DataSourceType.fromCode(dbType);
+        if (type == null) {
+            return null;
+        }
+        return switch (type) {
+            case POSTGRESQL, ORACLE, SQLSERVER -> schema;
+            case MYSQL, DORIS -> null;
         };
     }
 }

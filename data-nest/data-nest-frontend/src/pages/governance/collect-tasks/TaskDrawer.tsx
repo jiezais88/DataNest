@@ -1,6 +1,8 @@
 import {useEffect, useState} from 'react';
 import type {CollectMode, CollectTask, CollectTaskCreateRequest, TaskTriggerType,} from '../../../types/collect';
 import type {DataSource} from '../../../types/datasource';
+import {DB_TYPES_WITHOUT_SCHEMA} from '../../../constants/datasource';
+import {CollectModeEnum, TaskTriggerTypeEnum} from '../../../constants/task';
 import {getDataSourceSchemas} from '../../../api/engineering';
 import Drawer from '../../../components/Drawer';
 import CronPicker from '../../../components/CronPicker';
@@ -16,21 +18,21 @@ interface TaskFormData {
 }
 
 const MODE_OPTIONS: { value: CollectMode; label: string }[] = [
-    {value: 'FULL', label: '全量采集'},
-    {value: 'FULL_INCREMENT', label: '全量 + 增量'},
+    {value: CollectModeEnum.FULL, label: '全量采集'},
+    {value: CollectModeEnum.FULL_INCREMENT, label: '全量 + 增量'},
 ];
 
 const TRIGGER_OPTIONS: { value: TaskTriggerType; label: string }[] = [
-    {value: 'MANUAL', label: '手动触发'},
-    {value: 'CRON', label: 'Cron 定时'},
+    {value: TaskTriggerTypeEnum.MANUAL, label: '手动触发'},
+    {value: TaskTriggerTypeEnum.CRON, label: 'Cron 定时'},
 ];
 
 const EMPTY_FORM: TaskFormData = {
     name: '',
     datasourceId: '',
     scope: [],
-    collectMode: 'FULL',
-    triggerType: 'MANUAL',
+    collectMode: CollectModeEnum.FULL,
+    triggerType: TaskTriggerTypeEnum.MANUAL,
     cronExpression: '',
     description: '',
 };
@@ -42,8 +44,6 @@ interface TaskDrawerProps {
     onClose: () => void;
     onSubmit: (payload: CollectTaskCreateRequest) => Promise<{ code: number; message?: string } | undefined>;
 }
-
-const DB_TYPES_WITHOUT_SCHEMA = new Set(['MYSQL', 'DORIS']);
 
 export default function TaskDrawer({open, editItem, dataSources, onClose, onSubmit}: TaskDrawerProps) {
     const [form, setForm] = useState<TaskFormData>(EMPTY_FORM);
@@ -110,7 +110,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
         const nextErrors: Partial<Record<keyof TaskFormData, string>> = {};
         if (!form.name.trim()) nextErrors.name = '请输入任务名称';
         if (!form.datasourceId) nextErrors.datasourceId = '请选择数据源';
-        if (form.triggerType === 'CRON' && !form.cronExpression.trim()) {
+        if (form.triggerType === TaskTriggerTypeEnum.CRON && !form.cronExpression.trim()) {
             nextErrors.cronExpression = 'Cron 触发必须填写 Cron 表达式';
         }
         setErrors(nextErrors);
@@ -124,7 +124,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
             scope: form.scope.length > 0 ? form.scope : [],
             collectMode: form.collectMode,
             triggerType: form.triggerType,
-            cronExpression: form.triggerType === 'CRON' ? form.cronExpression.trim() : undefined,
+            cronExpression: form.triggerType === TaskTriggerTypeEnum.CRON ? form.cronExpression.trim() : undefined,
             description: form.description.trim() || undefined,
         };
         if (editItem) {
@@ -302,7 +302,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                     </div>
                 </div>
 
-                {form.triggerType === 'CRON' && (
+                {form.triggerType === TaskTriggerTypeEnum.CRON && (
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             Cron 表达式 <span className="text-ds-danger">*</span>

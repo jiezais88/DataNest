@@ -418,63 +418,63 @@ export default function CollectHistoryPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto">
-                <div
-                    className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
-                    <table className="w-full">
-                        <thead className="sticky top-0 z-10">
-                        <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">执行时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">执行方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">耗时</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">扫描的库/表/字段</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">是否有变化</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {items.map((item) => {
-                            const ss = statusClass(item.status);
-                            return (
-                                <tr key={item.id}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors">
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{formatDateTime(item.startedAt)}</td>
-                                    <td className="px-ds-4 py-ds-3">{triggerBadge(item.triggerType)}</td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${ss.bg} ${ss.text}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`}/>{ss.label}
-                                        </span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">{formatDuration(item.durationMs)}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{item.dbCount} / {item.tableCount} / {item.columnCount}</td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            className={`inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${hasChanges(item) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                            {hasChanges(item) ? '有变化' : '无变化'}
-                                        </span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button onClick={() => handleOpenDetail(item)}
-                                                    className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                    title="详情" aria-label="详情">
-                                                <HiOutlineClipboardDocument size={16}/>
-                                            </button>
-                                            {canReadLogs && (
-                                                <button onClick={() => handleOpenLogs(item)}
+                <div className="ds-table-card">
+                    <div className="ds-table-scroll">
+                        <table className="ds-table">
+                            <thead>
+                            <tr>
+                                <th>执行时间</th>
+                                <th>执行方式</th>
+                                <th>状态</th>
+                                <th>耗时</th>
+                                <th>扫描的库/表/字段</th>
+                                <th>是否有变化</th>
+                                <th className="text-center">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {items.map((item) => {
+                                const ss = statusClass(item.status);
+                                return (
+                                    <tr key={item.id}>
+                                        <td className="text-ds-small text-ds-text-secondary">{formatDateTime(item.startedAt)}</td>
+                                        <td>{triggerBadge(item.triggerType)}</td>
+                                        <td>
+                                            <span
+                                                className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${ss.bg} ${ss.text}`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`}/>{ss.label}
+                                            </span>
+                                        </td>
+                                        <td className="text-ds-body text-ds-text-secondary">{formatDuration(item.durationMs)}</td>
+                                        <td className="text-ds-small text-ds-text-secondary">{item.dbCount} / {item.tableCount} / {item.columnCount}</td>
+                                        <td>
+                                            <span
+                                                className={`inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${hasChanges(item) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                {hasChanges(item) ? '有变化' : '无变化'}
+                                            </span>
+                                        </td>
+                                        <td className="ds-table-cell-no-truncate">
+                                            <div className="flex items-center justify-center w-full gap-1">
+                                                <button onClick={() => handleOpenDetail(item)}
                                                         className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="查看日志" aria-label="查看日志">
-                                                    <HiOutlineDocumentText size={16}/>
+                                                        title="详情" aria-label="详情">
+                                                    <HiOutlineClipboardDocument size={16}/>
                                                 </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                        </tbody>
-                    </table>
+                                                {canReadLogs && (
+                                                    <button onClick={() => handleOpenLogs(item)}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                            title="查看日志" aria-label="查看日志">
+                                                        <HiOutlineDocumentText size={16}/>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            </tbody>
+                        </table>
+                    </div>
 
                     {items.length === 0 && !loading && (
                         <EmptyState title="暂无历史记录"
@@ -518,7 +518,7 @@ export default function CollectHistoryPage() {
                                 <div className="text-ds-caption text-ds-text-muted font-semibold mb-ds-2">库/Schema
                                     执行情况
                                 </div>
-                                <table className="w-full text-ds-small border border-ds-border-subtle rounded-ds-sm">
+                                <table className="ds-table text-ds-small border border-ds-border-subtle rounded-ds-sm">
                                     <thead>
                                     <tr className="bg-ds-bg-hover">
                                         <th className="text-left px-ds-2 py-ds-1 text-ds-text-primary font-medium">库/Schema</th>
@@ -633,7 +633,7 @@ export default function CollectHistoryPage() {
                                                     </button>
                                                     {expanded && hasColumns && (
                                                         <div className="px-ds-3 py-ds-2">
-                                                            <table className="w-full text-ds-small">
+                                                            <table className="ds-table text-ds-small">
                                                                 <thead>
                                                                 <tr className="border-b border-ds-border-subtle text-ds-text-muted">
                                                                     <th className="text-left py-ds-1 font-medium">字段名</th>
@@ -721,7 +721,7 @@ export default function CollectHistoryPage() {
                                                                     <div
                                                                         className="text-ds-small text-ds-text-muted font-medium mb-ds-1">表注释变更
                                                                     </div>
-                                                                    <table className="w-full text-ds-small">
+                                                                    <table className="ds-table text-ds-small">
                                                                         <thead>
                                                                         <tr className="border-b border-ds-border-subtle text-ds-text-muted">
                                                                             <th className="text-left py-ds-1 font-medium">旧注释</th>
@@ -745,7 +745,7 @@ export default function CollectHistoryPage() {
                                                                     <div
                                                                         className="text-ds-small text-ds-text-muted font-medium mb-ds-1">字段变更
                                                                     </div>
-                                                                    <table className="w-full text-ds-small">
+                                                                    <table className="ds-table text-ds-small">
                                                                         <thead>
                                                                         <tr className="border-b border-ds-border-subtle text-ds-text-muted">
                                                                             <th className="text-left py-ds-1 font-medium">字段名</th>

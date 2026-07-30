@@ -260,113 +260,112 @@ export default function UsersPage() {
             {/* Table */}
             <div className="flex-1 min-h-0 overflow-auto">
                 <div
-                    className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
-                    <table className="w-full">
-                        <thead className="sticky top-0 z-10">
-                        <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">用户名</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">角色</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">邮箱</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">创建时间</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {users.map((user) => (
-                            <tr
-                                key={user.id}
-                                className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors"
-                            >
-                                <td className="px-ds-4 py-ds-3">
-                                    <span
-                                        className="text-ds-body text-ds-text-primary font-medium">{user.username}</span>
-                                </td>
-                                <td className="px-ds-4 py-ds-3">
-                                    <div className="flex flex-wrap gap-1">
-                                        {user.roles.map((role) => (
-                                            <span
-                                                key={role}
-                                                className="px-ds-1.5 py-0.5 bg-ds-accent-light text-ds-accent rounded text-ds-nano font-semibold"
-                                            >
-                                                {getRoleName(role)}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </td>
-                                <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
-                                    {user.email || '-'}
-                                </td>
-                                <td className="px-ds-4 py-ds-3">
-                                    <span
-                                        className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${
-                                            user.enabled
-                                                ? 'bg-ds-success-light text-ds-success'
-                                                : 'bg-ds-danger-light text-ds-danger'
-                                        }`}
-                                    >
-                                        <span
-                                            className={`w-1.5 h-1.5 rounded-full ${user.enabled ? 'bg-ds-success' : 'bg-ds-danger'}`}/>
-                                        {user.enabled ? '正常' : '已禁用'}
-                                    </span>
-                                </td>
-                                <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                    {formatDateTime(user.createdAt)}
-                                </td>
-                                <td className="px-ds-4 py-ds-3">
-                                    <div className="flex items-center justify-end gap-1">
-                                        <button
-                                            onClick={() => {
-                                                setEditUser(user);
-                                                setModalOpen(true);
-                                            }}
-                                            className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                            title="编辑"
-                                            aria-label="编辑"
-                                        >
-                                            <HiOutlinePencilSquare size={16}/>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setResetPwdTarget(user);
-                                                setResetPwdOpen(true);
-                                            }}
-                                            className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                            title="重置密码"
-                                            aria-label="重置密码"
-                                        >
-                                            <HiOutlineKey size={16}/>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setConfirmTarget(user);
-                                                setConfirmOpen(true);
-                                            }}
-                                            className={`p-1.5 rounded transition-colors ${
-                                                user.enabled
-                                                    ? 'text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light'
-                                                    : 'text-ds-text-muted hover:text-ds-success hover:bg-ds-success-light'
-                                            }`}
-                                            title={user.enabled ? '禁用' : '启用'}
-                                            aria-label={user.enabled ? '禁用' : '启用'}
-                                        >
-                                            {user.enabled ? <HiOutlineNoSymbol size={16}/> :
-                                                <HiOutlineCheck size={16}/>}
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                        {users.length === 0 && !loading && (
+                    className="ds-table-card">
+                    <div className="ds-table-scroll">
+                        <table className="ds-table">
+                            <thead>
                             <tr>
-                                <td colSpan={6}
-                                    className="px-ds-4 py-ds-16 text-center text-ds-text-muted text-ds-body">
-                                    暂无用户数据
-                                </td>
+                                <th className="text-left text-ds-caption text-ds-text-primary uppercase tracking-wider">用户名</th>
+                                <th className="text-left text-ds-caption text-ds-text-primary uppercase tracking-wider">角色</th>
+                                <th className="text-left text-ds-caption text-ds-text-primary uppercase tracking-wider">邮箱</th>
+                                <th className="text-left text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
+                                <th className="text-left text-ds-caption text-ds-text-primary uppercase tracking-wider">创建时间</th>
+                                <th className="text-center text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
                             </tr>
-                        )}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                            {users.map((user) => (
+                                <tr key={user.id}>
+                                    <td className="ds-table-cell-truncate" title={user.username}>
+                                        <span
+                                            className="text-ds-body text-ds-text-primary font-medium">{user.username}</span>
+                                    </td>
+                                    <td>
+                                        <div className="flex flex-wrap gap-1">
+                                            {user.roles.map((role) => (
+                                                <span
+                                                    key={role}
+                                                    className="px-ds-1.5 py-0.5 bg-ds-accent-light text-ds-accent rounded text-ds-nano font-semibold"
+                                                >
+                                                    {getRoleName(role)}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </td>
+                                    <td className="ds-table-cell-truncate" title={user.email || '-'}>
+                                        <span className="text-ds-body text-ds-text-secondary">{user.email || '-'}</span>
+                                    </td>
+                                    <td>
+                                        <span
+                                            className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${
+                                                user.enabled
+                                                    ? 'bg-ds-success-light text-ds-success'
+                                                    : 'bg-ds-danger-light text-ds-danger'
+                                            }`}
+                                        >
+                                            <span
+                                                className={`w-1.5 h-1.5 rounded-full ${user.enabled ? 'bg-ds-success' : 'bg-ds-danger'}`}/>
+                                            {user.enabled ? '正常' : '已禁用'}
+                                        </span>
+                                    </td>
+                                    <td className="text-ds-small text-ds-text-secondary">
+                                        {formatDateTime(user.createdAt)}
+                                    </td>
+                                    <td className="ds-table-cell-no-truncate">
+                                        <div className="flex items-center justify-center w-full gap-1">
+                                            <button
+                                                onClick={() => {
+                                                    setEditUser(user);
+                                                    setModalOpen(true);
+                                                }}
+                                                className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                title="编辑"
+                                                aria-label="编辑"
+                                            >
+                                                <HiOutlinePencilSquare size={16}/>
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setResetPwdTarget(user);
+                                                    setResetPwdOpen(true);
+                                                }}
+                                                className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                title="重置密码"
+                                                aria-label="重置密码"
+                                            >
+                                                <HiOutlineKey size={16}/>
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setConfirmTarget(user);
+                                                    setConfirmOpen(true);
+                                                }}
+                                                className={`p-1.5 rounded transition-colors ${
+                                                    user.enabled
+                                                        ? 'text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light'
+                                                        : 'text-ds-text-muted hover:text-ds-success hover:bg-ds-success-light'
+                                                }`}
+                                                title={user.enabled ? '禁用' : '启用'}
+                                                aria-label={user.enabled ? '禁用' : '启用'}
+                                            >
+                                                {user.enabled ? <HiOutlineNoSymbol size={16}/> :
+                                                    <HiOutlineCheck size={16}/>}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {users.length === 0 && !loading && (
+                                <tr>
+                                    <td colSpan={6}
+                                        className="py-ds-16 text-center text-ds-text-muted text-ds-body">
+                                        暂无用户数据
+                                    </td>
+                                </tr>
+                            )}
+                            </tbody>
+                        </table>
+                    </div>
 
                     <Pagination
                         page={page}

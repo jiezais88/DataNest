@@ -4,6 +4,9 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.constant.CollectTaskStatus;
+import com.datanest.common.constant.ScheduleType;
+import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -37,10 +40,7 @@ public class CollectTaskService {
 
     private static final Logger logger = LoggerFactory.getLogger(CollectTaskService.class);
 
-    private static final String SCHEDULE_TYPE_CRON = "CRON";
-    private static final String SCHEDULE_TYPE_NONE = "NONE";
-    private static final String TRIGGER_TYPE_CRON = "CRON";
-    private static final String TRIGGER_TYPE_MANUAL = "MANUAL";
+
 
     private final CollectTaskMapper collectTaskMapper;
     private final SchedulerService schedulerService;
@@ -73,7 +73,7 @@ public class CollectTaskService {
         task.setCollectMode(request.getCollectMode());
         task.setTriggerType(request.getTriggerType());
         task.setCronExpression(request.getCronExpression());
-        task.setStatus("NEVER_EXECUTED");
+        task.setStatus(CollectTaskStatus.NEVER_EXECUTED.getCode());
         task.setDescription(request.getDescription());
         task.setScheduleEnabled(0);
         task.setCreatedBy(currentUserId());
@@ -85,9 +85,9 @@ public class CollectTaskService {
         collectTaskMapper.insert(task);
 
         // 注册到 XXL-JOB（需要 task.getId()），默认不启动调度
-        String scheduleType = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? SCHEDULE_TYPE_CRON : SCHEDULE_TYPE_NONE;
-        String cron = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
-        Integer xxlJobId = schedulerService.registerJob(task.getId(), request.getName(), cron, scheduleType, false);
+        ScheduleType scheduleType = ScheduleType.fromTriggerType(request.getTriggerType());
+        String cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
+        Integer xxlJobId = schedulerService.registerJob(task.getId(), request.getName(), cron, scheduleType.getCode(), false);
         task.setXxlJobId(xxlJobId);
         collectTaskMapper.updateById(task);
 
@@ -119,10 +119,10 @@ public class CollectTaskService {
         task.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
 
         if (task.getXxlJobId() != null) {
-            String scheduleType = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? SCHEDULE_TYPE_CRON : SCHEDULE_TYPE_NONE;
-            String cron = TRIGGER_TYPE_CRON.equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
+            ScheduleType scheduleType = ScheduleType.fromTriggerType(request.getTriggerType());
+            String cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
             boolean start = task.getScheduleEnabled() != null && task.getScheduleEnabled() == 1;
-            schedulerService.updateJob(task.getXxlJobId(), task.getId(), request.getName(), cron, scheduleType, start);
+            schedulerService.updateJob(task.getXxlJobId(), task.getId(), request.getName(), cron, scheduleType.getCode(), start);
         }
 
         collectTaskMapper.updateById(task);
@@ -135,7 +135,7 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
-        if (!TRIGGER_TYPE_CRON.equalsIgnoreCase(task.getTriggerType())) {
+        if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(task.getTriggerType())) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "仅 Cron 任务支持调度开关");
         }
         if (task.getXxlJobId() == null) {
@@ -156,7 +156,7 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
-        if (!TRIGGER_TYPE_CRON.equalsIgnoreCase(task.getTriggerType())) {
+        if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(task.getTriggerType())) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "仅 Cron 任务支持调度开关");
         }
         if (task.getXxlJobId() == null) {
@@ -263,7 +263,7 @@ public class CollectTaskService {
     }
 
     private LocalDateTime computeNextExecutionTime(String triggerType, String cronExpression) {
-        if (!TRIGGER_TYPE_CRON.equalsIgnoreCase(triggerType) || !StringUtils.hasText(cronExpression)) {
+        if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(triggerType) || !StringUtils.hasText(cronExpression)) {
             return null;
         }
         try {

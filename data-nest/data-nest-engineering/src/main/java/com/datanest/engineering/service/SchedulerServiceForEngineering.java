@@ -55,8 +55,4 @@ public class SchedulerServiceForEngineering {
     public void triggerJob(Integer jobId, String executorParam) {
         schedulerClient.triggerJob(jobId, executorParam);
     }
-
-    public void triggerJob(Long xxlJobId, String param) {
-        schedulerClient.triggerJob(xxlJobId == null ? null : xxlJobId.intValue(), param);
-    }
 }

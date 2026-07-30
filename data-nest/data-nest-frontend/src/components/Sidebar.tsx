@@ -1,6 +1,6 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {ArrowLeftRight, ClipboardList, Clock, Database, Home, Ruler, UserCog,} from 'lucide-react';
+import {ArrowLeftRight, ClipboardList, Clock, Database, History, Home, Ruler, UserCog,} from 'lucide-react';
 
 interface MenuItem {
     label: string;
@@ -52,6 +52,23 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: '数据标准',
                 path: '/governance/data-standards',
                 icon: <Ruler size={18}/>,
+                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
+            },
+        ],
+    },
+    {
+        group: '执行历史',
+        items: [
+            {
+                label: '同步执行历史',
+                path: '/engineering/sync-job-history',
+                icon: <History size={18}/>,
+                roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
+            },
+            {
+                label: '采集执行历史',
+                path: '/governance/collect-task-history',
+                icon: <History size={18}/>,
                 roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
             },
         ],

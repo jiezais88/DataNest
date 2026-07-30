@@ -42,7 +42,14 @@ export function stopSyncJobSchedule(id: string) {
 }
 
 export function querySyncJobHistory(params: SyncJobHistoryQueryParams) {
-    return request.post<Result<PageResult<SyncJobHistory>>>(`/engineering/sync-jobs/${params.syncJobId}/history/page`, params);
+    if (params.syncJobId) {
+        return request.post<Result<PageResult<SyncJobHistory>>>(`/engineering/sync-jobs/${params.syncJobId}/history/page`, params);
+    }
+    return request.post<Result<PageResult<SyncJobHistory>>>('/engineering/sync-jobs/history/page', params);
+}
+
+export function queryAllSyncJobHistory(params: SyncJobHistoryQueryParams) {
+    return request.post<Result<PageResult<SyncJobHistory>>>('/engineering/sync-jobs/history/page', params);
 }
 
 export function getSyncJobLogs(syncJobId: string, historyId: string) {

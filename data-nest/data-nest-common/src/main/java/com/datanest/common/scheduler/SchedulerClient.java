@@ -1,5 +1,7 @@
 package com.datanest.common.scheduler;
 
+import com.datanest.common.constant.ScheduleType;
+import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import jakarta.annotation.PostConstruct;
@@ -166,24 +168,16 @@ public class SchedulerClient {
         logger.info("Stopped XXL-JOB job: jobId={}", xxlJobId);
     }
 
-    public MultiValueMap<String, String> buildJobInfo(String appName, String executorHandler, Long jobId, String name,
-                                                      String cron, String triggerType, boolean scheduleEnabled,
-                                                      int timeout, int failRetryCount) {
-        int jobGroup = ensureJobGroup(appName);
-        return buildJobParams(null, jobGroup, executorHandler, jobId, name, cron, triggerType, true,
-                scheduleEnabled, timeout, failRetryCount);
-    }
-
     private MultiValueMap<String, String> buildJobParams(Integer xxlJobId, int jobGroup, String executorHandler,
                                                          Long jobId, String name, String cron, String triggerType,
                                                          boolean isNew, boolean scheduleEnabled,
                                                          int timeout, int failRetryCount) {
-        boolean isCron = "CRON".equalsIgnoreCase(triggerType);
+        boolean isCron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(triggerType);
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("jobGroup", String.valueOf(jobGroup));
         params.add("jobDesc", name);
         params.add("author", DEFAULT_AUTHOR);
-        params.add("scheduleType", isCron ? "CRON" : "NONE");
+        params.add("scheduleType", isCron ? ScheduleType.CRON.getCode() : ScheduleType.NONE.getCode());
         params.add("scheduleConf", isCron && StringUtils.hasText(cron) ? cron : "");
         params.add("glueType", GLUE_TYPE_BEAN);
         params.add("executorHandler", executorHandler);
@@ -218,6 +212,62 @@ public class SchedulerClient {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法获取 XXL-JOB 执行器分组");
         }
         return reloadedGroups.get(0).path("id").asInt();
+    }
+
+    /**
+     * 根据执行器分组与 handler 名称查询已存在的任务。
+     */
+    public JsonNode findJobByHandler(int jobGroup, String executorHandler) {
+        JsonNode page = getWithAuth("/jobinfo/pageList?jobGroup=" + jobGroup + "&triggerStatus=-1&jobDesc=&executorHandler=" + executorHandler + "&author=&offset=0&pagesize=100", "查询任务列表失败");
+        List<JsonNode> jobs = extractPageList(page);
+        for (JsonNode job : jobs) {
+            if (executorHandler.equals(job.path("executorHandler").asText())) {
+                return job;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 新增任务，返回任务 ID。
+     */
+    public Integer addJob(MultiValueMap<String, String> params) {
+        JsonNode response = postWithAuth("/jobinfo/insert", params, "新增调度任务失败");
+        return parseJobId(response);
+    }
+
+    /**
+     * 更新任务（原始参数）。
+     */
+    public void updateJob(MultiValueMap<String, String> params) {
+        postWithAuth("/jobinfo/update", params, "更新调度任务失败");
+    }
+
+    /**
+     * 构造平台定时任务参数。
+     */
+    public MultiValueMap<String, String> buildPlatformJobParams(Integer jobId, int jobGroup, String executorHandler,
+                                                                String jobDesc, String cron, boolean triggerStatus) {
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        if (jobId != null) {
+            params.add("id", String.valueOf(jobId));
+        }
+        params.add("jobGroup", String.valueOf(jobGroup));
+        params.add("jobDesc", jobDesc);
+        params.add("author", DEFAULT_AUTHOR);
+        params.add("scheduleType", ScheduleType.CRON.getCode());
+        params.add("scheduleConf", cron);
+        params.add("glueType", GLUE_TYPE_BEAN);
+        params.add("executorHandler", executorHandler);
+        params.add("executorParam", "");
+        params.add("executorRouteStrategy", ROUTE_STRATEGY);
+        params.add("misfireStrategy", MISFIRE_STRATEGY);
+        params.add("executorBlockStrategy", BLOCK_STRATEGY);
+        params.add("executorTimeout", "0");
+        params.add("executorFailRetryCount", "0");
+        params.add("childJobId", "");
+        params.add("triggerStatus", triggerStatus ? "1" : "0");
+        return params;
     }
 
     private List<JsonNode> extractPageList(JsonNode response) {

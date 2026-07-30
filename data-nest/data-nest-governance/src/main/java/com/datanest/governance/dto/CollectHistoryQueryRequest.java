@@ -12,6 +12,11 @@ public class CollectHistoryQueryRequest {
 
     private String status;
 
+    /**
+     * 按采集任务名称模糊搜索
+     */
+    private String keyword;
+
     @NotNull(message = "开始时间起不能为空")
     private LocalDateTime startTimeFrom;
 

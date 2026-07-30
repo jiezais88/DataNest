@@ -1,5 +1,6 @@
 package com.datanest.common.util;
 
+import com.datanest.common.constant.DataSourceType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,8 +43,7 @@ public final class JdbcPreviewHelper {
 
         String url = buildJdbcUrl(type, host, port, database, schema);
         String qualifiedTable = buildQualifiedTableName(type, database, schema, tableName);
-        String dataSql = "SELECT * FROM " + qualifiedTable
-                + " ORDER BY 1 LIMIT " + Math.max(1, Math.min(limit, 1000));
+        String dataSql = buildPreviewSql(type, qualifiedTable, Math.max(1, Math.min(limit, 1000)));
         String countSql = "SELECT COUNT(*) FROM " + qualifiedTable;
 
         try (Connection conn = DriverManager.getConnection(url, username, password);
@@ -113,15 +113,47 @@ public final class JdbcPreviewHelper {
         if (value instanceof LocalTime lt) {
             return lt.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
         }
+        // Oracle TIMESTAMP/DATE are returned as oracle.sql.TIMESTAMP which is not a standard JDBC type.
+        String className = value.getClass().getName();
+        if ("oracle.sql.TIMESTAMP".equals(className) || "oracle.sql.DATE".equals(className)) {
+            try {
+                Timestamp ts = (Timestamp) value.getClass().getMethod("timestampValue").invoke(value);
+                return ts.toLocalDateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            } catch (Exception e) {
+                logger.warn("Failed to convert Oracle timestamp: {}", value);
+                return value.toString();
+            }
+        }
         return value;
     }
 
+    private static String buildPreviewSql(String type, String qualifiedTable, int limit) {
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        String orderBy = " ORDER BY 1";
+        return switch (dataSourceType) {
+            case MYSQL, DORIS, POSTGRESQL -> "SELECT * FROM " + qualifiedTable + orderBy + " LIMIT " + limit;
+            case ORACLE -> "SELECT * FROM " + qualifiedTable + orderBy + " FETCH FIRST " + limit + " ROWS ONLY";
+            case SQLSERVER ->
+                    "SELECT * FROM " + qualifiedTable + orderBy + " OFFSET 0 ROWS FETCH NEXT " + limit + " ROWS ONLY";
+        };
+    }
+
     private static String buildJdbcUrl(String type, String host, int port, String database, String schema) {
-        return switch (type) {
-            case "MYSQL", "DORIS" -> String.format(
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case MYSQL -> String.format(
                     "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
                     host, port, database);
-            case "POSTGRESQL" -> {
+            case DORIS -> String.format(
+                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
+                    host, port, database);
+            case POSTGRESQL -> {
                 if (schema != null && !schema.isBlank()) {
                     yield String.format(
                             "jdbc:postgresql://%s:%d/%s?currentSchema=%s&connectTimeout=10&socketTimeout=10",
@@ -131,7 +163,12 @@ public final class JdbcPreviewHelper {
                         "jdbc:postgresql://%s:%d/%s?connectTimeout=10&socketTimeout=10",
                         host, port, database);
             }
-            default -> throw new IllegalArgumentException("Unsupported data source type: " + type);
+            case ORACLE -> String.format(
+                    "jdbc:oracle:thin:@//%s:%d/%s",
+                    host, port, database);
+            case SQLSERVER -> String.format(
+                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=false;trustServerCertificate=true;loginTimeout=10",
+                    host, port, database);
         };
     }
 
@@ -139,28 +176,47 @@ public final class JdbcPreviewHelper {
         if (tableName.contains(".")) {
             return escapeIdentifier(type, tableName);
         }
-        return switch (type) {
-            case "POSTGRESQL" -> {
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case POSTGRESQL -> {
                 if (schema != null && !schema.isBlank()) {
                     yield escapeIdentifier(type, schema) + "." + escapeIdentifier(type, tableName);
                 }
                 yield escapeIdentifier(type, tableName);
             }
-            case "MYSQL", "DORIS" -> {
+            case MYSQL, DORIS -> {
                 if (database != null && !database.isBlank()) {
                     yield escapeIdentifier(type, database) + "." + escapeIdentifier(type, tableName);
                 }
                 yield escapeIdentifier(type, tableName);
             }
-            default -> escapeIdentifier(type, tableName);
+            case ORACLE -> {
+                if (schema != null && !schema.isBlank()) {
+                    yield escapeIdentifier(type, schema) + "." + escapeIdentifier(type, tableName);
+                }
+                yield escapeIdentifier(type, tableName);
+            }
+            case SQLSERVER -> {
+                if (schema != null && !schema.isBlank()) {
+                    yield escapeIdentifier(type, schema) + "." + escapeIdentifier(type, tableName);
+                }
+                yield escapeIdentifier(type, tableName);
+            }
         };
     }
 
     private static String escapeIdentifier(String type, String name) {
-        return switch (type) {
-            case "POSTGRESQL" -> "\"" + name.replace("\"", "\"\"") + "\"";
-            case "MYSQL", "DORIS" -> "`" + name.replace("`", "``") + "`";
-            default -> "`" + name.replace("`", "``") + "`";
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case POSTGRESQL, ORACLE -> "\"" + name.replace("\"", "\"\"") + "\"";
+            case MYSQL, DORIS -> "`" + name.replace("`", "``") + "`";
+            case SQLSERVER -> "[" + name.replace("]", "]]") + "]";
         };
     }
 

@@ -2,6 +2,7 @@ package com.datanest.task.core.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.DataSourceStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.dto.TestConnectionRequest;
@@ -23,8 +24,6 @@ import java.util.List;
 public class DataSourceRefreshService {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSourceRefreshService.class);
-    private static final String STATUS_NORMAL = "NORMAL";
-    private static final String STATUS_ERROR = "ERROR";
 
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final ConnectionTester connectionTester;
@@ -40,7 +39,7 @@ public class DataSourceRefreshService {
 
     public void refreshAllStatuses() {
         List<DataSourceConnection> list = dataSourceConnectionMapper.selectList(new QueryWrapper<DataSourceConnection>()
-                .in("status", STATUS_NORMAL, STATUS_ERROR));
+                .in("status", DataSourceStatus.NORMAL.getCode(), DataSourceStatus.ERROR.getCode()));
 
         for (DataSourceConnection entity : list) {
             try {
@@ -49,7 +48,7 @@ public class DataSourceRefreshService {
                         entity.getId(), entity.getName(), result.isSuccess());
             } catch (Exception e) {
                 logger.error("Failed to refresh data source status: id={}, name={}", entity.getId(), entity.getName(), e);
-                entity.setStatus(STATUS_ERROR);
+                entity.setStatus(DataSourceStatus.ERROR.getCode());
                 entity.setErrorMessage("定时刷新异常: " + e.getMessage());
                 entity.setLastTestTime(LocalDateTime.now());
                 dataSourceConnectionMapper.updateById(entity);
@@ -79,7 +78,7 @@ public class DataSourceRefreshService {
     }
 
     private void updateStatus(DataSourceConnection entity, TestConnectionResult result) {
-        entity.setStatus(result.isSuccess() ? STATUS_NORMAL : STATUS_ERROR);
+        entity.setStatus(result.isSuccess() ? DataSourceStatus.NORMAL.getCode() : DataSourceStatus.ERROR.getCode());
         entity.setErrorMessage(result.isSuccess() ? null : result.getMessage());
         entity.setLastTestTime(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());

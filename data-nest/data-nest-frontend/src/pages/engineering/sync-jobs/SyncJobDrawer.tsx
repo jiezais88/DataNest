@@ -1,6 +1,8 @@
 import {useEffect, useState} from 'react';
 import type {DataSource} from '../../../types/datasource';
+import {DataSourceTypeEnum} from '../../../constants/datasource';
 import type {SyncFieldMapping, SyncJob, SyncJobCreateRequest, SyncMode, SyncTriggerType,} from '../../../types/sync';
+import {SyncModeEnum, TaskTriggerTypeEnum} from '../../../constants/task';
 import {getDataSourceSchemas, getDataSourceTables} from '../../../api/engineering';
 import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '../../../api/metadata';
 import {previewDataSource} from '../../../api/preview';
@@ -38,13 +40,13 @@ interface SyncJobDrawerProps {
 }
 
 const MODE_OPTIONS: { value: SyncMode; label: string }[] = [
-    {value: 'FULL', label: '全量同步'},
-    {value: 'INCREMENTAL', label: '增量同步'},
+    {value: SyncModeEnum.FULL, label: '全量同步'},
+    {value: SyncModeEnum.INCREMENTAL, label: '增量同步'},
 ];
 
 const TRIGGER_OPTIONS: { value: SyncTriggerType; label: string }[] = [
-    {value: 'MANUAL', label: '手动触发'},
-    {value: 'CRON', label: 'Cron 定时'},
+    {value: TaskTriggerTypeEnum.MANUAL, label: '手动触发'},
+    {value: TaskTriggerTypeEnum.CRON, label: 'Cron 定时'},
 ];
 
 const EMPTY_FORM: FormData = {
@@ -54,9 +56,9 @@ const EMPTY_FORM: FormData = {
     sourceTable: '',
     targetDatabase: '',
     targetTable: '',
-    syncMode: 'FULL',
+    syncMode: SyncModeEnum.FULL,
     incrementalField: '',
-    triggerType: 'MANUAL',
+    triggerType: TaskTriggerTypeEnum.MANUAL,
     cronExpression: '',
     retryTimes: 3,
     retryInterval: 5,
@@ -68,7 +70,7 @@ function datasourceLabel(ds: DataSource) {
 }
 
 function buildSchemaLabel(ds: DataSource, schema: string) {
-    if (ds.type === 'POSTGRESQL') {
+    if (ds.type === DataSourceTypeEnum.POSTGRESQL) {
         return `${ds.databaseName}.${schema}`;
     }
     return schema;
@@ -209,7 +211,7 @@ export default function SyncJobDrawer({
     const resolveDatabaseSchema = (datasourceId: string, selectedSchema: string) => {
         const ds = sourceDataSources.find((d) => d.id === datasourceId);
         if (!ds || !selectedSchema) return null;
-        if (ds.type === 'POSTGRESQL') {
+        if (ds.type === DataSourceTypeEnum.POSTGRESQL || ds.type === DataSourceTypeEnum.ORACLE || ds.type === DataSourceTypeEnum.SQLSERVER) {
             return {sourceDatabase: ds.databaseName, sourceSchema: selectedSchema};
         }
         return {sourceDatabase: selectedSchema, sourceSchema: selectedSchema};
@@ -370,11 +372,11 @@ export default function SyncJobDrawer({
         if (!form.targetDatabase.trim()) nextErrors.targetDatabase = '请选择目标 Doris 库';
         if (!form.targetTable.trim()) nextErrors.targetTable = '请选择目标表名';
         if (!form.syncMode) nextErrors.syncMode = '请选择同步模式';
-        if (form.syncMode === 'INCREMENTAL' && !form.incrementalField) {
+        if (form.syncMode === SyncModeEnum.INCREMENTAL && !form.incrementalField) {
             nextErrors.incrementalField = '请选择增量字段';
         }
         if (!form.triggerType) nextErrors.triggerType = '请选择触发方式';
-        if (form.triggerType === 'CRON' && !form.cronExpression.trim()) {
+        if (form.triggerType === TaskTriggerTypeEnum.CRON && !form.cronExpression.trim()) {
             nextErrors.cronExpression = 'Cron 触发必须填写 Cron 表达式';
         }
         if (form.retryTimes < 0 || form.retryTimes > 3) {
@@ -406,11 +408,11 @@ export default function SyncJobDrawer({
             sourceSchema: resolved?.sourceSchema,
             sourceTables: [form.sourceTable.trim()],
             syncMode: form.syncMode,
-            incrementalField: form.syncMode === 'INCREMENTAL' ? form.incrementalField : undefined,
+            incrementalField: form.syncMode === SyncModeEnum.INCREMENTAL ? form.incrementalField : undefined,
             targetDatabase: form.targetDatabase.trim(),
             targetTable: form.targetTable.trim(),
             triggerType: form.triggerType,
-            cronExpression: form.triggerType === 'CRON' ? form.cronExpression.trim() : undefined,
+            cronExpression: form.triggerType === TaskTriggerTypeEnum.CRON ? form.cronExpression.trim() : undefined,
             retryTimes: Number(form.retryTimes),
             retryInterval: Number(form.retryInterval),
             fieldMapping: buildFieldMapping(),
@@ -439,7 +441,7 @@ export default function SyncJobDrawer({
     };
 
     const selectedSource = sourceDataSources.find((d) => d.id === form.sourceDatasourceId);
-    const schemaLabel = selectedSource?.type === 'POSTGRESQL' ? 'Schema' : '数据库';
+    const schemaLabel = selectedSource?.type && selectedSource.type !== DataSourceTypeEnum.MYSQL && selectedSource.type !== DataSourceTypeEnum.DORIS ? 'Schema' : '数据库';
 
     return (
         <Drawer
@@ -705,7 +707,7 @@ export default function SyncJobDrawer({
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.syncMode}</p>}
                         </div>
 
-                        {form.syncMode === 'INCREMENTAL' && (
+                        {form.syncMode === SyncModeEnum.INCREMENTAL && (
                             <div>
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     增量字段 <span className="text-ds-danger">*</span>
@@ -762,7 +764,7 @@ export default function SyncJobDrawer({
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.triggerType}</p>}
                         </div>
 
-                        {form.triggerType === 'CRON' && (
+                        {form.triggerType === TaskTriggerTypeEnum.CRON && (
                             <div>
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     Cron 表达式 <span className="text-ds-danger">*</span>

@@ -84,4 +84,30 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
 
     @Delete("DELETE FROM metadata_table WHERE datasource_id = #{datasourceId}")
     int deleteByDatasourceId(@Param("datasourceId") Long datasourceId);
+
+    /**
+     * 按数据库名、模式名、表名模糊搜索，返回所有匹配路径。
+     */
+    @Select("""
+            SELECT
+                t.id AS id,
+                t.datasource_id AS datasource_id,
+                t.database_name AS database_name,
+                t.schema_name AS schema_name,
+                t.table_name AS table_name,
+                t.source_type AS source_type,
+                ds.name AS datasource_name,
+                ds.type AS datasource_type,
+                (SELECT COUNT(*) FROM metadata_column c WHERE c.table_id = t.id AND c.source_status = 'ONLINE') AS column_count
+            FROM metadata_table t
+                     LEFT JOIN datasource_connection ds ON ds.id = t.datasource_id
+            WHERE t.source_status = 'ONLINE'
+              AND (
+                t.database_name LIKE CONCAT('%', #{keyword}, '%')
+                OR t.schema_name LIKE CONCAT('%', #{keyword}, '%')
+                OR t.table_name LIKE CONCAT('%', #{keyword}, '%')
+              )
+            ORDER BY t.datasource_id, t.database_name, COALESCE(t.schema_name, ''), t.table_name
+            """)
+    List<MetadataTable> searchTablesByKeyword(@Param("keyword") String keyword);
 }

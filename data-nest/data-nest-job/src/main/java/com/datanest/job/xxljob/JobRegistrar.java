@@ -1,5 +1,6 @@
 package com.datanest.job.xxljob;
 
+import com.datanest.common.scheduler.SchedulerClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,10 +27,10 @@ public class JobRegistrar implements ApplicationRunner {
     @Value("${xxl.job.executor.appname:data-nest-job}")
     private String appName;
 
-    private final XxlJobAdminClient xxlJobAdminClient;
+    private final SchedulerClient schedulerClient;
 
-    public JobRegistrar(XxlJobAdminClient xxlJobAdminClient) {
-        this.xxlJobAdminClient = xxlJobAdminClient;
+    public JobRegistrar(SchedulerClient schedulerClient) {
+        this.schedulerClient = schedulerClient;
     }
 
     @Override
@@ -58,23 +59,23 @@ public class JobRegistrar implements ApplicationRunner {
         if (configuredJobGroupId > 0) {
             return configuredJobGroupId;
         }
-        return xxlJobAdminClient.ensureJobGroup(appName);
+        return schedulerClient.ensureJobGroup(appName);
     }
 
     private void ensureJob(int jobGroup, String executorHandler, String cron) {
         String jobDesc = resolveJobDesc(executorHandler);
-        JsonNode existing = xxlJobAdminClient.findJobByHandler(jobGroup, executorHandler);
+        JsonNode existing = schedulerClient.findJobByHandler(jobGroup, executorHandler);
         if (existing != null) {
             Integer jobId = existing.path("id").asInt();
             boolean triggerStatus = existing.path("triggerStatus").asInt() == 1;
-            MultiValueMap<String, String> params = xxlJobAdminClient.buildJobParams(
-                    jobId, jobGroup, executorHandler, jobDesc, cron, "CRON", triggerStatus);
-            xxlJobAdminClient.updateJob(params);
+            MultiValueMap<String, String> params = schedulerClient.buildPlatformJobParams(
+                    jobId, jobGroup, executorHandler, jobDesc, cron, triggerStatus);
+            schedulerClient.updateJob(params);
             logger.info("Updated platform job: executorHandler={}, jobId={}, cron={}", executorHandler, jobId, cron);
         } else {
-            MultiValueMap<String, String> params = xxlJobAdminClient.buildJobParams(
-                    null, jobGroup, executorHandler, jobDesc, cron, "CRON", true);
-            Integer jobId = xxlJobAdminClient.addJob(params);
+            MultiValueMap<String, String> params = schedulerClient.buildPlatformJobParams(
+                    null, jobGroup, executorHandler, jobDesc, cron, true);
+            Integer jobId = schedulerClient.addJob(params);
             logger.info("Added platform job: executorHandler={}, jobId={}, cron={}", executorHandler, jobId, cron);
         }
     }

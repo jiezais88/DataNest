@@ -81,6 +81,12 @@ public class SyncJobController {
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/history/page")
+    public Result<PageResult<SyncJobHistoryDTO>> allHistoryPage(@Valid @RequestBody SyncJobHistoryQueryRequest request) {
+        return Result.ok(syncJobService.historyPage(null, request));
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @GetMapping("/{id}/history/{historyId}/logs")
     public Result<List<SyncJobLogDTO>> logs(@PathVariable Long id, @PathVariable Long historyId) {
         return Result.ok(syncJobService.getLogs(historyId));

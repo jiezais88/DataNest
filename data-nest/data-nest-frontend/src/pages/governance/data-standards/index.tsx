@@ -388,8 +388,7 @@ export default function DataStandardsPage() {
 
             <div className="flex-1 min-h-0 overflow-auto">
                 {activeTab === 'naming' && (
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
+                    <div className="ds-table-card">
                         <div className="p-ds-3 border-b border-ds-border-subtle flex items-center gap-ds-3 flex-wrap">
                             <SearchInput
                                 value={namingKeyword}
@@ -437,112 +436,123 @@ export default function DataStandardsPage() {
                             </div>
                         </div>
 
-                        <table className="w-full">
-                            <thead className="sticky top-0 z-10">
-                            <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">规范名称</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">适用对象</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">匹配方式</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">规范值</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">关联字段类型标准</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">优先级</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {namingItems.map((item) => (
-                                <tr key={item.id}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors">
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-primary font-medium">{item.name}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">{item.appliesTo === 'TABLE' ? '表名' : '字段名'}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{MATCH_TYPE_LABEL[item.ruleType] || item.ruleType}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary font-mono">{item.ruleValue}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{item.targetStandardName || '—'}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{item.priority}</td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        {item.enabled === 1 ? (
-                                            <span
-                                                className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-emerald-50 text-emerald-700">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>
-                                                启用
-                                            </span>
-                                        ) : (
-                                            <span
-                                                className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-gray-100 text-gray-600">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-gray-400"/>
-                                                停用
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
-                                            {canWrite && (
-                                                <>
-                                                    <button
-                                                        onClick={() => handleToggleNamingEnabled(item)}
-                                                        className={`p-1.5 rounded transition-colors ${
-                                                            item.enabled === 1
-                                                                ? 'text-ds-text-muted hover:text-ds-warning hover:bg-ds-warning-light'
-                                                                : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
-                                                        }`}
-                                                        title={item.enabled === 1 ? '停用' : '启用'}
-                                                    >
-                                                        {item.enabled === 1 ? (
-                                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                                                                 fill="currentColor" className="w-4 h-4">
-                                                                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                                                                <rect x="14" y="4" width="4" height="16" rx="1"/>
-                                                            </svg>
-                                                        ) : (
-                                                            <HiOutlinePlay size={16}/>
-                                                        )}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => openNamingEdit(item)}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="编辑"
-                                                    >
-                                                        <HiOutlinePencilSquare size={16}/>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setDeleteTarget({
-                                                                type: 'naming',
-                                                                id: item.id,
-                                                                name: item.name
-                                                            });
-                                                            setDeleteOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
-                                                        title="删除"
-                                                    >
-                                                        <HiOutlineTrash size={16}/>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
+                        <div className="ds-table-scroll">
+                            <table className="ds-table">
+                                <thead>
+                                <tr>
+                                    <th>规范名称</th>
+                                    <th>适用对象</th>
+                                    <th>匹配方式</th>
+                                    <th>规范值</th>
+                                    <th>关联字段类型标准</th>
+                                    <th>优先级</th>
+                                    <th>状态</th>
+                                    <th className="text-center">操作</th>
                                 </tr>
-                            ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                {namingItems.map((item) => (
+                                    <tr key={item.id}>
+                                        <td className="ds-table-cell-truncate" title={item.name}>
+                                            <span
+                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
+                                        </td>
+                                        <td className="text-ds-body text-ds-text-secondary">{item.appliesTo === 'TABLE' ? '表名' : '字段名'}</td>
+                                        <td className="text-ds-small text-ds-text-secondary">{MATCH_TYPE_LABEL[item.ruleType] || item.ruleType}</td>
+                                        <td className="ds-table-cell-wide" title={item.ruleValue}>
+                                            <span
+                                                className="text-ds-small text-ds-text-secondary font-mono">{item.ruleValue}</span>
+                                        </td>
+                                        <td className="ds-table-cell-truncate" title={item.targetStandardName || '—'}>
+                                            <span
+                                                className="text-ds-small text-ds-text-secondary">{item.targetStandardName || '—'}</span>
+                                        </td>
+                                        <td className="text-ds-small text-ds-text-secondary">{item.priority}</td>
+                                        <td>
+                                            {item.enabled === 1 ? (
+                                                <span
+                                                    className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-emerald-50 text-emerald-700">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>
+                                                    启用
+                                                </span>
+                                            ) : (
+                                                <span
+                                                    className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-gray-100 text-gray-600">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"/>
+                                                    停用
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="ds-table-cell-no-truncate">
+                                            <div className="flex items-center justify-center w-full gap-1">
+                                                {canWrite && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleToggleNamingEnabled(item)}
+                                                            className={`p-1.5 rounded transition-colors ${
+                                                                item.enabled === 1
+                                                                    ? 'text-ds-text-muted hover:text-ds-warning hover:bg-ds-warning-light'
+                                                                    : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
+                                                            }`}
+                                                            title={item.enabled === 1 ? '停用' : '启用'}
+                                                        >
+                                                            {item.enabled === 1 ? (
+                                                                <svg xmlns="http://www.w3.org/2000/svg"
+                                                                     viewBox="0 0 24 24"
+                                                                     fill="currentColor" className="w-4 h-4">
+                                                                    <rect x="6" y="4" width="4" height="16" rx="1"/>
+                                                                    <rect x="14" y="4" width="4" height="16" rx="1"/>
+                                                                </svg>
+                                                            ) : (
+                                                                <HiOutlinePlay size={16}/>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openNamingEdit(item)}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                            title="编辑"
+                                                        >
+                                                            <HiOutlinePencilSquare size={16}/>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setDeleteTarget({
+                                                                    type: 'naming',
+                                                                    id: item.id,
+                                                                    name: item.name
+                                                                });
+                                                                setDeleteOpen(true);
+                                                            }}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
+                                                            title="删除"
+                                                        >
+                                                            <HiOutlineTrash size={16}/>
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
 
-                        {namingItems.length === 0 && !namingLoading && (
-                            <EmptyState
-                                title="暂无命名规范"
-                                description="还没有命名规范，创建第一条规范开始合规检查。"
-                                action={canWrite ? (
-                                    <button
-                                        onClick={openNamingCreate}
-                                        className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                                    >
-                                        <HiOutlinePlus size={16}/>
-                                        新建命名规范
-                                    </button>
-                                ) : null}
-                            />
-                        )}
+                            {namingItems.length === 0 && !namingLoading && (
+                                <EmptyState
+                                    title="暂无命名规范"
+                                    description="还没有命名规范，创建第一条规范开始合规检查。"
+                                    action={canWrite ? (
+                                        <button
+                                            onClick={openNamingCreate}
+                                            className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                        >
+                                            <HiOutlinePlus size={16}/>
+                                            新建命名规范
+                                        </button>
+                                    ) : null}
+                                />
+                            )}
+                        </div>
 
                         <Pagination
                             page={namingPage}
@@ -557,8 +567,7 @@ export default function DataStandardsPage() {
                 )}
 
                 {activeTab === 'field-type' && (
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
+                    <div className="ds-table-card">
                         <div className="p-ds-3 border-b border-ds-border-subtle flex items-center gap-ds-3">
                             <SearchInput
                                 value={fieldTypeKeyword}
@@ -585,80 +594,90 @@ export default function DataStandardsPage() {
                             </div>
                         </div>
 
-                        <table className="w-full">
-                            <thead className="sticky top-0 z-10">
-                            <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">标准名称</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">分类</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">允许类型</th>
-                                <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">描述</th>
-                                <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {fieldTypeItems.map((item) => (
-                                <tr key={item.id}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors">
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-primary font-medium">{item.name}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">{item.category || '—'}</td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex flex-wrap gap-ds-1">
-                                            {item.allowedTypes.map((t) => (
-                                                <span key={t}
-                                                      className="px-ds-2 py-ds-1 bg-ds-accent-light text-ds-accent text-ds-small rounded-ds-sm">{t}</span>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary max-w-xs truncate">{item.description || '—'}</td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
-                                            {canWrite && (
-                                                <>
-                                                    <button
-                                                        onClick={() => openFieldTypeEdit(item)}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="编辑"
-                                                    >
-                                                        <HiOutlinePencilSquare size={16}/>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setDeleteTarget({
-                                                                type: 'field-type',
-                                                                id: item.id,
-                                                                name: item.name
-                                                            });
-                                                            setDeleteOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
-                                                        title="删除"
-                                                    >
-                                                        <HiOutlineTrash size={16}/>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
+                        <div className="ds-table-scroll">
+                            <table className="ds-table">
+                                <thead>
+                                <tr>
+                                    <th>标准名称</th>
+                                    <th>分类</th>
+                                    <th>允许类型</th>
+                                    <th>描述</th>
+                                    <th className="text-center">操作</th>
                                 </tr>
-                            ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                {fieldTypeItems.map((item) => (
+                                    <tr key={item.id}>
+                                        <td className="ds-table-cell-truncate" title={item.name}>
+                                            <span
+                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
+                                        </td>
+                                        <td className="ds-table-cell-truncate" title={item.category || '—'}>
+                                            <span
+                                                className="text-ds-body text-ds-text-secondary">{item.category || '—'}</span>
+                                        </td>
+                                        <td>
+                                            <div className="flex flex-wrap gap-ds-1">
+                                                {item.allowedTypes.map((t) => (
+                                                    <span key={t}
+                                                          className="px-ds-2 py-ds-1 bg-ds-accent-light text-ds-accent text-ds-small rounded-ds-sm">{t}</span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="ds-table-cell-wide" title={item.description || '—'}>
+                                            <span
+                                                className="text-ds-small text-ds-text-secondary">{item.description || '—'}</span>
+                                        </td>
+                                        <td className="ds-table-cell-no-truncate">
+                                            <div className="flex items-center justify-center w-full gap-1">
+                                                {canWrite && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => openFieldTypeEdit(item)}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                            title="编辑"
+                                                        >
+                                                            <HiOutlinePencilSquare size={16}/>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setDeleteTarget({
+                                                                    type: 'field-type',
+                                                                    id: item.id,
+                                                                    name: item.name
+                                                                });
+                                                                setDeleteOpen(true);
+                                                            }}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
+                                                            title="删除"
+                                                        >
+                                                            <HiOutlineTrash size={16}/>
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
 
-                        {fieldTypeItems.length === 0 && !fieldTypeLoading && (
-                            <EmptyState
-                                title="暂无字段类型标准"
-                                description="还没有字段类型标准，创建第一条标准。"
-                                action={canWrite ? (
-                                    <button
-                                        onClick={openFieldTypeCreate}
-                                        className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                                    >
-                                        <HiOutlinePlus size={16}/>
-                                        新建字段类型标准
-                                    </button>
-                                ) : null}
-                            />
-                        )}
+                            {fieldTypeItems.length === 0 && !fieldTypeLoading && (
+                                <EmptyState
+                                    title="暂无字段类型标准"
+                                    description="还没有字段类型标准，创建第一条标准。"
+                                    action={canWrite ? (
+                                        <button
+                                            onClick={openFieldTypeCreate}
+                                            className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                        >
+                                            <HiOutlinePlus size={16}/>
+                                            新建字段类型标准
+                                        </button>
+                                    ) : null}
+                                />
+                            )}
+                        </div>
 
                         <Pagination
                             page={fieldTypePage}

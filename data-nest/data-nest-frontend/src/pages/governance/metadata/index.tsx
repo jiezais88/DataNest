@@ -19,8 +19,8 @@ import {previewMetadataTable} from '../../../api/preview';
 import PreviewModal from '../../../components/PreviewModal';
 import {HiOutlineBookOpen, HiOutlineCircleStack, HiOutlineEye, HiOutlineTableCells} from 'react-icons/hi2';
 import {formatDateTime} from '../../../utils/time';
-
-const DB_TYPES_WITHOUT_SCHEMA = new Set(['MYSQL', 'DORIS']);
+import {isWithoutSchema} from '../../../constants/datasource';
+import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
 
 export default function MetadataPage() {
     const navigate = useNavigate();
@@ -86,7 +86,7 @@ export default function MetadataPage() {
                 const datasourceId = table.datasourceId;
                 const databaseName = table.databaseName;
                 const schemaName = table.schemaName;
-                const withoutSchema = table.datasourceType && DB_TYPES_WITHOUT_SCHEMA.has(table.datasourceType.toUpperCase());
+                const withoutSchema = isWithoutSchema(table.datasourceType);
                 setExpanded((prev) => {
                     const nextExpanded = new Set(prev);
                     nextExpanded.add(`ds-${datasourceId}`);
@@ -141,8 +141,6 @@ export default function MetadataPage() {
             loadTableDetail(selectedNode);
         }
     }, [selectedNode]);
-
-    const isWithoutSchema = (type?: string) => type && DB_TYPES_WITHOUT_SCHEMA.has(type.toUpperCase());
 
     const extractDatasourceId = (node: MetadataTreeNode) => {
         if (node.datasourceId) return node.datasourceId;
@@ -378,79 +376,99 @@ export default function MetadataPage() {
     };
 
     const renderDatabaseList = () => (
-        <div className="bg-white border border-ds-border-subtle rounded-ds-md overflow-hidden">
-            <table className="w-full">
-                <thead>
-                <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">库名</th>
-                </tr>
-                </thead>
-                <tbody>
-                {databases.map((db) => (
-                    <tr
-                        key={db}
-                        className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover cursor-pointer"
-                        onClick={() => selectDatabase(db)}
-                    >
-                        <td className="px-ds-4 py-ds-3 text-ds-body text-ds-accent font-medium">{db}</td>
+        <div className="ds-table-card">
+            <div className="ds-table-scroll">
+                <table className="ds-table">
+                    <thead>
+                    <tr>
+                        <th>库名</th>
                     </tr>
-                ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {databases.map((db) => (
+                        <tr
+                            key={db}
+                            className="cursor-pointer"
+                            onClick={() => selectDatabase(db)}
+                        >
+                            <td className="ds-table-cell-truncate" title={db}>
+                                <span className="text-ds-body text-ds-accent font-medium">{db}</span>
+                            </td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 
     const renderSchemaList = () => (
-        <div className="bg-white border border-ds-border-subtle rounded-ds-md overflow-hidden">
-            <table className="w-full">
-                <thead>
-                <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">Schema</th>
-                </tr>
-                </thead>
-                <tbody>
-                {schemas.map((schema) => (
-                    <tr
-                        key={schema}
-                        className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover cursor-pointer"
-                        onClick={() => selectSchema(schema)}
-                    >
-                        <td className="px-ds-4 py-ds-3 text-ds-body text-ds-accent font-medium">{schema}</td>
+        <div className="ds-table-card">
+            <div className="ds-table-scroll">
+                <table className="ds-table">
+                    <thead>
+                    <tr>
+                        <th>Schema</th>
                     </tr>
-                ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {schemas.map((schema) => (
+                        <tr
+                            key={schema}
+                            className="cursor-pointer"
+                            onClick={() => selectSchema(schema)}
+                        >
+                            <td className="ds-table-cell-truncate" title={schema}>
+                                <span className="text-ds-body text-ds-accent font-medium">{schema}</span>
+                            </td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 
-    const renderTableList = () => (
-        <div className="bg-white border border-ds-border-subtle rounded-ds-md overflow-hidden">
-            <table className="w-full">
-                <thead>
-                <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">表名</th>
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">注释</th>
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">字段数</th>
-                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">采集来源</th>
-                </tr>
-                </thead>
-                <tbody>
-                {tables.map((table) => (
-                    <tr
-                        key={table.id}
-                        className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover cursor-pointer"
-                        onClick={() => selectTable(table)}
-                    >
-                        <td className="px-ds-4 py-ds-3 text-ds-body text-ds-accent font-medium">{table.tableName}</td>
-                        <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{table.manualComment || table.tableComment || '-'}</td>
-                        <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{table.columnCount ?? '-'}</td>
-                        <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{table.sourceTaskName || '-'}</td>
-                    </tr>
-                ))}
-                </tbody>
-            </table>
-        </div>
-    );
+    const renderTableList = () => {
+        const commentOf = (table: MetadataTable) => table.manualComment || table.tableComment || '-';
+        return (
+            <div className="ds-table-card">
+                <div className="ds-table-scroll">
+                    <table className="ds-table">
+                        <thead>
+                        <tr>
+                            <th>表名</th>
+                            <th>注释</th>
+                            <th>字段数</th>
+                            <th>采集来源</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {tables.map((table) => (
+                            <tr
+                                key={table.id}
+                                className="cursor-pointer"
+                                onClick={() => selectTable(table)}
+                            >
+                                <td className="ds-table-cell-truncate" title={table.tableName}>
+                                    <span className="text-ds-body text-ds-accent font-medium">{table.tableName}</span>
+                                </td>
+                                <td className="ds-table-cell-wide" title={commentOf(table)}>
+                                    <span className="text-ds-small text-ds-text-secondary">{commentOf(table)}</span>
+                                </td>
+                                <td className="text-ds-small text-ds-text-secondary">{table.columnCount ?? '-'}</td>
+                                <td className="ds-table-cell-truncate" title={table.sourceTaskName || '-'}>
+                                    <span
+                                        className="text-ds-small text-ds-text-secondary">{table.sourceTaskName || '-'}</span>
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
 
     const renderTableDetail = () => {
         if (!selectedTable) return null;
@@ -499,9 +517,11 @@ export default function MetadataPage() {
                         </span>
 
                         <span className="text-ds-text-muted">数据源</span>
-                        <span className="text-ds-text-primary">
+                        <span className="text-ds-text-primary inline-flex items-center gap-ds-1">
                             {selectedTable.datasourceName || selectedTable.databaseName}
-                            {selectedTable.datasourceType && ` (${selectedTable.datasourceType})`}
+                            {selectedTable.datasourceType && (
+                                <DatabaseTypeIcon type={selectedTable.datasourceType} size={14} showLabel={false}/>
+                            )}
                         </span>
                     </div>
                 </div>
@@ -513,36 +533,48 @@ export default function MetadataPage() {
                     {columnsLoading ? (
                         <p className="text-ds-small text-ds-text-muted">加载中...</p>
                     ) : (
-                        <div className="bg-white border border-ds-border-subtle rounded-ds-md overflow-hidden">
-                            <table className="w-full">
-                                <thead>
-                                <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">字段名</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">数据类型</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">中文注释</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">是否可空</th>
-                                    <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary font-semibold">备注</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {columns.map((column) => (
-                                    <tr key={column.id || column.columnName}
-                                        className={`border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover ${(column.id && highlightedColumnId && column.id === highlightedColumnId) ? 'bg-ds-warning/10' : ''}`}>
-                                        <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-primary font-medium">{column.columnName}</td>
-                                        <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{column.dataType || '-'}</td>
-                                        <td className="px-ds-4 py-ds-3 min-w-[180px]">
-                                            {renderEditableCell('column-comment', column.id, column.manualComment || column.columnComment, () => handleSaveColumnComment(column))}
-                                        </td>
-                                        <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                            {column.nullable ? 'YES' : 'NO'}
-                                        </td>
-                                        <td className="px-ds-4 py-ds-3 min-w-[180px]">
-                                            {renderEditableCell('column-remark', column.id, column.remark, () => handleSaveColumnRemark(column))}
-                                        </td>
+                        <div className="ds-table-card">
+                            <div className="ds-table-scroll">
+                                <table className="ds-table">
+                                    <thead>
+                                    <tr>
+                                        <th>字段名</th>
+                                        <th>数据类型</th>
+                                        <th>中文注释</th>
+                                        <th>是否可空</th>
+                                        <th>备注</th>
                                     </tr>
-                                ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                    {columns.map((column) => {
+                                        const highlighted = column.id && highlightedColumnId && column.id === highlightedColumnId;
+                                        const commentValue = column.manualComment || column.columnComment || '-';
+                                        const remarkValue = column.remark || '-';
+                                        return (
+                                            <tr
+                                                key={column.id || column.columnName}
+                                                className={highlighted ? 'bg-ds-warning/10' : ''}
+                                            >
+                                                <td className="ds-table-cell-truncate" title={column.columnName}>
+                                                    <span
+                                                        className="text-ds-body text-ds-text-primary font-medium">{column.columnName}</span>
+                                                </td>
+                                                <td className="text-ds-small text-ds-text-secondary">{column.dataType || '-'}</td>
+                                                <td className="ds-table-cell-wide" title={commentValue}>
+                                                    {renderEditableCell('column-comment', column.id, column.manualComment || column.columnComment, () => handleSaveColumnComment(column))}
+                                                </td>
+                                                <td className="text-ds-small text-ds-text-secondary">
+                                                    {column.nullable ? 'YES' : 'NO'}
+                                                </td>
+                                                <td className="ds-table-cell-wide" title={remarkValue}>
+                                                    {renderEditableCell('column-remark', column.id, column.remark, () => handleSaveColumnRemark(column))}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </div>

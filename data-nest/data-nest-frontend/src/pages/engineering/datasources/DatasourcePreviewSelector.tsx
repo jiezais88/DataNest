@@ -6,10 +6,10 @@ import {
     listMetadataTables,
     listMetadataTablesWithoutSchema
 } from '../../../api/metadata';
-import type {DataSource, DataSourceType} from '../../../types/datasource';
+import type {DataSource} from '../../../types/datasource';
+import {DB_TYPES_WITHOUT_SCHEMA} from '../../../constants/datasource';
 import type {MetadataTable} from '../../../types/metadata';
 
-const TYPES_WITHOUT_SCHEMA: Set<DataSourceType> = new Set(['MYSQL', 'DORIS']);
 
 interface DatasourcePreviewSelectorProps {
     datasource: DataSource | null;
@@ -59,7 +59,7 @@ export default function DatasourcePreviewSelector({
         setSelectedTable(null);
         setSchemas([]);
         setTables([]);
-        if (TYPES_WITHOUT_SCHEMA.has(datasource.type)) {
+        if (DB_TYPES_WITHOUT_SCHEMA.has(datasource.type)) {
             loadTablesWithoutSchema(datasource.id, selectedDatabase);
         } else {
             setSchemaLoading(true);
@@ -105,7 +105,7 @@ export default function DatasourcePreviewSelector({
 
     const handleConfirm = () => {
         if (!selectedDatabase || !selectedTable) return;
-        const schema = TYPES_WITHOUT_SCHEMA.has(datasource.type) ? selectedDatabase : (selectedSchema || undefined);
+        const schema = DB_TYPES_WITHOUT_SCHEMA.has(datasource.type) ? selectedDatabase : (selectedSchema || undefined);
         onPreview(selectedDatabase, schema, selectedTable.tableName);
     };
 
@@ -166,7 +166,7 @@ export default function DatasourcePreviewSelector({
                 <div className="flex-1 overflow-auto p-ds-5">
                     <div className="flex gap-ds-3 h-[360px]">
                         {renderColumn('数据库', databaseItems, databaseLoading, setSelectedDatabase)}
-                        {!TYPES_WITHOUT_SCHEMA.has(datasource.type) && (
+                        {!DB_TYPES_WITHOUT_SCHEMA.has(datasource.type) && (
                             renderColumn('Schema', schemaItems, schemaLoading, setSelectedSchema)
                         )}
                         {renderColumn('表', tableItems, tableLoading, (id) => {

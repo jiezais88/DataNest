@@ -1,5 +1,7 @@
-export type SyncMode = 'FULL' | 'INCREMENTAL';
-export type SyncTriggerType = 'MANUAL' | 'CRON';
+import type {SyncMode, TaskTriggerType} from '../constants/task';
+
+export type {SyncMode, TaskTriggerType as SyncTriggerType};
+
 export type SyncScheduleStatus = 'NORMAL' | 'PAUSED';
 export type SyncExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
 export type SyncHistoryStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
@@ -21,7 +23,7 @@ export interface SyncJob {
     sourceTables: string[];
     syncMode: SyncMode;
     incrementalField?: string;
-    triggerType: SyncTriggerType;
+    triggerType: TaskTriggerType;
     cronExpression?: string;
     retryTimes: number;
     retryInterval: number;
@@ -48,7 +50,7 @@ export interface SyncJobCreateRequest {
     sourceTables: string[];
     syncMode: SyncMode;
     incrementalField?: string;
-    triggerType: SyncTriggerType;
+    triggerType: TaskTriggerType;
     cronExpression?: string;
     retryTimes: number;
     retryInterval: number;
@@ -64,7 +66,7 @@ export type SyncJobUpdateRequest = SyncJobCreateRequest;
 
 export interface SyncJobQueryParams {
     keyword?: string;
-    triggerType?: SyncTriggerType | '';
+    triggerType?: TaskTriggerType | '';
     executionStatus?: SyncExecutionStatus | '';
     page: number;
     pageSize: number;
@@ -73,7 +75,8 @@ export interface SyncJobQueryParams {
 export interface SyncJobHistory {
     id: string;
     syncJobId: string;
-    triggerType: SyncTriggerType;
+    taskName?: string;
+    triggerType: TaskTriggerType;
     status: SyncHistoryStatus;
     startTime?: string;
     endTime?: string;
@@ -96,6 +99,7 @@ export interface SyncJobHistory {
 export interface SyncJobHistoryQueryParams {
     syncJobId?: string;
     status?: SyncHistoryStatus | '';
+    keyword?: string;
     startTimeFrom?: string;
     startTimeTo?: string;
     page: number;

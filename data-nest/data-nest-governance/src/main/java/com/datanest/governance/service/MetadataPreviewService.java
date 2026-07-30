@@ -1,6 +1,9 @@
 package com.datanest.governance.service;
 
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.DataSourceType;
+import com.datanest.common.constant.MetadataSourceStatus;
+import com.datanest.common.constant.SourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcPreviewHelper;
@@ -41,7 +44,7 @@ public class MetadataPreviewService {
 
     public MetadataPreviewResult preview(Long tableId) {
         MetadataTable table = metadataService.resolveTable(tableId);
-        if (table == null || !"ONLINE".equals(table.getSourceStatus())) {
+        if (table == null || !MetadataSourceStatus.ONLINE.getCode().equals(table.getSourceStatus())) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
 
@@ -49,9 +52,9 @@ public class MetadataPreviewService {
         if (table.getDatasourceId() == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
-        if (table.getDatasourceId() == -1L || "BUILTIN_DORIS".equals(table.getSourceType())) {
+        if (table.getDatasourceId() == -1L || SourceType.BUILTIN_DORIS.getCode().equals(table.getSourceType())) {
             result = JdbcPreviewHelper.preview(
-                    "DORIS", builtInDorisHost, builtInDorisQueryPort,
+                    DataSourceType.DORIS.getCode(), builtInDorisHost, builtInDorisQueryPort,
                     table.getDatabaseName(),
                     table.getSchemaName(),
                     builtInDorisUser, builtInDorisPassword,

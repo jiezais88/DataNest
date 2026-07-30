@@ -1,0 +1,2685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>DataNest — DAG 编排与 SQL 任务编辑器</title>
+    <link rel="icon" type="image/svg+xml"
+          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='hg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%234f46e5'/%3E%3Cstop offset='100%25' stop-color='%23818cf8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9' fill='none' stroke='%23a5b4fc' stroke-width='1.2'/%3E%3Cpolygon points='16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11' fill='none' stroke='%236366f1' stroke-width='1.6'/%3E%3Cpolygon points='16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13' fill='url(%23hg)'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-root: #f7f8fa;
+            --bg-surface: #fff;
+            --bg-elevated: #fff;
+            --bg-hover: #f1f3f6;
+            --border-subtle: #e2e6ed;
+            --border-strong: #cdd3dc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --accent-light: #eef2ff;
+            --accent-glow: rgba(79, 70, 229, .12);
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --danger-light: #fef2f2;
+            --success: #16a34a;
+            --success-light: #f0fdf4;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --node-waiting: #94a3b8;
+            --node-running: #4f46e5;
+            --node-success: #16a34a;
+            --node-failed: #dc2626;
+            --node-skipped: #d97706;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-full: 100px;
+            --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, .04), 0 2px 4px rgba(0, 0, 0, .03);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, .05), 0 4px 6px rgba(0, 0, 0, .03);
+            --shadow-xl: 0 20px 25px rgba(0, 0, 0, .06), 0 10px 10px rgba(0, 0, 0, .03);
+            --transition-fast: 150ms cubic-bezier(.4, 0, .2, 1);
+            --transition-smooth: 250ms cubic-bezier(.4, 0, .2, 1);
+            --z-elevated: 100;
+            --z-overlay: 200;
+            --z-dialog: 300;
+            --z-canvas: 150;
+            --sidebar-width: 248px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-root);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.55
+        }
+
+        /* Layout */
+        .ap {
+            display: none;
+            height: 100vh;
+            overflow: hidden
+        }
+
+        .ap.ac {
+            display: flex
+        }
+
+        .sb {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0
+        }
+
+        .sb-logo {
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--accent);
+            padding: 0 24px;
+            margin-bottom: 20px;
+            letter-spacing: -.3px
+        }
+
+        .ns-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            padding: 16px 24px 6px
+        }
+
+        .ni {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 20px;
+            margin: 2px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast)
+        }
+
+        .ni:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .ni.ac {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600
+        }
+
+        .mc {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-root)
+        }
+
+        .ch {
+            padding: 20px 36px 0;
+            flex-shrink: 0
+        }
+
+        .cs {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 36px 28px
+        }
+
+        .tb {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin-bottom: 8px;
+            gap: 12px
+        }
+
+        .ui {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer
+        }
+
+        .ua {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700
+        }
+
+        .hr {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px
+        }
+
+        .ph {
+            margin-bottom: 18px
+        }
+
+        .pt {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -.3px;
+            margin-bottom: 4px
+        }
+
+        .ps {
+            font-size: 13px;
+            color: var(--text-muted)
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 10px 14px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-xs)
+        }
+
+        .toolbar-spacer {
+            flex: 1
+        }
+
+        .si {
+            padding: 7px 12px;
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            background: var(--bg-root);
+            outline: none;
+            white-space: nowrap;
+            transition: all var(--transition-fast)
+        }
+
+        .si:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .si::placeholder {
+            color: var(--text-muted)
+        }
+
+        .sel {
+            padding: 7px 28px 7px 10px;
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: var(--font-sans);
+            color: var(--text-secondary);
+            background: var(--bg-root);
+            cursor: pointer;
+            outline: none;
+            white-space: nowrap;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center
+        }
+
+        /* buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            transition: all var(--transition-fast);
+            border: none;
+            white-space: nowrap
+        }
+
+        .btn-a {
+            background: var(--accent);
+            color: #fff
+        }
+
+        .btn-a:hover {
+            background: var(--accent-hover)
+        }
+
+        .btn-o {
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border-subtle)
+        }
+
+        .btn-o:hover {
+            border-color: var(--border-strong);
+            color: var(--text-primary)
+        }
+
+        .btn-gh {
+            background: transparent;
+            color: var(--text-muted);
+            padding: 5px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            border: none
+        }
+
+        .btn-gh:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .btn-gh.danger:hover {
+            background: var(--danger-light);
+            color: var(--danger)
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 12px
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: #fff
+        }
+
+        .btn-danger:hover {
+            background: var(--danger-hover)
+        }
+
+        /* badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap
+        }
+
+        .badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%
+        }
+
+        .badge-ok {
+            background: var(--success-light);
+            color: var(--success)
+        }
+
+        .badge-ok::before {
+            background: var(--success)
+        }
+
+        .badge-err {
+            background: var(--danger-light);
+            color: var(--danger)
+        }
+
+        .badge-err::before {
+            background: var(--danger)
+        }
+
+        .badge-running {
+            background: var(--accent-light);
+            color: var(--accent)
+        }
+
+        .badge-running::before {
+            background: var(--accent)
+        }
+
+        .badge-pending {
+            background: var(--bg-hover);
+            color: var(--text-muted)
+        }
+
+        .badge-pending::before {
+            background: var(--text-muted)
+        }
+
+        .badge-acc {
+            background: var(--accent-light);
+            color: var(--accent)
+        }
+
+        .badge-warn {
+            background: var(--warning-light);
+            color: var(--warning)
+        }
+
+        .badge-warn::before {
+            background: var(--warning)
+        }
+
+        .badge-disabled {
+            background: var(--bg-hover);
+            color: var(--text-muted)
+        }
+
+        /* data table */
+        .dt {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden
+        }
+
+        .dt thead {
+            background: var(--bg-root)
+        }
+
+        .dt th {
+            text-align: left;
+            padding: 12px 16px;
+            font-weight: 600;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            border-bottom: 2px solid var(--border-subtle);
+            white-space: nowrap
+        }
+
+        .dt td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-subtle);
+            vertical-align: middle
+        }
+
+        .dt tbody tr:hover {
+            background: var(--bg-hover)
+        }
+
+        .dt tbody tr:last-child td {
+            border-bottom: none
+        }
+
+        /* pagination */
+        .pg {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            padding: 14px 0 0;
+            font-size: 12px;
+            color: var(--text-muted)
+        }
+
+        .pg-info {
+            margin-right: 10px
+        }
+
+        .pg-size {
+            padding: 5px 28px 5px 10px;
+            margin-right: 14px;
+            font-size: 12px;
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            cursor: pointer;
+            appearance: none
+        }
+
+        .pg-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid var(--border-subtle);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast)
+        }
+
+        .pg-btn:hover {
+            border-color: var(--border-strong);
+            color: var(--text-primary)
+        }
+
+        .pg-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff
+        }
+
+        .pg-btn:disabled {
+            opacity: .4;
+            cursor: not-allowed
+        }
+
+        /* breadcrumb */
+        .bc {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px
+        }
+
+        .bc a {
+            color: var(--accent);
+            cursor: pointer;
+            text-decoration: none
+        }
+
+        .bc a:hover {
+            text-decoration: underline
+        }
+
+        /* modal overlay */
+        .mo {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .5);
+            z-index: var(--z-dialog);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity var(--transition-smooth)
+        }
+
+        .mo.op {
+            opacity: 1;
+            pointer-events: auto
+        }
+
+        .mdl {
+            width: 520px;
+            max-width: 94vw;
+            background: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+            transform: translateY(12px) scale(.97);
+            transition: transform var(--transition-smooth)
+        }
+
+        .mo.op .mdl {
+            transform: translateY(0) scale(1)
+        }
+
+        .mh {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px
+        }
+
+        .mt {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -.3px
+        }
+
+        .mcbtn {
+            border: none;
+            background: none;
+            font-size: 20px;
+            color: var(--text-muted);
+            cursor: pointer;
+            line-height: 1
+        }
+
+        .mcbtn:hover {
+            color: var(--text-primary)
+        }
+
+        /* form */
+        .fg {
+            margin-bottom: 20px
+        }
+
+        .fl {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: .5px
+        }
+
+        .fl .req {
+            color: var(--danger)
+        }
+
+        .fi {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-root);
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            transition: all var(--transition-fast);
+            box-sizing: border-box
+        }
+
+        .fi:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .fi::placeholder {
+            color: var(--text-muted)
+        }
+
+        .fi:disabled {
+            background: var(--bg-hover);
+            color: var(--text-muted);
+            cursor: not-allowed
+        }
+
+        .fi-w {
+            width: 100%
+        }
+
+        .desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border-subtle);
+            margin: 28px 0
+        }
+
+        /* empty state */
+        .empty {
+            text-align: center;
+            padding: 100px 20px
+        }
+
+        .empty-icon {
+            font-size: 56px;
+            margin-bottom: 16px;
+            opacity: .25
+        }
+
+        .empty-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px
+        }
+
+        .empty-desc {
+            font-size: 13px;
+            color: var(--text-muted)
+        }
+
+        /* toast */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            z-index: 500;
+            background: var(--success);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: var(--shadow-md);
+            opacity: 0;
+            transform: translateY(-10px);
+            pointer-events: none;
+            transition: all var(--transition-smooth)
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0)
+        }
+
+        /* ═══════════ DAG Canvas Styles ═══════════ */
+        .canvas-workspace {
+            position: fixed;
+            inset: 0;
+            z-index: var(--z-canvas);
+            display: none;
+            flex-direction: column;
+            background: var(--bg-root)
+        }
+
+        .canvas-workspace.ac {
+            display: flex
+        }
+
+        .canvas-toolbar {
+            height: 56px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 0 20px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            box-shadow: var(--shadow-xs)
+        }
+
+        .canvas-toolbar .back {
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap
+        }
+
+        .canvas-toolbar .back:hover {
+            color: var(--accent)
+        }
+
+        .canvas-toolbar .dag-name {
+            border: 1.5px solid transparent;
+            background: var(--bg-root);
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            outline: none;
+            min-width: 160px
+        }
+
+        .canvas-toolbar .dag-name:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .canvas-toolbar .tb-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary)
+        }
+
+        .canvas-toolbar .tb-group label {
+            white-space: nowrap
+        }
+
+        .canvas-toolbar .tb-spacer {
+            flex: 1
+        }
+
+        .canvas-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden
+        }
+
+        .node-palette {
+            width: 180px;
+            flex-shrink: 0;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            padding: 20px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px
+        }
+
+        .palette-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            margin-bottom: 4px
+        }
+
+        .palette-node {
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 16px 12px;
+            text-align: center;
+            cursor: grab;
+            background: var(--bg-surface);
+            transition: all var(--transition-fast);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary)
+        }
+
+        .palette-node:hover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            color: var(--accent)
+        }
+
+        .palette-node .icon {
+            font-size: 22px;
+            margin-bottom: 6px;
+            display: block
+        }
+
+        .palette-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-top: auto;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-subtle)
+        }
+
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
+            background-size: 20px 20px
+        }
+
+        .canvas-area svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none
+        }
+
+        .canvas-area svg path {
+            pointer-events: stroke;
+            cursor: pointer
+        }
+
+        .dag-node {
+            position: absolute;
+            width: 180px;
+            background: var(--bg-surface);
+            border: 2px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            cursor: pointer;
+            user-select: none;
+            transition: box-shadow var(--transition-fast), border-color var(--transition-fast)
+        }
+
+        .dag-node:hover {
+            box-shadow: var(--shadow-md)
+        }
+
+        .dag-node.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px var(--accent-glow)
+        }
+
+        .dag-node.status-success {
+            border-color: var(--success)
+        }
+
+        .dag-node.status-running {
+            border-color: var(--accent)
+        }
+
+        .dag-node.status-failed {
+            border-color: var(--danger)
+        }
+
+        .dag-node.status-skipped {
+            border-color: var(--warning)
+        }
+
+        .dag-node-header {
+            padding: 10px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 6px
+        }
+
+        .dag-node-body {
+            padding: 10px 12px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.5
+        }
+
+        .dag-node-port {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            border: 2px solid var(--bg-surface);
+            cursor: crosshair
+        }
+
+        .dag-node-port.input {
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%)
+        }
+
+        .dag-node-port.output {
+            right: -6px;
+            top: 50%;
+            transform: translateY(-50%)
+        }
+
+        .dag-node-status {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--bg-surface);
+            border: 2px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            box-shadow: var(--shadow-xs)
+        }
+
+        .dag-node-status.success {
+            border-color: var(--success);
+            color: var(--success)
+        }
+
+        .dag-node-status.running {
+            border-color: var(--accent);
+            color: var(--accent)
+        }
+
+        .dag-node-status.failed {
+            border-color: var(--danger);
+            color: var(--danger)
+        }
+
+        .dag-node-status.skipped {
+            border-color: var(--warning);
+            color: var(--warning)
+        }
+
+        .property-panel {
+            width: 260px;
+            flex-shrink: 0;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-subtle);
+            padding: 20px;
+            overflow-y: auto
+        }
+
+        .property-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 16px
+        }
+
+        .property-row {
+            margin-bottom: 14px;
+            font-size: 13px
+        }
+
+        .property-label {
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            font-weight: 600
+        }
+
+        .property-value {
+            color: var(--text-primary);
+            font-weight: 500
+        }
+
+        .property-empty {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.6
+        }
+
+        /* ═══════════ SQL Editor Modal ═══════════ */
+        .modal-sql {
+            width: 900px;
+            max-width: 96vw;
+            height: 620px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden
+        }
+
+        .sql-modal-header {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0
+        }
+
+        .sql-modal-title {
+            font-size: 17px;
+            font-weight: 700;
+            letter-spacing: -.2px
+        }
+
+        .sql-modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px
+        }
+
+        .sql-editor-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px
+        }
+
+        .sql-editor-toolbar .btn {
+            padding: 5px 12px;
+            font-size: 12px
+        }
+
+        .sql-editor {
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            background: #0f172a;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.7;
+            color: #e2e8f0;
+            min-height: 240px;
+            max-height: 300px;
+            padding: 14px 16px;
+            overflow: auto;
+            white-space: pre
+        }
+
+        .sql-editor .kw {
+            color: #c084fc
+        }
+
+        .sql-editor .fn {
+            color: #60a5fa
+        }
+
+        .sql-editor .str {
+            color: #86efac
+        }
+
+        .sql-editor .num {
+            color: #fbbf24
+        }
+
+        .sql-editor .cm {
+            color: #64748b
+        }
+
+        .sql-editor .ln {
+            display: inline-block;
+            width: 28px;
+            color: #475569;
+            user-select: none;
+            text-align: right;
+            margin-right: 12px
+        }
+
+        .sql-status {
+            text-align: right;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px
+        }
+
+        .sql-result {
+            margin-top: 20px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            overflow: hidden
+        }
+
+        .sql-result-title {
+            padding: 10px 14px;
+            background: var(--bg-root);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .sql-result-body {
+            padding: 14px;
+            font-size: 13px
+        }
+
+        .sql-result-row {
+            display: flex;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .sql-result-row:last-child {
+            border-bottom: none
+        }
+
+        .sql-result-stmt {
+            width: 90px;
+            font-family: var(--font-mono);
+            color: var(--accent);
+            font-weight: 600
+        }
+
+        .sql-result-detail {
+            color: var(--text-secondary)
+        }
+
+        .sql-modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-shrink: 0
+        }
+
+        /* ═══════════ History Modal ═══════════ */
+        .modal-history {
+            width: 760px;
+            max-width: 96vw
+        }
+
+        .history-detail {
+            display: none
+        }
+
+        .history-detail.open {
+            display: table-row
+        }
+
+        .history-detail > td {
+            padding: 0;
+            border-bottom: 1px solid var(--border-subtle);
+            background: var(--bg-surface)
+        }
+
+        .history-detail-inner {
+            padding: 16px;
+            background: var(--bg-root);
+            border-top: 2px solid var(--accent-light);
+            border-bottom: 1px solid var(--border-subtle)
+        }
+
+        .history-detail-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 12px
+        }
+
+        .mini-dag {
+            position: relative;
+            min-width: 560px;
+            height: 220px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            overflow: auto
+        }
+
+        .mini-dag svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none
+        }
+
+        .mini-dag-line {
+            stroke: var(--border-strong);
+            stroke-width: 2;
+            fill: none
+        }
+
+        .mini-dag-node {
+            position: absolute;
+            width: 128px;
+            padding: 10px 10px;
+            background: var(--bg-surface);
+            border: 2px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            text-align: center;
+            font-size: 12px;
+            box-shadow: var(--shadow-sm);
+            z-index: 2
+        }
+
+        .mini-dag-node.success {
+            border-color: var(--success)
+        }
+
+        .mini-dag-node.failed {
+            border-color: var(--danger)
+        }
+
+        .mini-dag-node.skipped {
+            border-color: var(--warning)
+        }
+
+        .mini-dag-node-icon {
+            font-size: 16px;
+            margin-bottom: 4px
+        }
+
+        .mini-dag-node-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis
+        }
+
+        .mini-dag-node-meta {
+            font-size: 11px;
+            color: var(--text-secondary)
+        }
+
+        .mini-dag-legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--text-secondary)
+        }
+
+        .mini-dag-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px
+        }
+
+        .mini-dag-legend i {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%
+        }
+
+        .history-detail-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-subtle)
+        }
+
+        .history-dag-name {
+            cursor: pointer;
+            color: var(--accent)
+        }
+
+        .history-dag-name:hover {
+            text-decoration: underline
+        }
+
+        .history-node-meta {
+            color: var(--text-muted);
+            font-size: 12px
+        }
+
+        /* toggle switch */
+        .toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer
+        }
+
+        .toggle input {
+            display: none
+        }
+
+        .toggle-track {
+            width: 36px;
+            height: 20px;
+            background: var(--border-strong);
+            border-radius: 10px;
+            position: relative;
+            transition: background var(--transition-fast)
+        }
+
+        .toggle-track::after {
+            content: '';
+            position: absolute;
+            left: 2px;
+            top: 2px;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform var(--transition-fast)
+        }
+
+        .toggle input:checked + .toggle-track {
+            background: var(--success)
+        }
+
+        .toggle input:checked + .toggle-track::after {
+            transform: translateX(16px)
+        }
+
+        .toggle-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary)
+        }
+
+        /* checkbox */
+        .cb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer
+        }
+
+        .cb input[type=checkbox] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+            cursor: pointer
+        }
+
+        /* datetime-local input */
+        .dt-input {
+            padding: 7px 10px;
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            background: var(--bg-surface);
+            outline: none;
+            transition: all var(--transition-fast)
+        }
+
+        .dt-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow)
+        }
+
+        .scroll-wrap {
+            overflow-x: auto
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════ VIEW: 项目列表 ═══════════ -->
+<div id="v-projects" class="ap ac">
+    <div class="sb">
+        <div class="sb-logo">DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span style="font-size:15px">📦</span> 数据源</div>
+        <div class="ni"><span style="font-size:15px">🔄</span> 批量数据同步</div>
+        <div class="ni"><span style="font-size:15px">⏱</span> 元数据采集任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni ac"><span style="font-size:15px">🔧</span> 数据开发</div>
+        <div class="ni" onclick="showHistory()"><span style="font-size:15px">⏱</span> 执行历史</div>
+        <div class="ns-title">数据治理</div>
+        <div class="ni"><span style="font-size:15px">📋</span> 元数据管理</div>
+        <div class="ni"><span style="font-size:15px">📏</span> 数据标准</div>
+        <div class="ns-title">系统管理</div>
+        <div class="ni"><span style="font-size:15px">👥</span> 用户管理</div>
+    </div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">▼</span></div>
+            </div>
+            <div class="hr">
+                <div class="ph" style="margin-bottom:0">
+                    <div class="pt">数据开发</div>
+                    <div class="ps">按项目分组管理 DAG 编排与 SQL 任务</div>
+                </div>
+                <button class="btn btn-a" onclick="openProjectModal('create')">+ 新建项目</button>
+            </div>
+        </div>
+
+        <div class="cs" id="project-list">
+            <div class="toolbar">
+                <input class="si" type="text" placeholder="🔍 搜索项目名称..." style="width:220px">
+                <div class="toolbar-spacer"></div>
+                <button class="btn btn-a btn-sm">查询</button>
+                <button class="btn btn-o btn-sm">重置</button>
+            </div>
+
+            <div class="scroll-wrap">
+                <table class="dt">
+                    <thead>
+                    <tr>
+                        <th>项目名称</th>
+                        <th>项目描述</th>
+                        <th>DAG 数</th>
+                        <th style="min-width:180px">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td><span style="font-weight:650">用户数据</span></td>
+                        <td style="color:var(--text-secondary)">用户画像、行为分析相关</td>
+                        <td>3</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="enterProject('用户数据')">进入</button>
+                            <button class="btn btn-gh" onclick="openProjectModal('edit','用户数据')">编辑</button>
+                            <button class="btn btn-gh danger" onclick="confirmDelProject('用户数据',3)">删除</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span style="font-weight:650">交易数据</span></td>
+                        <td style="color:var(--text-secondary)">订单、支付数据流水线</td>
+                        <td>2</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="enterProject('交易数据')">进入</button>
+                            <button class="btn btn-gh" onclick="openProjectModal('edit','交易数据')">编辑</button>
+                            <button class="btn btn-gh danger" onclick="confirmDelProject('交易数据',2)">删除</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span style="font-weight:650">日志数据</span></td>
+                        <td style="color:var(--text-secondary)">访问日志、错误日志处理</td>
+                        <td>1</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="enterProject('日志数据')">进入</button>
+                            <button class="btn btn-gh" onclick="openProjectModal('edit','日志数据')">编辑</button>
+                            <button class="btn btn-gh danger" onclick="confirmDelProject('日志数据',1)">删除</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pg"><span class="pg-info">共 3 个</span><select class="pg-size">
+                <option>20条/页</option>
+            </select>
+                <button class="pg-btn" disabled>‹</button>
+                <button class="pg-btn active">1</button>
+                <button class="pg-btn">›</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ VIEW: DAG 列表 ═══════════ -->
+<div id="v-dags" class="ap">
+    <div class="sb">
+        <div class="sb-logo">DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span style="font-size:15px">📦</span> 数据源</div>
+        <div class="ni"><span style="font-size:15px">🔄</span> 批量数据同步</div>
+        <div class="ni"><span style="font-size:15px">⏱</span> 元数据采集任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni ac"><span style="font-size:15px">🔧</span> 数据开发</div>
+        <div class="ni" onclick="showHistory()"><span style="font-size:15px">⏱</span> 执行历史</div>
+        <div class="ns-title">数据治理</div>
+        <div class="ni"><span style="font-size:15px">📋</span> 元数据管理</div>
+        <div class="ni"><span style="font-size:15px">📏</span> 数据标准</div>
+        <div class="ns-title">系统管理</div>
+        <div class="ni"><span style="font-size:15px">👥</span> 用户管理</div>
+    </div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">▼</span></div>
+            </div>
+            <div class="bc"><a onclick="backToProjects()">数据开发</a> <span>/</span> <span
+                    id="dag-bc-name">用户数据</span></div>
+            <div class="hr">
+                <div class="ph" style="margin-bottom:0">
+                    <div class="pt" id="dag-page-title">用户数据</div>
+                    <div class="ps">管理项目下的 DAG 编排</div>
+                </div>
+                <button class="btn btn-a" onclick="openCanvas('create')">+ 新建 DAG</button>
+            </div>
+        </div>
+
+        <div class="cs" id="dag-list">
+            <div class="toolbar">
+                <input class="si" type="text" placeholder="🔍 搜索 DAG 名称..." style="width:220px">
+                <select class="sel">
+                    <option>全部状态</option>
+                    <option>运行中</option>
+                    <option>成功</option>
+                    <option>失败</option>
+                    <option>未执行</option>
+                    <option>已停用</option>
+                </select>
+                <div class="toolbar-spacer"></div>
+                <button class="btn btn-a btn-sm">查询</button>
+                <button class="btn btn-o btn-sm">重置</button>
+            </div>
+
+            <div class="scroll-wrap">
+                <table class="dt">
+                    <thead>
+                    <tr>
+                        <th>DAG 名称</th>
+                        <th>节点数 / 类型</th>
+                        <th>触发方式</th>
+                        <th>Cron 表达式</th>
+                        <th>调度状态</th>
+                        <th>状态</th>
+                        <th>最近执行</th>
+                        <th style="min-width:200px">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td><span style="font-weight:650">用户画像加工</span></td>
+                        <td>3 节点（1 SQL + 2 同步）</td>
+                        <td><span class="badge badge-acc">手动</span></td>
+                        <td style="color:var(--text-muted);font-family:var(--font-mono);font-size:12px">—</td>
+                        <td>—</td>
+                        <td><span class="badge badge-err">失败</span></td>
+                        <td style="color:var(--text-muted)">2026-07-28 15:30</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="openCanvas('edit','用户画像加工')">编辑</button>
+                            <button class="btn btn-gh" onclick="execDag()">执行</button>
+                            <button class="btn btn-gh" onclick="goToDagHistory('用户画像加工')">历史</button>
+                            <button class="btn btn-gh danger" onclick="confirmDelDag('用户画像加工')">删除</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span style="font-weight:650">行为日志清洗</span></td>
+                        <td>2 节点（2 SQL）</td>
+                        <td><span class="badge badge-acc">定时</span></td>
+                        <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">0 0 2 * *
+                            ?
+                        </td>
+                        <td><span class="badge badge-ok">已启用</span></td>
+                        <td><span class="badge badge-ok">成功</span></td>
+                        <td style="color:var(--text-muted)">2026-07-29 10:00</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="openCanvas('edit','行为日志清洗')">编辑</button>
+                            <button class="btn btn-gh" onclick="execDag()">执行</button>
+                            <button class="btn btn-gh" onclick="goToDagHistory('行为日志清洗')">历史</button>
+                            <button class="btn btn-gh danger" onclick="confirmDelDag('行为日志清洗')">删除</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span style="font-weight:650">用户标签计算</span></td>
+                        <td>4 节点（2 SQL + 2 同步）</td>
+                        <td><span class="badge badge-acc">定时</span></td>
+                        <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">0 */30 * * *
+                            ?
+                        </td>
+                        <td><span class="badge badge-disabled">已停用</span></td>
+                        <td><span class="badge badge-pending">未执行</span></td>
+                        <td style="color:var(--text-muted)">—</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="openCanvas('edit','用户标签计算')">编辑</button>
+                            <button class="btn btn-gh" onclick="execDagDisabled()">执行</button>
+                            <button class="btn btn-gh" onclick="goToDagHistory('用户标签计算')">历史</button>
+                            <button class="btn btn-gh danger" onclick="confirmDelDag('用户标签计算')">删除</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pg"><span class="pg-info">共 3 条</span><select class="pg-size">
+                <option>20条/页</option>
+            </select>
+                <button class="pg-btn" disabled>‹</button>
+                <button class="pg-btn active">1</button>
+                <button class="pg-btn">›</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ DAG CANVAS ═══════════ -->
+<div class="canvas-workspace" id="canvas">
+    <div class="canvas-toolbar">
+        <div class="back" onclick="leaveCanvas()">
+            <span>←</span> 返回项目 DAG 列表
+        </div>
+        <input class="dag-name" id="canvas-dag-name" value="订单数据流水线">
+        <div class="tb-group">
+            <label>触发方式</label>
+            <select class="sel" id="canvas-trigger" onchange="toggleCron()">
+                <option>手动</option>
+                <option selected>定时</option>
+            </select>
+        </div>
+        <div class="tb-group" id="canvas-cron-group">
+            <label>Cron</label>
+            <input class="si" value="0 0 2 * * ?" style="width:130px">
+        </div>
+        <div class="tb-group">
+            <label>调度状态</label>
+            <label class="toggle">
+                <input type="checkbox" checked id="canvas-schedule-toggle">
+                <span class="toggle-track"></span>
+                <span class="toggle-label" id="canvas-schedule-label">启用</span>
+            </label>
+        </div>
+        <div class="tb-spacer"></div>
+        <button class="btn btn-o btn-sm" onclick="autoLayout()">自动布局</button>
+        <button class="btn btn-o btn-sm" onclick="saveCanvas()">保存</button>
+        <button class="btn btn-a btn-sm" onclick="runDagFromCanvas()">▶ 执行</button>
+    </div>
+
+    <div class="canvas-body">
+        <div class="node-palette">
+            <div class="palette-title">节点面板</div>
+            <div class="palette-node" draggable="true" ondragstart="dragNode(event,'sql')">
+                <span class="icon">📝</span>
+                SQL 任务
+            </div>
+            <div class="palette-node" draggable="true" ondragstart="dragNode(event,'sync')">
+                <span class="icon">🔄</span>
+                同步任务
+            </div>
+            <div class="palette-hint">
+                拖拽节点到画布上添加
+            </div>
+        </div>
+
+        <div class="canvas-area" id="canvas-area" ondrop="dropNode(event)" ondragover="allowDrop(event)"
+             onclick="clickCanvas(event)">
+            <svg id="edge-layer">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+                    </marker>
+                </defs>
+                <path id="edge-1" d="M 370 170 L 510 170" stroke="#94a3b8" stroke-width="2" fill="none"
+                      marker-end="url(#arrowhead)"/>
+                <path id="edge-2" d="M 565 200 L 565 260 L 510 260" stroke="#94a3b8" stroke-width="2" fill="none"
+                      marker-end="url(#arrowhead)"/>
+                <path id="edge-3" d="M 370 290 L 210 290" stroke="#94a3b8" stroke-width="2" fill="none"
+                      marker-end="url(#arrowhead)"/>
+            </svg>
+
+            <!-- Node: sync logs -->
+            <div class="dag-node" id="node-1" style="left:190px;top:110px;" onclick="selectNode(event,'node-1')"
+                 ondblclick="openSqlModal('日志数据清洗')">
+                <div class="dag-node-status success" id="status-node-1">✓</div>
+                <div class="dag-node-port input"></div>
+                <div class="dag-node-port output"></div>
+                <div class="dag-node-header">📝 日志数据清洗</div>
+                <div class="dag-node-body">类型：SQL 任务<br>输出：dwd.logs_cleaned</div>
+            </div>
+
+            <!-- Node: sync orders -->
+            <div class="dag-node" id="node-2" style="left:520px;top:110px;" onclick="selectNode(event,'node-2')"
+                 ondblclick="openSyncNodeModal('订单数据同步')">
+                <div class="dag-node-status success" id="status-node-2">✓</div>
+                <div class="dag-node-port input"></div>
+                <div class="dag-node-port output"></div>
+                <div class="dag-node-header">🔄 订单数据同步</div>
+                <div class="dag-node-body">类型：同步任务<br>order_db.orders → doris.ods.orders</div>
+            </div>
+
+            <!-- Node: sql clean -->
+            <div class="dag-node" id="node-3" style="left:520px;top:240px;" onclick="selectNode(event,'node-3')"
+                 ondblclick="openSqlModal('订单数据清洗')">
+                <div class="dag-node-status running" id="status-node-3">⟳</div>
+                <div class="dag-node-port input"></div>
+                <div class="dag-node-port output"></div>
+                <div class="dag-node-header">📝 订单数据清洗</div>
+                <div class="dag-node-body">类型：SQL 任务<br>输出：dwd.orders_cleaned</div>
+            </div>
+
+            <!-- Node: sql aggregate -->
+            <div class="dag-node" id="node-4" style="left:190px;top:240px;" onclick="selectNode(event,'node-4')"
+                 ondblclick="openSqlModal('每日订单聚合')">
+                <div class="dag-node-status" id="status-node-4"></div>
+                <div class="dag-node-port input"></div>
+                <div class="dag-node-port output"></div>
+                <div class="dag-node-header">📝 每日订单聚合</div>
+                <div class="dag-node-body">类型：SQL 任务<br>输出：dws.daily_orders</div>
+            </div>
+        </div>
+
+        <div class="property-panel">
+            <div class="property-title">节点属性</div>
+            <div id="property-empty">
+                <div class="property-empty">选中画布上的节点，查看节点基础信息。双击节点可进入编辑弹窗。</div>
+            </div>
+            <div id="property-content" style="display:none">
+                <div class="property-row">
+                    <div class="property-label">名称</div>
+                    <div class="property-value" id="prop-name">—</div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">类型</div>
+                    <div class="property-value" id="prop-type">—</div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">上次执行</div>
+                    <div class="property-value" id="prop-last">—</div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">状态</div>
+                    <div class="property-value" id="prop-status">—</div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">耗时</div>
+                    <div class="property-value" id="prop-duration">—</div>
+                </div>
+                <div style="margin-top:20px">
+                    <button class="btn btn-a btn-sm" id="prop-edit-btn" onclick="editSelectedNode()">编辑节点</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ VIEW: 执行历史 ═══════════ -->
+<div id="v-history" class="ap">
+    <div class="sb">
+        <div class="sb-logo">DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span style="font-size:15px">📦</span> 数据源</div>
+        <div class="ni"><span style="font-size:15px">🔄</span> 批量数据同步</div>
+        <div class="ni"><span style="font-size:15px">⏱</span> 元数据采集任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni" onclick="backToProjects()"><span style="font-size:15px">🔧</span> 数据开发</div>
+        <div class="ni ac" onclick="showHistory()"><span style="font-size:15px">⏱</span> 执行历史</div>
+        <div class="ns-title">数据治理</div>
+        <div class="ni"><span style="font-size:15px">📋</span> 元数据管理</div>
+        <div class="ni"><span style="font-size:15px">📏</span> 数据标准</div>
+        <div class="ns-title">系统管理</div>
+        <div class="ni"><span style="font-size:15px">👥</span> 用户管理</div>
+    </div>
+
+    <div class="mc">
+        <div class="ch">
+            <div class="tb">
+                <div class="ui">
+                    <div class="ua">A</div>
+                    admin <span style="color:var(--text-muted);font-size:12px">▼</span></div>
+            </div>
+            <div class="bc"><a onclick="backToProjects()">数据开发</a> <span>/</span> <span class="breadcrumb-current">执行历史</span>
+            </div>
+            <div class="hr">
+                <div class="ph" style="margin-bottom:0">
+                    <div class="pt">执行历史</div>
+                    <div class="ps">查看所有 DAG 的执行记录与节点级详情</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cs" id="history-list">
+            <div class="toolbar">
+                <input id="history-dag-name" class="si" type="text" placeholder="🔍 搜索 DAG 名称..."
+                       style="width:200px">
+                <select class="sel">
+                    <option>全部状态</option>
+                    <option>运行中</option>
+                    <option>成功</option>
+                    <option>失败</option>
+                    <option>已终止</option>
+                </select>
+                <select class="sel">
+                    <option>全部触发方式</option>
+                    <option>手动触发</option>
+                    <option>定时触发</option>
+                </select>
+                <div class="flex items-center gap-ds-2" style="display:flex;align-items:center;gap:8px">
+                    <input class="dt-input" type="datetime-local" value="2026-07-28T00:00">
+                    <span style="font-size:12px;color:var(--text-muted)">至</span>
+                    <input class="dt-input" type="datetime-local" value="2026-07-29T23:59">
+                </div>
+                <div class="toolbar-spacer"></div>
+                <button class="btn btn-a btn-sm">查询</button>
+                <button class="btn btn-o btn-sm">重置</button>
+            </div>
+
+            <div class="scroll-wrap">
+                <table class="dt">
+                    <thead>
+                    <tr>
+                        <th>执行时间</th>
+                        <th>所属 DAG</th>
+                        <th>执行方式</th>
+                        <th>状态</th>
+                        <th>耗时</th>
+                        <th>节点执行情况</th>
+                        <th style="min-width:120px">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td class="text-ds-small" style="color:var(--text-secondary)">2026-07-29 10:00:00</td>
+                        <td><span class="history-dag-name"
+                                  onclick="openCanvas('edit','行为日志清洗')">行为日志清洗</span></td>
+                        <td><span class="badge badge-acc">定时触发</span></td>
+                        <td><span class="badge badge-ok">成功</span></td>
+                        <td style="color:var(--text-secondary)">2m 15s</td>
+                        <td style="color:var(--text-secondary)">4/4 成功（2 SQL + 2 同步）</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="toggleHistoryDetail('h1')">展开</button>
+                            <button class="btn btn-gh" onclick="showToast('日志详情 Sprint 5 支持')">日志</button>
+                        </td>
+                    </tr>
+                    <tr id="h1" class="history-detail">
+                        <td colspan="7">
+                            <div class="history-detail-inner">
+                                <div class="history-detail-title">节点执行详情</div>
+                                <div class="mini-dag">
+                                    <svg>
+                                        <line class="mini-dag-line" x1="114" y1="65" x2="260" y2="120"/>
+                                        <line class="mini-dag-line" x1="114" y1="175" x2="260" y2="120"/>
+                                        <line class="mini-dag-line" x1="388" y1="120" x2="470" y2="120"/>
+                                    </svg>
+                                    <div class="mini-dag-node success" style="left:50px;top:30px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">日志数据同步</div>
+                                        <div class="mini-dag-node-meta">✅ 45s</div>
+                                    </div>
+                                    <div class="mini-dag-node success" style="left:50px;top:140px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">订单数据同步</div>
+                                        <div class="mini-dag-node-meta">✅ 32s</div>
+                                    </div>
+                                    <div class="mini-dag-node success" style="left:260px;top:85px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">数据清洗</div>
+                                        <div class="mini-dag-node-meta">✅ 12s</div>
+                                    </div>
+                                    <div class="mini-dag-node success" style="left:470px;top:85px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">数据聚合</div>
+                                        <div class="mini-dag-node-meta">✅ 8s</div>
+                                    </div>
+                                </div>
+                                <div class="mini-dag-legend">
+                                    <span><i style="background:var(--success)"></i>成功</span>
+                                    <span><i style="background:var(--danger)"></i>失败</span>
+                                    <span><i style="background:var(--warning)"></i>被跳过</span>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-ds-small" style="color:var(--text-secondary)">2026-07-29 09:00:00</td>
+                        <td><span class="history-dag-name"
+                                  onclick="openCanvas('edit','行为日志清洗')">行为日志清洗</span></td>
+                        <td><span class="badge badge-acc">定时触发</span></td>
+                        <td><span class="badge badge-err">失败</span></td>
+                        <td style="color:var(--text-secondary)">1m 03s</td>
+                        <td style="color:var(--text-secondary)">3/4 成功，1 失败（数据清洗）</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="toggleHistoryDetail('h2')">展开</button>
+                            <button class="btn btn-gh" onclick="showToast('日志详情 Sprint 5 支持')">日志</button>
+                        </td>
+                    </tr>
+                    <tr id="h2" class="history-detail">
+                        <td colspan="7">
+                            <div class="history-detail-inner">
+                                <div class="history-detail-title">节点执行详情</div>
+                                <div class="mini-dag">
+                                    <svg>
+                                        <line class="mini-dag-line" x1="114" y1="65" x2="260" y2="120"/>
+                                        <line class="mini-dag-line" x1="114" y1="175" x2="260" y2="120"/>
+                                        <line class="mini-dag-line" x1="388" y1="120" x2="470" y2="120"/>
+                                    </svg>
+                                    <div class="mini-dag-node success" style="left:50px;top:30px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">日志数据同步</div>
+                                        <div class="mini-dag-node-meta">✅ 45s</div>
+                                    </div>
+                                    <div class="mini-dag-node success" style="left:50px;top:140px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">订单数据同步</div>
+                                        <div class="mini-dag-node-meta">✅ 32s</div>
+                                    </div>
+                                    <div class="mini-dag-node failed" style="left:260px;top:85px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">数据清洗</div>
+                                        <div class="mini-dag-node-meta">❌ amount 类型不匹配</div>
+                                    </div>
+                                    <div class="mini-dag-node skipped" style="left:470px;top:85px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">数据聚合</div>
+                                        <div class="mini-dag-node-meta">⏭ 被跳过</div>
+                                    </div>
+                                </div>
+                                <div class="mini-dag-legend">
+                                    <span><i style="background:var(--success)"></i>成功</span>
+                                    <span><i style="background:var(--danger)"></i>失败</span>
+                                    <span><i style="background:var(--warning)"></i>被跳过</span>
+                                </div>
+                                <div class="history-detail-actions">
+                                    <button class="btn btn-a btn-sm">重跑失败节点</button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-ds-small" style="color:var(--text-secondary)">2026-07-28 15:30:00</td>
+                        <td><span class="history-dag-name"
+                                  onclick="openCanvas('edit','用户画像加工')">用户画像加工</span></td>
+                        <td><span class="badge badge-acc">手动触发</span></td>
+                        <td><span class="badge badge-err">失败</span></td>
+                        <td style="color:var(--text-secondary)">45s</td>
+                        <td style="color:var(--text-secondary)">2/3 成功，1 失败（用户画像同步）</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-gh" onclick="toggleHistoryDetail('h3')">展开</button>
+                            <button class="btn btn-gh" onclick="showToast('日志详情 Sprint 5 支持')">日志</button>
+                        </td>
+                    </tr>
+                    <tr id="h3" class="history-detail">
+                        <td colspan="7">
+                            <div class="history-detail-inner">
+                                <div class="history-detail-title">节点执行详情</div>
+                                <div class="mini-dag">
+                                    <svg>
+                                        <line class="mini-dag-line" x1="208" y1="120" x2="290" y2="120"/>
+                                        <line class="mini-dag-line" x1="418" y1="120" x2="500" y2="120"/>
+                                    </svg>
+                                    <div class="mini-dag-node success" style="left:80px;top:75px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">行为日志同步</div>
+                                        <div class="mini-dag-node-meta">✅ 20s</div>
+                                    </div>
+                                    <div class="mini-dag-node failed" style="left:290px;top:75px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">用户画像同步</div>
+                                        <div class="mini-dag-node-meta">❌ 连接超时</div>
+                                    </div>
+                                    <div class="mini-dag-node skipped" style="left:500px;top:75px">
+                                        <div class="mini-dag-node-icon">📝</div>
+                                        <div class="mini-dag-node-name">画像聚合</div>
+                                        <div class="mini-dag-node-meta">⏭ 被跳过</div>
+                                    </div>
+                                </div>
+                                <div class="mini-dag-legend">
+                                    <span><i style="background:var(--success)"></i>成功</span>
+                                    <span><i style="background:var(--danger)"></i>失败</span>
+                                    <span><i style="background:var(--warning)"></i>被跳过</span>
+                                </div>
+                                <div class="history-detail-actions">
+                                    <button class="btn btn-a btn-sm">重跑失败节点</button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pg"><span class="pg-info">共 3 条</span><select class="pg-size">
+                <option>20条/页</option>
+            </select>
+                <button class="pg-btn" disabled>‹</button>
+                <button class="pg-btn active">1</button>
+                <button class="pg-btn">›</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Project Create/Edit ═══════════ -->
+<div class="mo" id="md-project">
+    <div class="mdl" style="max-width:480px">
+        <div class="mh">
+            <div class="mt" id="project-modal-title">新建项目</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div class="fg">
+            <label class="fl">项目名称 <span class="req">*</span></label>
+            <input class="fi fi-w" id="project-name" placeholder="输入项目名称，3-30 位">
+            <div class="desc">支持中文、字母、数字、下划线，3-30 位</div>
+        </div>
+        <div class="fg">
+            <label class="fl">项目描述</label>
+            <input class="fi fi-w" id="project-desc" placeholder="可选，最多 200 字">
+            <div class="desc">最多 200 字</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="closeModals()">取消</button>
+            <button class="btn btn-a" onclick="saveProject()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Project Delete Confirm ═══════════ -->
+<div class="mo" id="md-project-del">
+    <div class="mdl" style="max-width:440px">
+        <div class="mh">
+            <div class="mt">删除确认</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div style="font-size:14px;margin-bottom:16px">确定删除项目「<strong id="del-project-name">用户数据</strong>」吗？
+        </div>
+        <div style="background:var(--bg-root);border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:20px">
+            <div style="font-weight:600;margin-bottom:6px;color:var(--text-primary)">该项目包含 <span
+                    id="del-project-dag-count">3</span> 个 DAG，将一并删除：
+            </div>
+            <div id="del-project-dag-list">
+                • 用户画像加工<br>
+                • 行为日志清洗<br>
+                • 用户标签计算
+            </div>
+            <div style="margin-top:10px">删除后不可恢复。</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="closeModals()">取消</button>
+            <button class="btn btn-danger" onclick="closeModals();showToast('项目已删除')">删除</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: DAG Delete Confirm ═══════════ -->
+<div class="mo" id="md-dag-del">
+    <div class="mdl" style="max-width:440px">
+        <div class="mh">
+            <div class="mt">删除确认</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div style="font-size:14px;margin-bottom:16px">确定删除 DAG「<strong id="del-dag-name">用户画像加工</strong>」吗？
+        </div>
+        <div style="background:var(--bg-root);border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:20px">
+            <div>• 该 DAG 的所有节点和连线将被删除</div>
+            <div>• 该 DAG 的执行历史将被删除</div>
+            <div>• 被引用的同步任务不会删除，仅解除引用关系</div>
+            <div style="margin-top:10px">删除后不可恢复。</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="closeModals()">取消</button>
+            <button class="btn btn-danger" onclick="closeModals();showToast('DAG 已删除')">删除</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Unsaved Changes ═══════════ -->
+<div class="mo" id="md-unsaved">
+    <div class="mdl" style="max-width:440px">
+        <div class="mh">
+            <div class="mt">未保存的更改</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div style="font-size:14px;margin-bottom:16px">当前 DAG 有未保存的更改。</div>
+        <div style="font-size:14px;margin-bottom:24px">是否保存后再离开？</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="discardAndLeave()">放弃</button>
+            <button class="btn btn-a" onclick="saveAndLeave()">保存并离开</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Cannot Execute ═══════════ -->
+<div class="mo" id="md-cannot-exec">
+    <div class="mdl" style="max-width:420px">
+        <div class="mh">
+            <div class="mt">无法执行</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div style="font-size:14px;margin-bottom:16px;line-height:1.6">
+            该 DAG 当前处于「停用」状态，无法手动执行。
+        </div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">
+            请在 DAG 画布顶部启用调度状态后再执行。
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="closeModals()">我知道了</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Already Running ═══════════ -->
+<div class="mo" id="md-running">
+    <div class="mdl" style="max-width:420px">
+        <div class="mh">
+            <div class="mt">无法执行</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div style="font-size:14px;margin-bottom:16px;line-height:1.6">
+            该 DAG 当前正在执行中，请等待当前执行完成后再次尝试。
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="closeModals()">我知道了</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: SQL Task Editor ═══════════ -->
+<div class="mo" id="md-sql">
+    <div class="mdl modal-sql">
+        <div class="sql-modal-header">
+            <div class="sql-modal-title" id="sql-modal-title">编辑 SQL 任务 — 订单数据清洗</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div class="sql-modal-body">
+            <div class="fg">
+                <label class="fl">节点名称 <span class="req">*</span></label>
+                <input class="fi fi-w" id="sql-node-name" value="订单数据清洗">
+            </div>
+
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px">
+                SQL 编辑器
+            </div>
+            <div class="sql-editor-toolbar">
+                <button class="btn btn-a btn-sm" onclick="runSqlTest()">▶ 运行测试</button>
+                <button class="btn btn-o btn-sm" onclick="formatSql()">格式</button>
+                <button class="btn btn-o btn-sm" onclick="selectAllSql()">全选</button>
+                <button class="btn btn-o btn-sm" onclick="undoSql()">撤销</button>
+                <button class="btn btn-o btn-sm" onclick="redoSql()">重做</button>
+            </div>
+            <div class="sql-editor" id="sql-editor" contenteditable="true" spellcheck="false">INSERT INTO
+                doris.dwd.orders_cleaned
+                SELECT
+                id,
+                user_id,
+                amount,
+                status,
+                created_at
+                FROM doris.ods.orders
+                WHERE status != 'DELETED';
+
+                CREATE TABLE doris.dws.daily_orders AS
+                SELECT
+                DATE(created_at) as dt,
+                COUNT(*) as order_cnt,
+                SUM(amount) as total_amount
+                FROM doris.dwd.orders_cleaned
+                GROUP BY DATE(created_at);
+            </div>
+            <div class="sql-status">行: 13 &nbsp;列: 28</div>
+
+            <div class="sql-result">
+                <div class="sql-result-title">执行结果</div>
+                <div class="sql-result-body" id="sql-result-body">
+                    <div class="sql-result-row">
+                        <div class="sql-result-stmt">INSERT</div>
+                        <div class="sql-result-detail">✅ 成功，影响 15,230 行</div>
+                    </div>
+                    <div class="sql-result-row">
+                        <div class="sql-result-stmt">CREATE</div>
+                        <div class="sql-result-detail">✅ 成功，创建表 dws.daily_orders</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="sql-modal-footer">
+            <button class="btn btn-o" onclick="closeModals()">取消</button>
+            <button class="btn btn-a" onclick="saveSqlNode()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ MODAL: Sync Task Node Editor ═══════════ -->
+<div class="mo" id="md-sync-node">
+    <div class="mdl" style="max-width:560px">
+        <div class="mh">
+            <div class="mt" id="sync-node-modal-title">编辑同步任务节点</div>
+            <button class="mcbtn" onclick="closeModals()">&times;</button>
+        </div>
+        <div class="fg">
+            <label class="fl">节点名称 <span class="req">*</span></label>
+            <input class="fi fi-w" id="sync-node-name" value="订单数据同步">
+        </div>
+        <div class="fg">
+            <label class="fl">选择同步任务 <span class="req">*</span></label>
+            <select class="fi fi-w sel" style="appearance:auto;background-image:none" id="sync-task-select"
+                    onchange="updateSyncSummary()">
+                <option value="">请选择同步任务</option>
+                <option selected>订单同步</option>
+                <option>日志同步</option>
+                <option>商品同步</option>
+            </select>
+            <div class="desc">从「批量数据同步」列表中选取已有的同步任务</div>
+        </div>
+        <div style="background:var(--bg-root);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:20px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+                任务摘要
+            </div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.8" id="sync-summary">
+                <div>源表：order_db.production.orders</div>
+                <div>目标表：doris.ods.orders</div>
+                <div>同步模式：全量</div>
+                <div>状态：<span class="badge badge-ok">成功</span></div>
+            </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:8px">
+            注：DAG 执行时，此节点将触发选中的同步任务。同步任务的独立调度不受影响。
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-o" onclick="closeModals()">取消</button>
+            <button class="btn btn-a" onclick="saveSyncNode()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ TOAST ═══════════ -->
+<div class="toast" id="toast"></div>
+
+<script>
+    /* ── View Navigation ── */
+    function showView(id) {
+        document.querySelectorAll('.ap').forEach(el => el.classList.remove('ac'));
+        document.getElementById(id).classList.add('ac');
+    }
+
+    function enterProject(name) {
+        document.getElementById('dag-bc-name').textContent = name;
+        document.getElementById('dag-page-title').textContent = name;
+        showView('v-dags');
+        document.title = 'DataNest — ' + name;
+    }
+
+    function backToProjects() {
+        showView('v-projects');
+        document.title = 'DataNest — 数据开发';
+    }
+
+    function showHistory() {
+        showView('v-history');
+        document.title = 'DataNest — 执行历史';
+    }
+
+    function goToDagHistory(name) {
+        showView('v-history');
+        document.title = 'DataNest — 执行历史 — ' + name;
+        const input = document.getElementById('history-dag-name');
+        if (input) input.value = name;
+    }
+
+    /* ── Modals ── */
+    function openModal(id) {
+        document.getElementById(id).classList.add('op');
+    }
+
+    function closeModals() {
+        document.querySelectorAll('.mo').forEach(m => m.classList.remove('op'));
+    }
+
+    document.querySelectorAll('.mo').forEach(m => m.addEventListener('click', function (e) {
+        if (e.target === this) closeModals();
+    }));
+
+    function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    /* ── Project Modal ── */
+    function openProjectModal(mode, name) {
+        document.getElementById('project-modal-title').textContent = mode === 'create' ? '新建项目' : '编辑项目';
+        const nameInput = document.getElementById('project-name');
+        if (mode === 'edit' && name) {
+            nameInput.value = name;
+            nameInput.disabled = true;
+        } else {
+            nameInput.value = '';
+            nameInput.disabled = false;
+        }
+        openModal('md-project');
+    }
+
+    function saveProject() {
+        closeModals();
+        showToast('项目已保存');
+    }
+
+    function confirmDelProject(name, count) {
+        document.getElementById('del-project-name').textContent = name;
+        document.getElementById('del-project-dag-count').textContent = count;
+        let listHtml = '';
+        if (name === '用户数据') {
+            listHtml = '• 用户画像加工<br>• 行为日志清洗<br>• 用户标签计算';
+        } else if (name === '交易数据') {
+            listHtml = '• 订单数据流水线<br>• 支付数据清洗';
+        } else {
+            listHtml = '• 日志数据清洗';
+        }
+        document.getElementById('del-project-dag-list').innerHTML = listHtml;
+        openModal('md-project-del');
+    }
+
+    /* ── DAG List Actions ── */
+    function confirmDelDag(name) {
+        document.getElementById('del-dag-name').textContent = name;
+        openModal('md-dag-del');
+    }
+
+    function execDag() {
+        showToast('DAG 执行已提交');
+    }
+
+    function execDagDisabled() {
+        openModal('md-cannot-exec');
+    }
+
+    function toggleHistoryDetail(id) {
+        const el = document.getElementById(id);
+        const isOpen = el.classList.toggle('open');
+        const btn = document.querySelector(`button[onclick="toggleHistoryDetail('${id}')"]`);
+        if (btn) btn.textContent = isOpen ? '收起' : '展开';
+    }
+
+    /* ── DAG Canvas ── */
+    let canvasOpen = false;
+    let canvasDirty = false;
+    let selectedNodeId = null;
+
+    function openCanvas(mode, name) {
+        const canvas = document.getElementById('canvas');
+        canvas.classList.add('ac');
+        canvasOpen = true;
+        canvasDirty = false;
+        document.getElementById('canvas-dag-name').value = mode === 'create' ? '新建 DAG' : name;
+        document.title = 'DataNest — DAG 画布';
+    }
+
+    function leaveCanvas() {
+        if (canvasDirty) {
+            openModal('md-unsaved');
+        } else {
+            document.getElementById('canvas').classList.remove('ac');
+            canvasOpen = false;
+            showView('v-dags');
+            document.title = 'DataNest — ' + document.getElementById('dag-page-title').textContent;
+        }
+    }
+
+    function discardAndLeave() {
+        closeModals();
+        document.getElementById('canvas').classList.remove('ac');
+        canvasOpen = false;
+        canvasDirty = false;
+        showView('v-dags');
+        document.title = 'DataNest — ' + document.getElementById('dag-page-title').textContent;
+    }
+
+    function saveAndLeave() {
+        saveCanvas();
+        discardAndLeave();
+    }
+
+    function saveCanvas() {
+        canvasDirty = false;
+        showToast('DAG 已保存');
+    }
+
+    function runDagFromCanvas() {
+        const enabled = document.getElementById('canvas-schedule-toggle').checked;
+        if (!enabled) {
+            openModal('md-cannot-exec');
+            return;
+        }
+        openModal('md-running');
+    }
+
+    function toggleCron() {
+        const trigger = document.getElementById('canvas-trigger');
+        const cronGroup = document.getElementById('canvas-cron-group');
+        cronGroup.style.display = trigger.value === '定时' ? 'flex' : 'none';
+        canvasDirty = true;
+    }
+
+    document.getElementById('canvas-schedule-toggle').addEventListener('change', function () {
+        document.getElementById('canvas-schedule-label').textContent = this.checked ? '启用' : '停用';
+        canvasDirty = true;
+    });
+
+    document.getElementById('canvas-dag-name').addEventListener('input', function () {
+        canvasDirty = true;
+    });
+
+    /* ── Drag & Drop Nodes ── */
+    function dragNode(ev, type) {
+        ev.dataTransfer.setData('nodeType', type);
+    }
+
+    function allowDrop(ev) {
+        ev.preventDefault();
+    }
+
+    let nodeCounter = 5;
+
+    function dropNode(ev) {
+        ev.preventDefault();
+        const type = ev.dataTransfer.getData('nodeType');
+        if (!type) return;
+        const rect = document.getElementById('canvas-area').getBoundingClientRect();
+        const x = ev.clientX - rect.left - 90;
+        const y = ev.clientY - rect.top - 40;
+        createNode(type, x, y);
+        canvasDirty = true;
+    }
+
+    function createNode(type, x, y) {
+        const area = document.getElementById('canvas-area');
+        const id = 'node-' + nodeCounter++;
+        const node = document.createElement('div');
+        node.className = 'dag-node';
+        node.id = id;
+        node.style.left = x + 'px';
+        node.style.top = y + 'px';
+        if (type === 'sql') {
+            node.innerHTML = `
+                <div class="dag-node-status" id="status-${id}"></div>
+                <div class="dag-node-port input"></div>
+                <div class="dag-node-port output"></div>
+                <div class="dag-node-header">📝 SQL 任务-${nodeCounter - 4}</div>
+                <div class="dag-node-body">类型：SQL 任务<br>双击编辑 SQL</div>
+            `;
+            node.ondblclick = function () {
+                openSqlModal('SQL 任务-' + (nodeCounter - 4));
+            };
+        } else {
+            node.innerHTML = `
+                <div class="dag-node-status" id="status-${id}"></div>
+                <div class="dag-node-port input"></div>
+                <div class="dag-node-port output"></div>
+                <div class="dag-node-header">🔄 同步任务-${nodeCounter - 4}</div>
+                <div class="dag-node-body">类型：同步任务<br>双击选择任务</div>
+            `;
+            node.ondblclick = function () {
+                openSyncNodeModal('同步任务-' + (nodeCounter - 4));
+            };
+        }
+        node.onclick = function (e) {
+            selectNode(e, id);
+        };
+        area.appendChild(node);
+    }
+
+    /* ── Node Selection ── */
+    function clickCanvas(ev) {
+        if (ev.target.id === 'canvas-area' || ev.target.id === 'edge-layer') {
+            document.querySelectorAll('.dag-node').forEach(n => n.classList.remove('selected'));
+            selectedNodeId = null;
+            document.getElementById('property-empty').style.display = 'block';
+            document.getElementById('property-content').style.display = 'none';
+        }
+    }
+
+    function selectNode(ev, id) {
+        ev.stopPropagation();
+        document.querySelectorAll('.dag-node').forEach(n => n.classList.remove('selected'));
+        document.getElementById(id).classList.add('selected');
+        selectedNodeId = id;
+        updatePropertyPanel(id);
+    }
+
+    function updatePropertyPanel(id) {
+        const node = document.getElementById(id);
+        const header = node.querySelector('.dag-node-header').textContent;
+        const body = node.querySelector('.dag-node-body').textContent;
+        const isSql = header.includes('📝');
+        const statusEl = document.getElementById('status-' + id);
+        let status = '等待中';
+        if (statusEl.classList.contains('success')) status = '成功';
+        else if (statusEl.classList.contains('running')) status = '运行中';
+        else if (statusEl.classList.contains('failed')) status = '失败';
+        else if (statusEl.classList.contains('skipped')) status = '被跳过';
+
+        document.getElementById('prop-name').textContent = header.replace(/^[^\s]+\s/, '');
+        document.getElementById('prop-type').textContent = isSql ? 'SQL 任务' : '同步任务';
+        document.getElementById('prop-last').textContent = '2026-07-29 10:01:15';
+        document.getElementById('prop-status').textContent = status;
+        document.getElementById('prop-duration').textContent = status === '成功' ? '12s' : '—';
+
+        document.getElementById('property-empty').style.display = 'none';
+        document.getElementById('property-content').style.display = 'block';
+    }
+
+    function editSelectedNode() {
+        if (!selectedNodeId) return;
+        const node = document.getElementById(selectedNodeId);
+        const header = node.querySelector('.dag-node-header').textContent;
+        if (header.includes('📝')) openSqlModal(header.replace(/^[^\s]+\s/, ''));
+        else openSyncNodeModal(header.replace(/^[^\s]+\s/, ''));
+    }
+
+    function autoLayout() {
+        showToast('自动布局完成');
+        canvasDirty = true;
+    }
+
+    /* ── SQL Modal ── */
+    function openSqlModal(name) {
+        document.getElementById('sql-modal-title').textContent = '编辑 SQL 任务 — ' + name;
+        document.getElementById('sql-node-name').value = name;
+        openModal('md-sql');
+    }
+
+    function runSqlTest() {
+        const body = document.getElementById('sql-result-body');
+        body.innerHTML = `
+            <div class="sql-result-row">
+                <div class="sql-result-stmt">INSERT</div>
+                <div class="sql-result-detail">✅ 成功，影响 15,230 行</div>
+            </div>
+            <div class="sql-result-row">
+                <div class="sql-result-stmt">CREATE</div>
+                <div class="sql-result-detail">✅ 成功，创建表 dws.daily_orders</div>
+            </div>
+            <div class="sql-result-row">
+                <div class="sql-result-stmt">SELECT</div>
+                <div class="sql-result-detail">✅ 成功，返回 3 行</div>
+            </div>
+        `;
+        showToast('SQL 测试执行完成');
+    }
+
+    function saveSqlNode() {
+        closeModals();
+        canvasDirty = true;
+        showToast('SQL 任务节点已保存');
+    }
+
+    function formatSql() {
+        showToast('SQL 已格式化');
+    }
+
+    function selectAllSql() {
+        const editor = document.getElementById('sql-editor');
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
+    function undoSql() {
+        showToast('撤销');
+    }
+
+    function redoSql() {
+        showToast('重做');
+    }
+
+    /* ── Sync Node Modal ── */
+    function openSyncNodeModal(name) {
+        document.getElementById('sync-node-modal-title').textContent = '编辑同步任务节点 — ' + name;
+        document.getElementById('sync-node-name').value = name;
+        openModal('md-sync-node');
+    }
+
+    function updateSyncSummary() {
+        const select = document.getElementById('sync-task-select');
+        const val = select.value;
+        const summary = document.getElementById('sync-summary');
+        if (val === '订单同步') {
+            summary.innerHTML = `
+                <div>源表：order_db.production.orders</div>
+                <div>目标表：doris.ods.orders</div>
+                <div>同步模式：全量</div>
+                <div>状态：<span class="badge badge-ok">成功</span></div>
+            `;
+        } else if (val === '日志同步') {
+            summary.innerHTML = `
+                <div>源表：order_db.production.logs</div>
+                <div>目标表：doris.dwd.logs</div>
+                <div>同步模式：增量（updated_at）</div>
+                <div>状态：<span class="badge badge-err">失败</span></div>
+            `;
+        } else if (val === '商品同步') {
+            summary.innerHTML = `
+                <div>源表：order_db.production.products</div>
+                <div>目标表：doris.ods.products</div>
+                <div>同步模式：全量</div>
+                <div>状态：<span class="badge badge-pending">未执行</span></div>
+            `;
+        } else {
+            summary.innerHTML = '<div style="color:var(--text-muted)">请选择同步任务后查看摘要</div>';
+        }
+    }
+
+    function saveSyncNode() {
+        closeModals();
+        canvasDirty = true;
+        showToast('同步任务节点已保存');
+    }
+
+    /* ── Keyboard Shortcuts ── */
+    document.addEventListener('keydown', function (e) {
+        if (!canvasOpen) return;
+        if (e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            saveCanvas();
+        }
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+            if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'DIV') {
+                if (confirm('该节点将被删除，与其相关的连线同时移除。确定删除吗？')) {
+                    document.getElementById(selectedNodeId).remove();
+                    selectedNodeId = null;
+                    document.getElementById('property-empty').style.display = 'block';
+                    document.getElementById('property-content').style.display = 'none';
+                    canvasDirty = true;
+                }
+            }
+        }
+    });
+
+    /* ── Node Dragging on Canvas ── */
+    let dragNodeEl = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    document.addEventListener('mousedown', function (e) {
+        const node = e.target.closest('.dag-node');
+        if (!node) return;
+        if (e.target.classList.contains('dag-node-port')) return;
+        dragNodeEl = node;
+        const rect = node.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!dragNodeEl) return;
+        const area = document.getElementById('canvas-area').getBoundingClientRect();
+        let x = e.clientX - area.left - dragOffsetX;
+        let y = e.clientY - area.top - dragOffsetY;
+        x = Math.max(0, Math.min(x, area.width - 180));
+        y = Math.max(0, Math.min(y, area.height - 80));
+        dragNodeEl.style.left = x + 'px';
+        dragNodeEl.style.top = y + 'px';
+        canvasDirty = true;
+    });
+
+    document.addEventListener('mouseup', function () {
+        dragNodeEl = null;
+    });
+
+    /* ── Prevent closing tab with unsaved changes ── */
+    window.addEventListener('beforeunload', function (e) {
+        if (canvasDirty) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+</script>
+
+</body>
+</html>

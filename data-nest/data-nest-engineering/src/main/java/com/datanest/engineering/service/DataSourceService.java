@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.*;
 import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -42,11 +43,6 @@ public class DataSourceService {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSourceService.class);
     private static final String MASKED_PASSWORD = "********";
-    private static final String STATUS_NORMAL = "NORMAL";
-    private static final String STATUS_ERROR = "ERROR";
-    private static final String STATUS_NEVER_EXECUTED = "NEVER_EXECUTED";
-    private static final String TRIGGER_TYPE_MANUAL = "MANUAL";
-    private static final String COLLECT_MODE_FULL = "FULL";
     private static final String COLLECT_TASK_HANDLER = "collectTaskHandler";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
@@ -95,7 +91,7 @@ public class DataSourceService {
         entity.setUsername(request.getUsername());
         entity.setEncryptedPassword(encryptionConfig.encrypt(request.getPassword()));
         entity.setDescription(request.getDescription());
-        entity.setStatus(STATUS_NORMAL);
+        entity.setStatus(DataSourceStatus.NORMAL.getCode());
         entity.setAutoCollectOnSave(Boolean.TRUE.equals(request.getAutoCollectOnSave()) ? 1 : 0);
         entity.setCreatedBy(currentUserId());
         entity.setUpdatedBy(currentUserId());
@@ -139,9 +135,9 @@ public class DataSourceService {
             task.setDatasourceId(entity.getId());
             task.setDatasourceName(entity.getName());
             task.setScope(scope);
-            task.setCollectMode(COLLECT_MODE_FULL);
-            task.setTriggerType(TRIGGER_TYPE_MANUAL);
-            task.setStatus(STATUS_NEVER_EXECUTED);
+            task.setCollectMode(CollectMode.FULL.getCode());
+            task.setTriggerType(TaskTriggerType.MANUAL.getCode());
+            task.setStatus(CollectTaskStatus.NEVER_EXECUTED.getCode());
             task.setDescription("数据源保存时自动创建的元数据采集任务");
             task.setScheduleEnabled(0);
             task.setCreatedBy(currentUserIdOrZero());
@@ -151,11 +147,11 @@ public class DataSourceService {
             collectTaskMapper.insert(task);
 
             Integer xxlJobId = schedulerClient.registerJob(workerExecutorAppName, COLLECT_TASK_HANDLER,
-                    task.getId(), taskName, "", TRIGGER_TYPE_MANUAL, false, 0, 0);
+                    task.getId(), taskName, "", TaskTriggerType.MANUAL.getCode(), false, 0, 0);
             task.setXxlJobId(xxlJobId);
             collectTaskMapper.updateById(task);
 
-            schedulerClient.triggerJob(xxlJobId, task.getId() + ",MANUAL");
+            schedulerClient.triggerJob(xxlJobId, task.getId() + "," + TaskTriggerType.MANUAL.getCode());
             logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}, xxlJobId={}",
                     entity.getId(), task.getId(), xxlJobId);
             return null;
@@ -166,9 +162,11 @@ public class DataSourceService {
     }
 
     private List<String> resolveCollectScope(DataSourceConnection entity) {
-        if ("POSTGRESQL".equalsIgnoreCase(entity.getType())) {
-            String schema = StringUtils.hasText(entity.getSchemaName()) ? entity.getSchemaName() : "public";
-            return Collections.singletonList(schema);
+        DataSourceType type = DataSourceType.fromCode(entity.getType());
+        if (type != null && type.hasSchemaLayer()) {
+            String schema = StringUtils.hasText(entity.getSchemaName()) ? entity.getSchemaName()
+                    : (type == DataSourceType.POSTGRESQL ? "public" : entity.getUsername());
+            return StringUtils.hasText(schema) ? Collections.singletonList(schema) : Collections.emptyList();
         }
         String scope = entity.getDatabaseName();
         return StringUtils.hasText(scope) ? Collections.singletonList(scope) : Collections.emptyList();
@@ -322,7 +320,7 @@ public class DataSourceService {
             dto.setTaskId(task.getId());
             dto.setTaskName(task.getName());
             dto.setStatus(task.getStatus());
-            dto.setType("COLLECT");
+            dto.setType(ReferenceType.COLLECT.getCode());
             references.add(dto);
         }
 
@@ -332,7 +330,7 @@ public class DataSourceService {
             dto.setTaskId(job.getId());
             dto.setTaskName(job.getName());
             dto.setStatus(job.getStatus());
-            dto.setType("SYNC");
+            dto.setType(ReferenceType.SYNC.getCode());
             dto.setSourceDatabase(job.getSourceDatabase());
             dto.setSourceSchema(job.getSourceSchema());
             dto.setTargetDatabase(job.getTargetDatabase());
@@ -350,7 +348,7 @@ public class DataSourceService {
     }
 
     private void updateStatus(DataSourceConnection entity, TestConnectionResult result) {
-        entity.setStatus(result.isSuccess() ? STATUS_NORMAL : STATUS_ERROR);
+        entity.setStatus(result.isSuccess() ? DataSourceStatus.NORMAL.getCode() : DataSourceStatus.ERROR.getCode());
         entity.setErrorMessage(result.isSuccess() ? null : result.getMessage());
         entity.setLastTestTime(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());

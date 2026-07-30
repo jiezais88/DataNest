@@ -2,6 +2,8 @@ package com.datanest.task.core.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.MetadataSourceStatus;
+import com.datanest.common.constant.SourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.entity.MetadataColumn;
@@ -29,7 +31,7 @@ import java.util.Map;
 public class MetadataRegistrationService {
 
     private static final Logger logger = LoggerFactory.getLogger(MetadataRegistrationService.class);
-    private static final String SOURCE_TYPE = "BUILTIN_DORIS";
+    private static final String SOURCE_TYPE = SourceType.BUILTIN_DORIS.getCode();
     private static final Long BUILTIN_DORIS_DATASOURCE_ID = -1L;
 
     @Value("${datanest.engineering.addax.target-database:datanest}")
@@ -132,7 +134,7 @@ public class MetadataRegistrationService {
             table.setDatabaseName(targetDb);
             table.setSchemaName(null);
             table.setTableName(targetTableName);
-            table.setSourceStatus("ONLINE");
+            table.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
             table.setSourceType(SOURCE_TYPE);
             table.setColumnCount(0);
             table.setCreatedAt(now);
@@ -141,7 +143,7 @@ public class MetadataRegistrationService {
             logger.info("新增 BUILTIN_DORIS 元数据表: table={}", targetTableName);
             return table;
         }
-        existing.setSourceStatus("ONLINE");
+        existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
         existing.setSourceType(SOURCE_TYPE);
         existing.setUpdatedAt(now);
         metadataTableMapper.updateById(existing);

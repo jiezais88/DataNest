@@ -276,49 +276,46 @@ export default function SyncJobHistoryPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto">
-                <div
-                    className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
-                    <table className="w-full">
-                        <thead className="sticky top-0 z-10">
-                        <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">触发方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">开始时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">结束时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">耗时</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">源行数</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">目标行数</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">错误信息</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
+                <div className="ds-table-card">
+                    <div className="ds-table-scroll">
+                        <table className="ds-table">
+                            <thead>
+                            <tr>
+                                <th>触发方式</th>
+                                <th>状态</th>
+                                <th>开始时间</th>
+                                <th>结束时间</th>
+                                <th>耗时</th>
+                                <th>源行数</th>
+                                <th>目标行数</th>
+                                <th>错误信息</th>
+                                <th className="text-center">操作</th>
                         </tr>
                         </thead>
                         <tbody>
                         {items.map((item) => {
                             const ss = statusClass(item.status);
                             return (
-                                <tr
-                                    key={item.id}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors"
-                                >
-                                    <td className="px-ds-4 py-ds-3">{triggerBadge(item.triggerType)}</td>
-                                    <td className="px-ds-4 py-ds-3">
+                                <tr key={item.id}>
+                                    <td>{triggerBadge(item.triggerType)}</td>
+                                    <td>
                                         <span
                                             className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${ss.bg} ${ss.text}`}>
                                             <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`}/>
                                             {ss.label}
                                         </span>
                                     </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{formatDateTime(item.startTime)}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">{formatDateTime(item.endTime)}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">{formatDuration(item.durationMs, item.durationSeconds)}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">{item.sourceRows ?? '—'}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">{item.targetRows ?? '—'}</td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-danger max-w-[240px] truncate"
+                                    <td className="text-ds-small text-ds-text-secondary">{formatDateTime(item.startTime)}</td>
+                                    <td className="text-ds-small text-ds-text-secondary">{formatDateTime(item.endTime)}</td>
+                                    <td className="text-ds-body text-ds-text-secondary">{formatDuration(item.durationMs, item.durationSeconds)}</td>
+                                    <td className="text-ds-body text-ds-text-secondary">{item.sourceRows ?? '—'}</td>
+                                    <td className="text-ds-body text-ds-text-secondary">{item.targetRows ?? '—'}</td>
+                                    <td className="ds-table-cell-wide text-ds-small text-ds-danger"
                                         title={item.errorMessage || ''}>
                                         {item.errorMessage || '—'}
                                     </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
+                                    <td className="ds-table-cell-no-truncate">
+                                        <div className="flex items-center justify-center w-full gap-1">
                                             <button
                                                 onClick={() => handleOpenDetail(item)}
                                                 className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
@@ -342,6 +339,7 @@ export default function SyncJobHistoryPage() {
                         })}
                         </tbody>
                     </table>
+                    </div>
 
                     {items.length === 0 && !loading && (
                         <EmptyState

@@ -6,6 +6,7 @@ public class SyncJobHistoryDTO {
 
     private Long id;
     private Long syncJobId;
+    private String taskName;
     private String triggerType;
     private String status;
     private LocalDateTime startTime;
@@ -42,6 +43,14 @@ public class SyncJobHistoryDTO {
 
     public void setSyncJobId(Long syncJobId) {
         this.syncJobId = syncJobId;
+    }
+
+    public String getTaskName() {
+        return taskName;
+    }
+
+    public void setTaskName(String taskName) {
+        this.taskName = taskName;
     }
 
     public String getTriggerType() {

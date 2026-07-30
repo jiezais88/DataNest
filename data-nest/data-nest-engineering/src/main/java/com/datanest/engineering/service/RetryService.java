@@ -1,5 +1,6 @@
 package com.datanest.engineering.service;
 
+import com.datanest.common.constant.SyncJobExecutionStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.entity.SyncJob;
@@ -76,7 +77,7 @@ public class RetryService {
         retryHistory.setParentHistoryId(historyId);
         retryHistory.setRetryCount((parentHistory.getRetryCount() == null ? 0 : parentHistory.getRetryCount()) + 1);
         retryHistory.setNextRetryAt(now.plusMinutes(delayMinutes));
-        retryHistory.setStatus("RUNNING");
+        retryHistory.setStatus(SyncJobExecutionStatus.RUNNING.getCode());
         retryHistory.setStartTime(now);
         retryHistory.setSourceRows(0L);
         retryHistory.setTargetRows(0L);

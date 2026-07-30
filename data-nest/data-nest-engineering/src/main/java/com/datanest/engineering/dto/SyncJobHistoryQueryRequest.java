@@ -9,6 +9,11 @@ public class SyncJobHistoryQueryRequest {
     private Long syncJobId;
     private String status;
 
+    /**
+     * 按同步任务名称模糊搜索
+     */
+    private String keyword;
+
     @NotNull(message = "开始时间起不能为空")
     private LocalDateTime startTimeFrom;
 
@@ -32,6 +37,14 @@ public class SyncJobHistoryQueryRequest {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getKeyword() {
+        return keyword;
+    }
+
+    public void setKeyword(String keyword) {
+        this.keyword = keyword;
     }
 
     public LocalDateTime getStartTimeFrom() {

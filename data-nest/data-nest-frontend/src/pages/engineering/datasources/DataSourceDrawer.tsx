@@ -1,10 +1,12 @@
 import {useEffect, useState} from 'react';
-import type {
-    DataSource,
-    DataSourceCreateRequest,
+import type {DataSource, DataSourceCreateRequest, DataSourceUpdateRequest} from '../../../types/datasource';
+import {
     DataSourceType,
-    DataSourceUpdateRequest
-} from '../../../types/datasource';
+    DataSourceTypeEnum,
+    DB_TYPES_WITHOUT_SCHEMA,
+    DEFAULT_PORTS,
+    TYPE_OPTIONS
+} from '../../../constants/datasource';
 import {testConnection} from '../../../api/datasource';
 import {HiOutlineEye, HiOutlineEyeSlash, HiOutlineXMark} from 'react-icons/hi2';
 import TestResultModal from '../../../components/TestResultModal';
@@ -21,18 +23,6 @@ type FormData = {
     passwordChanged: boolean;
     description: string;
     autoCollectOnSave: boolean;
-};
-
-const TYPE_OPTIONS: { value: DataSourceType; label: string }[] = [
-    {value: 'MYSQL', label: 'MySQL'},
-    {value: 'POSTGRESQL', label: 'PostgreSQL'},
-    {value: 'DORIS', label: 'Doris'},
-];
-
-const DEFAULT_PORTS: Record<DataSourceType, number> = {
-    MYSQL: 3306,
-    POSTGRESQL: 5432,
-    DORIS: 9030,
 };
 
 const EMPTY_FORM: FormData = {
@@ -102,8 +92,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
             const next = {...prev, [field]: value};
             if (field === 'type' && value && !isEdit) {
                 next.port = DEFAULT_PORTS[value as DataSourceType];
-                if (value === 'POSTGRESQL') {
-                    next.schemaName = prev.schemaName || 'public';
+                if (!DB_TYPES_WITHOUT_SCHEMA.has(value as DataSourceType)) {
+                    next.schemaName = prev.schemaName || (value === DataSourceTypeEnum.POSTGRESQL ? 'public' : '');
                 } else {
                     next.schemaName = '';
                 }
@@ -122,7 +112,9 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
         if (!form.host.trim()) nextErrors.host = '请输入主机地址';
         if (form.port === '' || Number(form.port) <= 0 || Number(form.port) > 65535) nextErrors.port = '请输入有效端口';
         if (!form.databaseName.trim()) nextErrors.databaseName = '请输入数据库名';
-        if (form.type === 'POSTGRESQL' && !form.schemaName.trim()) nextErrors.schemaName = 'PostgreSQL 必须填写 Schema';
+        if (form.type && !DB_TYPES_WITHOUT_SCHEMA.has(form.type) && !form.schemaName.trim()) {
+            nextErrors.schemaName = '该类型数据源必须填写 Schema';
+        }
         if (!form.username.trim()) nextErrors.username = '请输入用户名';
         if (!isEdit && !form.password) nextErrors.password = '请输入密码';
         if (isEdit && form.passwordChanged && !form.password) nextErrors.password = '请输入新密码';
@@ -269,7 +261,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     value={form.port}
                                     onChange={(e) => updateField('port', e.target.value === '' ? '' : Number(e.target.value))}
                                     className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                                    placeholder="3306"
+                                    placeholder={form.type ? String(DEFAULT_PORTS[form.type]) : '3306'}
                                 />
                                 {errors.port && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.port}</p>}
                             </div>
@@ -289,7 +281,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                             {errors.host && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.host}</p>}
                         </div>
 
-                        <div className={`grid gap-ds-4 ${form.type === 'POSTGRESQL' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        <div
+                            className={`grid gap-ds-4 ${form.type && !DB_TYPES_WITHOUT_SCHEMA.has(form.type) ? 'grid-cols-2' : 'grid-cols-1'}`}>
                             <div>
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     数据库名 <span className="text-ds-danger">*</span>
@@ -304,7 +297,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                 {errors.databaseName &&
                                     <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.databaseName}</p>}
                             </div>
-                            {form.type === 'POSTGRESQL' && (
+                            {form.type && !DB_TYPES_WITHOUT_SCHEMA.has(form.type) && (
                                 <div>
                                     <label
                                         className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">

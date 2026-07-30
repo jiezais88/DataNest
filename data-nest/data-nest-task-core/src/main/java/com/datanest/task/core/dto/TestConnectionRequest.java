@@ -1,5 +1,6 @@
 package com.datanest.task.core.dto;
 
+import com.datanest.common.constant.DataSourceType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -8,7 +9,7 @@ import jakarta.validation.constraints.Size;
 public class TestConnectionRequest {
 
     @NotBlank(message = "数据源类型不能为空")
-    @Pattern(regexp = "^(MYSQL|POSTGRESQL|DORIS)$", message = "数据源类型只能是 MYSQL、POSTGRESQL 或 DORIS")
+    @Pattern(regexp = DataSourceType.PATTERN, message = "数据源类型只能是 " + DataSourceType.ALLOWED_LABELS)
     private String type;
 
     @NotBlank(message = "主机地址不能为空")

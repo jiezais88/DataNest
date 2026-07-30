@@ -1,5 +1,4 @@
-export type DataSourceType = 'MYSQL' | 'POSTGRESQL' | 'DORIS';
-export type DataSourceStatus = 'NORMAL' | 'ERROR' | 'OFFLINE' | 'UNKNOWN';
+import type {DataSourceStatus, DataSourceType} from '../constants/datasource';
 
 export interface DataSource {
     id: string;

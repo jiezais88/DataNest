@@ -1,6 +1,9 @@
 package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.DataSourceType;
+import com.datanest.common.constant.ExecutionStatus;
+import com.datanest.common.constant.SyncMode;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.dto.FieldMappingItem;
@@ -200,7 +203,7 @@ public class AddaxJobService {
     private Map<String, Object> buildReader(SyncJob job, DataSourceConnection source, String sourceDb, String sourceTable) {
         String jdbcUrl = connectionTester.buildJdbcUrl(source);
         List<String> columns = buildReaderColumns(job);
-        boolean incremental = "INCREMENTAL".equalsIgnoreCase(job.getSyncMode());
+        boolean incremental = SyncMode.INCREMENTAL.getCode().equalsIgnoreCase(job.getSyncMode());
 
         Map<String, Object> connectionItem = new HashMap<>();
         connectionItem.put("jdbcUrl", List.of(jdbcUrl));
@@ -235,9 +238,14 @@ public class AddaxJobService {
         if (identifier == null || identifier.isBlank()) {
             return "";
         }
-        return switch (dbType) {
-            case "POSTGRESQL" -> "\"" + identifier.replace("\"", "\"\"") + "\"";
-            default -> "`" + identifier.replace("`", "``") + "`";
+        DataSourceType type = DataSourceType.fromCode(dbType);
+        if (type == null) {
+            return "`" + identifier.replace("`", "``") + "`";
+        }
+        return switch (type) {
+            case POSTGRESQL, ORACLE -> "\"" + identifier.replace("\"", "\"\"") + "\"";
+            case MYSQL, DORIS -> "`" + identifier.replace("`", "``") + "`";
+            case SQLSERVER -> "[" + identifier.replace("]", "]]") + "]";
         };
     }
 
@@ -246,7 +254,7 @@ public class AddaxJobService {
         boolean hasSuccessHistory = syncJobHistoryMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SyncJobHistory>()
                         .eq("sync_job_id", job.getId())
-                        .eq("status", "SUCCESS")
+                        .eq("status", ExecutionStatus.SUCCESS.getCode())
         ) > 0;
         if (!hasSuccessHistory) {
             return null;
@@ -267,8 +275,8 @@ public class AddaxJobService {
 
         String jdbcUrl = String.format("jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
                 dorisFeHost, dorisFeQueryPort, targetDb);
-        String sql = "SELECT MAX(" + quoteIdentifier("DORIS", job.getIncrementalField()) + ") AS max_value FROM "
-                + quoteIdentifier("DORIS", targetTableName);
+        String sql = "SELECT MAX(" + quoteIdentifier(DataSourceType.DORIS.getCode(), job.getIncrementalField()) + ") AS max_value FROM "
+                + quoteIdentifier(DataSourceType.DORIS.getCode(), targetTableName);
         try (Connection connection = DriverManager.getConnection(jdbcUrl, dorisQueryUser, dorisQueryPassword);
              Statement stmt = connection.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -346,10 +354,15 @@ public class AddaxJobService {
     }
 
     private String resolveReaderName(String type) {
-        return switch (type) {
-            case "POSTGRESQL" -> "postgresqlreader";
-            case "MYSQL", "DORIS" -> "mysqlreader";
-            default -> "mysqlreader";
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported reader type: " + type);
+        }
+        return switch (dataSourceType) {
+            case POSTGRESQL -> "postgresqlreader";
+            case MYSQL, DORIS -> "mysqlreader";
+            case ORACLE -> "oraclereader";
+            case SQLSERVER -> "sqlserverreader";
         };
     }
 

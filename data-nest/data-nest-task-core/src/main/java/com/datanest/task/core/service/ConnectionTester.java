@@ -1,5 +1,6 @@
 package com.datanest.task.core.service;
 
+import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.util.JdbcSchemaExtractor;
 import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
@@ -85,18 +86,33 @@ public class ConnectionTester {
     }
 
     private String buildJdbcUrl(String type, String host, int port, String database, String schema) {
-        return switch (type) {
-            case "MYSQL" ->
-                    String.format("jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000", host, port, database);
-            case "DORIS" ->
-                    String.format("jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000", host, port, database);
-            case "POSTGRESQL" -> {
+        DataSourceType dataSourceType = DataSourceType.fromCode(type);
+        if (dataSourceType == null) {
+            throw new IllegalArgumentException("Unsupported data source type: " + type);
+        }
+        return switch (dataSourceType) {
+            case MYSQL -> String.format(
+                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
+                    host, port, database);
+            case DORIS -> String.format(
+                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
+                    host, port, database);
+            case POSTGRESQL -> {
                 if (schema != null && !schema.isBlank()) {
-                    yield String.format("jdbc:postgresql://%s:%d/%s?currentSchema=%s&connectTimeout=10&socketTimeout=10", host, port, database, schema);
+                    yield String.format(
+                            "jdbc:postgresql://%s:%d/%s?currentSchema=%s&connectTimeout=10&socketTimeout=10",
+                            host, port, database, schema);
                 }
-                yield String.format("jdbc:postgresql://%s:%d/%s?connectTimeout=10&socketTimeout=10", host, port, database);
+                yield String.format(
+                        "jdbc:postgresql://%s:%d/%s?connectTimeout=10&socketTimeout=10",
+                        host, port, database);
             }
-            default -> throw new IllegalArgumentException("Unsupported data source type: " + type);
+            case ORACLE -> String.format(
+                    "jdbc:oracle:thin:@//%s:%d/%s",
+                    host, port, database);
+            case SQLSERVER -> String.format(
+                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=false;trustServerCertificate=true;loginTimeout=10",
+                    host, port, database);
         };
     }
 

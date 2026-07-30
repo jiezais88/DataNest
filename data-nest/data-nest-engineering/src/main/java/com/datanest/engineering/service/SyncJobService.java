@@ -4,6 +4,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.constant.SyncJobExecutionStatus;
+import com.datanest.common.constant.SyncJobScheduleStatus;
+import com.datanest.common.constant.SyncMode;
+import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
@@ -32,12 +36,6 @@ import java.util.stream.Collectors;
 public class SyncJobService {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncJobService.class);
-    private static final String STATUS_NORMAL = "NORMAL";
-    private static final String STATUS_PAUSED = "PAUSED";
-    private static final String EXECUTION_STATUS_PENDING = "PENDING";
-    private static final String EXECUTION_STATUS_RUNNING = "RUNNING";
-    private static final String TRIGGER_CRON = "CRON";
-    private static final String TRIGGER_MANUAL = "MANUAL";
 
     private final SyncJobMapper syncJobMapper;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
@@ -67,8 +65,8 @@ public class SyncJobService {
 
         SyncJob entity = new SyncJob();
         copyFromRequest(entity, request);
-        entity.setExecutionStatus(EXECUTION_STATUS_PENDING);
-        entity.setStatus(STATUS_NORMAL);
+        entity.setExecutionStatus(SyncJobExecutionStatus.PENDING.getCode());
+        entity.setStatus(SyncJobScheduleStatus.NORMAL.getCode());
         entity.setScheduleEnabled(0);
         entity.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
         entity.setCreatedBy(currentUserId());
@@ -77,7 +75,7 @@ public class SyncJobService {
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.insert(entity);
 
-        if (TRIGGER_CRON.equalsIgnoreCase(request.getTriggerType())) {
+        if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType())) {
             Integer jobId = schedulerService.registerJob(entity.getId(), entity.getName(),
                     entity.getCronExpression(), entity.getTriggerType(), false);
             entity.setXxlJobId(jobId);
@@ -104,7 +102,7 @@ public class SyncJobService {
         entity.setUpdatedBy(currentUserId());
         entity.setUpdatedAt(LocalDateTime.now());
 
-        if (TRIGGER_CRON.equalsIgnoreCase(request.getTriggerType())) {
+        if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType())) {
             if (entity.getXxlJobId() != null) {
                 schedulerService.updateJob(entity.getXxlJobId(), entity.getId(), entity.getName(),
                         entity.getCronExpression(), entity.getTriggerType(), entity.getScheduleEnabled() == 1);
@@ -117,7 +115,7 @@ public class SyncJobService {
             schedulerService.unregisterJob(entity.getXxlJobId());
             entity.setXxlJobId(null);
             entity.setScheduleEnabled(0);
-            entity.setStatus(STATUS_NORMAL);
+            entity.setStatus(SyncJobScheduleStatus.NORMAL.getCode());
             entity.setNextExecutionTime(null);
         }
 
@@ -184,13 +182,13 @@ public class SyncJobService {
             job.setXxlJobId(jobId);
             syncJobMapper.updateById(job);
         }
-        job.setExecutionStatus(EXECUTION_STATUS_RUNNING);
+        job.setExecutionStatus(SyncJobExecutionStatus.RUNNING.getCode());
         job.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(job);
 
         SyncJobHistory history = new SyncJobHistory();
         history.setSyncJobId(id);
-        history.setTriggerType(TRIGGER_MANUAL);
+        history.setTriggerType(TaskTriggerType.MANUAL.getCode());
         history.setStatus("RUNNING");
         history.setStartTime(LocalDateTime.now());
         history.setRetryCount(0);
@@ -199,7 +197,7 @@ public class SyncJobService {
         history.setCreatedAt(LocalDateTime.now());
         syncJobHistoryMapper.insert(history);
 
-        String param = id + "," + TRIGGER_MANUAL + "," + history.getId();
+        String param = id + "," + TaskTriggerType.MANUAL.getCode() + "," + history.getId();
         schedulerService.triggerJob(job.getXxlJobId(), param);
         logger.info("已触发同步任务手动执行: syncJobId={}, historyId={}, param={}", id, history.getId(), param);
     }
@@ -210,7 +208,7 @@ public class SyncJobService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
         }
-        if (!TRIGGER_CRON.equalsIgnoreCase(entity.getTriggerType())) {
+        if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(entity.getTriggerType())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "仅 Cron 任务可启动调度");
         }
         if (entity.getXxlJobId() == null) {
@@ -221,7 +219,7 @@ public class SyncJobService {
             schedulerService.startJob(entity.getXxlJobId());
         }
         entity.setScheduleEnabled(1);
-        entity.setStatus(STATUS_NORMAL);
+        entity.setStatus(SyncJobScheduleStatus.NORMAL.getCode());
         entity.setNextExecutionTime(computeNextExecutionTime(entity.getTriggerType(), entity.getCronExpression()));
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(entity);
@@ -237,7 +235,7 @@ public class SyncJobService {
             schedulerService.stopJob(entity.getXxlJobId());
         }
         entity.setScheduleEnabled(0);
-        entity.setStatus(STATUS_PAUSED);
+        entity.setStatus(SyncJobScheduleStatus.PAUSED.getCode());
         entity.setNextExecutionTime(null);
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(entity);
@@ -246,13 +244,32 @@ public class SyncJobService {
     public PageResult<SyncJobHistoryDTO> historyPage(Long syncJobId, SyncJobHistoryQueryRequest request) {
         IPage<SyncJobHistory> page = new Page<>(request.getPage(), request.getPageSize());
         QueryWrapper<SyncJobHistory> wrapper = new QueryWrapper<>();
-        wrapper.eq("sync_job_id", syncJobId);
+
+        if (syncJobId != null) {
+            wrapper.eq("sync_job_id", syncJobId);
+        }
         if (StringUtils.hasText(request.getStatus())) {
             wrapper.eq("status", request.getStatus());
         }
         if (request.getStartTimeFrom() != null && request.getStartTimeTo() != null) {
             wrapper.between("start_time", request.getStartTimeFrom(), request.getStartTimeTo());
         }
+
+        // 按任务名称模糊搜索：先查 sync_job 得到匹配 ID，再过滤历史
+        List<Long> matchedJobIds = null;
+        if (StringUtils.hasText(request.getKeyword())) {
+            QueryWrapper<SyncJob> jobWrapper = new QueryWrapper<>();
+            jobWrapper.like("name", request.getKeyword().trim());
+            matchedJobIds = syncJobMapper.selectList(jobWrapper).stream()
+                    .map(SyncJob::getId)
+                    .distinct()
+                    .toList();
+            if (matchedJobIds.isEmpty()) {
+                return PageResult.of(List.of(), 0L, request.getPage(), request.getPageSize());
+            }
+            wrapper.in("sync_job_id", matchedJobIds);
+        }
+
         wrapper.orderByDesc("start_time");
         IPage<SyncJobHistory> result = syncJobHistoryMapper.selectPage(page, wrapper);
 
@@ -278,7 +295,7 @@ public class SyncJobService {
     }
 
     private LocalDateTime computeNextExecutionTime(String triggerType, String cronExpression) {
-        if (!TRIGGER_CRON.equalsIgnoreCase(triggerType) || !StringUtils.hasText(cronExpression)) {
+        if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(triggerType) || !StringUtils.hasText(cronExpression)) {
             return null;
         }
         try {
@@ -291,19 +308,19 @@ public class SyncJobService {
     }
 
     private void validateRequest(SyncJobCreateRequest request) {
-        if (TRIGGER_CRON.equalsIgnoreCase(request.getTriggerType()) && !StringUtils.hasText(request.getCronExpression())) {
+        if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) && !StringUtils.hasText(request.getCronExpression())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Cron 触发方式必须填写 Cron 表达式");
         }
-        if ("INCREMENTAL".equalsIgnoreCase(request.getSyncMode()) && !StringUtils.hasText(request.getIncrementalField())) {
+        if (SyncMode.INCREMENTAL.getCode().equalsIgnoreCase(request.getSyncMode()) && !StringUtils.hasText(request.getIncrementalField())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "增量同步必须填写增量字段");
         }
     }
 
     private void validateRequest(SyncJobUpdateRequest request) {
-        if (TRIGGER_CRON.equalsIgnoreCase(request.getTriggerType()) && !StringUtils.hasText(request.getCronExpression())) {
+        if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) && !StringUtils.hasText(request.getCronExpression())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Cron 触发方式必须填写 Cron 表达式");
         }
-        if ("INCREMENTAL".equalsIgnoreCase(request.getSyncMode()) && !StringUtils.hasText(request.getIncrementalField())) {
+        if (SyncMode.INCREMENTAL.getCode().equalsIgnoreCase(request.getSyncMode()) && !StringUtils.hasText(request.getIncrementalField())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "增量同步必须填写增量字段");
         }
     }
@@ -417,6 +434,7 @@ public class SyncJobService {
         dto.setCreatedAt(entity.getCreatedAt());
 
         if (job != null) {
+            dto.setTaskName(job.getName());
             dto.setSourceDatabase(job.getSourceDatabase());
             dto.setSourceSchema(job.getSourceSchema());
             dto.setSourceTable(job.getSourceTables() == null || job.getSourceTables().isEmpty() ? null : job.getSourceTables().get(0));

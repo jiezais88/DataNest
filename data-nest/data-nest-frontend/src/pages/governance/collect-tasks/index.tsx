@@ -363,159 +363,159 @@ export default function CollectTasksPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto">
-                <div
-                    className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">
-                    <table className="w-full">
-                        <thead className="sticky top-0 z-10">
-                        <tr className="border-b border-ds-border-subtle bg-ds-bg-hover/80">
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">任务名称</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">数据源</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">采集范围</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">触发方式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">Cron
-                                表达式
-                            </th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">调度状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">采集模式</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">下次执行时间</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">状态</th>
-                            <th className="text-left px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">最近执行</th>
-                            <th className="text-right px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider">操作</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {items.map((item) => {
-                            const statusStyle = statusClass(item.status);
-                            return (
-                                <tr
-                                    key={item.id}
-                                    data-testid={`collect-task-row-${item.name}`}
-                                    data-task-id={item.id}
-                                    className="border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors"
-                                >
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                        {item.datasourceName || '-'}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-body text-ds-text-secondary">
-                                        {formatScope(item.scope)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        {triggerBadge(item.triggerType)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary font-mono">
-                                        {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        {scheduleStatusBadge(item)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        {collectModeBadge(item.collectMode)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary">
-                                        {computeNextExecutionTime(item)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <span
-                                            className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
-                                            {statusStyle.label}
-                                        </span>
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3 text-ds-small text-ds-text-secondary"
-                                        title={item.lastExecuteTime ? new Date(item.lastExecuteTime).toLocaleString('zh-CN') : ''}>
-                                        {formatRelativeTime(item.lastExecuteTime)}
-                                    </td>
-                                    <td className="px-ds-4 py-ds-3">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button
-                                                data-testid={`collect-task-history-${item.name}`}
-                                                onClick={() => navigate(`/governance/collect-tasks/${item.id}/history`)}
-                                                className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                title="历史记录"
-                                                aria-label="历史记录"
-                                            >
-                                                <HiOutlineClock size={16}/>
-                                            </button>
-                                            {canWrite && (
-                                                <>
-                                                    {item.triggerType === 'CRON' && (
-                                                        <button
-                                                            data-testid={`collect-task-schedule-${item.name}`}
-                                                            onClick={() => handleToggleSchedule(item)}
-                                                            disabled={schedulingId === item.id}
-                                                            className={`p-1.5 rounded transition-colors disabled:opacity-60 ${
-                                                                item.scheduleEnabled === 1
-                                                                    ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
-                                                                    : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
-                                                            }`}
-                                                            title={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
-                                                            aria-label={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
-                                                        >
-                                                            <HiOutlineCalendar size={16}/>
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        data-testid={`collect-task-execute-${item.name}`}
-                                                        onClick={() => handleExecute(item)}
-                                                        disabled={executingId === item.id}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-success hover:bg-ds-success-light rounded transition-colors disabled:opacity-60"
-                                                        title="立即执行"
-                                                        aria-label="立即执行"
-                                                    >
-                                                        <HiOutlinePlay size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`collect-task-edit-${item.name}`}
-                                                        onClick={() => openEdit(item)}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="编辑"
-                                                        aria-label="编辑"
-                                                    >
-                                                        <HiOutlinePencilSquare size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`collect-task-delete-${item.name}`}
-                                                        onClick={() => {
-                                                            setDeleteTarget(item);
-                                                            setDeleteOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
-                                                        title="删除"
-                                                        aria-label="删除"
-                                                    >
-                                                        <HiOutlineTrash size={16}/>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                        </tbody>
-                    </table>
-
-                    {items.length === 0 && !loading && (
-                        <EmptyState
-                            title="暂无采集任务"
-                            description="还没有元数据采集任务，创建第一个任务开始自动采集数据源表结构。"
-                            action={
-                                canWrite ? (
-                                    <button
-                                        onClick={openCreate}
-                                        className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                <div className="ds-table-card">
+                    <div className="ds-table-scroll">
+                        <table className="ds-table">
+                            <thead>
+                            <tr>
+                                <th>任务名称</th>
+                                <th>数据源</th>
+                                <th>采集范围</th>
+                                <th>触发方式</th>
+                                <th>Cron 表达式</th>
+                                <th>调度状态</th>
+                                <th>采集模式</th>
+                                <th>下次执行时间</th>
+                                <th>状态</th>
+                                <th>最近执行</th>
+                                <th className="text-center">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {items.map((item) => {
+                                const statusStyle = statusClass(item.status);
+                                return (
+                                    <tr
+                                        key={item.id}
+                                        data-testid={`collect-task-row-${item.name}`}
+                                        data-task-id={item.id}
                                     >
-                                        <HiOutlinePlus size={16}/>
-                                        创建任务
-                                    </button>
-                                ) : null
-                            }
-                        />
-                    )}
+                                        <td className="ds-table-cell-truncate" title={item.name}>
+                                            <span
+                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
+                                        </td>
+                                        <td className="ds-table-cell-truncate" title={item.datasourceName || '-'}>
+                                            <span
+                                                className="text-ds-small text-ds-text-secondary">{item.datasourceName || '-'}</span>
+                                        </td>
+                                        <td className="ds-table-cell-truncate" title={formatScope(item.scope)}>
+                                            <span
+                                                className="text-ds-body text-ds-text-secondary">{formatScope(item.scope)}</span>
+                                        </td>
+                                        <td>
+                                            {triggerBadge(item.triggerType)}
+                                        </td>
+                                        <td className="text-ds-small text-ds-text-secondary font-mono">
+                                            {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
+                                        </td>
+                                        <td>
+                                            {scheduleStatusBadge(item)}
+                                        </td>
+                                        <td>
+                                            {collectModeBadge(item.collectMode)}
+                                        </td>
+                                        <td className="text-ds-small text-ds-text-secondary">
+                                            {computeNextExecutionTime(item)}
+                                        </td>
+                                        <td>
+                                            <span
+                                                className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
+                                                {statusStyle.label}
+                                            </span>
+                                        </td>
+                                        <td className="text-ds-small text-ds-text-secondary"
+                                            title={item.lastExecuteTime ? new Date(item.lastExecuteTime).toLocaleString('zh-CN') : ''}>
+                                            {formatRelativeTime(item.lastExecuteTime)}
+                                        </td>
+                                        <td className="ds-table-cell-no-truncate">
+                                            <div className="flex items-center justify-center w-full gap-1">
+                                                <button
+                                                    data-testid={`collect-task-history-${item.name}`}
+                                                    onClick={() => navigate(`/governance/collect-tasks/${item.id}/history`)}
+                                                    className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                    title="历史记录"
+                                                    aria-label="历史记录"
+                                                >
+                                                    <HiOutlineClock size={16}/>
+                                                </button>
+                                                {canWrite && (
+                                                    <>
+                                                        {item.triggerType === 'CRON' && (
+                                                            <button
+                                                                data-testid={`collect-task-schedule-${item.name}`}
+                                                                onClick={() => handleToggleSchedule(item)}
+                                                                disabled={schedulingId === item.id}
+                                                                className={`p-1.5 rounded transition-colors disabled:opacity-60 ${
+                                                                    item.scheduleEnabled === 1
+                                                                        ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+                                                                        : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
+                                                                }`}
+                                                                title={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
+                                                                aria-label={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
+                                                            >
+                                                                <HiOutlineCalendar size={16}/>
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            data-testid={`collect-task-execute-${item.name}`}
+                                                            onClick={() => handleExecute(item)}
+                                                            disabled={executingId === item.id}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-success hover:bg-ds-success-light rounded transition-colors disabled:opacity-60"
+                                                            title="立即执行"
+                                                            aria-label="立即执行"
+                                                        >
+                                                            <HiOutlinePlay size={16}/>
+                                                        </button>
+                                                        <button
+                                                            data-testid={`collect-task-edit-${item.name}`}
+                                                            onClick={() => openEdit(item)}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
+                                                            title="编辑"
+                                                            aria-label="编辑"
+                                                        >
+                                                            <HiOutlinePencilSquare size={16}/>
+                                                        </button>
+                                                        <button
+                                                            data-testid={`collect-task-delete-${item.name}`}
+                                                            onClick={() => {
+                                                                setDeleteTarget(item);
+                                                                setDeleteOpen(true);
+                                                            }}
+                                                            className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
+                                                            title="删除"
+                                                            aria-label="删除"
+                                                        >
+                                                            <HiOutlineTrash size={16}/>
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            </tbody>
+                        </table>
+
+                        {items.length === 0 && !loading && (
+                            <EmptyState
+                                title="暂无采集任务"
+                                description="还没有元数据采集任务，创建第一个任务开始自动采集数据源表结构。"
+                                action={
+                                    canWrite ? (
+                                        <button
+                                            onClick={openCreate}
+                                            className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
+                                        >
+                                            <HiOutlinePlus size={16}/>
+                                            创建任务
+                                        </button>
+                                    ) : null
+                                }
+                            />
+                        )}
+                    </div>
 
                     <Pagination page={page} pageSize={pageSize} total={total} onChange={handlePageChange}/>
 
