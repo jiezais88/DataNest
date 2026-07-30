@@ -1,16 +1,23 @@
+/// <reference types="node" />
 import {defineConfig} from 'vite'
 import react from '@vitejs/plugin-react'
 import {visualizer} from 'rollup-plugin-visualizer'
 
+const isAnalyze = process.env.ANALYZE === 'true'
+
 export default defineConfig({
     plugins: [
         react(),
-        visualizer({
-            open: false,
-            filename: 'dist/stats.html',
-            gzipSize: true,
-            brotliSize: true,
-        }),
+        ...(isAnalyze
+            ? [
+                visualizer({
+                    open: false,
+                    filename: '../stats/stats.html',
+                    gzipSize: true,
+                    brotliSize: true,
+                }),
+            ]
+            : []),
     ],
     server: {
         host: '0.0.0.0',
