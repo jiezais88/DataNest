@@ -1,9 +1,10 @@
-import type {CollectMode, TaskTriggerType} from '../constants/task';
+import type {CollectMode, ExecutionStatus as AnyExecutionStatus, TaskTriggerType} from '../constants/task';
 
 export type {CollectMode, TaskTriggerType};
 
-export type TaskStatus = 'NEVER_EXECUTED' | 'RUNNING' | 'SUCCESS' | 'FAILED';
-export type ExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL';
+// 状态字符串统一在 constants/task.ts 的 ExecutionStatusEnum 声明，这里只收窄出业务域子集
+export type TaskStatus = Extract<AnyExecutionStatus, 'NEVER_EXECUTED' | 'RUNNING' | 'SUCCESS' | 'FAILED'>;
+export type ExecutionStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL'>;
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
 export interface CollectTask {

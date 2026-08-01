@@ -1,7 +1,7 @@
 import type {DataSourceType} from '../constants/datasource';
 import {DataSourceTypeEnum} from '../constants/datasource';
 import {SiMysql, SiPostgresql} from 'react-icons/si';
-import {Database} from 'lucide-react';
+import {HiOutlineCircleStack} from 'react-icons/hi2';
 
 export interface DatabaseTypeIconProps {
     type: DataSourceType | string;
@@ -102,7 +102,7 @@ function IconForType({type, size}: { type: DataSourceType; size: number }) {
         case DataSourceTypeEnum.DORIS:
             return <DorisIcon size={size} color={color}/>;
         default:
-            return <Database size={size} color={color}/>;
+            return <HiOutlineCircleStack size={size} color={color}/>;
     }
 }
 

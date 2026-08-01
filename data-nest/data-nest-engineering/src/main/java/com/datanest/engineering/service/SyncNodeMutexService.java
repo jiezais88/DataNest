@@ -62,6 +62,20 @@ public class SyncNodeMutexService {
     }
 
     /**
+     * 决策 Sprint3-Fix4：按 syncJobId 强释放（不走 token 校验）。
+     * 用途：DagExecutionSyncService 收尾时通过 SPI 调；callback 不再 finally 释放（避免锁窗口太短测不到冲突）。
+     * 安全性：syncJobId 本身具有唯一性，按 id 释放不会误删其他 syncJob 的锁。
+     */
+    public void unlockBySyncJobId(Long syncJobId) {
+        if (syncJobId == null) return;
+        String key = KEY_PREFIX + syncJobId;
+        Boolean deleted = redisTemplate.delete(key);
+        if (Boolean.TRUE.equals(deleted)) {
+            logger.debug("SPI 强释放同步任务互斥锁: syncJobId={}", syncJobId);
+        }
+    }
+
+    /**
      * 查询当前是否有锁（不获取）
      */
     public boolean isLocked(Long syncJobId) {

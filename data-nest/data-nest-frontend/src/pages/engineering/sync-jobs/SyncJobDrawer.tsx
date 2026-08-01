@@ -8,6 +8,8 @@ import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '../../../api/me
 import {previewDataSource} from '../../../api/preview';
 import Drawer from '../../../components/Drawer';
 import CronPicker from '../../../components/CronPicker';
+import DsButton from '../../../components/DsButton';
+import DsIconButton from '../../../components/DsIconButton';
 import {HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
 
 interface FormData {
@@ -156,9 +158,7 @@ export default function SyncJobDrawer({
         setTargetDbsLoading(true);
         try {
             const result = await listBuiltinDorisDatabases();
-            if (result.code === 200) {
-                setTargetDatabases(result.data || []);
-            }
+            setTargetDatabases(result.data || []);
         } catch {
             setTargetDatabases([]);
         } finally {
@@ -174,12 +174,10 @@ export default function SyncJobDrawer({
         setTargetTablesLoading(true);
         try {
             const result = await listBuiltinDorisTables(database);
-            if (result.code === 200) {
-                const names = result.data || [];
-                setTargetTables(names);
-                if (preselectTable && names.includes(preselectTable)) {
-                    setForm((prev) => ({...prev, targetTable: preselectTable}));
-                }
+            const names = result.data || [];
+            setTargetTables(names);
+            if (preselectTable && names.includes(preselectTable)) {
+                setForm((prev) => ({...prev, targetTable: preselectTable}));
             }
         } catch {
             setTargetTables([]);
@@ -196,12 +194,10 @@ export default function SyncJobDrawer({
         setSchemasLoading(true);
         try {
             const result = await getDataSourceSchemas(datasourceId);
-            if (result.code === 200) {
-                const list = result.data || [];
-                setSchemas(list);
-                if (preselectSchema && list.includes(preselectSchema)) {
-                    loadTables(datasourceId, preselectSchema, preselectTable);
-                }
+            const list = result.data || [];
+            setSchemas(list);
+            if (preselectSchema && list.includes(preselectSchema)) {
+                loadTables(datasourceId, preselectSchema, preselectTable);
             }
         } finally {
             setSchemasLoading(false);
@@ -234,12 +230,10 @@ export default function SyncJobDrawer({
                 resolved.sourceDatabase,
                 resolved.sourceSchema,
             );
-            if (result.code === 200) {
-                const names = result.data || [];
-                setTables(names);
-                if (preselectTable && names.includes(preselectTable)) {
-                    setForm((prev) => ({...prev, sourceTable: preselectTable}));
-                }
+            const names = result.data || [];
+            setTables(names);
+            if (preselectTable && names.includes(preselectTable)) {
+                setForm((prev) => ({...prev, sourceTable: preselectTable}));
             }
         } finally {
             setTablesLoading(false);
@@ -257,15 +251,13 @@ export default function SyncJobDrawer({
                 resolved.sourceSchema || resolved.sourceDatabase,
                 tableName,
             );
-            if (result.code === 200) {
-                const columns = result.data.columns || [];
-                const types = result.data.columnTypes || {};
-                setColumnOptions(columns);
-                setColumnTypes(types);
-                applyAutoMapping(columns, existingMapping);
-                if (form.incrementalField && !columns.includes(form.incrementalField)) {
-                    setForm((prev) => ({...prev, incrementalField: ''}));
-                }
+            const columns = result.data.columns || [];
+            const types = result.data.columnTypes || {};
+            setColumnOptions(columns);
+            setColumnTypes(types);
+            applyAutoMapping(columns, existingMapping);
+            if (form.incrementalField && !columns.includes(form.incrementalField)) {
+                setForm((prev) => ({...prev, incrementalField: ''}));
             }
         } finally {
             setColumnsLoading(false);
@@ -429,7 +421,7 @@ export default function SyncJobDrawer({
         setSubmitting(true);
         try {
             const result = await onSubmit(buildPayload());
-            if (result && result.code === 200) {
+            if (result) {
                 if (runImmediately && result.data && onExecute) {
                     onExecute(result.data);
                 }
@@ -451,13 +443,13 @@ export default function SyncJobDrawer({
             onClose={onClose}
             footer={
                 <>
-                    <button
+                    <DsButton
+                        variant="secondary"
                         data-testid="sync-job-cancel"
                         onClick={onClose}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         取消
-                    </button>
+                    </DsButton>
                     <button
                         data-testid="sync-job-submit-run"
                         onClick={() => handleSubmit(true)}
@@ -466,14 +458,13 @@ export default function SyncJobDrawer({
                     >
                         {submitting ? '保存中...' : '保存并立即执行'}
                     </button>
-                    <button
+                    <DsButton
                         data-testid="sync-job-submit"
                         onClick={() => handleSubmit(false)}
                         disabled={submitting}
-                        className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         {submitting ? '保存中...' : '保存'}
-                    </button>
+                    </DsButton>
                 </>
             }
         >
@@ -571,8 +562,8 @@ export default function SyncJobDrawer({
                 </div>
 
                 <div className="border-t border-ds-border-subtle pt-ds-4">
-                    <h3 className="text-ds-small font-semibold text-ds-text-secondary mb-ds-2">目标端配置（内置
-                        Doris）</h3>
+                    <h3 className="text-ds-small font-semibold text-ds-text-secondary mb-ds-2">目标端配置（Doris
+                        数仓）</h3>
                     <div className="space-y-ds-4">
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
@@ -651,16 +642,15 @@ export default function SyncJobDrawer({
                                         placeholder="目标字段"
                                         className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors"
                                     />
-                                    <button
-                                        type="button"
+                                    <DsIconButton
+                                        tone="danger"
                                         data-testid={`sync-job-mapping-remove-${index}`}
                                         onClick={() => removeMappingRow(index)}
-                                        className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
                                         title="删除"
                                         aria-label="删除"
                                     >
                                         <HiOutlineTrash size={16}/>
-                                    </button>
+                                    </DsIconButton>
                                 </div>
                             ))
                         )}

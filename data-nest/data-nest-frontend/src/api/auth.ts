@@ -1,4 +1,5 @@
 import request from './request';
+import type {PageResult, Result} from '../types/common';
 
 export interface LoginParams {
     username: string;
@@ -33,11 +34,8 @@ export interface UpdateUserParams {
 }
 
 export const login = (params: LoginParams) =>
-    request.post<{
-        code: number;
-        message?: string;
-        data: { token: string; userInfo: { userId: string; username: string; roles: string[] } }
-    }>('/system/auth/login', params);
+    request.post<Result<{ token: string; userInfo: { userId: string; username: string; roles: string[] } }>>(
+        '/system/auth/login', params, {skipErrorMessage: true});
 
 export const logout = () => request.post('/system/auth/logout');
 
@@ -48,16 +46,13 @@ export const getUsers = (params: {
     roleCode?: string;
     status?: string
 }) =>
-    request.get<{
-        code: number;
-        data: { records: UserVO[]; total: number; page: number; pageSize: number }
-    }>('/system/users', {params});
+    request.get<Result<PageResult<UserVO>>>('/system/users', {params});
 
 export const createUser = (params: CreateUserParams) =>
-    request.post<{ code: number; data: UserVO }>('/system/users', params);
+    request.post<Result<UserVO>>('/system/users', params);
 
 export const updateUser = (userId: string, params: UpdateUserParams) =>
-    request.put<{ code: number; data: UserVO }>(`/system/users/${userId}`, params);
+    request.put<Result<UserVO>>(`/system/users/${userId}`, params);
 
 export const toggleUserStatus = (userId: string) =>
     request.put(`/system/users/${userId}/toggle`);

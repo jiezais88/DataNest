@@ -1,5 +1,11 @@
 import {useEffect, useRef, useState} from 'react';
-import {ChevronRight, Folder, Search, Table, X} from 'lucide-react';
+import {
+    HiChevronRight,
+    HiOutlineFolder,
+    HiOutlineMagnifyingGlass,
+    HiOutlineTableCells,
+    HiOutlineXMark
+} from 'react-icons/hi2';
 import {
     listMetadataDatabases,
     listMetadataDatasourceIds,
@@ -10,6 +16,7 @@ import {
 } from '../../../api/metadata';
 import type {MetadataDatasource, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
+import DsSpinner from '../../../components/DsSpinner';
 import {isWithoutSchema, SourceTypeEnum} from '../../../constants/datasource';
 
 interface MetadataTreeProps {
@@ -97,42 +104,38 @@ export default function MetadataTree({
             setIsSearchMode(false);
             loadedRef.current.clear();
             const result = await listMetadataDatasourceIds();
-            if (result.code === 200) {
-                const nodes: MetadataTreeNode[] = (result.data as MetadataDatasource[]).map((ds) => {
-                    const shortId = String(ds.id).slice(-6);
-                    const exists = ds.exists !== false;
-                    const isBuiltin = ds.sourceType === SourceTypeEnum.BUILTIN_DORIS;
-                    return {
-                        id: `ds-${ds.id}`,
-                        type: 'datasource',
-                        name: isBuiltin ? 'Doris（内置）' : (ds.name ? ds.name : `数据源 ${shortId}${exists ? '' : '（已删除）'}`),
-                        exists,
-                        datasourceId: ds.id,
-                        datasourceType: ds.type,
-                        sourceType: ds.sourceType,
-                        databaseName: '',
-                        schemaName: '',
-                        children: [],
-                    };
-                });
-                nodes.sort((a, b) => {
-                    const aBuiltin = a.sourceType === SourceTypeEnum.BUILTIN_DORIS ? 1 : 0;
-                    const bBuiltin = b.sourceType === SourceTypeEnum.BUILTIN_DORIS ? 1 : 0;
-                    if (aBuiltin !== bBuiltin) return bBuiltin - aBuiltin;
-                    return a.name.localeCompare(b.name, 'zh-CN');
-                });
-                setRoots(nodes);
-                onRootsLoaded?.(nodes.length > 0);
-                if (autoSelectFirst && nodes.length > 0 && !selectedNode && !autoSelectRef.current.active) {
-                    const root = nodes[0];
-                    autoSelectRef.current = {active: true, pendingId: root.id};
-                    const nextExpanded = new Set([root.id]);
-                    onExpandedChange(nextExpanded);
-                    onSelect(root);
-                    loadChildren(root);
-                }
-            } else {
-                onRootsLoaded?.(false);
+            const nodes: MetadataTreeNode[] = (result.data as MetadataDatasource[]).map((ds) => {
+                const shortId = String(ds.id).slice(-6);
+                const exists = ds.exists !== false;
+                const isBuiltin = ds.sourceType === SourceTypeEnum.BUILTIN_DORIS;
+                return {
+                    id: `ds-${ds.id}`,
+                    type: 'datasource',
+                    name: isBuiltin ? 'Doris 数仓' : (ds.name ? ds.name : `数据源 ${shortId}${exists ? '' : '（已删除）'}`),
+                    exists,
+                    datasourceId: ds.id,
+                    datasourceType: ds.type,
+                    sourceType: ds.sourceType,
+                    databaseName: '',
+                    schemaName: '',
+                    children: [],
+                };
+            });
+            nodes.sort((a, b) => {
+                const aBuiltin = a.sourceType === SourceTypeEnum.BUILTIN_DORIS ? 1 : 0;
+                const bBuiltin = b.sourceType === SourceTypeEnum.BUILTIN_DORIS ? 1 : 0;
+                if (aBuiltin !== bBuiltin) return bBuiltin - aBuiltin;
+                return a.name.localeCompare(b.name, 'zh-CN');
+            });
+            setRoots(nodes);
+            onRootsLoaded?.(nodes.length > 0);
+            if (autoSelectFirst && nodes.length > 0 && !selectedNode && !autoSelectRef.current.active) {
+                const root = nodes[0];
+                autoSelectRef.current = {active: true, pendingId: root.id};
+                const nextExpanded = new Set([root.id]);
+                onExpandedChange(nextExpanded);
+                onSelect(root);
+                loadChildren(root);
             }
         } catch (err) {
             console.error('loadRoots failed', err);
@@ -150,7 +153,7 @@ export default function MetadataTree({
         setSearchLoading(true);
         try {
             const result = await searchMetadataTree(keyword);
-            if (result.code === 200 && result.data) {
+            if (result.data) {
                 const searchRoots = result.data;
                 setRoots(searchRoots);
                 setIsSearchMode(true);
@@ -194,20 +197,18 @@ export default function MetadataTree({
             setLoading(node.id);
             try {
                 const result = await listMetadataDatabases(datasourceId);
-                if (result.code === 200) {
-                    const children = result.data.map((db) => ({
-                        id: `db-${datasourceId}-${db}`,
-                        type: 'database' as const,
-                        name: db,
-                        databaseName: db,
-                        schemaName: '',
-                        datasourceId,
-                        datasourceType: node.datasourceType,
-                        children: [],
-                    }));
-                    setRoots(prev => updateNodeChildren(prev, node.id, children));
-                    handleAutoSelectChildren(node, children);
-                }
+                const children = result.data.map((db) => ({
+                    id: `db-${datasourceId}-${db}`,
+                    type: 'database' as const,
+                    name: db,
+                    databaseName: db,
+                    schemaName: '',
+                    datasourceId,
+                    datasourceType: node.datasourceType,
+                    children: [],
+                }));
+                setRoots(prev => updateNodeChildren(prev, node.id, children));
+                handleAutoSelectChildren(node, children);
             } finally {
                 setLoading(null);
             }
@@ -220,20 +221,18 @@ export default function MetadataTree({
                 setLoading(node.id);
                 try {
                     const result = await listMetadataTablesWithoutSchema(datasourceId, databaseName);
-                    if (result.code === 200) {
-                        const children = (result.data as MetadataTable[]).map((table) => ({
-                            id: `table-${table.id}`,
-                            type: 'table' as const,
-                            name: table.tableName,
-                            databaseName,
-                            schemaName: databaseName,
-                            datasourceId,
-                            datasourceType,
-                            count: table.columnCount ?? 0,
-                        }));
-                        setRoots(prev => updateNodeChildren(prev, node.id, children));
-                        setRoots(prev => updateNodeCount(prev, node.id, children.length));
-                    }
+                    const children = (result.data as MetadataTable[]).map((table) => ({
+                        id: `table-${table.id}`,
+                        type: 'table' as const,
+                        name: table.tableName,
+                        databaseName,
+                        schemaName: databaseName,
+                        datasourceId,
+                        datasourceType,
+                        count: table.columnCount ?? 0,
+                    }));
+                    setRoots(prev => updateNodeChildren(prev, node.id, children));
+                    setRoots(prev => updateNodeCount(prev, node.id, children.length));
                 } finally {
                     setLoading(null);
                 }
@@ -243,20 +242,18 @@ export default function MetadataTree({
             setLoading(node.id);
             try {
                 const result = await listMetadataSchemas(datasourceId, databaseName);
-                if (result.code === 200) {
-                    const children = result.data.map((schema) => ({
-                        id: `schema-${datasourceId}-${databaseName}-${schema}`,
-                        type: 'schema' as const,
-                        name: schema,
-                        databaseName,
-                        schemaName: schema,
-                        datasourceId,
-                        datasourceType,
-                        children: [],
-                    }));
-                    setRoots(prev => updateNodeChildren(prev, node.id, children));
-                    setRoots(prev => updateNodeCount(prev, node.id, children.length));
-                }
+                const children = result.data.map((schema) => ({
+                    id: `schema-${datasourceId}-${databaseName}-${schema}`,
+                    type: 'schema' as const,
+                    name: schema,
+                    databaseName,
+                    schemaName: schema,
+                    datasourceId,
+                    datasourceType,
+                    children: [],
+                }));
+                setRoots(prev => updateNodeChildren(prev, node.id, children));
+                setRoots(prev => updateNodeCount(prev, node.id, children.length));
             } finally {
                 setLoading(null);
             }
@@ -268,20 +265,18 @@ export default function MetadataTree({
             setLoading(node.id);
             try {
                 const result = await listMetadataTables(datasourceId, databaseName, schemaName);
-                if (result.code === 200) {
-                    const children = (result.data as MetadataTable[]).map((table) => ({
-                        id: `table-${table.id}`,
-                        type: 'table' as const,
-                        name: table.tableName,
-                        databaseName,
-                        schemaName,
-                        datasourceId,
-                        datasourceType,
-                        count: table.columnCount ?? 0,
-                    }));
-                    setRoots(prev => updateNodeChildren(prev, node.id, children));
-                    setRoots(prev => updateNodeCount(prev, node.id, children.length));
-                }
+                const children = (result.data as MetadataTable[]).map((table) => ({
+                    id: `table-${table.id}`,
+                    type: 'table' as const,
+                    name: table.tableName,
+                    databaseName,
+                    schemaName,
+                    datasourceId,
+                    datasourceType,
+                    count: table.columnCount ?? 0,
+                }));
+                setRoots(prev => updateNodeChildren(prev, node.id, children));
+                setRoots(prev => updateNodeCount(prev, node.id, children.length));
             } finally {
                 setLoading(null);
             }
@@ -317,9 +312,9 @@ export default function MetadataTree({
             return <DatabaseTypeIcon type={node.datasourceType || ''} size={16} showLabel={false}/>;
         }
         if (node.type === 'database' || node.type === 'schema') {
-            return <Folder size={16} className="text-ds-warning flex-shrink-0"/>;
+            return <HiOutlineFolder size={16} className="text-ds-warning flex-shrink-0"/>;
         }
-        return <Table size={16} className="text-ds-text-muted flex-shrink-0"/>;
+        return <HiOutlineTableCells size={16} className="text-ds-text-muted flex-shrink-0"/>;
     };
 
     const renderNode = (node: MetadataTreeNode, depth = 0) => {
@@ -351,7 +346,7 @@ export default function MetadataTree({
                     {hasChildren && (
                         <span
                             className={`w-4 flex-shrink-0 text-ds-text-muted transition-transform ${expandedFlag ? 'rotate-90' : ''}`}>
-                            <ChevronRight size={14}/>
+                            <HiChevronRight size={14}/>
                         </span>
                     )}
                     {!hasChildren && <span className="w-4 flex-shrink-0"/>}
@@ -368,8 +363,7 @@ export default function MetadataTree({
                             className="ml-ds-1 px-ds-1.5 py-ds-0.5 text-ds-caption bg-ds-text-muted/10 text-ds-text-muted rounded-ds-xs">已删除</span>
                     )}
                     {loading === node.id && (
-                        <span
-                            className="ml-auto w-3 h-3 border-2 border-ds-accent border-t-transparent rounded-full animate-spin"/>
+                        <DsSpinner size={12} className="ml-auto text-ds-accent"/>
                     )}
                 </button>
                 {expandedFlag && node.children && (
@@ -395,13 +389,14 @@ export default function MetadataTree({
                         placeholder="搜索库 / 模式 / 表"
                         className="w-full pl-ds-8 pr-ds-7 py-ds-1.5 text-ds-small bg-ds-bg-surface border border-ds-border-subtle rounded-ds-sm focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent"
                     />
-                    <Search size={14} className="absolute left-ds-2.5 top-1/2 -translate-y-1/2 text-ds-text-muted"/>
+                    <HiOutlineMagnifyingGlass size={14}
+                                              className="absolute left-ds-2.5 top-1/2 -translate-y-1/2 text-ds-text-muted"/>
                     {searchKeyword && (
                         <button
                             onClick={handleClearSearch}
                             className="absolute right-ds-2 top-1/2 -translate-y-1/2 text-ds-text-muted hover:text-ds-text-primary"
                         >
-                            <X size={14}/>
+                            <HiOutlineXMark size={14}/>
                         </button>
                     )}
                     {!searchKeyword && (
@@ -410,7 +405,7 @@ export default function MetadataTree({
                             disabled={searchLoading}
                             className="absolute right-ds-2 top-1/2 -translate-y-1/2 text-ds-text-muted hover:text-ds-accent disabled:opacity-50"
                         >
-                            <Search size={14}/>
+                            <HiOutlineMagnifyingGlass size={14}/>
                         </button>
                     )}
                 </div>

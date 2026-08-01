@@ -39,6 +39,11 @@ public class DagNode {
      */
     private String config;
 
+    /**
+     * DolphinScheduler 任务定义 code，持久化避免节点重命名后 code 变化。
+     */
+    private Long dsTaskCode;
+
     private Long createdBy;
 
     private Long updatedBy;

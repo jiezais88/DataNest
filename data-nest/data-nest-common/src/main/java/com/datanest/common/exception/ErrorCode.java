@@ -47,6 +47,7 @@ public enum ErrorCode {
     SYNC_JOB_NOT_FOUND(6002, "同步任务不存在"),
     ADDAX_EXECUTION_FAILED(6003, "Addax 执行失败"),
     TARGET_DATASOURCE_NOT_FOUND(6004, "目标数据源不存在"),
+    SYNC_JOB_ALREADY_RUNNING(6005, "同步任务正在执行中"),
 
     // DAG / Data development errors (7xxx) — Sprint 3
     DAG_NOT_FOUND(7001, "DAG 不存在"),
@@ -63,6 +64,11 @@ public enum ErrorCode {
     SQL_PARSE_FAILED(7012, "SQL 解析失败"),
     DS_API_ERROR(7013, "DolphinScheduler API 调用失败"),
     METADATA_REGISTRATION_FAILED(7014, "元数据注册失败"),
+    SQL_PREVIEW_FAILED(7015, "SQL 预览执行失败"),
+    DAG_EXECUTION_NOT_FOUND(7016, "DAG 执行实例不存在"),
+    DAG_RERUN_ALREADY_RUNNING(7017, "重跑失败节点时检测到 DAG 正在执行中"),
+    DAG_PROJECT_ID_REQUIRED(7018, "DAG 所属项目 ID 不能为空"),
+    DAG_NAME_REQUIRED(7019, "DAG 名称不能为空"),
 
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");

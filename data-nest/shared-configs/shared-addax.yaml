@@ -14,7 +14,6 @@ datanest:
       be-load-url: http://${datanest.doris.fe-host:192.168.119.135}:8040
       username: ${datanest.doris.user:root}
       password: ${datanest.doris.password:password}
-      database: datanest
       load-props:
         format: json
         strip_outer_array: true

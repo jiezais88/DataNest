@@ -28,6 +28,12 @@
             <artifactId>data-nest-common</artifactId>
         </dependency>
 
+        <!-- Sprint 3 性能优化：DagExecutionSyncService 使用 Caffeine 本地缓存（task-core 中为 provided 作用域） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

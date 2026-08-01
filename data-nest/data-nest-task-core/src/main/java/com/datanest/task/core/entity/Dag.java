@@ -1,8 +1,6 @@
 package com.datanest.task.core.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -38,6 +36,7 @@ public class Dag {
 
     private Long dsProcessDefinitionCode;
 
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long dsScheduleId;
 
     private String releaseState;         // OFFLINE / ONLINE

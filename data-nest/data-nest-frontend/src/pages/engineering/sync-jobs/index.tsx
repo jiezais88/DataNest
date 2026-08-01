@@ -1,7 +1,8 @@
-import {useCallback, useEffect, useState} from 'react';
+import type {HTMLAttributes} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {message} from 'antd';
-import {useAuthStore} from '../../../store/useAuthStore';
+import {Table, Tooltip} from 'antd';
+import type {ColumnsType} from 'antd/es/table';
 import {getDataSources} from '../../../api/datasource';
 import {
     createSyncJob,
@@ -20,14 +21,24 @@ import type {
     SyncJobQueryParams,
     SyncTriggerType,
 } from '../../../types/sync';
-import {formatDateTime, formatRelativeTime} from '../../../utils/time';
+import {formatDateTime, formatRelativeTime} from '../../../utils/format';
+import {executionStatusVariant} from '../../../utils/status';
+import {notify} from '../../../utils/notify';
+import {usePollingWhile} from '../../../hooks/usePollingWhile';
+import {useHasRole} from '../../../hooks/useHasRole';
+import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
+import usePagedList from '../../../hooks/usePagedList';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
-import EmptyState from '../../../components/EmptyState';
+import DsButton from '../../../components/DsButton';
+import DsIconButton from '../../../components/DsIconButton';
+import DsStatusBadge from '../../../components/DsStatusBadge';
 import SearchInput from '../../../components/SearchInput';
+import DsFilterSelect from '../../../components/DsFilterSelect';
+import DsToolbar from '../../../components/DsToolbar';
+import DsTableEmpty from '../../../components/DsTableEmpty';
 import SyncJobDrawer from './SyncJobDrawer';
 import {
-    HiChevronRight,
     HiOutlineCalendar,
     HiOutlineClock,
     HiOutlinePencilSquare,
@@ -53,35 +64,20 @@ const TRIGGER_OPTIONS: { value: SyncTriggerType | ''; label: string }[] = [
 function syncModeBadge(syncMode?: string, incrementalField?: string) {
     if (syncMode === 'INCREMENTAL') {
         return (
-            <span
-                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-blue-50 text-blue-700">
-                增量同步{incrementalField ? ` (${incrementalField})` : ''}
-            </span>
+            <DsStatusBadge
+                variant="accent"
+                label={`增量同步${incrementalField ? ` (${incrementalField})` : ''}`}
+            />
         );
     }
-    return (
-        <span
-            className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-emerald-50 text-emerald-700">
-            全量同步
-        </span>
-    );
+    return <DsStatusBadge variant="success" label="全量同步"/>;
 }
 
 function triggerBadge(triggerType: string) {
     if (triggerType === 'MANUAL') {
-        return (
-            <span
-                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-blue-50 text-blue-700">
-                手动
-            </span>
-        );
+        return <DsStatusBadge variant="accent" label="手动"/>;
     }
-    return (
-        <span
-            className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-slate-100 text-blue-600">
-            Cron 定时
-        </span>
-    );
+    return <DsStatusBadge variant="disabled" label="Cron 定时"/>;
 }
 
 function scheduleStatusBadge(item: SyncJob) {
@@ -89,38 +85,26 @@ function scheduleStatusBadge(item: SyncJob) {
         return <span className="text-ds-small text-ds-text-muted">—</span>;
     }
     if (item.scheduleEnabled) {
-        return (
-            <span
-                className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-emerald-50 text-emerald-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>
-                已启用
-            </span>
-        );
+        return <DsStatusBadge variant="success" label="已启用"/>;
     }
-    return (
-        <span
-            className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-gray-100 text-gray-600">
-            <span className="w-1.5 h-1.5 rounded-full bg-gray-400"/>
-            已停用
-        </span>
-    );
+    return <DsStatusBadge variant="disabled" label="已停用"/>;
 }
 
-function executionStatusClass(value: SyncExecutionStatus) {
-    if (value === 'PENDING') {
-        return {dot: 'bg-ds-text-muted', bg: 'bg-ds-bg-hover', text: 'text-ds-text-muted', label: '未执行'};
-    }
-    if (value === 'RUNNING') {
-        return {dot: 'bg-ds-accent', bg: 'bg-blue-50', text: 'text-blue-600', label: '运行中'};
-    }
-    if (value === 'SUCCESS') {
-        return {dot: 'bg-ds-success', bg: 'bg-ds-success-light', text: 'text-ds-success', label: '成功'};
-    }
-    if (value === 'FAILED') {
-        return {dot: 'bg-ds-danger', bg: 'bg-ds-danger-light', text: 'text-ds-danger', label: '失败'};
-    }
-    return {dot: 'bg-ds-text-muted', bg: 'bg-ds-bg-hover', text: 'text-ds-text-muted', label: '未知'};
+const EXECUTION_STATUS_LABELS: Record<string, string> = {
+    PENDING: '未执行',
+    RUNNING: '运行中',
+    SUCCESS: '成功',
+    FAILED: '失败',
+};
+
+// 「已应用」的查询条件（页面里的草稿条件由下方 draft* state 持有）
+interface SyncJobListQuery {
+    keyword: string;
+    triggerType: SyncTriggerType | '';
+    executionStatus: SyncExecutionStatus | '';
 }
+
+const INITIAL_QUERY: SyncJobListQuery = {keyword: '', triggerType: '', executionStatus: ''};
 
 function formatSourceToTarget(item: SyncJob, dataSources: DataSource[]) {
     const ds = dataSources.find((d) => d.id === item.sourceDatasourceId);
@@ -144,21 +128,30 @@ function formatNextExecutionTime(item: SyncJob) {
 
 export default function SyncJobsPage() {
     const navigate = useNavigate();
-    const {userInfo} = useAuthStore();
-    const roles = userInfo?.roles || [];
-    const canWrite = roles.includes('SUPER_ADMIN') || roles.includes('DATA_ENGINEER');
+    const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
 
-    const [items, setItems] = useState<SyncJob[]>([]);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-    const [keyword, setKeyword] = useState('');
-    const [triggerType, setTriggerType] = useState<SyncTriggerType | ''>('');
-    const [executionStatus, setExecutionStatus] = useState<SyncExecutionStatus | ''>('');
     const [draftKeyword, setDraftKeyword] = useState('');
     const [draftTriggerType, setDraftTriggerType] = useState<SyncTriggerType | ''>('');
     const [draftExecutionStatus, setDraftExecutionStatus] = useState<SyncExecutionStatus | ''>('');
-    const [loading, setLoading] = useState(false);
+
+    const {
+        list, total, page, pageSize, loading,
+        setPage, setPageSize, applyQuery, reload,
+    } = usePagedList<SyncJobListQuery, SyncJob>({
+        fetcher: async (query) => {
+            const params: SyncJobQueryParams = {
+                page: query.page,
+                pageSize: query.pageSize,
+                keyword: query.keyword || undefined,
+                triggerType: query.triggerType || undefined,
+                executionStatus: query.executionStatus || undefined,
+            };
+            const result = await querySyncJobs(params);
+            return {list: result.data.records, total: result.data.total};
+        },
+        initialQuery: INITIAL_QUERY,
+        defaultPageSize: 10,
+    });
 
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editItem, setEditItem] = useState<SyncJob | null>(null);
@@ -169,55 +162,25 @@ export default function SyncJobsPage() {
     const [deleteTarget, setDeleteTarget] = useState<SyncJob | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
-    const [searchTrigger, setSearchTrigger] = useState(0);
-
-    const loadData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params: SyncJobQueryParams = {
-                page,
-                pageSize,
-                keyword: keyword || undefined,
-                triggerType: triggerType || undefined,
-                executionStatus: executionStatus || undefined,
-            };
-            const [jobResult, dsResult] = await Promise.all([
-                querySyncJobs(params),
-                getDataSources({page: 1, pageSize: 1000}),
-            ]);
-            if (jobResult.code === 200) {
-                setItems(jobResult.data.records);
-                setTotal(jobResult.data.total);
-            }
-            if (dsResult.code === 200) {
-                setDataSources(dsResult.data.records.filter((ds) => ds.status === 'NORMAL'));
-            }
-        } finally {
-            setLoading(false);
-        }
-    }, [page, pageSize, keyword, triggerType, executionStatus, searchTrigger]);
 
     useEffect(() => {
-        loadData();
-    }, [loadData]);
-
-    useEffect(() => {
-        const hasRunning = items.some((i) => i.executionStatus === 'RUNNING') || executingId != null;
-        if (!hasRunning) return;
-        const timer = setInterval(() => loadData(), 3000);
-        const stop = setTimeout(() => clearInterval(timer), 30000);
+        let mounted = true;
+        getDataSources({page: 1, pageSize: 1000}).then((result) => {
+            if (!mounted) return;
+            setDataSources(result.data.records.filter((ds) => ds.status === 'NORMAL'));
+        });
         return () => {
-            clearInterval(timer);
-            clearTimeout(stop);
+            mounted = false;
         };
-    }, [items, executingId, loadData]);
+    }, []);
+
+    const hasRunning = list.some((i) => i.executionStatus === 'RUNNING') || executingId != null;
+    usePollingWhile(hasRunning, reload);
 
     const loadDataSources = async () => {
         try {
             const result = await getDataSources({page: 1, pageSize: 1000});
-            if (result.code === 200) {
-                setDataSources(result.data.records.filter((ds) => ds.status === 'NORMAL'));
-            }
+            setDataSources(result.data.records.filter((ds) => ds.status === 'NORMAL'));
         } catch {
             // ignored
         }
@@ -239,21 +202,17 @@ export default function SyncJobsPage() {
         const result = editItem
             ? await updateSyncJob(editItem.id, payload)
             : await createSyncJob(payload);
-        if (result.code === 200) {
-            message.success(editItem ? '同步任务更新成功' : '同步任务创建成功');
-            loadData();
-        }
+        notify.success(editItem ? '同步任务更新成功' : '同步任务创建成功');
+        reload();
         return result;
     };
 
     const handleExecute = async (item: SyncJob) => {
         setExecutingId(item.id);
         try {
-            const result = await executeSyncJob(item.id);
-            if (result.code === 200) {
-                message.success(`同步任务 "${item.name}" 已触发执行`);
-                loadData();
-            }
+            await executeSyncJob(item.id);
+            notify.success(`同步任务 "${item.name}" 已触发执行`);
+            reload();
         } finally {
             setExecutingId(null);
         }
@@ -262,13 +221,13 @@ export default function SyncJobsPage() {
     const handleToggleSchedule = async (item: SyncJob) => {
         setSchedulingId(item.id);
         try {
-            const result = item.scheduleEnabled
-                ? await stopSyncJobSchedule(item.id)
-                : await startSyncJobSchedule(item.id);
-            if (result.code === 200) {
-                message.success(`同步任务 "${item.name}" 已${item.scheduleEnabled ? '停用调度' : '启用调度'}`);
-                loadData();
+            if (item.scheduleEnabled) {
+                await stopSyncJobSchedule(item.id);
+            } else {
+                await startSyncJobSchedule(item.id);
             }
+            notify.success(`同步任务 "${item.name}" 已${item.scheduleEnabled ? '停用调度' : '启用调度'}`);
+            reload();
         } finally {
             setSchedulingId(null);
         }
@@ -278,40 +237,177 @@ export default function SyncJobsPage() {
         if (!deleteTarget) return;
         setDeleteLoading(true);
         try {
-            const result = await deleteSyncJob(deleteTarget.id);
-            if (result.code === 200) {
-                message.success('同步任务已删除');
-                setDeleteOpen(false);
-                setDeleteTarget(null);
-                loadData();
-            }
+            await deleteSyncJob(deleteTarget.id);
+            notify.success('同步任务已删除');
+            setDeleteOpen(false);
+            setDeleteTarget(null);
+            reload();
         } finally {
             setDeleteLoading(false);
         }
     };
 
     const handleSearch = () => {
-        setKeyword(draftKeyword);
-        setTriggerType(draftTriggerType);
-        setExecutionStatus(draftExecutionStatus);
-        setPage(1);
-        setSearchTrigger((v) => v + 1);
+        applyQuery({
+            keyword: draftKeyword,
+            triggerType: draftTriggerType,
+            executionStatus: draftExecutionStatus,
+        });
     };
 
     const handleReset = () => {
         setDraftKeyword('');
         setDraftTriggerType('');
         setDraftExecutionStatus('');
-        setKeyword('');
-        setTriggerType('');
-        setExecutionStatus('');
-        setPage(1);
+        applyQuery(INITIAL_QUERY);
     };
 
     const handlePageChange = (nextPage: number, nextPageSize: number) => {
-        setPage(nextPage);
-        setPageSize(nextPageSize);
+        // Pagination 在改每页条数时回调 onChange(1, nextPageSize)，hook 的 setPageSize 自带回第 1 页
+        if (nextPageSize !== pageSize) {
+            setPageSize(nextPageSize);
+        } else {
+            setPage(nextPage);
+        }
     };
+
+    const columns = useMemo<ColumnsType<SyncJob>>(() => [
+        {
+            title: '任务名称',
+            dataIndex: 'name',
+            ellipsis: true,
+            render: (v: string) => (
+                <span className="text-ds-body text-ds-text-primary font-medium" title={v}>{v}</span>
+            ),
+        },
+        {
+            title: '触发方式',
+            dataIndex: 'triggerType',
+            render: (v: string) => triggerBadge(v),
+        },
+        {
+            title: 'Cron 表达式',
+            render: (_, item) => (
+                <span className="text-ds-small text-ds-text-secondary font-mono">
+                    {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
+                </span>
+            ),
+        },
+        {
+            title: '调度状态',
+            render: (_, item) => scheduleStatusBadge(item),
+        },
+        {
+            title: '下次执行时间',
+            render: (_, item) => (
+                <span className="text-ds-small text-ds-text-secondary">
+                    {formatNextExecutionTime(item)}
+                </span>
+            ),
+        },
+        {
+            title: '源 → 目标',
+            ellipsis: true,
+            render: (_, item) => (
+                <span className="text-ds-small text-ds-text-secondary font-mono"
+                      title={formatSourceToTarget(item, dataSources)}>
+                    {formatSourceToTarget(item, dataSources)}
+                </span>
+            ),
+        },
+        {
+            title: '同步模式',
+            render: (_, item) => syncModeBadge(item.syncMode, item.incrementalField),
+        },
+        {
+            title: '状态',
+            render: (_, item) => (
+                <DsStatusBadge
+                    variant={executionStatusVariant(item.executionStatus)}
+                    label={EXECUTION_STATUS_LABELS[item.executionStatus] ?? '未知'}
+                />
+            ),
+        },
+        {
+            title: '最近执行',
+            render: (_, item) => (
+                <span className="text-ds-small text-ds-text-secondary"
+                      title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
+                    {formatRelativeTime(item.lastExecuteTime)}
+                </span>
+            ),
+        },
+        {
+            title: '操作',
+            align: 'center',
+            render: (_, item) => (
+                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
+                    <Tooltip title="历史记录">
+                        <DsIconButton
+                            tone="accent"
+                            data-testid={`sync-job-history-${item.name}`}
+                            onClick={() => navigate(`/engineering/sync-job-history?syncJobId=${item.id}&jobName=${encodeURIComponent(item.name || '')}`)}
+                            aria-label="历史记录"
+                        >
+                            <HiOutlineClock size={16}/>
+                        </DsIconButton>
+                    </Tooltip>
+                    {canWrite && (
+                        <>
+                            {item.triggerType === 'CRON' && (
+                                <Tooltip title={item.scheduleEnabled ? '停用调度' : '启用调度'}>
+                                    <DsIconButton
+                                        tone="success"
+                                        active={item.scheduleEnabled}
+                                        data-testid={`sync-job-schedule-${item.name}`}
+                                        onClick={() => handleToggleSchedule(item)}
+                                        disabled={schedulingId === item.id}
+                                        aria-label={item.scheduleEnabled ? '停用调度' : '启用调度'}
+                                    >
+                                        <HiOutlineCalendar size={16}/>
+                                    </DsIconButton>
+                                </Tooltip>
+                            )}
+                            <Tooltip title="立即执行">
+                                <DsIconButton
+                                    tone="success"
+                                    data-testid={`sync-job-execute-${item.name}`}
+                                    onClick={() => handleExecute(item)}
+                                    disabled={executingId === item.id}
+                                    aria-label="立即执行"
+                                >
+                                    <HiOutlinePlay size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                            <Tooltip title="编辑">
+                                <DsIconButton
+                                    tone="accent"
+                                    data-testid={`sync-job-edit-${item.name}`}
+                                    onClick={() => openEdit(item)}
+                                    aria-label="编辑"
+                                >
+                                    <HiOutlinePencilSquare size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                            <Tooltip title="删除">
+                                <DsIconButton
+                                    tone="danger"
+                                    data-testid={`sync-job-delete-${item.name}`}
+                                    onClick={() => {
+                                        setDeleteTarget(item);
+                                        setDeleteOpen(true);
+                                    }}
+                                    aria-label="删除"
+                                >
+                                    <HiOutlineTrash size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        </>
+                    )}
+                </div>
+            ),
+        },
+    ], [canWrite, dataSources, executingId, schedulingId, navigate]);
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
@@ -322,20 +418,37 @@ export default function SyncJobsPage() {
                         Cron 定时调度</p>
                 </div>
                 {canWrite && (
-                    <button
+                    <DsButton
                         data-testid="sync-job-create"
                         onClick={openCreate}
-                        className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
                     >
                         <HiOutlinePlus size={16}/>
                         创建任务
-                    </button>
+                    </DsButton>
                 )}
             </div>
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
-                <div className="flex items-center gap-ds-3 flex-wrap">
+                <DsToolbar
+                    extra={
+                        <>
+                            <DsButton
+                                onClick={handleSearch}
+                                disabled={loading}
+                            >
+                                {loading ? '查询中...' : '查询'}
+                            </DsButton>
+                            <DsButton
+                                variant="secondary"
+                                onClick={handleReset}
+                                disabled={loading}
+                            >
+                                重置
+                            </DsButton>
+                        </>
+                    }
+                >
                     <SearchInput
                         value={draftKeyword}
                         onChange={(e) => setDraftKeyword(e.target.value)}
@@ -343,218 +456,61 @@ export default function SyncJobsPage() {
                         placeholder="搜索任务名称..."
                     />
 
-                    <div className="relative">
-                        <select
-                            value={draftTriggerType}
-                            onChange={(e) => setDraftTriggerType(e.target.value as SyncTriggerType | '')}
-                            aria-label="按触发方式筛选"
-                            className="appearance-none min-w-[140px] pl-ds-3 pr-9 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer"
-                        >
-                            {TRIGGER_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
-                        <HiChevronRight
-                            size={14}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"
-                        />
-                    </div>
+                    <DsFilterSelect
+                        value={draftTriggerType}
+                        onChange={(v) => setDraftTriggerType(v as SyncTriggerType | '')}
+                        options={TRIGGER_OPTIONS}
+                        aria-label="按触发方式筛选"
+                    />
 
-                    <div className="relative">
-                        <select
-                            value={draftExecutionStatus}
-                            onChange={(e) => setDraftExecutionStatus(e.target.value as SyncExecutionStatus | '')}
-                            aria-label="按执行状态筛选"
-                            className="appearance-none min-w-[140px] pl-ds-3 pr-9 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer"
-                        >
-                            {STATUS_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
-                        <HiChevronRight
-                            size={14}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-ds-2 ml-auto">
-                        <button
-                            onClick={handleSearch}
-                            disabled={loading}
-                            className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
-                        >
-                            {loading ? '查询中...' : '查询'}
-                        </button>
-                        <button
-                            onClick={handleReset}
-                            disabled={loading}
-                            className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong disabled:opacity-60 disabled:cursor-not-allowed text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
-                        >
-                            重置
-                        </button>
-                    </div>
-                </div>
+                    <DsFilterSelect
+                        value={draftExecutionStatus}
+                        onChange={(v) => setDraftExecutionStatus(v as SyncExecutionStatus | '')}
+                        options={STATUS_OPTIONS}
+                        aria-label="按执行状态筛选"
+                    />
+                </DsToolbar>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto">
-                <div className="ds-table-card">
-                    <div className="ds-table-scroll">
-                        <table className="ds-table">
-                            <thead>
-                            <tr>
-                                <th>任务名称</th>
-                                <th>触发方式</th>
-                                <th>Cron 表达式</th>
-                                <th>调度状态</th>
-                                <th>下次执行时间</th>
-                                <th>源 → 目标</th>
-                                <th>同步模式</th>
-                                <th>状态</th>
-                                <th>最近执行</th>
-                                <th className="text-center">操作</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {items.map((item) => {
-                                const statusStyle = executionStatusClass(item.executionStatus);
-                                return (
-                                    <tr
-                                        key={item.id}
-                                        data-testid={`sync-job-row-${item.name}`}
-                                        data-job-id={item.id}
-                                    >
-                                        <td className="ds-table-cell-truncate" title={item.name}>
-                                            <span
-                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
-                                        </td>
-                                        <td>{triggerBadge(item.triggerType)}</td>
-                                        <td className="text-ds-small text-ds-text-secondary font-mono">
-                                            {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
-                                        </td>
-                                        <td>{scheduleStatusBadge(item)}</td>
-                                        <td className="text-ds-small text-ds-text-secondary">
-                                            {formatNextExecutionTime(item)}
-                                        </td>
-                                        <td className="ds-table-cell-wide text-ds-small text-ds-text-secondary font-mono"
-                                            title={formatSourceToTarget(item, dataSources)}>
-                                            {formatSourceToTarget(item, dataSources)}
-                                        </td>
-                                        <td>{syncModeBadge(item.syncMode, item.incrementalField)}</td>
-                                        <td>
-                                        <span
-                                            className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
-                                            {statusStyle.label}
-                                        </span>
-                                        </td>
-                                        <td className="text-ds-small text-ds-text-secondary"
-                                            title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
-                                            {formatRelativeTime(item.lastExecuteTime)}
-                                        </td>
-                                        <td className="ds-table-cell-no-truncate">
-                                            <div className="flex items-center justify-center w-full gap-1">
-                                            <button
-                                                data-testid={`sync-job-history-${item.name}`}
-                                                onClick={() => navigate(`/engineering/sync-jobs/${item.id}/history`)}
-                                                className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                title="历史记录"
-                                                aria-label="历史记录"
-                                            >
-                                                <HiOutlineClock size={16}/>
-                                            </button>
-                                            {canWrite && (
-                                                <>
-                                                    {item.triggerType === 'CRON' && (
-                                                        <button
-                                                            data-testid={`sync-job-schedule-${item.name}`}
-                                                            onClick={() => handleToggleSchedule(item)}
-                                                            disabled={schedulingId === item.id}
-                                                            className={`p-1.5 rounded transition-colors disabled:opacity-60 ${
-                                                                item.scheduleEnabled
-                                                                    ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
-                                                                    : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
-                                                            }`}
-                                                            title={item.scheduleEnabled ? '停用调度' : '启用调度'}
-                                                            aria-label={item.scheduleEnabled ? '停用调度' : '启用调度'}
-                                                        >
-                                                            <HiOutlineCalendar size={16}/>
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        data-testid={`sync-job-execute-${item.name}`}
-                                                        onClick={() => handleExecute(item)}
-                                                        disabled={executingId === item.id}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-success hover:bg-ds-success-light rounded transition-colors disabled:opacity-60"
-                                                        title="立即执行"
-                                                        aria-label="立即执行"
-                                                    >
-                                                        <HiOutlinePlay size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`sync-job-edit-${item.name}`}
-                                                        onClick={() => openEdit(item)}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="编辑"
-                                                        aria-label="编辑"
-                                                    >
-                                                        <HiOutlinePencilSquare size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`sync-job-delete-${item.name}`}
-                                                        onClick={() => {
-                                                            setDeleteTarget(item);
-                                                            setDeleteOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
-                                                        title="删除"
-                                                        aria-label="删除"
-                                                    >
-                                                        <HiOutlineTrash size={16}/>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                            </tbody>
-                        </table>
-
-                        {items.length === 0 && !loading && (
-                            <EmptyState
-                                title="暂无同步任务"
-                                description="还没有批量数据同步任务，创建第一个任务开始同步到 Doris。"
-                                action={
-                                    canWrite ? (
-                                        <button
-                                            onClick={openCreate}
-                                            className="flex items-center gap-ds-1 px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                                        >
-                                            <HiOutlinePlus size={16}/>
-                                            创建任务
-                                        </button>
-                                    ) : null
-                                }
-                            />
-                        )}
+            <div className="flex-1 min-h-0 flex flex-col">
+                <div
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
+                    <div className="flex-1 overflow-auto">
+                        <Table<SyncJob>
+                            dataSource={list}
+                            rowKey="id"
+                            loading={loading}
+                            pagination={false}
+                            columns={columns}
+                            className="prototype-table prototype-table-flush"
+                            onRow={(item) => ({
+                                'data-testid': `sync-job-row-${item.name}`,
+                                'data-job-id': item.id,
+                            } as HTMLAttributes<HTMLElement>)}
+                            locale={{
+                                emptyText: (
+                                    <DsTableEmpty
+                                        description={
+                                            <>
+                                                暂无同步任务
+                                                <p className="text-ds-small text-ds-text-muted mb-ds-3">
+                                                    还没有批量数据同步任务，创建第一个任务开始同步到 Doris。
+                                                </p>
+                                            </>
+                                        }
+                                        action={canWrite && (
+                                            <DsButton onClick={openCreate}>
+                                                <HiOutlinePlus size={16}/>
+                                                创建任务
+                                            </DsButton>
+                                        )}
+                                    />
+                                ),
+                            }}
+                        />
                     </div>
 
                     <Pagination page={page} pageSize={pageSize} total={total} onChange={handlePageChange}/>
-
-                    {loading && (
-                        <div
-                            className="absolute inset-0 z-20 bg-ds-bg-surface/70 backdrop-blur-[1px] flex flex-col items-center justify-center gap-ds-2">
-                            <svg className="animate-spin h-6 w-6 text-ds-accent" xmlns="http://www.w3.org/2000/svg"
-                                 fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                        strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                            </svg>
-                            <span className="text-ds-small text-ds-text-secondary">加载中...</span>
-                        </div>
-                    )}
                 </div>
             </div>
 

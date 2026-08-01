@@ -3,70 +3,48 @@
 @tailwind utilities;
 
 :root {
-    --color-bg-root: #f7f8fa;
-    --color-bg-surface: #ffffff;
-    --color-bg-elevated: #ffffff;
-    --color-bg-hover: #f1f3f6;
-    --color-border-subtle: #e2e6ed;
-    --color-border-strong: #cdd3dc;
-    --color-text-primary: #0f172a;
-    --color-text-secondary: #475569;
-    --color-text-muted: #94a3b8;
-    --color-accent: #4f46e5;
-    --color-accent-hover: #4338ca;
-    --color-accent-light: #eef2ff;
-    --color-danger: #dc2626;
-    --color-danger-light: #fef2f2;
-    --color-success: #16a34a;
-    --color-success-light: #f0fdf4;
-    --color-warning: #d97706;
-    --color-warning-light: #fffbeb;
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --sidebar-width: 248px;
-    --content-padding-x: 36px;
-    --content-padding-y: 28px;
+    /**
+     * 颜色唯一来源。以 RGB 通道形式定义，供两处引用：
+     *   - tailwind.config.js：rgb(var(--x) / <alpha-value>)（支持 /50 等透明度修饰）
+     *   - 本文件手写 CSS / constants/statusColors.ts 内联样式：rgb(var(--x))
+     * 改色只改这里。
+     */
+    --color-bg-root: 247 248 250;
+    --color-bg-surface: 255 255 255;
+    --color-bg-elevated: 255 255 255;
+    --color-bg-hover: 241 243 246;
+    --color-border-subtle: 226 230 237;
+    --color-border-strong: 205 211 220;
+    --color-text-primary: 15 23 42;
+    --color-text-secondary: 71 85 105;
+    --color-text-muted: 148 163 184;
+    --color-accent: 79 70 229;
+    --color-accent-hover: 67 56 202;
+    --color-accent-light: 238 242 255;
+    --color-danger: 220 38 38;
+    --color-danger-hover: 185 28 28;
+    --color-danger-light: 254 242 242;
+    --color-success: 22 163 74;
+    --color-success-light: 240 253 244;
+    --color-warning: 217 119 6;
+    --color-warning-light: 255 251 235;
+
+    /* DAG 节点执行状态色（tailwind ds-node-* 与 constants/statusColors.ts 共用） */
+    --color-node-waiting: 148 163 184;
+    --color-node-running: 79 70 229;
+    --color-node-success: 22 163 74;
+    --color-node-failed: 220 38 38;
+    --color-node-skipped: 217 119 6;
 }
 
 body {
-    font-family: var(--font-sans);
-    background: var(--color-bg-root);
-    color: var(--color-text-primary);
-    -webkit-font-smoothing: antialiased;
+    @apply font-sans antialiased;
+    background: rgb(var(--color-bg-root));
+    color: rgb(var(--color-text-primary));
 }
 
 @layer components {
-    /**
-     * 统一表格样式：默认不换行，超出截断，表头固定。
-     * 长文本列请额外添加 .ds-table-cell-truncate 或 .ds-table-cell-wide，并加 title。
-     */
-    .ds-table {
-        @apply w-full border-collapse;
-        table-layout: auto;
-    }
-
-    .ds-table thead {
-        @apply sticky top-0 z-10;
-    }
-
-    .ds-table th {
-        @apply px-ds-4 py-ds-3 text-ds-caption text-ds-text-primary uppercase tracking-wider;
-        @apply border-b border-ds-border-subtle bg-ds-bg-hover/80;
-        white-space: nowrap;
-    }
-
-    .ds-table td {
-        @apply px-ds-4 py-ds-3;
-        vertical-align: middle;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .ds-table tbody tr {
-        @apply border-b border-ds-border-subtle last:border-0 hover:bg-ds-bg-hover/50 transition-colors;
-    }
-
-    /* 长文本列截断 */
+    /* antd Table 长文本列截断：挂到 column.className 上，单元格需自行加 title */
     .ds-table-cell-truncate {
         max-width: 180px;
     }
@@ -76,10 +54,11 @@ body {
         max-width: 280px;
     }
 
-    /* 取消截断，用于操作列或需要完整展示的数字列 */
+    /* 取消截断，用于操作列或需要完整展示的数字列（默认居中，让图标按钮在单元格内稳定居中） */
     .ds-table-cell-no-truncate {
         overflow: visible;
         text-overflow: clip;
+        text-align: center;
     }
 
     /* 表格卡片容器：带阴影圆角，内部可横向滚动 */
@@ -89,5 +68,135 @@ body {
 
     .ds-table-scroll {
         @apply overflow-auto;
+    }
+
+    /* ══ Prototype-aligned table overrides ══
+       分页器说明：全局统一使用手写 components/Pagination（挂在表格卡片底部），
+       antd Table 一律 pagination={false}，这里不再有 .ant-pagination 覆盖。 */
+    .prototype-table .ant-table {
+        font-size: 13px;
+        border: 1px solid rgb(var(--color-border-subtle));
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    /* flush 变体：Table 放进共享卡片容器时去掉自身边框/圆角，避免双层边框 */
+    .prototype-table-flush .ant-table {
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    /* ══ Prototype-aligned modal overrides（对齐原型 .mo/.mdl/.mt/.btn）══
+       用法：antd Modal / Modal.confirm 加 wrapClassName="prototype-modal" */
+    .prototype-modal .ant-modal-content {
+        padding: 36px;
+        border-radius: 16px;
+        box-shadow: 0 20px 25px rgba(0, 0, 0, .06), 0 10px 10px rgba(0, 0, 0, .03);
+    }
+
+    .prototype-modal .ant-modal-header {
+        margin-bottom: 24px;
+    }
+
+    .prototype-modal .ant-modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
+        color: rgb(var(--color-text-primary));
+    }
+
+    .prototype-modal .ant-modal-close {
+        color: rgb(var(--color-text-muted));
+    }
+
+    .prototype-modal .ant-modal-close:hover {
+        color: rgb(var(--color-text-primary));
+        background: transparent;
+    }
+
+    .prototype-modal .ant-modal-body {
+        font-size: 14px;
+    }
+
+    .prototype-modal .ant-form-item {
+        margin-bottom: 20px;
+    }
+
+    /* 底部按钮：对齐 .btn（8px 18px / radius 8px / 13px 600） */
+    .prototype-modal .ant-modal-footer,
+    .prototype-modal .ant-modal-confirm-btns {
+        margin-top: 0;
+    }
+
+    .prototype-modal .ant-modal-footer .ant-btn,
+    .prototype-modal .ant-modal-confirm-btns .ant-btn {
+        height: auto;
+        padding: 8px 18px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        box-shadow: none;
+    }
+
+    .prototype-modal .ant-modal-footer .ant-btn-default,
+    .prototype-modal .ant-modal-confirm-btns .ant-btn-default {
+        background: #fff;
+        color: rgb(var(--color-text-secondary));
+        border: 1.5px solid rgb(var(--color-border-subtle));
+    }
+
+    .prototype-modal .ant-modal-footer .ant-btn-default:hover,
+    .prototype-modal .ant-modal-confirm-btns .ant-btn-default:hover {
+        color: rgb(var(--color-text-primary));
+        border-color: rgb(var(--color-border-strong));
+        background: #fff;
+    }
+
+    .prototype-modal .ant-modal-footer .ant-btn-primary:not(.ant-btn-dangerous),
+    .prototype-modal .ant-modal-confirm-btns .ant-btn-primary:not(.ant-btn-dangerous) {
+        background: rgb(var(--color-accent));
+    }
+
+    .prototype-modal .ant-modal-footer .ant-btn-primary:not(.ant-btn-dangerous):hover,
+    .prototype-modal .ant-modal-confirm-btns .ant-btn-primary:not(.ant-btn-dangerous):hover {
+        background: rgb(var(--color-accent-hover));
+    }
+
+    .prototype-modal .ant-modal-footer .ant-btn-dangerous,
+    .prototype-modal .ant-modal-confirm-btns .ant-btn-dangerous {
+        background: rgb(var(--color-danger));
+        border-color: rgb(var(--color-danger));
+        color: #fff;
+    }
+
+    /* 注：选择器重复一次 .prototype-table 提高优先级 —— antd（当前 v6）cssinjs 运行时注入的默认样式
+       （:where(.css-xxx).ant-table-wrapper .ant-table-thead>tr>th，2 个类）排在我们 <link> CSS 之后，
+       同优先级会被它覆盖，导致 padding/字号失效变成紧凑表格 */
+    /* 统一紧凑行高：保证 10 条记录在常规视口内完整展示，分页器不贴底 */
+    .prototype-table.prototype-table .ant-table-thead > tr > th {
+        background: rgb(var(--color-bg-root));
+        font-weight: 600;
+        font-size: 11px;
+        color: rgb(var(--color-text-secondary));
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid rgb(var(--color-border-subtle));
+        padding: 10px 16px;
+        white-space: nowrap;
+    }
+
+    .prototype-table.prototype-table .ant-table-tbody > tr > td {
+        padding: 10px 16px;
+        border-bottom: 1px solid rgb(var(--color-border-subtle));
+        vertical-align: middle;
+    }
+
+    .prototype-table.prototype-table .ant-table-tbody > tr:last-child > td {
+        border-bottom: none;
+    }
+
+    .prototype-table.prototype-table .ant-table-tbody > tr:hover > td {
+        background: rgb(var(--color-bg-hover));
     }
 }

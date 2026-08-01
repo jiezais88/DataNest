@@ -3,6 +3,8 @@ import {useNavigate} from 'react-router-dom';
 import {login} from '../../api/auth';
 import {useAuthStore} from '../../store/useAuthStore';
 import ErrorCard from '../../components/ErrorCard';
+import DsButton from '../../components/DsButton';
+import {getErrorMessage} from '../../utils/error';
 
 export default function LoginPage() {
     const navigate = useNavigate();
@@ -20,20 +22,15 @@ export default function LoginPage() {
         if (!canSubmit) return;
         setLoading(true);
         setError('');
-        const result = await login({username, password, rememberMe});
-        if (result.code === 200) {
+        try {
+            const result = await login({username, password, rememberMe});
             setAuth(result.data.token, result.data.userInfo);
             navigate('/');
-        } else {
-            setError(errorMessages[result.code] || result.message || '登录失败');
+        } catch (e) {
+            setError(getErrorMessage(e, '登录失败'));
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
-    };
-
-    const errorMessages: Record<string, string> = {
-        USER_NOT_FOUND: '用户不存在',
-        PASSWORD_ERROR: '密码错误',
-        ACCOUNT_DISABLED: '账号已禁用',
     };
 
     return (
@@ -61,7 +58,7 @@ export default function LoginPage() {
                         <label className="block text-ds-small text-ds-text-secondary mb-1">用户名</label>
                         <input name="username" value={username} onChange={(e) => setUsername(e.target.value)}
                                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors ds-fast"
+                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast"
                                placeholder="请输入用户名" autoComplete="username"/>
                     </div>
 
@@ -71,7 +68,7 @@ export default function LoginPage() {
                             <input name="password" type={showPwd ? 'text' : 'password'} value={password}
                                    onChange={(e) => setPassword(e.target.value)}
                                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                                   className="w-full px-ds-3 py-ds-2 pr-10 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors ds-fast"
+                                   className="w-full px-ds-3 py-ds-2 pr-10 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast"
                                    placeholder="请输入密码" autoComplete="current-password"/>
                             <button onClick={() => setShowPwd(!showPwd)}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-ds-text-muted hover:text-ds-text-secondary">
@@ -102,11 +99,10 @@ export default function LoginPage() {
                         </label>
                     </div>
 
-                    <button type="submit" onClick={handleLogin} disabled={!canSubmit || loading}
-                            className="w-full py-ds-2 rounded-ds-sm text-ds-small font-semibold text-white transition-colors ds-fast
-              bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                    <DsButton type="submit" onClick={handleLogin} disabled={!canSubmit || loading}
+                              className="w-full">
                         {loading ? '登录中...' : '登 录'}
-                    </button>
+                    </DsButton>
                 </div>
 
                 <p className="text-center text-ds-small text-ds-text-muted mt-ds-5">

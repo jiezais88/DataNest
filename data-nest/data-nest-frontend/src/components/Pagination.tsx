@@ -1,5 +1,6 @@
 import {useMemo} from 'react';
 import {HiChevronLeft, HiChevronRight} from 'react-icons/hi2';
+import DsFilterSelect from './DsFilterSelect';
 
 export interface PaginationProps {
     page: number;
@@ -49,37 +50,26 @@ export default function Pagination({
         onChange(nextPage, pageSize);
     };
 
-    const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const nextPageSize = Number(e.target.value);
+    const handlePageSizeChange = (nextPageSize: number) => {
         onChange(1, nextPageSize);
     };
 
     if (total === 0) return null;
 
     return (
-        <div className="flex items-center justify-between gap-ds-4 px-ds-4 py-ds-3 border-t border-ds-border-subtle">
+        <div
+            className="flex shrink-0 items-center justify-between gap-ds-4 px-ds-4 py-ds-3 border-t border-ds-border-subtle">
             <div className="flex items-center gap-ds-3 text-ds-small text-ds-text-secondary">
                 <span>共 {total} 条</span>
                 <div className="flex items-center gap-ds-2">
                     <span>每页</span>
-                    <div className="relative">
-                        <select
-                            value={pageSize}
-                            onChange={handlePageSizeChange}
-                            aria-label="每页条数"
-                            className="appearance-none pl-ds-2 pr-7 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer"
-                        >
-                            {pageSizeOptions.map((option) => (
-                                <option key={option} value={option}>
-                                    {option}
-                                </option>
-                            ))}
-                        </select>
-                        <HiChevronRight
-                            size={14}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"
-                        />
-                    </div>
+                    <DsFilterSelect
+                        value={String(pageSize)}
+                        onChange={(v) => handlePageSizeChange(Number(v))}
+                        options={pageSizeOptions.map((option) => ({value: String(option), label: String(option)}))}
+                        aria-label="每页条数"
+                        className="min-w-0 pl-ds-2 pr-7 py-ds-1"
+                    />
                     <span>条</span>
                 </div>
             </div>

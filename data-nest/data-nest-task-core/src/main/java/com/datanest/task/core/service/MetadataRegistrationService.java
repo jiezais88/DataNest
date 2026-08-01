@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -41,8 +40,6 @@ public class MetadataRegistrationService {
     @Value("${datanest.engineering.addax.target-database:datanest}")
     private String targetDatabase;
 
-    private final DataSource dorisDataSource;
-
     private final SyncJobMapper syncJobMapper;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final MetadataTableMapper metadataTableMapper;
@@ -52,15 +49,29 @@ public class MetadataRegistrationService {
 
     public MetadataRegistrationService(SyncJobMapper syncJobMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                                        MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                                       EncryptionConfig encryptionConfig, ConnectionTester connectionTester,
-                                       @org.springframework.beans.factory.annotation.Qualifier("dorisDataSource") DataSource dorisDataSource) {
+                                       EncryptionConfig encryptionConfig, ConnectionTester connectionTester) {
         this.syncJobMapper = syncJobMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
-        this.dorisDataSource = dorisDataSource;
+    }
+
+    /** Sprint 3 P1-4：懒拿连接（同 DorisSqlExecutor） */
+    private Connection dorisConn() throws java.sql.SQLException {
+        javax.sql.DataSource ds = com.datanest.task.core.config.DorisDataSourceConfig.getDataSource();
+        if (ds != null) return ds.getConnection();
+        // 降级
+        String host = System.getProperty("datanest.doris.fe-host", "localhost");
+        String portStr = System.getProperty("datanest.doris.fe-query-port", "9030");
+        String user = System.getProperty("datanest.doris.user", "root");
+        String password = System.getProperty("datanest.doris.password", "");
+        String database = System.getProperty("datanest.engineering.addax.target-database", "datanest");
+        String url = String.format(
+                "jdbc:mysql://%s:%s/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=3000",
+                host, portStr, database);
+        return java.sql.DriverManager.getConnection(url, user, password);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -74,7 +85,7 @@ public class MetadataRegistrationService {
                 : (StringUtils.hasText(job.getSourceSchema()) ? job.getSourceSchema() : "default");
         String targetDb = resolveTargetDatabase(job);
 
-        try (Connection connection = dorisDataSource.getConnection()) {
+        try (Connection connection = dorisConn()) {
             for (String sourceTable : job.getSourceTables()) {
                 String targetTableName = resolveTargetTableName(job, sourceTable);
                 registerTable(targetDb, targetTableName, connection);
@@ -245,12 +256,43 @@ public class MetadataRegistrationService {
                     }
                     executeAndRegister(targetDb, tableName, operatorId);
                     registeredTables.add(tableName);
+                } else if (parsed instanceof net.sf.jsqlparser.statement.insert.Insert) {
+                    // INSERT INTO xxx：目标表已注册则刷新元数据（最近写入时间/列结构）
+                    net.sf.jsqlparser.statement.insert.Insert insert =
+                            (net.sf.jsqlparser.statement.insert.Insert) parsed;
+                    String tableName = extractTableName(insert.getTable());
+                    if (tableName == null) {
+                        logger.warn("无法提取 INSERT 表名: {}", trimmed);
+                        continue;
+                    }
+                    if (refreshIfExists(targetDb, tableName, operatorId)) {
+                        registeredTables.add(tableName);
+                    }
+                } else if (parsed instanceof net.sf.jsqlparser.statement.alter.Alter) {
+                    // ALTER TABLE xxx：刷新列结构
+                    net.sf.jsqlparser.statement.alter.Alter alter =
+                            (net.sf.jsqlparser.statement.alter.Alter) parsed;
+                    String tableName = extractTableName(alter.getTable());
+                    if (tableName == null) {
+                        logger.warn("无法提取 ALTER TABLE 表名: {}", trimmed);
+                        continue;
+                    }
+                    if (refreshIfExists(targetDb, tableName, operatorId)) {
+                        registeredTables.add(tableName);
+                    }
                 } else if (parsed instanceof net.sf.jsqlparser.statement.drop.Drop) {
-                    // DROP TABLE xxx（暂时不主动删元数据表，避免误删；后续可加白名单）
-                    logger.info("跳过 DROP TABLE 元数据同步: {}", trimmed);
+                    // DROP TABLE xxx：从元数据管理中移除
+                    net.sf.jsqlparser.statement.drop.Drop drop =
+                            (net.sf.jsqlparser.statement.drop.Drop) parsed;
+                    String tableName = extractTableName(drop.getName());
+                    if (tableName == null) {
+                        logger.warn("无法提取 DROP TABLE 表名: {}", trimmed);
+                        continue;
+                    }
+                    removeIfExists(targetDb, tableName);
                 } else {
-                    // 其他语句（INSERT/UPDATE/DELETE/SELECT）不参与元数据注册
-                    logger.debug("非 DDL 语句，跳过元数据注册: {}", trimmed);
+                    // 其他语句（UPDATE/DELETE/SELECT）不参与元数据注册
+                    logger.debug("非结构变更语句，跳过元数据注册: {}", trimmed);
                 }
             } catch (net.sf.jsqlparser.JSQLParserException e) {
                 // 解析失败的非 DDL 语句直接忽略（不抛异常，让数据执行继续）
@@ -264,7 +306,7 @@ public class MetadataRegistrationService {
      * 注册单个表到元数据（含建表 / 刷新列）
      */
     private void executeAndRegister(String targetDb, String tableName, Long operatorId) {
-        try (Connection conn = dorisDataSource.getConnection()) {
+        try (Connection conn = dorisConn()) {
             // 先确保表真实存在（外部系统已执行过 SQL；这里做幂等保护）
             if (!tableExists(conn, targetDb, tableName)) {
                 logger.warn("表 {}.{} 在 Doris 中不存在，元数据无法注册", targetDb, tableName);
@@ -284,6 +326,50 @@ public class MetadataRegistrationService {
             throw new BusinessException(ErrorCode.METADATA_REGISTRATION_FAILED,
                     "元数据注册失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 表已存在时刷新元数据（用于 INSERT/ALTER）。不存在则静默跳过。
+     */
+    private boolean refreshIfExists(String targetDb, String tableName, Long operatorId) {
+        try (Connection conn = dorisConn()) {
+            if (!tableExists(conn, targetDb, tableName)) {
+                logger.debug("表 {}.{} 不存在，跳过元数据刷新", targetDb, tableName);
+                return false;
+            }
+            MetadataTable table = findOrCreateTable(targetDb, tableName);
+            table.setUpdatedBy(operatorId);
+            table.setUpdatedAt(LocalDateTime.now());
+            List<MetadataColumn> columns = extractColumns(conn, targetDb, tableName, table.getId());
+            refreshColumns(table.getId(), columns);
+            table.setColumnCount(columns.size());
+            metadataTableMapper.updateById(table);
+            logger.info("从 SQL 刷新元数据: db={}, table={}, cols={}", targetDb, tableName, columns.size());
+            return true;
+        } catch (Exception e) {
+            logger.error("从 SQL 刷新元数据失败: db={}, table={}", targetDb, tableName, e);
+            throw new BusinessException(ErrorCode.METADATA_REGISTRATION_FAILED,
+                    "元数据刷新失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 表存在时从元数据移除（用于 DROP TABLE）。不存在则静默跳过。
+     */
+    private void removeIfExists(String targetDb, String tableName) {
+        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.eq("datasource_id", BUILTIN_DORIS_DATASOURCE_ID)
+                .eq("database_name", targetDb)
+                .apply("COALESCE(schema_name, '') = {0}", "")
+                .eq("table_name", tableName);
+        MetadataTable table = metadataTableMapper.selectOne(wrapper);
+        if (table == null) {
+            logger.debug("元数据表 {}.{} 不存在，跳过删除", targetDb, tableName);
+            return;
+        }
+        metadataColumnMapper.delete(new QueryWrapper<MetadataColumn>().eq("table_id", table.getId()));
+        metadataTableMapper.deleteById(table.getId());
+        logger.info("从 SQL 删除元数据: db={}, table={}", targetDb, tableName);
     }
 
     private boolean tableExists(Connection conn, String db, String tableName) throws SQLException {

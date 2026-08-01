@@ -9,7 +9,7 @@ import type {
     NamingStandardCreateRequest,
     NamingStandardQueryParams,
 } from '../types/dataStandard';
-import type {PageResult, Result} from './datasource';
+import type {PageResult, Result} from '../types/common';
 
 export function createNamingStandard(data: NamingStandardCreateRequest) {
     return request.post<Result<NamingStandard>>('/governance/data-standards/naming-standards', data);

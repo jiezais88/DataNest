@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react';
 import Drawer from '../../../components/Drawer';
+import DsButton from '../../../components/DsButton';
 import type {AppliesTo, FieldTypeStandard, NamingStandard, RuleType} from '../../../types/dataStandard';
 
 interface NamingStandardFormData {
@@ -111,10 +112,8 @@ export default function NamingStandardDrawer({
         if (!validate()) return;
         setSubmitting(true);
         try {
-            const result = await onSubmit(buildPayload());
-            if (result && result.code === 200) {
-                onClose();
-            }
+            await onSubmit(buildPayload());
+            onClose();
         } finally {
             setSubmitting(false);
         }
@@ -127,19 +126,12 @@ export default function NamingStandardDrawer({
             onClose={onClose}
             footer={
                 <>
-                    <button
-                        onClick={onClose}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
-                    >
+                    <DsButton variant="secondary" onClick={onClose}>
                         取消
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                    >
+                    </DsButton>
+                    <DsButton onClick={handleSubmit} disabled={submitting}>
                         {submitting ? '保存中...' : '保存'}
-                    </button>
+                    </DsButton>
                 </>
             }
         >

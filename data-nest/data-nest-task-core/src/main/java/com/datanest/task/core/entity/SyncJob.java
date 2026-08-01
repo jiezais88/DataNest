@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.datanest.task.core.dto.FieldMappingItem;
 import lombok.Data;
+import org.apache.ibatis.type.JdbcType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -58,7 +59,13 @@ public class SyncJob {
 
     private Integer scheduleEnabled;
 
-    /** Sprint 3 Phase 8：多表结构化配置 JSONB（字符串直接存储） */
+    /**
+     * Sprint 3 Phase 8：多表结构化配置 JSONB（字符串直接存储）。
+     * PG jsonb 列在 MyBatis 默认走 varchar，PG 会报
+     * "column is of type jsonb but expression is of type character varying"。
+     * 显式声明 JdbcType.OTHER 让 PG 驱动走 setObject(OTHER) → 直接绑 jsonb。
+     */
+    @TableField(jdbcType = JdbcType.OTHER)
     private String sourceTablesDetail;
 
     /** Sprint 3 Phase 8：读取速率限制（MB/s，0=不限制） */

@@ -1,4 +1,5 @@
 import request from './request';
+import type {PageResult, Result} from '../types/common';
 import type {
     DataSource,
     DataSourceCreateRequest,
@@ -7,19 +8,6 @@ import type {
     TestConnectionRequest,
     TestConnectionResult,
 } from '../types/datasource';
-
-export interface PageResult<T> {
-    records: T[];
-    total: number;
-    page: number;
-    pageSize: number;
-}
-
-export interface Result<T> {
-    code: number;
-    message?: string;
-    data: T;
-}
 
 export function getDataSources(params: DataSourceQueryParams) {
     return request.post<Result<PageResult<DataSource>>>('/engineering/datasources/page', params);

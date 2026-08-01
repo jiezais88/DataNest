@@ -90,8 +90,26 @@ public class DolphinSchedulerClient {
     }
 
     private <T> DsApiResponse<T> exchangeForDsResponse(String method, String fullUrl, HttpEntity<?> entity, Class<T> dataType) {
-        return exchangeForDsResponse(method, fullUrl, entity, new TypeReference<DsApiResponse<T>>() {
-        });
+        String body = exchangeForString(method, fullUrl, entity);
+        // Class<T> 无法通过匿名 TypeReference 捕获嵌套泛型，先解析外层，再转换 data
+        DsApiResponse<?> raw = JSON.parseObject(body, DsApiResponse.class);
+        if (raw == null) {
+            throw new BusinessException(ErrorCode.DS_API_ERROR, "DS API 返回空 body: " + fullUrl);
+        }
+        DsApiResponse<T> typed = new DsApiResponse<>();
+        typed.setCode(raw.getCode());
+        typed.setMsg(raw.getMsg());
+        typed.setFailed(raw.getFailed());
+        typed.setSuccess(raw.getSuccess());
+        Object data = raw.getData();
+        if (data != null) {
+            if (dataType.isInstance(data)) {
+                typed.setData(dataType.cast(data));
+            } else {
+                typed.setData(JSON.parseObject(JSON.toJSONString(data), dataType));
+            }
+        }
+        return typed;
     }
 
     private <T> T executeAndRequire(String method, String fullUrl, HttpEntity<?> entity, TypeReference<DsApiResponse<T>> typeRef) {
@@ -104,8 +122,32 @@ public class DolphinSchedulerClient {
     }
 
     private <T> T executeAndRequire(String method, String fullUrl, HttpEntity<?> entity, Class<T> dataType) {
-        return executeAndRequire(method, fullUrl, entity, new TypeReference<DsApiResponse<T>>() {
-        });
+        DsApiResponse<T> resp = exchangeForDsResponse(method, fullUrl, entity, dataType);
+        if (!resp.isOk()) {
+            throw new BusinessException(ErrorCode.DS_API_ERROR,
+                    "DS 业务错误: code=" + resp.getCode() + ", msg=" + resp.getMsg());
+        }
+        return resp.getData();
+    }
+
+    private String exchangeForString(String method, String fullUrl, HttpEntity<?> entity) {
+        try {
+            ResponseEntity<String> resp = restTemplate.exchange(fullUrl, HttpMethod.valueOf(method), entity, String.class);
+            String body = resp.getBody();
+            if (body == null) {
+                throw new BusinessException(ErrorCode.DS_API_ERROR, "DS API 返回空 body: " + fullUrl);
+            }
+            return body;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            logger.error("DS API HTTP 错误: url={}, status={}, body={}", fullUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException(ErrorCode.DS_API_ERROR,
+                    "DS HTTP " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+        } catch (Exception e) {
+            logger.error("DS API 调用失败: url={}", fullUrl, e);
+            throw new BusinessException(ErrorCode.DS_API_ERROR, "DS 调用失败: " + e.getMessage());
+        }
     }
 
     // ============================================
@@ -148,6 +190,10 @@ public class DolphinSchedulerClient {
         form.add("taskDefinitionJson", serializeJson(taskDefs));
         form.add("otherParamsJson", "");
         form.add("executionType", executionType == null ? "PARALLEL" : executionType);
+
+        logger.info("DS createWorkflowDefinition payload: name={}, taskDefs={}, locations={}, relations={}, taskParamsSample={}",
+                name, serializeJson(taskDefs), locationsJson, taskRelationJson,
+                taskDefs.isEmpty() ? "[]" : taskDefs.get(0).getTaskParams());
 
         HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, authHeaders());
         // DS 返回 {id, code, name, ...}
@@ -311,33 +357,99 @@ public class DolphinSchedulerClient {
     // ============================================
 
     /**
-     * 创建/更新 Cron 调度
-     * Decision: Sprint 3 Phase 6 范围，简化处理 — 用 1 个调度覆盖 DAG 整体
+     * 创建/更新 Cron 调度，并上线。
+     * - scheduleId 为空：创建新 schedule
+     * - scheduleId 非空：更新已有 schedule
+     * 创建/更新后统一调用 /online 上线，确保 DS 端实际触发。
      */
-    public Long createOrUpdateSchedule(Long projectCode, Long workflowDefinitionCode, String schedule) {
+    public Long createOrUpdateSchedule(Long projectCode, Long scheduleId, Long workflowDefinitionCode, String schedule) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("workflowDefinitionCode", String.valueOf(workflowDefinitionCode));
-        form.add("schedule", schedule);     // JSON 字符串：{"crontab":"0 0 * * * ? *","startTime":"...","endTime":"..."}
+        form.add("schedule", schedule);     // JSON 字符串：{"crontab":"0 0 * * * ?","startTime":"...","endTime":"..."}
         form.add("warningType", "NONE");
         form.add("warningGroupId", "0");
         form.add("failureStrategy", "END");
-        form.add("releaseState", "ONLINE");
         form.add("tenantCode", config.getTenantCode() == null ? "default" : config.getTenantCode());
         form.add("userId", "1");
+
+        Long resultId;
         HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, authHeaders());
-        // POST /projects/{code}/schedules (DS 3.4.2 schedule endpoint)
-        Map<?, ?> data = executeAndRequire("POST",
-                url("/projects/" + projectCode + "/schedules"),
-                entity, Map.class);
-        Object id = data == null ? null : data.get("id");
-        return id == null ? null : Long.parseLong(id.toString());
+        if (scheduleId != null) {
+            // DS 在线状态不允许直接修改，需要先 offline -> update -> online
+            offlineSchedule(projectCode, scheduleId);
+            logger.info("调用 DS schedule API: PUT /projects/{}/schedules/{}, schedule={}",
+                    projectCode, scheduleId, schedule);
+            Map<?, ?> data = executeAndRequire("PUT",
+                    url("/projects/" + projectCode + "/schedules/" + scheduleId),
+                    entity, Map.class);
+            logger.info("DS schedule API 响应: projectCode={}, scheduleId={}, data={}",
+                    projectCode, scheduleId, data);
+            Object id = data == null ? null : data.get("id");
+            resultId = id == null ? scheduleId : Long.parseLong(id.toString());
+        } else {
+            form.add("workflowDefinitionCode", String.valueOf(workflowDefinitionCode));
+            logger.info("调用 DS schedule API: POST /projects/{}/schedules, workflowDefinitionCode={}, schedule={}",
+                    projectCode, workflowDefinitionCode, schedule);
+            Map<?, ?> data = executeAndRequire("POST",
+                    url("/projects/" + projectCode + "/schedules"),
+                    entity, Map.class);
+            logger.info("DS schedule API 响应: projectCode={}, workflowDefinitionCode={}, data={}",
+                    projectCode, workflowDefinitionCode, data);
+            Object id = data == null ? null : data.get("id");
+            resultId = id == null ? null : Long.parseLong(id.toString());
+        }
+
+        if (resultId != null) {
+            onlineSchedule(projectCode, resultId);
+        }
+        return resultId;
+    }
+
+    /**
+     * 上线 schedule，使 cron 真正生效。
+     */
+    public void onlineSchedule(Long projectCode, Long scheduleId) {
+        logger.info("调用 DS schedule online API: POST /projects/{}/schedules/{}/online", projectCode, scheduleId);
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("id", String.valueOf(scheduleId));
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, authHeaders());
+        Object resp = executeAndRequire("POST",
+                url("/projects/" + projectCode + "/schedules/" + scheduleId + "/online"),
+                entity, Object.class);
+        logger.info("DS schedule online API 响应: projectCode={}, scheduleId={}, resp={}", projectCode, scheduleId, resp);
     }
 
     public void deleteSchedule(Long projectCode, Long scheduleId) {
+        // DS 要求 schedule 必须先 offline 才能删除
+        offlineSchedule(projectCode, scheduleId);
+        logger.info("调用 DS deleteSchedule API: DELETE /projects/{}/schedules/{}", projectCode, scheduleId);
         HttpEntity<?> entity = new HttpEntity<>(authHeaders());
-        executeAndRequire("DELETE",
+        Object resp = executeAndRequire("DELETE",
                 url("/projects/" + projectCode + "/schedules/" + scheduleId),
                 entity, Object.class);
+        logger.info("DS deleteSchedule API 响应: projectCode={}, scheduleId={}, resp={}", projectCode, scheduleId, resp);
+    }
+
+    /**
+     * 下线 schedule。
+     */
+    public void offlineSchedule(Long projectCode, Long scheduleId) {
+        logger.info("调用 DS schedule offline API: POST /projects/{}/schedules/{}/offline", projectCode, scheduleId);
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("id", String.valueOf(scheduleId));
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, authHeaders());
+        try {
+            Object resp = executeAndRequire("POST",
+                    url("/projects/" + projectCode + "/schedules/" + scheduleId + "/offline"),
+                    entity, Object.class);
+            logger.info("DS schedule offline API 响应: projectCode={}, scheduleId={}, resp={}", projectCode, scheduleId, resp);
+        } catch (BusinessException e) {
+            // 已是 offline 时忽略（DS 可能返回类似 'already offline'）
+            if (e.getMessage() != null && e.getMessage().contains("already offline")) {
+                logger.info("DS schedule 已处于 offline，跳过: scheduleId={}", scheduleId);
+            } else {
+                throw e;
+            }
+        }
     }
 
     // ============================================

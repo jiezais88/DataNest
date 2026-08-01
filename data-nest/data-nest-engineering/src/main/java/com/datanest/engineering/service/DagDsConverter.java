@@ -58,7 +58,6 @@ public class DagDsConverter {
             task.setEnvironmentCode(-1L);
             task.setConditionType("NONE");
             task.setResourceList(Collections.emptyList());
-            task.setPreTaskCodes(collectPredecessorCodes(dag, node.getNodeId(), codeMap));
 
             // 构造 HTTP taskParams
             String callbackUrl = buildCallbackUrl(node, dag);
@@ -86,62 +85,62 @@ public class DagDsConverter {
                         "节点 config JSON 解析失败 (nodeId=" + node.getNodeId() + "): " + e.getMessage());
             }
 
-            Map<String, Object> httpParams = new HashMap<>();
-            httpParams.put("url", callbackUrl);
-            httpParams.put("method", "POST");
-            httpParams.put("headers", Map.of("Content-Type", "application/json"));
-            Map<String, Object> body = new HashMap<>();
-            body.put("nodeId", node.getNodeId());
-            body.put("nodeType", nodeType);
-            body.put("dagId", dag.getId());
-            body.put("executionId", "${processInstanceId}");   // DS 运行时变量
+            // DS 3.4.2 HTTP 任务参数类：org.apache.dolphinscheduler.plugin.task.http.HttpParameters
+            // 字段必须严格匹配，否则 checkParameters() 失败
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("nodeId", node.getNodeId());
+            requestBody.put("nodeType", nodeType);
+            requestBody.put("dagId", dag.getId());
+            requestBody.put("executionId", "${system.workflow.instance.id}");   // DS 内置变量：工作流实例 ID
             if ("SQL".equalsIgnoreCase(type)) {
-                body.put("sqlContent", sqlContent);
+                requestBody.put("sqlContent", sqlContent);
             } else {
                 Map<String, Object> syncJob = new HashMap<>();
                 syncJob.put("id", syncJobId);
                 syncJob.put("name", syncJobName);
-                body.put("syncJob", syncJob);
+                requestBody.put("syncJob", syncJob);
             }
-            httpParams.put("body", JSON.toJSONString(body));
-            httpParams.put("connectTimeout", 5000);
-            httpParams.put("socketTimeout", dsConfig.getCallbackTimeoutSeconds() == null
-                    ? 1800000 : dsConfig.getCallbackTimeoutSeconds() * 1000);
-            httpParams.put("localParams", Collections.emptyList());
 
-            task.setTaskParams(JSON.toJSONString(httpParams));
+            // httpParams 是 List<HttpProperty>，字段：prop / httpParametersType / value
+            Map<String, Object> contentTypeProp = new HashMap<>();
+            contentTypeProp.put("prop", "Content-Type");
+            contentTypeProp.put("httpParametersType", "HEADERS");
+            contentTypeProp.put("value", "application/json");
+
+            // DS 3.4.2 HTTP taskParams 是平铺的 HttpParameters 对象：
+            // {"localParams":[],"httpParams":[],"url":"...","httpMethod":"POST",
+            //  "httpBody":"...","httpCheckCondition":"...","condition":"","connectTimeout":"5000"}
+            Map<String, Object> taskParams = new HashMap<>();
+            taskParams.put("localParams", Collections.emptyList());
+            taskParams.put("httpParams", java.util.List.of(contentTypeProp));
+            taskParams.put("url", callbackUrl);
+            taskParams.put("httpMethod", "POST");
+            taskParams.put("httpBody", JSON.toJSONString(requestBody));
+            taskParams.put("httpCheckCondition", "STATUS_CODE_DEFAULT");
+            taskParams.put("condition", "");
+            taskParams.put("connectTimeout", "5000");
+
+            task.setTaskParams(JSON.toJSONString(taskParams));
             tasks.add(task);
         }
         return tasks;
     }
 
-    private List<Long> collectPredecessorCodes(DagPayload dag, String nodeId, Map<String, Long> codeMap) {
-        if (dag.getEdges() == null) return Collections.emptyList();
-        List<Long> pre = new ArrayList<>();
-        for (DagEdgePayload edge : dag.getEdges()) {
-            if (nodeId.equals(edge.getTargetNodeId())) {
-                Long code = codeMap.get(edge.getSourceNodeId());
-                if (code != null) pre.add(code);
-            }
-        }
-        return pre;
-    }
-
     /**
      * 构造回调 URL
-     * SQL 节点 → /engineering/dev/internal/sql/callback
-     * SYNC 节点 → /engineering/dev/internal/sync/callback
-     * 注意：engineering 服务 context-path=/engineering，DS worker 直连时必须带前缀
+     * SQL 节点 → {callbackBaseUrl}/dev/internal/sql/callback
+     * SYNC 节点 → {callbackBaseUrl}/dev/internal/sync/callback
+     * 决策 ADR-S3-012：回调走 gateway（默认 {@code http://app-gateway:8080/api/engineering}），
+     * gateway 路由 StripPrefix=1 → engineering 收到 {@code /dev/internal/...}。
+     * 决策 ADR-S3-008：内部接口不鉴权，依赖 Docker 网络隔离 + gateway 白名单。
      */
     private String buildCallbackUrl(DagNodePayload node, DagPayload dag) {
         String type = node.getNodeType();
         String path = "SQL".equalsIgnoreCase(type) ? "/dev/internal/sql/callback"
                 : "SYNC".equalsIgnoreCase(type) ? "/dev/internal/sync/callback"
                 : "/dev/internal/unknown";
-        // engineering 服务端口 8082，Docker 内服务名 app-engineering
-        // 决策 ADR-S3-008：内部接口不鉴权，依赖 Docker 网络隔离
-        // 路径含 context-path 前缀：/engineering + /dev/internal/...
-        return "http://app-engineering:8082/engineering" + path;
+        // 不带尾斜杠：base url 默认已含 /api/engineering，path 前缀 /dev/...
+        return dsConfig.getCallbackBaseUrl() + path;
     }
 
     private String stringOrNull(JSONObject obj, String field) {
@@ -151,16 +150,23 @@ public class DagDsConverter {
     }
 
     /**
-     * 把 nodeId 列表（前端生成）映射为 DS 数字 task code
-     * Sprint 3 性能4：用 UUID 派生，避免 String.hashCode 碰撞
-     * DS task code 在项目内全局唯一
+     * 把 nodeId 列表（前端生成）映射为 DS 数字 task code。
+     * Sprint 3 性能4：用 UUID 派生，避免 String.hashCode 碰撞。
+     * Sprint 3 P2：优先复用已有 ds_task_code（节点重命名后保持不变）。
+     * DS task code 在项目内全局唯一。
      */
-    public Map<String, Long> generateTaskCodes(DagPayload dag) {
+    public Map<String, Long> generateTaskCodes(DagPayload dag, Map<String, Long> existingCodeMap) {
         Map<String, Long> map = new HashMap<>();
         if (dag.getNodes() == null) return map;
         // dagId 来自 DagPayload.id；新建时可能为 null，用全局 UUID 兜底
         String dagKey = dag.getId() == null ? java.util.UUID.randomUUID().toString() : dag.getId().toString();
         for (DagNodePayload node : dag.getNodes()) {
+            // 优先复用已有 code
+            Long existing = existingCodeMap != null ? existingCodeMap.get(node.getNodeId()) : null;
+            if (existing != null) {
+                map.put(node.getNodeId(), existing);
+                continue;
+            }
             // 用 dagKey + nodeId 拼 UUID，再取前 15 位 hex 转 Long
             // 碰撞概率：每节点 1/2^60
             String uuid = java.util.UUID.nameUUIDFromBytes(
@@ -190,21 +196,51 @@ public class DagDsConverter {
 
     /**
      * 生成 taskRelationJson
+     * DS 3.4.2 要求每个节点都有一条入站关系：
+     * - 无上游的节点：preTaskCode=0，postTaskCode=节点 code
+     * - 有上游的节点：preTaskCode=上游 code，postTaskCode=节点 code
+     * 多前驱时，每个上游单独一条关系，DS 的 ProcessService.transformTask 会合并。
      */
     public String buildTaskRelationJson(DagPayload dag, Map<String, Long> codeMap) {
-        if (dag.getEdges() == null || dag.getEdges().isEmpty()) {
-            return "[]";
-        }
         List<Map<String, Object>> list = new ArrayList<>();
-        for (DagEdgePayload edge : dag.getEdges()) {
-            Map<String, Object> rel = new HashMap<>();
-            rel.put("name", "");
-            rel.put("preTaskCode", codeMap.get(edge.getSourceNodeId()));
-            rel.put("postTaskCode", codeMap.get(edge.getTargetNodeId()));
-            rel.put("conditionType", "NONE");
-            rel.put("conditionParams", Collections.emptyMap());
-            list.add(rel);
+        Set<String> nodesWithPredecessor = new HashSet<>();
+
+        // 1. 生成所有边关系（保留多前驱）
+        if (dag.getEdges() != null) {
+            for (DagEdgePayload edge : dag.getEdges()) {
+                Long preCode = codeMap.get(edge.getSourceNodeId());
+                Long postCode = codeMap.get(edge.getTargetNodeId());
+                if (preCode != null && postCode != null) {
+                    list.add(buildRelation(preCode, postCode));
+                    nodesWithPredecessor.add(edge.getTargetNodeId());
+                }
+            }
         }
-        return JSON.toJSONString(list);
+
+        // 2. 给无上游的节点生成 pre=0 的入口关系
+        if (dag.getNodes() != null) {
+            for (DagNodePayload node : dag.getNodes()) {
+                if (!nodesWithPredecessor.contains(node.getNodeId())) {
+                    Long postCode = codeMap.get(node.getNodeId());
+                    if (postCode != null) {
+                        list.add(buildRelation(0L, postCode));
+                    }
+                }
+            }
+        }
+
+        return list.isEmpty() ? "[]" : JSON.toJSONString(list);
+    }
+
+    private Map<String, Object> buildRelation(Long preTaskCode, Long postTaskCode) {
+        Map<String, Object> rel = new HashMap<>();
+        rel.put("name", "");
+        rel.put("preTaskCode", preTaskCode == null ? 0L : preTaskCode);
+        rel.put("preTaskVersion", 1);
+        rel.put("postTaskCode", postTaskCode == null ? 0L : postTaskCode);
+        rel.put("postTaskVersion", 1);
+        rel.put("conditionType", "NONE");
+        rel.put("conditionParams", "{}");
+        return rel;
     }
 }

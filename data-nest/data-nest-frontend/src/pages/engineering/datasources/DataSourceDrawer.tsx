@@ -8,8 +8,10 @@ import {
     TYPE_OPTIONS
 } from '../../../constants/datasource';
 import {testConnection} from '../../../api/datasource';
-import {HiOutlineEye, HiOutlineEyeSlash, HiOutlineXMark} from 'react-icons/hi2';
+import {HiOutlineEye, HiOutlineEyeSlash} from 'react-icons/hi2';
 import TestResultModal from '../../../components/TestResultModal';
+import DsButton from '../../../components/DsButton';
+import Drawer from '../../../components/Drawer';
 
 type FormData = {
     name: string;
@@ -144,13 +146,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                 username: form.username.trim(),
                 password: form.password,
             });
-            if (result && result.code === 200) {
-                setTestModalSuccess(result.data.success);
-                setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
-            } else {
-                setTestModalSuccess(false);
-                setTestModalMessage(result?.message || '测试请求失败');
-            }
+            setTestModalSuccess(result.data.success);
+            setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
         } catch {
             // API 拦截器已弹 message.error，这里确保弹窗展示失败
             setTestModalSuccess(false);
@@ -189,35 +186,48 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                 description: form.description.trim() || undefined,
                 autoCollectOnSave: form.autoCollectOnSave,
             };
-        const result = await onSubmit(payload as DataSourceCreateRequest | DataSourceUpdateRequest);
-        setSubmitting(false);
-        if (result && result.code === 200) {
+        try {
+            await onSubmit(payload as DataSourceCreateRequest | DataSourceUpdateRequest);
             onClose();
+        } finally {
+            setSubmitting(false);
         }
     };
 
-    if (!open) return null;
-
     return (
-        <div className="fixed inset-0 z-50 flex justify-end">
-            <div className="absolute inset-0 bg-black/30" onClick={onClose}/>
-            <div className="relative w-full max-w-[560px] h-full bg-ds-bg-surface shadow-ds-lg flex flex-col">
-                <div
-                    className="flex items-center justify-between px-ds-6 py-ds-4 border-b border-ds-border-subtle flex-shrink-0">
-                    <h2 className="text-ds-title text-ds-text-primary font-bold">
-                        {isEdit ? '编辑数据源' : '新增数据源'}
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 text-ds-text-muted hover:text-ds-text-primary hover:bg-ds-bg-hover rounded transition-colors"
-                        aria-label="关闭"
-                    >
-                        <HiOutlineXMark size={20}/>
-                    </button>
-                </div>
-
-                <div className="flex-1 overflow-auto p-ds-6">
-                    <div className="space-y-ds-4">
+        <>
+            <Drawer
+                open={open}
+                title={isEdit ? '编辑数据源' : '新增数据源'}
+                onClose={onClose}
+                footer={
+                    <>
+                        <DsButton
+                            variant="secondary"
+                            data-testid="datasource-drawer-test-btn"
+                            onClick={handleTest}
+                            disabled={testing}
+                        >
+                            {testing ? '测试中...' : '测试连接'}
+                        </DsButton>
+                        <DsButton
+                            variant="secondary"
+                            data-testid="datasource-drawer-cancel-btn"
+                            onClick={onClose}
+                        >
+                            取消
+                        </DsButton>
+                        <DsButton
+                            data-testid="datasource-drawer-save-btn"
+                            onClick={handleSubmit}
+                            disabled={submitting}
+                        >
+                            {submitting ? '保存中...' : '保存'}
+                        </DsButton>
+                    </>
+                }
+            >
+                <div className="space-y-ds-4">
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 数据源名称 <span className="text-ds-danger">*</span>
@@ -389,35 +399,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                             </label>
                         )}
                     </div>
-                </div>
-
-                <div
-                    className="flex items-center justify-end gap-ds-3 px-ds-6 py-ds-4 border-t border-ds-border-subtle flex-shrink-0">
-                    <button
-                        data-testid="datasource-drawer-test-btn"
-                        onClick={handleTest}
-                        disabled={testing}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent hover:text-ds-accent text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                        {testing ? '测试中...' : '测试连接'}
-                    </button>
-                    <button
-                        data-testid="datasource-drawer-cancel-btn"
-                        onClick={onClose}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
-                    >
-                        取消
-                    </button>
-                    <button
-                        data-testid="datasource-drawer-save-btn"
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                    >
-                        {submitting ? '保存中...' : '保存'}
-                    </button>
-                </div>
-            </div>
+            </Drawer>
 
             <TestResultModal
                 open={testModalOpen}
@@ -425,6 +407,6 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                 message={testModalMessage}
                 onClose={() => setTestModalOpen(false)}
             />
-        </div>
+        </>
     );
 }

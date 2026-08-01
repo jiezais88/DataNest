@@ -1,20 +1,52 @@
-import {createBrowserRouter, Navigate} from 'react-router-dom';
+import {lazy, Suspense} from 'react';
+import {createBrowserRouter, Navigate, useParams} from 'react-router-dom';
 import LoginPage from '../pages/login';
 import Layout from '../components/Layout';
 import HomePage from '../pages/home';
 import UsersPage from '../pages/system/users';
 import DataSourcesPage from '../pages/engineering/datasources';
 import CollectTasksPage from '../pages/governance/collect-tasks';
-import CollectHistoryPage from '../pages/governance/collect-tasks/history';
 import CollectHistoryGlobalPage from '../pages/governance/collect-tasks/history-global';
 import SyncJobsPage from '../pages/engineering/sync-jobs';
-import SyncJobHistoryPage from '../pages/engineering/sync-jobs/history';
 import SyncJobHistoryGlobalPage from '../pages/engineering/sync-jobs/history-global';
 import MetadataPage from '../pages/governance/metadata';
 import DataStandardsPage from '../pages/governance/data-standards';
 import DagsPage from '../pages/engineering/dags';
-import DagEditor from '../pages/engineering/dags/Editor';
-import ExecutionsPage from '../pages/engineering/dags/Executions';
+import ProjectDagsPage from '../pages/engineering/dags/project';
+import DagExecutionsGlobalPage from '../pages/engineering/dag-executions';
+import DsSpinner from '../components/DsSpinner';
+
+// DAG 编辑器整页懒加载：画布依赖 ReactFlow + Monaco（SQL 编辑器），
+// 体积约 4MB，只应在这三个画布路由进入时下载
+const DagEditor = lazy(() => import('../pages/engineering/dags/Editor'));
+
+function LazyDagEditor() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-ds-bg-root flex items-center justify-center">
+                <DsSpinner size={20}/>
+            </div>
+        }>
+            <DagEditor/>
+        </Suspense>
+    );
+}
+
+// 旧 per-task 历史页已合并进全局历史页（?id= 精确过滤），老链接 301 到全局页
+function SyncJobHistoryRedirect() {
+    const {syncJobId} = useParams();
+    return <Navigate to={`/engineering/sync-job-history?syncJobId=${syncJobId}`} replace/>;
+}
+
+function CollectHistoryRedirect() {
+    const {taskId} = useParams();
+    return <Navigate to={`/governance/collect-task-history?taskId=${taskId}`} replace/>;
+}
+
+function DagExecutionsRedirect() {
+    const {id} = useParams();
+    return <Navigate to={`/engineering/dag-executions?dagId=${id}`} replace/>;
+}
 
 const ProtectedRoute = ({children}: { children: React.ReactNode }) => {
     const token = localStorage.getItem('token');
@@ -28,6 +60,32 @@ export const router = createBrowserRouter([
         element: <LoginPage/>,
     },
     {
+        // DAG 编辑器：全屏画布（不进 Layout，无侧边栏/顶栏，对齐原型）
+        path: '/engineering/dags/new',
+        element: (
+            <ProtectedRoute>
+                <LazyDagEditor/>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/engineering/dags/:id/edit',
+        element: (
+            <ProtectedRoute>
+                <LazyDagEditor/>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        // 执行详情画布：只读运行视图，展示某次 execution 的节点运行状态
+        path: '/engineering/dags/:id/executions/:executionId',
+        element: (
+            <ProtectedRoute>
+                <LazyDagEditor/>
+            </ProtectedRoute>
+        ),
+    },
+    {
         path: '/',
         element: (
             <ProtectedRoute>
@@ -39,14 +97,14 @@ export const router = createBrowserRouter([
             {path: 'system/users', element: <UsersPage/>},
             {path: 'engineering/datasources', element: <DataSourcesPage/>},
             {path: 'engineering/sync-jobs', element: <SyncJobsPage/>},
-            {path: 'engineering/sync-jobs/:syncJobId/history', element: <SyncJobHistoryPage/>},
+            {path: 'engineering/sync-jobs/:syncJobId/history', element: <SyncJobHistoryRedirect/>},
             {path: 'engineering/sync-job-history', element: <SyncJobHistoryGlobalPage/>},
             {path: 'engineering/dags', element: <DagsPage/>},
-            {path: 'engineering/dags/new', element: <DagEditor/>},
-            {path: 'engineering/dags/:id/edit', element: <DagEditor/>},
-            {path: 'engineering/dags/:id/executions', element: <ExecutionsPage/>},
+            {path: 'engineering/dags/:projectId', element: <ProjectDagsPage/>},
+            {path: 'engineering/dags/:id/executions', element: <DagExecutionsRedirect/>},
+            {path: 'engineering/dag-executions', element: <DagExecutionsGlobalPage/>},
             {path: 'governance/collect-tasks', element: <CollectTasksPage/>},
-            {path: 'governance/collect-tasks/:taskId/history', element: <CollectHistoryPage/>},
+            {path: 'governance/collect-tasks/:taskId/history', element: <CollectHistoryRedirect/>},
             {path: 'governance/collect-task-history', element: <CollectHistoryGlobalPage/>},
             {path: 'governance/metadata', element: <MetadataPage/>},
             {path: 'governance/data-standards', element: <DataStandardsPage/>},

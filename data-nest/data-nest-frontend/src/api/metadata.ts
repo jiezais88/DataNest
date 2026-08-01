@@ -6,7 +6,7 @@ import type {
     MetadataTable,
     MetadataTreeNode
 } from '../types/metadata';
-import type {Result} from './datasource';
+import type {Result} from '../types/common';
 
 interface MetadataRemarkRequest {
     remark: string;

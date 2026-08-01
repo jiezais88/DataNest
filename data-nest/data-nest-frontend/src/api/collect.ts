@@ -8,7 +8,7 @@ import type {
     CollectTaskQueryParams,
     DataSourceReferenceDTO,
 } from '../types/collect';
-import type {PageResult, Result} from './datasource';
+import type {PageResult, Result} from '../types/common';
 
 export function createCollectTask(data: CollectTaskCreateRequest) {
     return request.post<Result<CollectTask>>('/governance/collect-tasks', data);

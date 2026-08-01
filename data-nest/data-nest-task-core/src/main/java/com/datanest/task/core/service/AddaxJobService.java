@@ -61,28 +61,25 @@ public class AddaxJobService {
     @Value("${datanest.engineering.addax.log-path:/opt/addax/log}")
     private String logPath;
 
-    @Value("${datanest.doris.writer.fe-load-url:http://localhost:8030}")
+    @Value("${datanest.addax.writer.fe-load-url:http://localhost:8030}")
     private String dorisFeLoadUrl;
 
-    @Value("${datanest.doris.writer.be-load-url:http://localhost:8040}")
+    @Value("${datanest.addax.writer.be-load-url:http://localhost:8040}")
     private String dorisBeLoadUrl;
 
-    @Value("${datanest.doris.writer.username:root}")
+    @Value("${datanest.addax.writer.username:root}")
     private String dorisUsername;
 
-    @Value("${datanest.doris.writer.password:}")
+    @Value("${datanest.addax.writer.password:}")
     private String dorisPassword;
 
-    @Value("${datanest.doris.writer.database:datanest}")
-    private String dorisDatabase;
-
-    @Value("${datanest.doris.writer.load-props.format:json}")
+    @Value("${datanest.addax.writer.load-props.format:json}")
     private String loadPropsFormat;
 
-    @Value("${datanest.doris.writer.load-props.strip-outer-array:true}")
+    @Value("${datanest.addax.writer.load-props.strip-outer-array:true}")
     private String loadPropsStripOuterArray;
 
-    @Value("${datanest.doris.writer.line-delimiter:\\n}")
+    @Value("${datanest.addax.writer.line-delimiter:\\n}")
     private String lineDelimiter;
 
     @Value("${datanest.doris.fe-host:localhost}")
@@ -171,8 +168,22 @@ public class AddaxJobService {
             contentList.add(content);
         }
 
+        Map<String, Object> speed = new HashMap<>();
+        speed.put("channel", DEFAULT_CHANNEL);
+        // Sprint 3 AC-13：速率限流
+        if (job.getRateLimitEnabled() != null && job.getRateLimitEnabled() == 1) {
+            if (job.getReadRateLimitMbps() != null && job.getReadRateLimitMbps() > 0) {
+                // Addax speed.byte 单位 Byte/s；Mbps -> Byte/s：* 1024 * 1024 / 8
+                long bytePerSecond = job.getReadRateLimitMbps() * 1024L * 1024L / 8L;
+                speed.put("byte", bytePerSecond);
+            }
+            if (job.getWriteRateLimitRowsPerSecond() != null && job.getWriteRateLimitRowsPerSecond() > 0) {
+                speed.put("record", job.getWriteRateLimitRowsPerSecond());
+            }
+        }
+
         Map<String, Object> setting = new HashMap<>();
-        setting.put("speed", Map.of("channel", DEFAULT_CHANNEL));
+        setting.put("speed", speed);
 
         Map<String, Object> jobMap = new HashMap<>();
         jobMap.put("setting", setting);
@@ -330,7 +341,10 @@ public class AddaxJobService {
     }
 
     private String resolveTargetDatabase(SyncJob job) {
-        return StringUtils.hasText(job.getTargetDatabase()) ? job.getTargetDatabase() : dorisDatabase;
+        if (!StringUtils.hasText(job.getTargetDatabase())) {
+            throw new IllegalArgumentException("目标库名不能为空: syncJobId=" + job.getId());
+        }
+        return job.getTargetDatabase();
     }
 
     private List<String> buildReaderColumns(SyncJob job) {

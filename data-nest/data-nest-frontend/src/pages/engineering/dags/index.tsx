@@ -1,214 +1,246 @@
-// DAG 项目 + DAG 列表页
-import {useEffect, useState} from 'react';
-import {Button, Card, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag} from 'antd';
-import {
-    CodeOutlined,
-    DeleteOutlined,
-    EditOutlined,
-    HistoryOutlined,
-    PlayCircleOutlined,
-    PlusOutlined
-} from '@ant-design/icons';
+// DAG 项目列表页（PRD §6.2）
+// 进入项目 → 跳到 /engineering/dags/:projectId 看 DAG 列表
+import {useCallback, useMemo, useState} from 'react';
+import {Form, Input, Modal, Table, Tooltip} from 'antd';
+import type {ColumnsType} from 'antd/es/table';
+import {HiOutlineArrowRightOnRectangle, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
 import {useNavigate} from 'react-router-dom';
-import {
-    createDagProject,
-    deleteDag,
-    deleteDagProject,
-    listDagProjects,
-    listDags,
-    triggerDag,
-    updateDagProject
-} from './api';
-import type {Dag, DagProject} from './types';
+import {createDagProject, deleteDagProject, listDagProjects, listDags, updateDagProject} from './api';
+import type {DagProject} from './types';
+import usePagedList from '../../../hooks/usePagedList';
+import {useCanEdit} from '../../../hooks/useCanEdit';
+import SearchInput from '../../../components/SearchInput';
+import Pagination from '../../../components/Pagination';
+import DsButton from '../../../components/DsButton';
+import DsIconButton from '../../../components/DsIconButton';
+import DsToolbar from '../../../components/DsToolbar';
+import DsTableEmpty from '../../../components/DsTableEmpty';
+import {notify} from '../../../utils/notify';
 
 export default function DagsPage() {
     const navigate = useNavigate();
-    const [projects, setProjects] = useState<DagProject[]>([]);
-    const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(undefined);
-    const [dags, setDags] = useState<Dag[]>([]);
+    const canEdit = useCanEdit();
+    // 草稿查询条件（搜索框输入中、未点查询的值）由页面持有；点「查询」才 applyQuery
+    const [searchName, setSearchName] = useState('');
+    const {
+        list: projects, total, page, pageSize, loading,
+        setPage, setPageSize, applyQuery, reload,
+    } = usePagedList<{ name: string }, DagProject>({
+        // 适配接口返回结构：records/total → {list, total}
+        fetcher: useCallback(async ({name, page, pageSize}) => {
+            const result = await listDagProjects({name: name || undefined, page, pageSize});
+            return {list: result.records, total: result.total};
+        }, []),
+        initialQuery: {name: ''},
+        defaultPageSize: 20,
+    });
     const [projectModalOpen, setProjectModalOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<DagProject | null>(null);
     const [projectForm] = Form.useForm();
-
-    const refreshProjects = async () => {
-        const list = await listDagProjects();
-        setProjects(list);
-        if (list.length > 0 && !selectedProjectId) {
-            setSelectedProjectId(list[0].id);
-        }
-    };
-
-    const refreshDags = async () => {
-        if (!selectedProjectId) {
-            setDags([]);
-            return;
-        }
-        const list = await listDags(selectedProjectId);
-        setDags(list);
-    };
-
-    useEffect(() => {
-        refreshProjects();
-    }, []);
-    useEffect(() => {
-        refreshDags();
-    }, [selectedProjectId]);
+    // 删除确认弹框（对齐原型 md-project-del：列出项目下 DAG 名单）
+    const [deleteTarget, setDeleteTarget] = useState<DagProject | null>(null);
+    const [deleteDagNames, setDeleteDagNames] = useState<string[] | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const handleSaveProject = async () => {
         const values = await projectForm.validateFields();
         try {
-            if (editingProject?.id) {
+            if (editingProject?.id != null) {
                 await updateDagProject(editingProject.id, values);
-                message.success('项目已更新');
+                notify.success('项目已更新');
             } else {
                 await createDagProject(values);
-                message.success('项目已创建');
+                notify.success('项目已创建');
             }
             setProjectModalOpen(false);
             setEditingProject(null);
             projectForm.resetFields();
-            await refreshProjects();
-        } catch (e: any) {
-            message.error(e?.message || '操作失败');
+            reload();
+        } catch {
+            // 错误提示由 request 拦截器统一弹出
         }
     };
 
-    const handleDeleteProject = async (id: number) => {
+    const openDeleteModal = async (r: DagProject) => {
+        setDeleteTarget(r);
+        setDeleteDagNames(null);
         try {
-            await deleteDagProject(id);
-            message.success('项目已删除');
-            if (selectedProjectId === id) setSelectedProjectId(undefined);
-            await refreshProjects();
-        } catch (e: any) {
-            message.error(e?.message || '删除失败');
+            const dags = await listDags(r.id);
+            setDeleteDagNames(dags.map(d => d.name));
+        } catch {
+            // 名单拉取失败不阻塞删除，弹框里只显示数量
+            setDeleteDagNames([]);
         }
     };
 
-    const handleDeleteDag = async (id: number) => {
+    const handleDeleteProject = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await deleteDag(id);
-            message.success('DAG 已删除');
-            await refreshDags();
-        } catch (e: any) {
-            message.error(e?.message || '删除失败');
+            await deleteDagProject(deleteTarget.id!);
+            notify.success('项目已删除');
+            setDeleteTarget(null);
+            reload();
+        } catch {
+            // 错误提示由 request 拦截器统一弹出
+        } finally {
+            setDeleting(false);
         }
     };
 
-    const handleTrigger = async (id: number) => {
-        try {
-            const exec = await triggerDag(id);
-            message.success(`触发成功，executionId=${exec.id}`);
-            navigate(`/engineering/dags/${id}/executions`);
-        } catch (e: any) {
-            message.error(e?.message || '触发失败');
-        }
+    const handleQuery = () => {
+        applyQuery({name: searchName});
     };
+    const handleReset = () => {
+        setSearchName('');
+        applyQuery({name: ''});
+    };
+
+    const columns = useMemo<ColumnsType<DagProject>>(() => [
+        {
+            title: '项目名称',
+            dataIndex: 'name',
+            width: '22%',
+            ellipsis: true,
+            render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
+        },
+        {
+            title: '项目描述',
+            dataIndex: 'description',
+            ellipsis: true,
+            render: (v?: string) => v
+                ? <span className="text-ds-text-secondary">{v}</span>
+                : <span className="text-ds-text-muted">—</span>
+        },
+        {
+            title: 'DAG 数',
+            width: '15%',
+            align: 'center',
+            render: (_, r: DagProject) => r.dagCount ?? 0
+        },
+        {
+            title: '操作',
+            width: '20%',
+            align: 'center',
+            render: (_, r: DagProject) => (
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                    <Tooltip title="进入">
+                        <DsIconButton
+                            tone="accent"
+                            aria-label="进入"
+                            onClick={() => navigate(`/engineering/dags/${r.id}`)}>
+                            <HiOutlineArrowRightOnRectangle size={16}/>
+                        </DsIconButton>
+                    </Tooltip>
+                    {canEdit && (
+                        <Tooltip title="编辑">
+                            <DsIconButton
+                                tone="accent"
+                                aria-label="编辑"
+                                onClick={() => {
+                                    setEditingProject(r);
+                                    projectForm.setFieldsValue(r);
+                                    setProjectModalOpen(true);
+                                }}>
+                                <HiOutlinePencilSquare size={16}/>
+                            </DsIconButton>
+                        </Tooltip>
+                    )}
+                    {canEdit && (
+                        <Tooltip title="删除">
+                            <DsIconButton
+                                tone="danger"
+                                aria-label="删除"
+                                onClick={() => openDeleteModal(r)}>
+                                <HiOutlineTrash size={16}/>
+                            </DsIconButton>
+                        </Tooltip>
+                    )}
+                </div>
+            )
+        }
+    ], [canEdit, navigate, projectForm]);
 
     return (
-        <div className="p-6 space-y-4">
-            <Card title="DAG 项目" extra={
-                <Space>
-                    <Select
-                        placeholder="选择项目"
-                        value={selectedProjectId}
-                        onChange={setSelectedProjectId}
-                        style={{width: 220}}
-                        options={projects.map(p => ({label: p.name, value: p.id}))}
-                    />
-                    <Button type="primary" icon={<PlusOutlined/>}
-                            onClick={() => {
-                                setEditingProject(null);
-                                projectForm.resetFields();
-                                setProjectModalOpen(true);
-                            }}>
+        <div className="h-full flex flex-col overflow-hidden">
+            {/* 页头：标题 + 新建项目按钮 */}
+            <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
+                <div>
+                    <h1 className="text-ds-display text-ds-text-primary">数据开发</h1>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">按项目分组管理 DAG 编排与 SQL 任务</p>
+                </div>
+                <Tooltip title={canEdit ? '' : '只读模式：您没有编辑权限'}>
+                    <DsButton
+                        variant="primary"
+                        data-testid="project-create"
+                        disabled={!canEdit}
+                        onClick={() => {
+                            setEditingProject(null);
+                            projectForm.resetFields();
+                            setProjectModalOpen(true);
+                        }}>
+                        <HiOutlinePlus size={16}/>
                         新建项目
-                    </Button>
-                </Space>
-            }>
-                <Table
-                    dataSource={projects}
-                    rowKey="id"
-                    pagination={false}
-                    size="small"
-                    columns={[
-                        {title: 'ID', dataIndex: 'id', width: 60},
-                        {title: '名称', dataIndex: 'name'},
-                        {title: '描述', dataIndex: 'description', ellipsis: true},
-                        {title: '创建时间', dataIndex: 'createdAt', width: 180},
-                        {
-                            title: '操作', width: 180,
-                            render: (_, r: DagProject) => (
-                                <Space>
-                                    <Button size="small" icon={<EditOutlined/>}
-                                            onClick={() => {
-                                                setEditingProject(r);
-                                                projectForm.setFieldsValue(r);
-                                                setProjectModalOpen(true);
-                                            }}>
-                                        编辑
-                                    </Button>
-                                    <Popconfirm title="确认删除？" onConfirm={() => handleDeleteProject(r.id!)}>
-                                        <Button size="small" danger icon={<DeleteOutlined/>}>删除</Button>
-                                    </Popconfirm>
-                                </Space>
-                            )
-                        }
-                    ]}
-                />
-            </Card>
+                    </DsButton>
+                </Tooltip>
+            </div>
 
-            <Card title={`DAG 列表 ${selectedProjectId ? '' : '(请先选项目)'}`} extra={
-                <Button type="primary" icon={<PlusOutlined/>} disabled={!selectedProjectId}
-                        onClick={() => navigate(`/engineering/dags/new?projectId=${selectedProjectId}`)}>
-                    新建 DAG
-                </Button>
-            }>
-                {dags.length === 0 ? <Empty description="暂无 DAG"/> : (
-                    <Table
-                        dataSource={dags}
-                        rowKey="id"
-                        pagination={false}
-                        columns={[
-                            {title: 'ID', dataIndex: 'id', width: 60},
-                            {title: '名称', dataIndex: 'name'},
-                            {
-                                title: '触发', dataIndex: 'triggerType', width: 90,
-                                render: (v: string) => <Tag color={v === 'CRON' ? 'blue' : 'default'}>{v}</Tag>
-                            },
-                            {title: 'Cron', dataIndex: 'cronExpression', width: 120, ellipsis: true},
-                            {
-                                title: '状态', dataIndex: 'status', width: 90,
-                                render: (v: string) => <Tag color={v === 'ENABLED' ? 'green' : 'default'}>{v}</Tag>
-                            },
-                            {title: 'DS Code', dataIndex: 'dsProcessDefinitionCode', width: 140},
-                            {
-                                title: '发布', dataIndex: 'releaseState', width: 100,
-                                render: (v: string) => v ?
-                                    <Tag color={v === 'ONLINE' ? 'green' : 'orange'}>{v}</Tag> : '-'
-                            },
-                            {
-                                title: '操作', width: 280, fixed: 'right',
-                                render: (_, r: Dag) => (
-                                    <Space>
-                                        <Button size="small" type="primary" icon={<PlayCircleOutlined/>}
-                                                onClick={() => handleTrigger(r.id!)}>触发</Button>
-                                        <Button size="small" icon={<CodeOutlined/>}
-                                                onClick={() => navigate(`/engineering/dags/${r.id}/edit`)}>编辑</Button>
-                                        <Button size="small" icon={<HistoryOutlined/>}
-                                                onClick={() => navigate(`/engineering/dags/${r.id}/executions`)}>历史</Button>
-                                        <Popconfirm title="确认删除？" onConfirm={() => handleDeleteDag(r.id!)}>
-                                            <Button size="small" danger icon={<DeleteOutlined/>}>删除</Button>
-                                        </Popconfirm>
-                                    </Space>
-                                )
-                            }
-                        ]}
+            {/* 工具栏：独立卡片（与表格分离，对齐原型 .toolbar） */}
+            <div
+                className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
+                <DsToolbar extra={
+                    <>
+                        <DsButton variant="primary" onClick={handleQuery}>
+                            查询
+                        </DsButton>
+                        <DsButton variant="secondary" onClick={handleReset}>
+                            重置
+                        </DsButton>
+                    </>
+                }>
+                    <SearchInput
+                        value={searchName}
+                        onChange={(e) => setSearchName(e.target.value)}
+                        onEnter={handleQuery}
+                        placeholder="搜索项目名称..."
                     />
-                )}
-            </Card>
+                </DsToolbar>
+            </div>
 
+            {/* 表格卡片 + 底部分页器 */}
+            <div className="flex-1 min-h-0 flex flex-col">
+                <div
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
+                    <div className="flex-1 overflow-auto">
+                        <Table
+                            dataSource={projects}
+                            rowKey="id"
+                            loading={loading}
+                            pagination={false}
+                            className="prototype-table prototype-table-flush"
+                            columns={columns}
+                            locale={{emptyText: <DsTableEmpty description="暂无项目"/>}}
+                        />
+                    </div>
+                    <Pagination
+                        page={page}
+                        pageSize={pageSize}
+                        total={total}
+                        onChange={(p, ps) => {
+                            // 组件在改每页条数时已传 p=1，这里区分两种变更走对应入口
+                            if (ps === pageSize) {
+                                setPage(p);
+                            } else {
+                                setPageSize(ps);
+                            }
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* 新建/编辑项目弹框：对齐原型 md-project（.fg/.fl/.fi/.desc 表单样式） */}
             <Modal
-                title={editingProject ? '编辑 DAG 项目' : '新建 DAG 项目'}
+                title={editingProject ? '编辑项目' : '新建项目'}
                 open={projectModalOpen}
                 onCancel={() => {
                     setProjectModalOpen(false);
@@ -218,15 +250,70 @@ export default function DagsPage() {
                 onOk={handleSaveProject}
                 okText="保存"
                 cancelText="取消"
+                width={480}
+                centered
+                wrapClassName="prototype-modal"
+                destroyOnClose
             >
-                <Form form={projectForm} layout="vertical">
-                    <Form.Item label="名称" name="name" rules={[{required: true, max: 100}]}>
-                        <Input placeholder="如 data-dev"/>
+                <Form form={projectForm} layout="vertical" requiredMark={false} className="mt-ds-2">
+                    <Form.Item
+                        label={<span
+                            className="block text-[12px] font-bold text-ds-text-secondary uppercase tracking-[0.5px]">项目名称 <span
+                            className="text-ds-danger">*</span></span>}
+                        name="name"
+                        rules={[
+                            {required: true, message: '请输入项目名称'},
+                            {pattern: /^[一-龥A-Za-z0-9_]{3,30}$/, message: '支持中文、字母、数字、下划线，3-30 位'},
+                        ]}
+                        extra={<span
+                            className="text-[11px] text-ds-text-muted">支持中文、字母、数字、下划线，3-30 位</span>}
+                    >
+                        <Input id="name" placeholder="输入项目名称，3-30 位"
+                               disabled={!!editingProject}
+                               className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-[13px]"/>
                     </Form.Item>
-                    <Form.Item label="描述" name="description" rules={[{max: 1000}]}>
-                        <Input.TextArea rows={3} placeholder="项目描述（可选）"/>
+                    <Form.Item
+                        label={<span
+                            className="block text-[12px] font-bold text-ds-text-secondary uppercase tracking-[0.5px]">项目描述</span>}
+                        name="description"
+                        rules={[{max: 200, message: '最多 200 字'}]}
+                        extra={<span className="text-[11px] text-ds-text-muted">最多 200 字</span>}
+                    >
+                        <Input placeholder="可选，最多 200 字"
+                               className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-[13px]"/>
                     </Form.Item>
                 </Form>
+            </Modal>
+            {/* 删除确认弹框：对齐原型 md-project-del */}
+            <Modal
+                title="删除确认"
+                open={deleteTarget != null}
+                onCancel={() => setDeleteTarget(null)}
+                onOk={handleDeleteProject}
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{danger: true, loading: deleting}}
+                width={440}
+                centered
+                wrapClassName="prototype-modal"
+            >
+                <div className="text-[14px] mb-ds-4">
+                    确定删除项目「<strong>{deleteTarget?.name}</strong>」吗？
+                </div>
+                <div
+                    className="bg-ds-bg-root rounded-ds-sm px-ds-4 py-[14px] text-[13px] text-ds-text-secondary leading-[1.7] mb-ds-5">
+                    <div className="font-semibold text-ds-text-primary mb-[6px]">
+                        该项目包含 {deleteTarget?.dagCount ?? deleteDagNames?.length ?? 0} 个 DAG，将一并删除：
+                    </div>
+                    {deleteDagNames == null ? (
+                        <div>加载 DAG 名单...</div>
+                    ) : deleteDagNames.length === 0 ? (
+                        <div>（项目下暂无 DAG）</div>
+                    ) : (
+                        deleteDagNames.map(n => <div key={n}>• {n}</div>)
+                    )}
+                    <div className="mt-[10px]">删除后不可恢复。</div>
+                </div>
             </Modal>
         </div>
     );

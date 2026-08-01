@@ -1,4 +1,4 @@
-﻿services:
+services:
   # ============================================
   # 中间件层 (middleware-*) — 基础设施服务
   # ============================================
@@ -290,6 +290,64 @@
     restart: "no"
 
   # ============================================
+  # Test Oracle 23ai Free — 数据源 E2E 测试目标库
+  # 端口 1521；默认用户 testuser/testpass123，SYSTEM/root123
+  # 镜像：gvenzl/oracle-free:23-slim（社区免费版，无需授权）
+  # 持久化：test-oracle-data 卷
+  # 启动慢（start_period=120s），需等 initdb 完成
+  # ============================================
+  middleware-test-oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: datanest-middleware-test-oracle
+    environment:
+      ORACLE_PASSWORD: root123
+      APP_USER: testuser
+      APP_USER_PASSWORD: testpass123
+      TZ: Asia/Shanghai
+    ports:
+      - "1521:1521"
+    volumes:
+      - test-oracle-data:/opt/oracle/oradata
+      - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Test SQL Server 2022 — 数据源 E2E 测试目标库
+  # 端口 1433；SA 密码 YourStrong@Passw0rd（满足强密码策略）
+  # 镜像：mcr.microsoft.com/mssql/server:2022-latest
+  # 必须 ACCEPT_EULA=Y；用 sqlserver-entrypoint.sh 跑 initdb/*.sql
+  # ============================================
+  middleware-test-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: datanest-middleware-test-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
+      MSSQL_PID: "Express"
+      TZ: Asia/Shanghai
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./scripts/test-sqlserver-init.sql:/docker-entrypoint-initdb.d/01-test-sqlserver-init.sql:ro
+      - ./scripts/sqlserver-entrypoint.sh:/sqlserver-entrypoint.sh:ro
+    command: [ "/bin/bash", "/sqlserver-entrypoint.sh" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1' | grep -q '1'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
   # 应用层 (app-*) — 业务服务
   # ============================================
 
@@ -429,6 +487,8 @@
       - SPRING_DATASOURCE_PASSWORD=nacos123
       - REGISTRY_TYPE=zookeeper
       - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
+      # DS master 过载保护：当前容器内存不足，先关闭以避免 "cannot consumes commands"
+      - MASTER_SERVER_LOAD_PROTECTION_ENABLED=false
     volumes:
       - datanest-ds-logs:/opt/dolphinscheduler/logs
       - datanest-ds-shared:/opt/soft
@@ -455,6 +515,8 @@
       - REGISTRY_TYPE=zookeeper
       - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
       - ALERT_SERVER_HOST=middleware-ds-alert
+      # DS worker 过载保护：当前容器资源紧张，先关闭以避免 worker 被标记为 BUSY 不接收任务
+      - WORKER_SERVER_LOAD_PROTECTION_ENABLED=false
     volumes:
       - datanest-ds-logs:/opt/dolphinscheduler/logs
       - datanest-ds-shared:/opt/soft
@@ -515,7 +577,9 @@
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
-    # 不暴露宿主机端口，仅通过 app-gateway 访问
+    # ADR-S3-012：回调走 gateway（app-gateway:8080/api/engineering/dev/internal/**），
+    # 不再直连 engineering 8082。Docker 内网 gateway 与 app-engineering 在同 datanest-net。
+    # 测试（conftest.py）也走 gateway 路径，模拟 DS 真实调用链路。
     depends_on:
       middleware-nacos:
         condition: service_healthy
@@ -721,6 +785,7 @@ volumes:
   redisdata:
   test-mysql-data:
   test-postgres-data:
+  test-oracle-data:
   xxl-job-admin-data:
   # 新增 — DS 日志+资源（4 个 DS 服务共享 /opt/dolphinscheduler/logs；master/worker 共享 /opt/soft）
   datanest-ds-logs:

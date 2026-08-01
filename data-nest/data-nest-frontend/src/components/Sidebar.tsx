@@ -1,19 +1,20 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
-import {ArrowLeftRight, ClipboardList, Clock, Database, History, Home, Ruler, UserCog, Workflow,} from 'lucide-react';
+import type {RoleCode} from '../constants/roles';
+import {ALL_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '../constants/roles';
 
 interface MenuItem {
     label: string;
     path: string;
-    icon: React.ReactNode;
-    roles?: string[];
+    icon: string;
+    roles?: RoleCode[];
 }
 
 const allMenus: { group: string; items: MenuItem[] }[] = [
     {
         group: '数据平台',
         items: [
-            {label: '首页', path: '/', icon: <Home size={18}/>},
+            {label: '首页', path: '/', icon: '🏠'},
         ],
     },
     {
@@ -22,20 +23,25 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
             {
                 label: '数据源管理',
                 path: '/engineering/datasources',
-                icon: <Database size={18}/>,
-                roles: ['SUPER_ADMIN', 'DATA_ENGINEER', 'GOVERNANCE_ADMIN']
+                icon: '📦',
+                roles: [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.GOVERNANCE_ADMIN]
             },
             {
                 label: '批量数据同步任务',
                 path: '/engineering/sync-jobs',
-                icon: <ArrowLeftRight size={18}/>,
-                roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
+                icon: '🔄',
+                roles: ENGINEERING_WRITE_ROLES
             },
+        ],
+    },
+    {
+        group: '数据开发',
+        items: [
             {
-                label: 'DAG 编排',
+                label: '项目管理',
                 path: '/engineering/dags',
-                icon: <Workflow size={18}/>,
-                roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
+                icon: '🔧',
+                roles: ALL_ROLES
             },
         ],
     },
@@ -45,20 +51,20 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
             {
                 label: '元数据采集任务',
                 path: '/governance/collect-tasks',
-                icon: <Clock size={18}/>,
-                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
+                icon: '⏱',
+                roles: GOVERNANCE_WRITE_ROLES
             },
             {
                 label: '元数据管理',
                 path: '/governance/metadata',
-                icon: <ClipboardList size={18}/>,
-                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN', 'DATA_ENGINEER', 'DATA_ANALYST']
+                icon: '📋',
+                roles: ALL_ROLES
             },
             {
                 label: '数据标准',
                 path: '/governance/data-standards',
-                icon: <Ruler size={18}/>,
-                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
+                icon: '📏',
+                roles: GOVERNANCE_WRITE_ROLES
             },
         ],
     },
@@ -68,21 +74,27 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
             {
                 label: '同步执行历史',
                 path: '/engineering/sync-job-history',
-                icon: <History size={18}/>,
-                roles: ['SUPER_ADMIN', 'DATA_ENGINEER']
+                icon: '🔄',
+                roles: ENGINEERING_WRITE_ROLES
             },
             {
                 label: '采集执行历史',
                 path: '/governance/collect-task-history',
-                icon: <History size={18}/>,
-                roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']
+                icon: '⏱',
+                roles: GOVERNANCE_WRITE_ROLES
+            },
+            {
+                label: 'DAG 执行历史',
+                path: '/engineering/dag-executions',
+                icon: '🔧',
+                roles: ALL_ROLES
             },
         ],
     },
     {
         group: '系统管理',
         items: [
-            {label: '用户管理', path: '/system/users', icon: <UserCog size={18}/>, roles: ['SUPER_ADMIN']},
+            {label: '用户管理', path: '/system/users', icon: '👥', roles: [ROLE.SUPER_ADMIN]},
         ],
     },
 ];
@@ -91,11 +103,11 @@ export default function Sidebar() {
     const navigate = useNavigate();
     const location = useLocation();
     const {userInfo} = useAuthStore();
-    const roles = userInfo?.roles || [];
+    const userRoles = userInfo?.roles || [];
 
     const hasAccess = (item: MenuItem) => {
         if (!item.roles || item.roles.length === 0) return true;
-        return item.roles.some((r) => roles.includes(r));
+        return item.roles.some((role) => userRoles.includes(role));
     };
 
     return (
@@ -117,7 +129,7 @@ export default function Sidebar() {
 
                     return (
                         <div key={group.group} className="mb-ds-4">
-                            <p className="text-ds-nano text-ds-text-muted uppercase tracking-widest px-ds-2 mb-ds-1">
+                            <p className="text-[11px] font-bold text-ds-text-muted uppercase tracking-[0.8px] px-3 pt-4 pb-[6px]">
                                 {group.group}
                             </p>
                             {visibleItems.map((item) => {
@@ -126,13 +138,13 @@ export default function Sidebar() {
                                     <button
                                         key={item.path}
                                         onClick={() => navigate(item.path)}
-                                        className={`w-full flex items-center gap-ds-2 px-ds-2 py-ds-2 rounded-ds-sm text-ds-small transition-colors ds-fast text-left
+                                        className={`w-full flex items-center gap-[10px] px-4 py-[9px] rounded-lg text-[13px] font-medium transition-colors duration-150 text-left
                       ${active
                                             ? 'bg-ds-accent-light text-ds-accent font-semibold'
                                             : 'text-ds-text-secondary hover:bg-ds-bg-hover hover:text-ds-text-primary'
                                         }`}
                                     >
-                                        {item.icon}
+                                        <span className="text-[15px] leading-none">{item.icon}</span>
                                         {item.label}
                                     </button>
                                 );

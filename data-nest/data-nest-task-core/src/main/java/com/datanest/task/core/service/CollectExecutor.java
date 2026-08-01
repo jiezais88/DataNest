@@ -14,7 +14,6 @@ import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -82,7 +81,8 @@ public class CollectExecutor {
         return parts.length > 1 ? parts[1].trim() : TaskTriggerType.CRON.getCode();
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    // 采集为渐进式落库，失败记录需在事务外即时提交，故不使用方法级事务。
+    // （此前同类自调用使 @Transactional 不生效；且 rollbackFor 会把已写入的 FAILED 失败记录一并回滚）
     public void runTask(Long taskId, String triggerType) {
         logger.info("runTask 开始执行，taskId={}，triggerType={}", taskId, triggerType);
         CollectTask task = collectTaskMapper.selectById(taskId);

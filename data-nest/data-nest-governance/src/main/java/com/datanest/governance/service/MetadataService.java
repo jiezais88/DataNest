@@ -17,10 +17,11 @@ import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataColumnMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -28,6 +29,14 @@ import java.util.stream.Collectors;
 
 @Service
 public class MetadataService {
+
+    private static final Logger logger = LoggerFactory.getLogger(MetadataService.class);
+
+    /** 搜索关键词最大长度，超长截断以保护 LIKE 查询 */
+    private static final int MAX_SEARCH_KEYWORD_LENGTH = 100;
+
+    /** 搜索结果最大返回条数，防止关键词过泛时全表返回（SQL 在 task-core，无法在此加 LIMIT） */
+    private static final int MAX_SEARCH_RESULTS = 100;
 
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
@@ -95,7 +104,7 @@ public class MetadataService {
                 dto.setType(conn.getType());
                 dto.setExists(true);
             } else if (SourceType.BUILTIN_DORIS.getCode().equals(sourceType)) {
-                dto.setName("Doris（内置）");
+                dto.setName("Doris 数仓");
                 dto.setType(DataSourceType.DORIS.getCode());
                 dto.setExists(true);
             } else {
@@ -150,13 +159,30 @@ public class MetadataService {
      */
     @Transactional(readOnly = true)
     public List<MetadataTreeNodeDTO> searchTree(String keyword) {
-        if (!StringUtils.hasText(keyword)) {
+        String trimmed = keyword == null ? "" : keyword.trim();
+        // 空白关键词直接返回空结果，避免三列 LIKE '%%' 全库扫描
+        if (trimmed.isEmpty()) {
             return List.of();
         }
+        // 纯通配符关键词（如 %、%%_）等价于全表匹配，直接拒绝
+        if (trimmed.replace("%", "").replace("_", "").isBlank()) {
+            return List.of();
+        }
+        // 超长关键词截断，保护 LIKE 查询
+        if (trimmed.length() > MAX_SEARCH_KEYWORD_LENGTH) {
+            trimmed = trimmed.substring(0, MAX_SEARCH_KEYWORD_LENGTH);
+        }
 
-        List<MetadataTable> rows = metadataTableMapper.searchTablesByKeyword(keyword.trim());
+        List<MetadataTable> rows = metadataTableMapper.searchTablesByKeyword(trimmed);
         if (rows.isEmpty()) {
             return List.of();
+        }
+        // SQL 写死在 task-core 的 mapper 中，此处无法在 SQL 层加 LIMIT，
+        // 先在服务层截断保护返回规模；彻底修复需在 searchTablesByKeyword 的 SQL 上加 LIMIT
+        if (rows.size() > MAX_SEARCH_RESULTS) {
+            logger.warn("Metadata search hit result cap: keyword={}, total={}, capped={}",
+                    trimmed, rows.size(), MAX_SEARCH_RESULTS);
+            rows = rows.subList(0, MAX_SEARCH_RESULTS);
         }
 
         List<Long> datasourceIds = rows.stream()
@@ -192,7 +218,7 @@ public class MetadataService {
                     node.setDatasourceType(conn.getType());
                     node.setExists(true);
                 } else if (builtinDoris) {
-                    node.setName("Doris（内置）");
+                    node.setName("Doris 数仓");
                     node.setDatasourceType(DataSourceType.DORIS.getCode());
                     node.setExists(true);
                 } else {

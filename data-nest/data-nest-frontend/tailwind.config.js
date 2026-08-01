@@ -1,22 +1,47 @@
+import tailwindcssAnimate from 'tailwindcss-animate';
+
+/**
+ * 颜色唯一来源是 src/styles/tokens.css :root 的 RGB 通道变量，这里只做桥接。
+ * withAlpha 形式让 /50、/20 等透明度修饰可用。新增颜色请先在
+ * tokens.css 定义变量，再在这里加一行，不要写死 hex。
+ */
+const withAlpha = (variable) => `rgb(var(${variable}) / <alpha-value>)`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
     content: ['./index.html', './src/**/*.{ts,tsx}'],
     theme: {
         extend: {
             colors: {
-                'ds-bg-root': '#f7f8fa',
-                'ds-bg-surface': '#ffffff',
-                'ds-bg-elevated': '#ffffff',
-                'ds-bg-hover': '#f1f3f6',
-                'ds-border-subtle': '#e2e6ed',
-                'ds-border-strong': '#cdd3dc',
-                'ds-text-primary': '#0f172a',
-                'ds-text-secondary': '#475569',
-                'ds-text-muted': '#94a3b8',
-                'ds-accent': {DEFAULT: '#4f46e5', hover: '#4338ca', light: '#eef2ff', glow: 'rgba(79,70,229,0.12)'},
-                'ds-danger': {DEFAULT: '#dc2626', hover: '#b91c1c', light: '#fef2f2'},
-                'ds-success': {DEFAULT: '#16a34a', light: '#f0fdf4'},
-                'ds-warning': {DEFAULT: '#d97706', light: '#fffbeb'},
+                'ds-bg-root': withAlpha('--color-bg-root'),
+                'ds-bg-surface': withAlpha('--color-bg-surface'),
+                'ds-bg-elevated': withAlpha('--color-bg-elevated'),
+                'ds-bg-hover': withAlpha('--color-bg-hover'),
+                'ds-border-subtle': withAlpha('--color-border-subtle'),
+                'ds-border-strong': withAlpha('--color-border-strong'),
+                'ds-text-primary': withAlpha('--color-text-primary'),
+                'ds-text-secondary': withAlpha('--color-text-secondary'),
+                'ds-text-muted': withAlpha('--color-text-muted'),
+                'ds-accent': {
+                    DEFAULT: withAlpha('--color-accent'),
+                    hover: withAlpha('--color-accent-hover'),
+                    light: withAlpha('--color-accent-light'),
+                    glow: 'rgb(var(--color-accent) / 0.12)',
+                },
+                'ds-danger': {
+                    DEFAULT: withAlpha('--color-danger'),
+                    hover: withAlpha('--color-danger-hover'),
+                    light: withAlpha('--color-danger-light'),
+                },
+                'ds-success': {DEFAULT: withAlpha('--color-success'), light: withAlpha('--color-success-light')},
+                'ds-warning': {DEFAULT: withAlpha('--color-warning'), light: withAlpha('--color-warning-light')},
+
+                // DAG node status (Sprint 3)
+                'ds-node-waiting': withAlpha('--color-node-waiting'),
+                'ds-node-running': withAlpha('--color-node-running'),
+                'ds-node-success': withAlpha('--color-node-success'),
+                'ds-node-failed': withAlpha('--color-node-failed'),
+                'ds-node-skipped': withAlpha('--color-node-skipped'),
             },
             fontFamily: {
                 sans: ["'Inter'", '-apple-system', 'BlinkMacSystemFont', "'Segoe UI'", 'sans-serif'],
@@ -38,6 +63,7 @@ export default {
             },
             borderRadius: {
                 'ds-sm': '8px', 'ds-md': '12px', 'ds-lg': '16px', 'ds-full': '100px',
+                'ds-xs': '6px',
             },
             boxShadow: {
                 'ds-xs': '0 1px 2px rgba(0,0,0,0.04)',
@@ -49,6 +75,10 @@ export default {
             zIndex: {
                 'ds-elevated': '100', 'ds-overlay': '200', 'ds-dialog': '300',
             },
+            width: {
+                'ds-node-palette': '180px',
+                'ds-property-panel': '260px',
+            },
             transitionTimingFunction: {
                 'ds-fast': 'cubic-bezier(0.4, 0, 0.2, 1)',
                 'ds-smooth': 'cubic-bezier(0.4, 0, 0.2, 1)',
@@ -58,5 +88,5 @@ export default {
             },
         },
     },
-    plugins: [require('tailwindcss-animate')],
+    plugins: [tailwindcssAnimate],
 }

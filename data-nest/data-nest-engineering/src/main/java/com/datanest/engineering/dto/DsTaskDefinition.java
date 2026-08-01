@@ -1,6 +1,5 @@
 package com.datanest.engineering.dto;
 
-import com.alibaba.fastjson2.annotation.JSONField;
 import lombok.Data;
 
 import java.util.List;
@@ -30,10 +29,6 @@ public class DsTaskDefinition {
      * SHELL: {"localParams":[],"rawScript":"echo hello"}
      */
     private String taskParams;
-
-    /** 关联上游任务 code 列表（DS 字段名 preTasks） */
-    @JSONField(name = "preTasks")
-    private List<Long> preTaskCodes;
 
     /** Worker 分组 */
     private String workerGroup;
@@ -66,4 +61,11 @@ public class DsTaskDefinition {
     private Long environmentCode = -1L;
 
     private String conditionType;        // NONE / SUCCESS / FAILURE
+
+    /** Sprint 3 API 测试发现：DS 拒收缺 version/taskPriority 的 taskDefinitionJson */
+    private Integer version = 1;
+
+    private String taskPriority = "MEDIUM";  // HIGH/MEDIUM/LOW
+
+    private String taskExecuteType = "BATCH"; // BATCH / STREAM
 }

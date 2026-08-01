@@ -56,6 +56,7 @@ public class DataSourceService {
     private final SyncJobMapper syncJobMapper;
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
+    private final ComplianceCleanupMapper complianceCleanupMapper;
     private final SchedulerClient schedulerClient;
     private final DataSourceRefreshService dataSourceRefreshService;
 
@@ -63,6 +64,7 @@ public class DataSourceService {
                              ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
                              SyncJobMapper syncJobMapper,
                              MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
+                             ComplianceCleanupMapper complianceCleanupMapper,
                              SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
@@ -71,6 +73,7 @@ public class DataSourceService {
         this.syncJobMapper = syncJobMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
+        this.complianceCleanupMapper = complianceCleanupMapper;
         this.schedulerClient = schedulerClient;
         this.dataSourceRefreshService = dataSourceRefreshService;
     }
@@ -222,6 +225,12 @@ public class DataSourceService {
             metadataColumnMapper.deleteByTableIds(tableIds);
         }
         metadataTableMapper.deleteByDatasourceId(id);
+
+        // 级联删除合规检查结果（datasource_id 关联的历史检查记录，治理模块表）
+        int removed = complianceCleanupMapper.deleteByDatasourceId(id);
+        if (removed > 0) {
+            logger.info("级联删除合规检查结果: datasourceId={}, count={}", id, removed);
+        }
 
         dataSourceMapper.deleteById(id);
     }

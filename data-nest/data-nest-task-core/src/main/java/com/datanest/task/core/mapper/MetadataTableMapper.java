@@ -86,7 +86,8 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
     int deleteByDatasourceId(@Param("datasourceId") Long datasourceId);
 
     /**
-     * 按数据库名、模式名、表名模糊搜索，返回所有匹配路径。
+     * 按数据库名、模式名、表名模糊搜索，返回匹配路径。
+     * LIMIT 防止通配符/常见词关键词导致全表返回；调用方（governance MetadataService）另有空白/通配符关键词拦截与结果截断兜底。
      */
     @Select("""
             SELECT
@@ -108,6 +109,7 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
                 OR t.table_name LIKE CONCAT('%', #{keyword}, '%')
               )
             ORDER BY t.datasource_id, t.database_name, COALESCE(t.schema_name, ''), t.table_name
+            LIMIT 100
             """)
     List<MetadataTable> searchTablesByKeyword(@Param("keyword") String keyword);
 }

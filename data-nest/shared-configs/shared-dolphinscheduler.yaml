@@ -14,7 +14,9 @@ datanest:
     tenant-code: ${DS_TENANT_CODE:datanest}
     # DAG 节点回调 engineering 的超时时间（秒）
     callback-timeout-seconds: 1800
-    # 状态轮询间隔（后端 → DS）
-    poll-interval-ms: 5000
     # 启用内部接口鉴权开关（生产环境应开启；开发阶段 false）
     # internal-auth-enabled: false
+    # 节点回调地址（DS worker → DataNest）
+    # 决策 ADR-S3-012：回调走 gateway，不直连 engineering
+    # Docker 内网默认 app-gateway:8080；运维可按需覆盖
+    callback-base-url: ${DS_CALLBACK_BASE_URL:http://app-gateway:8080/api/engineering}

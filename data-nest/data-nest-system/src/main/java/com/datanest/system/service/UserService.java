@@ -8,13 +8,13 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.UserLoginDTO;
-import com.datanest.system.dto.*;
+import com.datanest.system.dto.UserCreateRequest;
+import com.datanest.system.dto.UserUpdateRequest;
+import com.datanest.system.dto.UserVO;
 import com.datanest.system.entity.Role;
 import com.datanest.system.entity.User;
 import com.datanest.system.mapper.RoleMapper;
 import com.datanest.system.mapper.UserMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +23,6 @@ import java.util.List;
 
 @Service
 public class UserService {
-
-    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
@@ -45,9 +43,6 @@ public class UserService {
         if (user == null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-        log.info("Login attempt: username={}, inputPassword={}, dbPassword={}, match={}",
-                username, password, user.getPassword(),
-                passwordEncoder.matches(password, user.getPassword()));
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new BusinessException(ErrorCode.PASSWORD_ERROR);
         }

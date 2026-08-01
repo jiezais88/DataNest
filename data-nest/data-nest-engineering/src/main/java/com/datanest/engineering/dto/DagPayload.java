@@ -33,4 +33,17 @@ public class DagPayload {
 
     private List<DagNodePayload> nodes;
     private List<DagEdgePayload> edges;
+
+    /** Sprint 3 性能优化：列表页展示用节点摘要，避免前端 N+1 拉 nodes */
+    private String nodeSummary;
+
+    /** Sprint 3 性能优化：最近一次执行状态/时间，避免前端 N+1 拉 executions */
+    private LatestExecution latestExecution;
+
+    @Data
+    public static class LatestExecution {
+        private String status;
+        private LocalDateTime startTime;
+        private LocalDateTime endTime;
+    }
 }

@@ -27,6 +27,9 @@ public class JobRegistrar implements ApplicationRunner {
     @Value("${xxl.job.executor.appname:data-nest-job}")
     private String appName;
 
+    @Value("${datanest.job.dag-sync.cron:0/30 * * * * ?}")
+    private String dagSyncCron;
+
     private final SchedulerClient schedulerClient;
 
     public JobRegistrar(SchedulerClient schedulerClient) {
@@ -40,8 +43,14 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("dataSourceStatusRefreshHandler", "0 0/5 * * * ?");
         platformJobs.put("syncHistoryCleanupHandler", "0 0 2 * * ?");
         platformJobs.put("collectHistoryCleanupHandler", "0 30 2 * * ?");
-        // Sprint 3：DS 任务实例状态同步（5s 一次，保证 DAG 执行历史及时回写）
-        platformJobs.put("dagExecutionSyncHandler", "0/5 * * * * ?");
+        // Sprint 3：DS 任务实例状态同步（默认 30s 兜底；handler 内有自适应触发，仍有 RUNNING 时缩短到 5s）
+        platformJobs.put("dagExecutionSyncHandler", dagSyncCron);
+        // Sprint 3：DAG 执行历史清理（每天凌晨 3 点，保留 30 天）
+        platformJobs.put("dagExecutionHistoryCleanupHandler", "0 0 3 * * ?");
+        // 卡死 RUNNING 收割（每小时，阈值 datanest.task.stuck-running-timeout-minutes 默认 120 分钟）
+        platformJobs.put("stuckExecutionReaperHandler", "0 0 * * * ?");
+        // 同步任务持久化重试扫描（每小时，实际触发时间 = next_retry_at 之后的第一个整点扫描周期）
+        platformJobs.put("syncJobRetryHandler", "0 10 * * * ?");
 
         int jobGroup = resolveJobGroup();
         logger.info("Ensuring platform jobs registered in XXL-JOB, jobGroup={}", jobGroup);
@@ -87,7 +96,10 @@ public class JobRegistrar implements ApplicationRunner {
             case "dataSourceStatusRefreshHandler" -> "数据源状态定时刷新";
             case "syncHistoryCleanupHandler" -> "同步任务历史清理";
             case "collectHistoryCleanupHandler" -> "采集任务历史清理";
-            case "dagExecutionSyncHandler" -> "DAG 执行状态同步（DS → DataNest）";
+            case "dagExecutionSyncHandler" -> "DAG 执行状态同步";
+            case "dagExecutionHistoryCleanupHandler" -> "DAG 执行历史清理";
+            case "stuckExecutionReaperHandler" -> "卡死 RUNNING 执行收割";
+            case "syncJobRetryHandler" -> "同步任务失败重试扫描";
             default -> executorHandler;
         };
     }

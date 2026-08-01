@@ -40,3 +40,14 @@ datanest:
   job:
     xxl-job:
       job-group-id: ${XXL_JOB_GROUP_ID:0}
+    dag-sync:
+      # DAG 执行状态兜底同步周期：默认 30s。
+      # 当仍有 RUNNING 的 execution 时，handler 会自适应触发下一次同步（最小间隔 5s）。
+      cron: ${DAG_SYNC_CRON:0/30 * * * * ?}
+      adaptive-enabled: true
+      adaptive-min-interval-ms: 5000
+      # 刚 trigger 的 execution 在多少毫秒内不参与同步，给 DS 启动时间。
+      silent-period-ms: 10000
+    dag-history-cleanup:
+      # DAG 执行历史保留天数（终态记录保留多久后清理）。
+      retain-days: ${DAG_HISTORY_RETAIN_DAYS:30}

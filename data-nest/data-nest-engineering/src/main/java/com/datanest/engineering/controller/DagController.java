@@ -1,5 +1,8 @@
 package com.datanest.engineering.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
+import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionDTO;
 import com.datanest.engineering.dto.DagPayload;
 import com.datanest.engineering.service.DagExecutionService;
@@ -20,48 +23,86 @@ public class DagController {
         this.dagExecutionService = dagExecutionService;
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
     @GetMapping
-    public List<DagPayload> list(@RequestParam(required = false) Long projectId) {
-        return dagService.list(projectId);
+    public Result<List<DagPayload>> list(@RequestParam(required = false) Long projectId) {
+        return Result.ok(dagService.list(projectId));
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
     @GetMapping("/{id}")
-    public DagPayload get(@PathVariable Long id) {
-        return dagService.getDetail(id);
+    public Result<DagPayload> get(@PathVariable Long id) {
+        return Result.ok(dagService.getDetail(id));
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping
-    public DagPayload create(@RequestBody DagPayload payload) {
-        return dagService.create(payload);
+    public Result<DagPayload> create(@RequestBody DagPayload payload) {
+        return Result.ok(dagService.create(payload));
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PutMapping("/{id}")
-    public DagPayload update(@PathVariable Long id, @RequestBody DagPayload payload) {
-        return dagService.update(id, payload);
+    public Result<DagPayload> update(@PathVariable Long id, @RequestBody DagPayload payload) {
+        return Result.ok(dagService.update(id, payload));
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable Long id) {
         dagService.delete(id);
+        return Result.ok(null);
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/{id}/trigger")
-    public DagExecutionDTO trigger(@PathVariable Long id) {
-        return dagExecutionService.trigger(id);
+    public Result<DagExecutionDTO> trigger(@PathVariable Long id) {
+        return Result.ok(dagExecutionService.trigger(id));
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/schedule/start")
+    public Result<Void> startSchedule(@PathVariable Long id) {
+        dagService.startSchedule(id);
+        return Result.ok((Void) null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/schedule/stop")
+    public Result<Void> stopSchedule(@PathVariable Long id) {
+        dagService.stopSchedule(id);
+        return Result.ok((Void) null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/{id}/executions/{executionId}/stop")
-    public void stop(@PathVariable Long id, @PathVariable Long executionId) {
-        // Sprint 3 P2-1：路由保留 id 让前端符合 REST 风格（listByDag 子资源），
-        // service 校验 executionId 属于 id 后再 stop；当前简化：只校验 id 非空
-        if (id == null) {
-            throw new com.datanest.common.exception.BusinessException(com.datanest.common.exception.ErrorCode.DAG_NOT_FOUND);
-        }
-        dagExecutionService.stop(executionId);
+    public Result<Void> stop(@PathVariable Long id, @PathVariable Long executionId) {
+        dagExecutionService.stop(id, executionId);
+        return Result.ok(null);
     }
 
+    /**
+     * Sprint 3 P1-13（差距分析 §1.13 + HTML 原型 v-history 展开行）：重跑失败节点。
+     * <p>
+     * 路由：POST /api/engineering/dev/dags/{id}/executions/{executionId}/rerun-failed
+     * <p>
+     * 当前为 MVP 简化版：直接复用 trigger 创建一个新的执行实例，
+     * DagExecutionSyncService 5s 轮询会重新跑所有节点。
+     * 真正的"只重跑失败节点"留 P2：需要改写 trigger 流程为「只触发 FAILED 节点子图」+ 上游节点复用。
+     *
+     * @param id          DAG id
+     * @param executionId 要重跑的旧执行实例 id
+     * @return 新执行实例 DTO（含新 executionId 在 .id 字段）
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/executions/{executionId}/rerun-failed")
+    public Result<DagExecutionDTO> rerunFailed(@PathVariable Long id, @PathVariable Long executionId) {
+        return Result.ok(dagExecutionService.rerunFailed(id, executionId));
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
     @GetMapping("/{id}/executions")
-    public List<DagExecutionDTO> executions(@PathVariable Long id) {
-        return dagExecutionService.listByDag(id);
+    public Result<List<DagExecutionDTO>> executions(@PathVariable Long id) {
+        return Result.ok(dagExecutionService.listByDag(id));
     }
 }

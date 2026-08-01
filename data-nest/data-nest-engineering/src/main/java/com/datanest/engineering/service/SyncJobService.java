@@ -12,24 +12,22 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.engineering.dto.*;
-import com.datanest.task.core.entity.DataSourceConnection;
-import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.entity.SyncJobHistory;
-import com.datanest.task.core.entity.SyncJobLog;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
-import com.datanest.task.core.mapper.SyncJobHistoryMapper;
-import com.datanest.task.core.mapper.SyncJobLogMapper;
-import com.datanest.task.core.mapper.SyncJobMapper;
+import com.datanest.task.core.entity.*;
+import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,16 +39,21 @@ public class SyncJobService {
     private final SyncJobHistoryMapper syncJobHistoryMapper;
     private final SyncJobLogMapper syncJobLogMapper;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
+    private final DagNodeMapper dagNodeMapper;
+    private final DagMapper dagMapper;
     private final SchedulerServiceForEngineering schedulerService;
     private final RetryService retryService;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
                           SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
+                          DagNodeMapper dagNodeMapper, DagMapper dagMapper,
                           SchedulerServiceForEngineering schedulerService, RetryService retryService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
+        this.dagNodeMapper = dagNodeMapper;
+        this.dagMapper = dagMapper;
         this.schedulerService = schedulerService;
         this.retryService = retryService;
     }
@@ -75,11 +78,28 @@ public class SyncJobService {
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.insert(entity);
 
+        // XXL-JOB 注册放到事务提交后：DB 回滚时不会产生孤儿调度任务
         if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType())) {
-            Integer jobId = schedulerService.registerJob(entity.getId(), entity.getName(),
-                    entity.getCronExpression(), entity.getTriggerType(), false);
-            entity.setXxlJobId(jobId);
-            syncJobMapper.updateById(entity);
+            Long jobId = entity.getId();
+            String name = entity.getName();
+            String cronExpression = entity.getCronExpression();
+            String triggerType = entity.getTriggerType();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        Integer xxlJobId = schedulerService.registerJob(jobId, name, cronExpression, triggerType, false);
+                        SyncJob fresh = syncJobMapper.selectById(jobId);
+                        if (fresh != null) {
+                            fresh.setXxlJobId(xxlJobId);
+                            syncJobMapper.updateById(fresh);
+                        }
+                    } catch (Exception e) {
+                        logger.error("同步任务创建后注册 XXL-JOB 失败（不影响已提交的 DB 数据，启动调度时会重试注册）: syncJobId={}",
+                                jobId, e);
+                    }
+                }
+            });
         }
 
         return toDTO(entity);
@@ -97,22 +117,16 @@ public class SyncJobService {
         }
         checkDataSource(request.getSourceDatasourceId());
 
+        Integer oldXxlJobId = entity.getXxlJobId();
+        boolean cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType());
+
         copyFromRequest(entity, request);
         entity.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
         entity.setUpdatedBy(currentUserId());
         entity.setUpdatedAt(LocalDateTime.now());
 
-        if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType())) {
-            if (entity.getXxlJobId() != null) {
-                schedulerService.updateJob(entity.getXxlJobId(), entity.getId(), entity.getName(),
-                        entity.getCronExpression(), entity.getTriggerType(), entity.getScheduleEnabled() == 1);
-            } else {
-                Integer jobId = schedulerService.registerJob(entity.getId(), entity.getName(),
-                        entity.getCronExpression(), entity.getTriggerType(), entity.getScheduleEnabled() == 1);
-                entity.setXxlJobId(jobId);
-            }
-        } else if (entity.getXxlJobId() != null) {
-            schedulerService.unregisterJob(entity.getXxlJobId());
+        if (!cron && oldXxlJobId != null) {
+            // 切换为非 Cron：DB 先解除绑定，XXL-JOB 任务在事务提交后注销
             entity.setXxlJobId(null);
             entity.setScheduleEnabled(0);
             entity.setStatus(SyncJobScheduleStatus.NORMAL.getCode());
@@ -120,6 +134,37 @@ public class SyncJobService {
         }
 
         syncJobMapper.updateById(entity);
+
+        // XXL-JOB 注册/更新/注销放到事务提交后：避免 DB 回滚产生孤儿调度任务
+        Long jobId = entity.getId();
+        String name = entity.getName();
+        String cronExpression = entity.getCronExpression();
+        String triggerType = entity.getTriggerType();
+        boolean start = entity.getScheduleEnabled() != null && entity.getScheduleEnabled() == 1;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    if (cron) {
+                        if (oldXxlJobId != null) {
+                            schedulerService.updateJob(oldXxlJobId, jobId, name, cronExpression, triggerType, start);
+                        } else {
+                            Integer newXxlJobId = schedulerService.registerJob(jobId, name, cronExpression, triggerType, start);
+                            SyncJob fresh = syncJobMapper.selectById(jobId);
+                            if (fresh != null) {
+                                fresh.setXxlJobId(newXxlJobId);
+                                syncJobMapper.updateById(fresh);
+                            }
+                        }
+                    } else if (oldXxlJobId != null) {
+                        schedulerService.unregisterJob(oldXxlJobId);
+                    }
+                } catch (Exception e) {
+                    logger.error("同步任务更新后同步 XXL-JOB 失败（不影响已提交的 DB 数据）: syncJobId={}, xxlJobId={}",
+                            jobId, oldXxlJobId, e);
+                }
+            }
+        });
         return toDTO(entity);
     }
 
@@ -129,16 +174,43 @@ public class SyncJobService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
         }
+        // 执行中保护：RUNNING 时删除会让执行器回调更新已不存在的历史记录
+        if ("RUNNING".equalsIgnoreCase(entity.getExecutionStatus())) {
+            throw new BusinessException(ErrorCode.SYNC_JOB_ALREADY_RUNNING,
+                    "任务正在执行中，请等待执行完成后再删除");
+        }
+        // Sprint 3 PRD §8：同步任务被 DAG 引用时禁止删除
+        // 用 PostgreSQL 正则匹配 config 中的 syncJobId，兼容空格、数值/字符串格式
+        Set<Long> referencingDagIds = new HashSet<>(
+                dagNodeMapper.selectDagIdsReferencingSyncJob(
+                        "\"syncJobId\"\\s*:\\s*\\\"?" + id + "\\\"?"));
+        if (!referencingDagIds.isEmpty()) {
+            List<Dag> referencingDags = dagMapper.selectBatchIds(referencingDagIds);
+            String names = referencingDags.stream()
+                    .map(Dag::getName)
+                    .filter(n -> n != null && !n.isEmpty())
+                    .collect(Collectors.joining("、"));
+            throw new BusinessException(ErrorCode.DAG_REFERENCED,
+                    "该同步任务已被 DAG 引用，无法删除。引用 DAG：" + names);
+        }
         syncJobLogMapper.delete(new QueryWrapper<SyncJobLog>().eq("sync_job_id", id));
         syncJobHistoryMapper.delete(new QueryWrapper<SyncJobHistory>().eq("sync_job_id", id));
-        if (entity.getXxlJobId() != null) {
-            try {
-                schedulerService.unregisterJob(entity.getXxlJobId());
-            } catch (Exception e) {
-                logger.warn("删除同步任务时注销 XXL-JOB 任务失败: syncJobId={}, xxlJobId={}", id, entity.getXxlJobId(), e);
-            }
-        }
         syncJobMapper.deleteById(id);
+
+        // XXL-JOB 注销放到事务提交后：避免 DB 回滚时调度任务已被误删
+        Integer xxlJobId = entity.getXxlJobId();
+        if (xxlJobId != null) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        schedulerService.unregisterJob(xxlJobId);
+                    } catch (Exception e) {
+                        logger.warn("删除同步任务时注销 XXL-JOB 任务失败: syncJobId={}, xxlJobId={}", id, xxlJobId, e);
+                    }
+                }
+            });
+        }
     }
 
     public SyncJobDTO getById(Long id) {
@@ -211,18 +283,37 @@ public class SyncJobService {
         if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(entity.getTriggerType())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "仅 Cron 任务可启动调度");
         }
-        if (entity.getXxlJobId() == null) {
-            Integer jobId = schedulerService.registerJob(entity.getId(), entity.getName(),
-                    entity.getCronExpression(), entity.getTriggerType(), true);
-            entity.setXxlJobId(jobId);
-        } else {
-            schedulerService.startJob(entity.getXxlJobId());
-        }
         entity.setScheduleEnabled(1);
         entity.setStatus(SyncJobScheduleStatus.NORMAL.getCode());
         entity.setNextExecutionTime(computeNextExecutionTime(entity.getTriggerType(), entity.getCronExpression()));
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(entity);
+
+        // XXL-JOB 注册/启动放到事务提交后：避免 DB 回滚产生孤儿调度任务
+        Integer oldXxlJobId = entity.getXxlJobId();
+        String name = entity.getName();
+        String cronExpression = entity.getCronExpression();
+        String triggerType = entity.getTriggerType();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    if (oldXxlJobId == null) {
+                        Integer newXxlJobId = schedulerService.registerJob(id, name, cronExpression, triggerType, true);
+                        SyncJob fresh = syncJobMapper.selectById(id);
+                        if (fresh != null) {
+                            fresh.setXxlJobId(newXxlJobId);
+                            syncJobMapper.updateById(fresh);
+                        }
+                    } else {
+                        schedulerService.startJob(oldXxlJobId);
+                    }
+                } catch (Exception e) {
+                    logger.error("启动调度时同步 XXL-JOB 失败（不影响已提交的 DB 数据）: syncJobId={}, xxlJobId={}",
+                            id, oldXxlJobId, e);
+                }
+            }
+        });
     }
 
     @Transactional
@@ -231,14 +322,27 @@ public class SyncJobService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
         }
-        if (entity.getXxlJobId() != null) {
-            schedulerService.stopJob(entity.getXxlJobId());
-        }
         entity.setScheduleEnabled(0);
         entity.setStatus(SyncJobScheduleStatus.PAUSED.getCode());
         entity.setNextExecutionTime(null);
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(entity);
+
+        // XXL-JOB 停止放到事务提交后：DB 状态已落库，调度侧失败仅记日志
+        Integer xxlJobId = entity.getXxlJobId();
+        if (xxlJobId != null) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        schedulerService.stopJob(xxlJobId);
+                    } catch (Exception e) {
+                        logger.error("停止调度时同步 XXL-JOB 失败（不影响已提交的 DB 数据）: syncJobId={}, xxlJobId={}",
+                                id, xxlJobId, e);
+                    }
+                }
+            });
+        }
     }
 
     public PageResult<SyncJobHistoryDTO> historyPage(Long syncJobId, SyncJobHistoryQueryRequest request) {
@@ -273,14 +377,15 @@ public class SyncJobService {
         wrapper.orderByDesc("start_time");
         IPage<SyncJobHistory> result = syncJobHistoryMapper.selectPage(page, wrapper);
 
-        Map<Long, SyncJob> jobMap = result.getRecords().stream()
+        // 性能优化：selectBatchIds 一次性取回页内涉及的同步任务，避免逐条 selectById 的 N+1
+        List<Long> jobIds = result.getRecords().stream()
                 .map(SyncJobHistory::getSyncJobId)
                 .distinct()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> syncJobMapper.selectById(id),
-                        (a, b) -> a
-                ));
+                .toList();
+        Map<Long, SyncJob> jobMap = jobIds.isEmpty()
+                ? Map.of()
+                : syncJobMapper.selectBatchIds(jobIds).stream()
+                .collect(Collectors.toMap(SyncJob::getId, j -> j, (a, b) -> a));
 
         List<SyncJobHistoryDTO> records = result.getRecords().stream()
                 .map(h -> toHistoryDTO(h, jobMap.get(h.getSyncJobId())))

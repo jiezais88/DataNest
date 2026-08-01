@@ -1,6 +1,9 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
-import {useAuthStore} from '../../../store/useAuthStore';
+import {Table} from 'antd';
+import type {ColumnsType} from 'antd/es/table';
+import {useHasRole} from '../../../hooks/useHasRole';
+import {ALL_ROLES, GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
 import {
     getMetadataTable,
     listMetadataColumns,
@@ -15,12 +18,14 @@ import {
 import type {MetadataColumn, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
 import MetadataTree from './MetadataTree';
 import EmptyState from '../../../components/EmptyState';
-import {previewMetadataTable} from '../../../api/preview';
+import {previewMetadataTable, type PreviewResult} from '../../../api/preview';
 import PreviewModal from '../../../components/PreviewModal';
 import {HiOutlineBookOpen, HiOutlineCircleStack, HiOutlineEye, HiOutlineTableCells} from 'react-icons/hi2';
-import {formatDateTime} from '../../../utils/time';
+import {formatDateTime} from '../../../utils/format';
 import {isWithoutSchema} from '../../../constants/datasource';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
+import DsButton from '../../../components/DsButton';
+import DsTableEmpty from '../../../components/DsTableEmpty';
 
 export default function MetadataPage() {
     const navigate = useNavigate();
@@ -28,9 +33,7 @@ export default function MetadataPage() {
     const tableIdParam = searchParams.get('tableId');
     const columnIdParam = searchParams.get('columnId');
     const fromCompliance = searchParams.get('from') === 'compliance';
-    const {userInfo} = useAuthStore();
-    const roles = userInfo?.roles || [];
-    const canWrite = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN');
+    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [selectedNode, setSelectedNode] = useState<MetadataTreeNode | null>(null);
@@ -53,14 +56,10 @@ export default function MetadataPage() {
 
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
-    const [previewResult, setPreviewResult] = useState<{
-        columns: string[];
-        rows: Array<Record<string, any>>;
-        rowCount: number
-    } | null>(null);
+    const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
     const [previewTitle, setPreviewTitle] = useState('');
 
-    const canPreview = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN') || roles.includes('DATA_ENGINEER') || roles.includes('DATA_ANALYST');
+    const canPreview = useHasRole(...ALL_ROLES);
 
     const resetDetail = () => {
         setSelectedTable(null);
@@ -81,7 +80,7 @@ export default function MetadataPage() {
         const autoSelect = async () => {
             try {
                 const result = await getMetadataTable(tableIdParam);
-                if (cancelled || result.code !== 200 || !result.data) return;
+                if (cancelled || !result.data) return;
                 const table = result.data;
                 const datasourceId = table.datasourceId;
                 const databaseName = table.databaseName;
@@ -166,9 +165,7 @@ export default function MetadataPage() {
         setDatabasesLoading(true);
         try {
             const result = await listMetadataDatabases(datasourceId);
-            if (result.code === 200) {
-                setDatabases(result.data);
-            }
+            setDatabases(result.data);
         } finally {
             setDatabasesLoading(false);
         }
@@ -180,9 +177,7 @@ export default function MetadataPage() {
         setSchemasLoading(true);
         try {
             const result = await listMetadataSchemas(datasourceId, databaseName);
-            if (result.code === 200) {
-                setSchemas(result.data);
-            }
+            setSchemas(result.data);
         } finally {
             setSchemasLoading(false);
         }
@@ -196,9 +191,7 @@ export default function MetadataPage() {
             const result = isWithoutSchema(node.datasourceType)
                 ? await listMetadataTablesWithoutSchema(datasourceId, databaseName)
                 : await listMetadataTables(datasourceId, databaseName, schemaName);
-            if (result.code === 200) {
-                setTables(result.data);
-            }
+            setTables(result.data);
         } finally {
             setTablesLoading(false);
         }
@@ -212,12 +205,8 @@ export default function MetadataPage() {
                 getMetadataTable(tableId),
                 listMetadataColumns(tableId),
             ]);
-            if (tableResult.code === 200) {
-                setSelectedTable(tableResult.data);
-            }
-            if (columnsResult.code === 200) {
-                setColumns(columnsResult.data);
-            }
+            setSelectedTable(tableResult.data);
+            setColumns(columnsResult.data);
         } finally {
             setColumnsLoading(false);
         }
@@ -275,31 +264,25 @@ export default function MetadataPage() {
     const handleSaveTableComment = async () => {
         if (!editingCell || !selectedTable || editingCell.type !== 'table-comment') return;
         const value = editingCell.value.trim();
-        const result = await updateTableComment(selectedTable.id, value);
-        if (result.code === 200) {
-            setSelectedTable((prev) => prev ? {...prev, manualComment: value} : null);
-            setTables((prev) => prev.map((t) => t.id === selectedTable.id ? {...t, manualComment: value} : t));
-        }
+        await updateTableComment(selectedTable.id, value);
+        setSelectedTable((prev) => prev ? {...prev, manualComment: value} : null);
+        setTables((prev) => prev.map((t) => t.id === selectedTable.id ? {...t, manualComment: value} : t));
         setEditingCell(null);
     };
 
     const handleSaveColumnComment = async (column: MetadataColumn) => {
         if (!editingCell || editingCell.type !== 'column-comment') return;
         const value = editingCell.value.trim();
-        const result = await updateColumnComment(column.id, value);
-        if (result.code === 200) {
-            setColumns((prev) => prev.map((c) => c.id === column.id ? {...c, manualComment: value} : c));
-        }
+        await updateColumnComment(column.id, value);
+        setColumns((prev) => prev.map((c) => c.id === column.id ? {...c, manualComment: value} : c));
         setEditingCell(null);
     };
 
     const handleSaveColumnRemark = async (column: MetadataColumn) => {
         if (!editingCell || editingCell.type !== 'column-remark') return;
         const value = editingCell.value.trim();
-        const result = await updateColumnRemark(column.id, value);
-        if (result.code === 200) {
-            setColumns((prev) => prev.map((c) => c.id === column.id ? {...c, remark: value} : c));
-        }
+        await updateColumnRemark(column.id, value);
+        setColumns((prev) => prev.map((c) => c.id === column.id ? {...c, remark: value} : c));
         setEditingCell(null);
     };
 
@@ -363,7 +346,7 @@ export default function MetadataPage() {
         setPreviewResult(null);
         try {
             const result = await previewMetadataTable(table.id);
-            if (result.code === 200 && result.data) {
+            if (result.data) {
                 setPreviewResult({
                     columns: result.data.columns,
                     rows: result.data.rows,
@@ -375,100 +358,182 @@ export default function MetadataPage() {
         }
     };
 
+    const databaseColumns = useMemo<ColumnsType<string>>(() => [
+        {
+            title: '库名',
+            ellipsis: true,
+            render: (db: string) => (
+                <span className="text-ds-body text-ds-accent font-medium" title={db}>{db}</span>
+            ),
+        },
+    ], []);
+
     const renderDatabaseList = () => (
         <div className="ds-table-card">
             <div className="ds-table-scroll">
-                <table className="ds-table">
-                    <thead>
-                    <tr>
-                        <th>库名</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {databases.map((db) => (
-                        <tr
-                            key={db}
-                            className="cursor-pointer"
-                            onClick={() => selectDatabase(db)}
-                        >
-                            <td className="ds-table-cell-truncate" title={db}>
-                                <span className="text-ds-body text-ds-accent font-medium">{db}</span>
-                            </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
+                <Table<string>
+                    dataSource={databases}
+                    rowKey={(db) => db}
+                    loading={databasesLoading}
+                    pagination={false}
+                    columns={databaseColumns}
+                    className="prototype-table prototype-table-flush"
+                    onRow={(db) => ({
+                        className: 'cursor-pointer',
+                        onClick: () => selectDatabase(db),
+                    })}
+                    locale={{
+                        emptyText: (
+                            <DsTableEmpty description="该数据源下没有采集到库。"/>
+                        ),
+                    }}
+                />
             </div>
         </div>
     );
+
+    const schemaColumns = useMemo<ColumnsType<string>>(() => [
+        {
+            title: 'Schema',
+            ellipsis: true,
+            render: (schema: string) => (
+                <span className="text-ds-body text-ds-accent font-medium" title={schema}>{schema}</span>
+            ),
+        },
+    ], []);
 
     const renderSchemaList = () => (
         <div className="ds-table-card">
             <div className="ds-table-scroll">
-                <table className="ds-table">
-                    <thead>
-                    <tr>
-                        <th>Schema</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {schemas.map((schema) => (
-                        <tr
-                            key={schema}
-                            className="cursor-pointer"
-                            onClick={() => selectSchema(schema)}
-                        >
-                            <td className="ds-table-cell-truncate" title={schema}>
-                                <span className="text-ds-body text-ds-accent font-medium">{schema}</span>
-                            </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
+                <Table<string>
+                    dataSource={schemas}
+                    rowKey={(schema) => schema}
+                    loading={schemasLoading}
+                    pagination={false}
+                    columns={schemaColumns}
+                    className="prototype-table prototype-table-flush"
+                    onRow={(schema) => ({
+                        className: 'cursor-pointer',
+                        onClick: () => selectSchema(schema),
+                    })}
+                    locale={{
+                        emptyText: (
+                            <DsTableEmpty description="当前库下没有采集到 Schema。"/>
+                        ),
+                    }}
+                />
             </div>
         </div>
     );
 
-    const renderTableList = () => {
-        const commentOf = (table: MetadataTable) => table.manualComment || table.tableComment || '-';
-        return (
-            <div className="ds-table-card">
-                <div className="ds-table-scroll">
-                    <table className="ds-table">
-                        <thead>
-                        <tr>
-                            <th>表名</th>
-                            <th>注释</th>
-                            <th>字段数</th>
-                            <th>采集来源</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {tables.map((table) => (
-                            <tr
-                                key={table.id}
-                                className="cursor-pointer"
-                                onClick={() => selectTable(table)}
-                            >
-                                <td className="ds-table-cell-truncate" title={table.tableName}>
-                                    <span className="text-ds-body text-ds-accent font-medium">{table.tableName}</span>
-                                </td>
-                                <td className="ds-table-cell-wide" title={commentOf(table)}>
-                                    <span className="text-ds-small text-ds-text-secondary">{commentOf(table)}</span>
-                                </td>
-                                <td className="text-ds-small text-ds-text-secondary">{table.columnCount ?? '-'}</td>
-                                <td className="ds-table-cell-truncate" title={table.sourceTaskName || '-'}>
-                                    <span
-                                        className="text-ds-small text-ds-text-secondary">{table.sourceTaskName || '-'}</span>
-                                </td>
-                            </tr>
-                        ))}
-                        </tbody>
-                    </table>
-                </div>
+    const tableColumns = useMemo<ColumnsType<MetadataTable>>(() => [
+        {
+            title: '表名',
+            dataIndex: 'tableName',
+            ellipsis: true,
+            render: (v: string) => (
+                <span className="text-ds-body text-ds-accent font-medium" title={v}>{v}</span>
+            ),
+        },
+        {
+            title: '注释',
+            ellipsis: true,
+            render: (_, table) => {
+                const comment = table.manualComment || table.tableComment || '-';
+                return (
+                    <span className="text-ds-small text-ds-text-secondary" title={comment}>{comment}</span>
+                );
+            },
+        },
+        {
+            title: '字段数',
+            dataIndex: 'columnCount',
+            render: (v?: number) => (
+                <span className="text-ds-small text-ds-text-secondary">{v ?? '-'}</span>
+            ),
+        },
+        {
+            title: '采集来源',
+            dataIndex: 'sourceTaskName',
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+    ], []);
+
+    const renderTableList = (emptyText: string) => (
+        <div className="ds-table-card">
+            <div className="ds-table-scroll">
+                <Table<MetadataTable>
+                    dataSource={tables}
+                    rowKey="id"
+                    loading={tablesLoading}
+                    pagination={false}
+                    columns={tableColumns}
+                    className="prototype-table prototype-table-flush"
+                    onRow={(table) => ({
+                        className: 'cursor-pointer',
+                        onClick: () => selectTable(table),
+                    })}
+                    locale={{
+                        emptyText: (
+                            <DsTableEmpty description={emptyText}/>
+                        ),
+                    }}
+                />
             </div>
-        );
-    };
+        </div>
+    );
+
+    const columnColumns = useMemo<ColumnsType<MetadataColumn>>(() => [
+        {
+            title: '字段名',
+            dataIndex: 'columnName',
+            ellipsis: true,
+            render: (v: string) => (
+                <span className="text-ds-body text-ds-text-primary font-medium" title={v}>{v}</span>
+            ),
+        },
+        {
+            title: '数据类型',
+            dataIndex: 'dataType',
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
+            ),
+        },
+        {
+            title: '中文注释',
+            ellipsis: true,
+            render: (_, column) => {
+                const commentValue = column.manualComment || column.columnComment || '-';
+                return (
+                    <div title={commentValue}>
+                        {renderEditableCell('column-comment', column.id, column.manualComment || column.columnComment, () => handleSaveColumnComment(column))}
+                    </div>
+                );
+            },
+        },
+        {
+            title: '是否可空',
+            dataIndex: 'nullable',
+            render: (v: boolean) => (
+                <span className="text-ds-small text-ds-text-secondary">{v ? 'YES' : 'NO'}</span>
+            ),
+        },
+        {
+            title: '备注',
+            ellipsis: true,
+            render: (_, column) => {
+                const remarkValue = column.remark || '-';
+                return (
+                    <div title={remarkValue}>
+                        {renderEditableCell('column-remark', column.id, column.remark, () => handleSaveColumnRemark(column))}
+                    </div>
+                );
+            },
+        },
+    ], [editingCell, canWrite]);
 
     const renderTableDetail = () => {
         if (!selectedTable) return null;
@@ -530,53 +595,28 @@ export default function MetadataPage() {
                     <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-3">
                         字段列表
                     </h3>
-                    {columnsLoading ? (
-                        <p className="text-ds-small text-ds-text-muted">加载中...</p>
-                    ) : (
-                        <div className="ds-table-card">
-                            <div className="ds-table-scroll">
-                                <table className="ds-table">
-                                    <thead>
-                                    <tr>
-                                        <th>字段名</th>
-                                        <th>数据类型</th>
-                                        <th>中文注释</th>
-                                        <th>是否可空</th>
-                                        <th>备注</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    {columns.map((column) => {
-                                        const highlighted = column.id && highlightedColumnId && column.id === highlightedColumnId;
-                                        const commentValue = column.manualComment || column.columnComment || '-';
-                                        const remarkValue = column.remark || '-';
-                                        return (
-                                            <tr
-                                                key={column.id || column.columnName}
-                                                className={highlighted ? 'bg-ds-warning/10' : ''}
-                                            >
-                                                <td className="ds-table-cell-truncate" title={column.columnName}>
-                                                    <span
-                                                        className="text-ds-body text-ds-text-primary font-medium">{column.columnName}</span>
-                                                </td>
-                                                <td className="text-ds-small text-ds-text-secondary">{column.dataType || '-'}</td>
-                                                <td className="ds-table-cell-wide" title={commentValue}>
-                                                    {renderEditableCell('column-comment', column.id, column.manualComment || column.columnComment, () => handleSaveColumnComment(column))}
-                                                </td>
-                                                <td className="text-ds-small text-ds-text-secondary">
-                                                    {column.nullable ? 'YES' : 'NO'}
-                                                </td>
-                                                <td className="ds-table-cell-wide" title={remarkValue}>
-                                                    {renderEditableCell('column-remark', column.id, column.remark, () => handleSaveColumnRemark(column))}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                    </tbody>
-                                </table>
-                            </div>
+                    <div className="ds-table-card">
+                        <div className="ds-table-scroll">
+                            <Table<MetadataColumn>
+                                dataSource={columns}
+                                rowKey={(column) => column.id || column.columnName}
+                                loading={columnsLoading}
+                                pagination={false}
+                                columns={columnColumns}
+                                className="prototype-table prototype-table-flush"
+                                onRow={(column) => ({
+                                    className: column.id && highlightedColumnId && column.id === highlightedColumnId
+                                        ? 'bg-ds-warning/10'
+                                        : '',
+                                })}
+                                locale={{
+                                    emptyText: (
+                                        <DsTableEmpty description="暂无字段"/>
+                                    ),
+                                }}
+                            />
                         </div>
-                    )}
+                    </div>
                 </div>
             </div>
         );
@@ -590,12 +630,12 @@ export default function MetadataPage() {
                         title="暂无元数据"
                         description="请先在「元数据采集任务」中创建并执行任务，完成后即可在这里查看库表结构。"
                         action={
-                            <button
+                            <DsButton
+                                variant="primary"
                                 onClick={() => navigate('/governance/collect-tasks')}
-                                className="inline-flex items-center gap-ds-2 px-ds-4 py-ds-2 bg-ds-accent text-white text-ds-small font-semibold rounded-ds-sm hover:bg-ds-accent-hover transition-colors"
                             >
                                 前往元数据采集任务
-                            </button>
+                            </DsButton>
                         }
                     />
                 );
@@ -612,13 +652,7 @@ export default function MetadataPage() {
                         <span
                             className="text-ds-caption text-ds-text-muted font-normal">（共 {databases.length} 个库）</span>
                     </h2>
-                    {databasesLoading ? (
-                        <p className="text-ds-small text-ds-text-muted">加载中...</p>
-                    ) : databases.length === 0 ? (
-                        <EmptyState title="暂无库" description="该数据源下没有采集到库。"/>
-                    ) : (
-                        renderDatabaseList()
-                    )}
+                    {renderDatabaseList()}
                 </div>
             );
         }
@@ -633,13 +667,7 @@ export default function MetadataPage() {
                             <span
                                 className="text-ds-caption text-ds-text-muted font-normal">（共 {tables.length} 张表）</span>
                         </h2>
-                        {tablesLoading ? (
-                            <p className="text-ds-small text-ds-text-muted">加载中...</p>
-                        ) : tables.length === 0 ? (
-                            <EmptyState title="暂无表" description="当前库没有采集到表结构。"/>
-                        ) : (
-                            renderTableList()
-                        )}
+                        {renderTableList('当前库没有采集到表结构。')}
                     </div>
                 );
             }
@@ -650,13 +678,7 @@ export default function MetadataPage() {
                         {selectedNode.databaseName} Schema 列表
                         <span className="text-ds-caption text-ds-text-muted font-normal">（共 {schemas.length} 个）</span>
                     </h2>
-                    {schemasLoading ? (
-                        <p className="text-ds-small text-ds-text-muted">加载中...</p>
-                    ) : schemas.length === 0 ? (
-                        <EmptyState title="暂无 Schema" description="当前库下没有采集到 Schema。"/>
-                    ) : (
-                        renderSchemaList()
-                    )}
+                    {renderSchemaList()}
                 </div>
             );
         }
@@ -670,13 +692,7 @@ export default function MetadataPage() {
                         <span
                             className="text-ds-caption text-ds-text-muted font-normal">（共 {tables.length} 张表）</span>
                     </h2>
-                    {tablesLoading ? (
-                        <p className="text-ds-small text-ds-text-muted">加载中...</p>
-                    ) : tables.length === 0 ? (
-                        <EmptyState title="暂无表" description="当前 Schema 没有采集到表结构。"/>
-                    ) : (
-                        renderTableList()
-                    )}
+                    {renderTableList('当前 Schema 没有采集到表结构。')}
                 </div>
             );
         }
@@ -695,12 +711,12 @@ export default function MetadataPage() {
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">浏览已采集的数据源库表结构，编辑表与字段注释</p>
                 </div>
                 {fromCompliance && (
-                    <button
+                    <DsButton
+                        variant="secondary"
                         onClick={() => navigate('/governance/data-standards?from=compliance')}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent text-ds-accent text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         返回合规检查结果
-                    </button>
+                    </DsButton>
                 )}
             </div>
 

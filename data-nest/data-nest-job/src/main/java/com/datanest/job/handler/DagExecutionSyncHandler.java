@@ -4,23 +4,28 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.scheduler.SchedulerClient;
 import com.datanest.task.core.entity.SyncJobHistory;
 import com.datanest.task.core.mapper.SyncJobHistoryMapper;
 import com.datanest.task.core.service.DagExecutionSyncService;
 import com.datanest.task.core.service.DagExecutionSyncService.DsTaskInstance;
 import com.datanest.task.core.service.DagExecutionSyncService.SyncHistoryResult;
+import com.datanest.task.core.service.DagExecutionSyncService.SyncResult;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import tools.jackson.databind.JsonNode;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +37,7 @@ import java.util.List;
  * JSON 序列化：fastjson2（最新稳定版 2.0.52+）
  *
  * Sprint 3 P1-2：实现 SyncJobHistoryFetcher SPI，查 sync_job_history 给 SYNC 节点收尾
+ * Sprint3-Fix4：实现 SyncJobMutexReleaser SPI（直接操作 redis，避免跨服务依赖 engineering 的 SyncNodeMutexService）
  *
  * 注册到 XXL-JOB admin 后，在 admin 配 cron 触发：
  *   "0/5 * * * * ?"   （每 5 秒）
@@ -41,37 +47,118 @@ public class DagExecutionSyncHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagExecutionSyncHandler.class);
 
+    /**
+     * Sprint3-Fix4：与 engineering-service SyncNodeMutexService.KEY_PREFIX 保持一致
+     * （直接用 StringRedisTemplate 不跨服务依赖 engineering 包的 bean）
+     */
+    private static final String SYNC_LOCK_KEY_PREFIX = "datanest:dag:sync-lock:";
+
+    private static final String HANDLER_NAME = "dagExecutionSyncHandler";
+
+    /**
+     * 多实例安全：自适应触发的分布式锁。
+     * 锁过期时间 = adaptive-min-interval-ms，保证同一时刻只有一个 job 实例发起自适应触发。
+     */
+    private static final String ADAPTIVE_TRIGGER_LOCK_KEY = "datanest:dag-sync:adaptive-trigger-lock";
+
     private final DagExecutionSyncService dagExecutionSyncService;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
     private final RestTemplate restTemplate;
+    private final StringRedisTemplate redisTemplate;
+    private final SchedulerClient schedulerClient;
     private final String dsApiBaseUrl;
     private final String dsApiToken;
+    private final boolean adaptiveEnabled;
+    private final long adaptiveMinIntervalMs;
 
     public DagExecutionSyncHandler(DagExecutionSyncService dagExecutionSyncService,
                                    SyncJobHistoryMapper syncJobHistoryMapper,
                                    RestTemplate restTemplate,
+                                   StringRedisTemplate redisTemplate,
+                                   SchedulerClient schedulerClient,
                                    @Value("${datanest.dolphinscheduler.api-url}") String dsApiBaseUrl,
-                                   @Value("${datanest.dolphinscheduler.token}") String dsApiToken) {
+                                   @Value("${datanest.dolphinscheduler.token}") String dsApiToken,
+                                   @Value("${datanest.job.dag-sync.adaptive-enabled:true}") boolean adaptiveEnabled,
+                                   @Value("${datanest.job.dag-sync.adaptive-min-interval-ms:5000}") long adaptiveMinIntervalMs) {
         this.dagExecutionSyncService = dagExecutionSyncService;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.restTemplate = restTemplate;
+        this.redisTemplate = redisTemplate;
+        this.schedulerClient = schedulerClient;
         this.dsApiBaseUrl = dsApiBaseUrl;
         this.dsApiToken = dsApiToken;
+        this.adaptiveEnabled = adaptiveEnabled;
+        this.adaptiveMinIntervalMs = Math.max(1000L, adaptiveMinIntervalMs);
+    }
+
+    /**
+     * Sprint3-Fix4：按 syncJobId 释放互斥锁（普通方法，避免 lambda 字段初始化顺序问题）。
+     * 直接用 StringRedisTemplate 操作 redis（key 命名与 SyncNodeMutexService 一致）。
+     */
+    private void releaseSyncLock(Long syncJobId) {
+        if (syncJobId == null) return;
+        Boolean deleted = redisTemplate.delete(SYNC_LOCK_KEY_PREFIX + syncJobId);
+        if (Boolean.TRUE.equals(deleted)) {
+            logger.debug("job 端 SPI 释放 sync 互斥锁: syncJobId={}", syncJobId);
+        }
     }
 
     @XxlJob("dagExecutionSyncHandler")
     public void sync() {
         long start = System.currentTimeMillis();
         try {
-            int synced = dagExecutionSyncService.syncRunningExecutions(
-                    this::fetchTaskInstances, this::fetchLatestSyncHistory);
+            SyncResult result = dagExecutionSyncService.syncRunningExecutions(
+                    this::fetchTaskInstances, this::fetchLatestSyncHistory, this::releaseSyncLock);
             long cost = System.currentTimeMillis() - start;
-            logger.info("DAG 执行状态同步完成: synced={}, cost={}ms", synced, cost);
-            XxlJobHelper.handleSuccess("synced=" + synced + ", cost=" + cost + "ms");
+            logger.info("DAG 执行状态同步完成: synced={}, stillRunning={}, cost={}ms",
+                    result.synced(), result.stillRunning(), cost);
+            XxlJobHelper.handleSuccess("synced=" + result.synced()
+                    + ", stillRunning=" + result.stillRunning() + ", cost=" + cost + "ms");
+
+            // 自适应缩短间隔：本轮仍有 RUNNING 执行时，立即触发下一次同步（受最小间隔限制）。
+            // XXL-JOB 当前任务执行完后才会消费下一次触发，不会递归嵌套。
+            if (adaptiveEnabled && result.stillRunning()) {
+                triggerAdaptive();
+            }
         } catch (Exception e) {
             logger.error("DAG 执行状态同步失败", e);
             XxlJobHelper.handleFail("DAG 同步失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 自适应触发：当仍有 RUNNING execution 时，主动触发一次下一次同步。
+     * 使用 Redis 分布式锁保证多实例下只有一个 job 实例发起 adaptive 触发。
+     * 锁过期时间 = adaptiveMinIntervalMs，即使某个实例挂掉也不会死锁。
+     */
+    private void triggerAdaptive() {
+        try {
+            Boolean locked = redisTemplate.opsForValue()
+                    .setIfAbsent(ADAPTIVE_TRIGGER_LOCK_KEY, "1", Duration.ofMillis(adaptiveMinIntervalMs));
+            if (!Boolean.TRUE.equals(locked)) {
+                logger.debug("DAG 同步自适应触发未获取到分布式锁，跳过");
+                return;
+            }
+            logger.debug("DAG 同步自适应触发获取到分布式锁");
+
+            JsonNode job = schedulerClient.findJobByHandler(resolveJobGroup(), HANDLER_NAME);
+            if (job == null) {
+                logger.warn("未找到自适应触发的 XXL-JOB 任务: handler={}", HANDLER_NAME);
+                return;
+            }
+            Integer jobId = job.path("id").asInt();
+            if (jobId != null && jobId > 0) {
+                schedulerClient.triggerJob(jobId, "adaptive", false);
+                logger.info("DAG 执行状态同步自适应触发成功: jobId={}", jobId);
+            }
+        } catch (Exception e) {
+            logger.warn("DAG 执行状态同步自适应触发失败", e);
+        }
+    }
+
+    private int resolveJobGroup() {
+        // schedulerClient.ensureJobGroup 会按 appName 查询或创建执行器分组
+        return schedulerClient.ensureJobGroup("data-nest-job");
     }
 
     /**
@@ -97,12 +184,13 @@ public class DagExecutionSyncHandler {
     }
 
     /**
-     * DS API: GET /projects/{code}/workflow-instances/{id}/tasks
-     * fastjson2 解析响应
+     * DS API: GET /projects/{code}/task-instances?processInstanceId={id}&pageSize=1000&pageNo=1
+     * 该端点会返回 DS 计算好的 duration（如 "1s"），与 DS UI 展示一致。
      */
     private List<DsTaskInstance> fetchTaskInstances(Long dsProjectCode, Long dsProcessInstanceId) {
         String url = dsApiBaseUrl + "/projects/" + dsProjectCode
-                + "/workflow-instances/" + dsProcessInstanceId + "/tasks";
+                + "/task-instances?workflowInstanceId=" + dsProcessInstanceId
+                + "&pageSize=1000&pageNo=1";
         HttpHeaders headers = new HttpHeaders();
         if (dsApiToken != null && !dsApiToken.isEmpty()) {
             headers.set("token", dsApiToken);
@@ -122,6 +210,9 @@ public class DagExecutionSyncHandler {
             JSONObject data = envelope.getJSONObject("data");
             if (data == null) return List.of();
             JSONArray rawList = data.getJSONArray("totalList");
+            if (rawList == null) {
+                rawList = data.getJSONArray("taskList");
+            }
             if (rawList == null) return List.of();
             List<DsTaskInstance> result = new ArrayList<>(rawList.size());
             for (int i = 0; i < rawList.size(); i++) {
@@ -138,16 +229,122 @@ public class DagExecutionSyncHandler {
         }
     }
 
+    /**
+     * DS API: GET /projects/{code}/workflow-instances?id={id}&pageSize=1&pageNo=1
+     * 返回流程实例 duration（毫秒），用于和 DS UI 的 DAG 整体耗时保持一致。
+     */
+    public Long fetchWorkflowDurationMs(Long dsProjectCode, Long dsProcessInstanceId) {
+        String url = dsApiBaseUrl + "/projects/" + dsProjectCode
+                + "/workflow-instances?id=" + dsProcessInstanceId + "&pageSize=1&pageNo=1";
+        HttpHeaders headers = new HttpHeaders();
+        if (dsApiToken != null && !dsApiToken.isEmpty()) {
+            headers.set("token", dsApiToken);
+        }
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        try {
+            ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            String body = resp.getBody();
+            if (body == null) return null;
+            JSONObject envelope = JSON.parseObject(body);
+            if (envelope == null) return null;
+            Integer code = envelope.getInteger("code");
+            if (code == null || code != 0) {
+                logger.warn("DS workflow-instances 返回非 0 响应: code={}, body={}", code, body);
+                return null;
+            }
+            JSONObject data = envelope.getJSONObject("data");
+            if (data == null) return null;
+            JSONArray totalList = data.getJSONArray("totalList");
+            if (totalList == null || totalList.isEmpty()) return null;
+            String durationStr = strOrNull(totalList.getJSONObject(0).get("duration"));
+            return parseDsDuration(durationStr);
+        } catch (Exception e) {
+            logger.warn("DS workflow-instances 拉取失败: dsProjectCode={}, dsProcessInstanceId={}",
+                    dsProjectCode, dsProcessInstanceId, e);
+            return null;
+        }
+    }
+
     private DsTaskInstance toDsTaskInstance(JSONObject raw) {
         return new DsTaskInstance(
                 longOrNull(raw.get("id")),
                 strOrNull(raw.get("name")),
-                intOrNull(raw.get("state")),
+                stateOrNull(raw.get("state")),
                 strOrNull(raw.get("startTime")),
                 strOrNull(raw.get("endTime")),
-                longOrNull(raw.get("duration")),
+                durationOrNull(raw.get("duration")),
                 strOrNull(raw.get("errorMessage"))
         );
+    }
+
+    /**
+     * 解析 DS duration 字符串（如 "1s", "1m 30s", "1h 2m 3s", "1d 2h 3m 4s"）为毫秒。
+     * DS 对不足 1 秒的耗时也会展示为 "1s"，因此这里直接按 DS 的展示值解析。
+     */
+    private Long durationOrNull(Object o) {
+        if (o == null) return null;
+        if (o instanceof Number) return ((Number) o).longValue();
+        return parseDsDuration(o.toString());
+    }
+
+    private Long parseDsDuration(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s.isEmpty()) return null;
+        long total = 0;
+        // 支持 "1d 2h 3m 4s" 或 "1s"，数字与单位间可有或没有空格
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)\\s*(\\d+)\\s*([dhms])\\s*")
+                .matcher(s);
+        boolean matched = false;
+        while (m.find()) {
+            matched = true;
+            long value = Long.parseLong(m.group(1));
+            String unit = m.group(2).toLowerCase();
+            total += switch (unit) {
+                case "d" -> value * 24 * 60 * 60 * 1000;
+                case "h" -> value * 60 * 60 * 1000;
+                case "m" -> value * 60 * 1000;
+                case "s" -> value * 1000;
+                default -> 0;
+            };
+        }
+        return matched ? total : null;
+    }
+
+    /**
+     * DS 3.4.2 的 task instance state 序列化为枚举名字符串（如 "SUBMITTED_SUCCESS"），
+     * 旧版本可能返回数字 code，两种都兼容。
+     * code 与 DagExecutionSyncService.mapDsState 约定一致：
+     * 5=STOP / 6=FAILURE / 7=SUCCESS / 9=KILL，其余视为运行中。
+     */
+    private Integer stateOrNull(Object o) {
+        if (o == null) return null;
+        if (o instanceof Number) return ((Number) o).intValue();
+        String s = o.toString();
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException ignored) {
+            return switch (s.toUpperCase()) {
+                case "SUBMITTED_SUCCESS" -> 0;
+                case "RUNNING_EXECUTION" -> 1;
+                case "READY_PAUSE" -> 2;
+                case "PAUSE" -> 3;
+                case "READY_STOP" -> 4;
+                case "STOP" -> 5;
+                case "FAILURE" -> 6;
+                case "SUCCESS" -> 7;
+                case "NEED_FAULT_TOLERANCE" -> 8;
+                case "KILL" -> 9;
+                case "WAITING_THREAD" -> 10;
+                case "WAITING_DEPEND" -> 11;
+                case "DELAY_EXECUTION" -> 12;
+                case "FORCED_SUCCESS" -> 13;
+                case "SERIAL_WAIT" -> 14;
+                case "DISPATCH" -> 15;
+                default -> null;
+            };
+        }
     }
 
     private Long longOrNull(Object o) {

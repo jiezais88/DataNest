@@ -1,39 +1,11 @@
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {useEffect, useState} from 'react';
 import Sidebar from './Sidebar';
+import Breadcrumb from './Breadcrumb';
 import {useAuthStore} from '../store/useAuthStore';
 import ChangePasswordModal from './ChangePasswordModal';
 import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/hi2';
-
-type BreadcrumbEntry = { group?: string; label: string };
-
-const breadcrumbMap: Record<string, BreadcrumbEntry> = {
-    '/': {label: '首页'},
-    '/system/users': {group: '系统管理', label: '用户管理'},
-    '/engineering/datasources': {group: '数据工程', label: '数据源管理'},
-    '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步任务'},
-    '/engineering/dags': {group: '数据工程', label: 'DAG 编排'},
-    '/governance/collect-tasks': {group: '数据治理', label: '采集任务'},
-    '/governance/metadata': {group: '数据治理', label: '元数据管理'},
-    '/governance/data-standards': {group: '数据治理', label: '数据标准'},
-};
-
-function resolveBreadcrumb(pathname: string): string {
-    const entry = breadcrumbMap[pathname];
-    if (entry) {
-        return entry.group ? `${entry.group} / ${entry.label}` : entry.label;
-    }
-    // 动态子路由：/governance/collect-tasks/:id/history
-    const match = pathname.match(/^(.+\/\w+)\/([^/]+)\/(\w+)$/);
-    if (match) {
-        const parent = breadcrumbMap[match[1]];
-        if (parent) {
-            const prefix = parent.group ? `${parent.group} / ${parent.label}` : parent.label;
-            return `${prefix} / 历史记录`;
-        }
-    }
-    return '';
-}
+import {resolveMenuTitle} from '../utils/breadcrumb';
 
 export default function Layout() {
     const {userInfo, logout} = useAuthStore();
@@ -43,8 +15,8 @@ export default function Layout() {
     const [pwdModalOpen, setPwdModalOpen] = useState(false);
 
     useEffect(() => {
-        const breadcrumb = resolveBreadcrumb(location.pathname);
-        document.title = breadcrumb ? `DataNest — ${breadcrumb}` : 'DataNest';
+        const title = resolveMenuTitle(location.pathname);
+        document.title = title ? `DataNest — ${title}` : 'DataNest';
     }, [location.pathname]);
 
     const handleLogout = () => {
@@ -66,7 +38,7 @@ export default function Layout() {
                     <div className="relative">
                         <button
                             onClick={() => setMenuOpen(!menuOpen)}
-                            className="flex items-center gap-ds-2 px-ds-2 py-ds-1 rounded-ds-sm hover:bg-ds-bg-hover transition-colors ds-fast"
+                            className="flex items-center gap-ds-2 px-ds-2 py-ds-1 rounded-ds-sm hover:bg-ds-bg-hover transition-colors duration-ds-fast"
                         >
                             <div className="w-7 h-7 rounded-full bg-ds-accent flex items-center justify-center">
                                 <span className="text-white text-xs font-bold">{initials}</span>
@@ -104,6 +76,10 @@ export default function Layout() {
 
                 {/* Page content */}
                 <main className="flex-1 min-h-0 overflow-hidden p-ds-6">
+                    {/* Sprint 3 数据开发页面按原型自带面包屑/页头（或全屏画布），不渲染全局面包屑 */}
+                    {!location.pathname.startsWith('/engineering/dags') && (
+                        <Breadcrumb pathname={location.pathname}/>
+                    )}
                     <Outlet/>
                 </main>
             </div>

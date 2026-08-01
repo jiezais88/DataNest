@@ -6,7 +6,7 @@ package com.datanest.common.constant;
 public enum SourceType {
 
     EXTERNAL("EXTERNAL", "外部数据源"),
-    BUILTIN_DORIS("BUILTIN_DORIS", "内置 Doris");
+    BUILTIN_DORIS("BUILTIN_DORIS", "Doris 数仓");
 
     private final String code;
     private final String label;

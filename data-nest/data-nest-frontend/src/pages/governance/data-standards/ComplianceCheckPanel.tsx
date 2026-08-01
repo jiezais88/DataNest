@@ -1,7 +1,13 @@
+import type {ReactNode} from 'react';
+import {useMemo} from 'react';
 import {useNavigate} from 'react-router-dom';
+import {Table} from 'antd';
+import type {ColumnsType} from 'antd/es/table';
 import type {ComplianceCheckParams, ComplianceCheckResult} from '../../../types/dataStandard';
 import type {MetadataDatasource} from '../../../types/metadata';
 import EmptyState from '../../../components/EmptyState';
+import DsButton from '../../../components/DsButton';
+import DsTableEmpty from '../../../components/DsTableEmpty';
 import {HiOutlineArrowLeft, HiOutlineEye} from 'react-icons/hi2';
 
 interface ComplianceCheckPanelProps {
@@ -100,46 +106,51 @@ function ResultTable({items, columns, onView}: {
         label: string;
         className?: string;
         title?: (r: ComplianceCheckResult) => string;
-        render: (r: ComplianceCheckResult) => React.ReactNode;
+        render: (r: ComplianceCheckResult) => ReactNode;
     }[];
     onView: (r: ComplianceCheckResult) => void;
 }) {
+    const tableColumns = useMemo<ColumnsType<ComplianceCheckResult>>(() => [
+        ...columns.map((c) => ({
+            title: c.label,
+            key: c.key,
+            className: c.className,
+            onCell: (r: ComplianceCheckResult) => ({title: c.title?.(r)}),
+            render: (_: unknown, r: ComplianceCheckResult) => c.render(r),
+        })),
+        {
+            title: '操作',
+            key: 'actions',
+            align: 'center' as const,
+            className: 'ds-table-cell-no-truncate',
+            render: (_: unknown, r: ComplianceCheckResult) => (
+                <button
+                    onClick={() => onView(r)}
+                    className="inline-flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium"
+                >
+                    <HiOutlineEye size={14}/>
+                    查看
+                </button>
+            ),
+        },
+    ], [columns, onView]);
+
     if (items.length === 0) return null;
     return (
         <div className="ds-table-card">
             <div className="ds-table-scroll">
-                <table className="ds-table">
-                    <thead>
-                    <tr>
-                        {columns.map((c) => (
-                            <th key={c.key}>
-                                {c.label}
-                            </th>
-                        ))}
-                        <th className="text-center">操作</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {items.map((r) => (
-                        <tr key={r.id}>
-                            {columns.map((c) => (
-                                <td key={c.key} className={c.className} title={c.title?.(r)}>
-                                    {c.render(r)}
-                                </td>
-                            ))}
-                            <td className="ds-table-cell-no-truncate text-center">
-                                <button
-                                    onClick={() => onView(r)}
-                                    className="inline-flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium"
-                                >
-                                    <HiOutlineEye size={14}/>
-                                    查看
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
+                <Table<ComplianceCheckResult>
+                    dataSource={items}
+                    rowKey="id"
+                    pagination={false}
+                    columns={tableColumns}
+                    className="prototype-table prototype-table-flush"
+                    locale={{
+                        emptyText: (
+                            <DsTableEmpty description="暂无不合规项"/>
+                        ),
+                    }}
+                />
             </div>
         </div>
     );
@@ -191,12 +202,9 @@ export default function ComplianceCheckPanel({
                     <span className="text-ds-subhead text-ds-text-primary font-semibold">合规检查结果</span>
                 </div>
                 <div className="flex items-center gap-ds-3">
-                    <button
-                        onClick={onReCheck}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-accent text-ds-accent text-ds-small font-semibold rounded-ds-sm transition-colors"
-                    >
+                    <DsButton variant="secondary" onClick={onReCheck}>
                         重新检查
-                    </button>
+                    </DsButton>
                 </div>
             </div>
 

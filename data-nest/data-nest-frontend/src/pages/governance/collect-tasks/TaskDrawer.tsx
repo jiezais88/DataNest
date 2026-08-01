@@ -6,6 +6,7 @@ import {CollectModeEnum, TaskTriggerTypeEnum} from '../../../constants/task';
 import {getDataSourceSchemas} from '../../../api/engineering';
 import Drawer from '../../../components/Drawer';
 import CronPicker from '../../../components/CronPicker';
+import DsButton from '../../../components/DsButton';
 
 interface TaskFormData {
     name: string;
@@ -83,9 +84,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
         setSchemasLoading(true);
         try {
             const result = await getDataSourceSchemas(datasourceId);
-            if (result.code === 200) {
-                setSchemas(result.data);
-            }
+            setSchemas(result.data);
         } catch {
             setSchemas([]);
         } finally {
@@ -137,10 +136,8 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
         if (!validate()) return;
         setSubmitting(true);
         try {
-            const result = await onSubmit(buildPayload());
-            if (result && result.code === 200) {
-                onClose();
-            }
+            await onSubmit(buildPayload());
+            onClose();
         } finally {
             setSubmitting(false);
         }
@@ -161,21 +158,21 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
             onClose={onClose}
             footer={
                 <>
-                    <button
+                    <DsButton
+                        variant="secondary"
                         data-testid="collect-task-cancel"
                         onClick={onClose}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         取消
-                    </button>
-                    <button
+                    </DsButton>
+                    <DsButton
+                        variant="primary"
                         data-testid="collect-task-submit"
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         {submitting ? '保存中...' : '保存'}
-                    </button>
+                    </DsButton>
                 </>
             }
         >

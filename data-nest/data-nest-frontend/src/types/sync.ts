@@ -1,10 +1,11 @@
-import type {SyncMode, TaskTriggerType} from '../constants/task';
+import type {ExecutionStatus as AnyExecutionStatus, SyncMode, TaskTriggerType} from '../constants/task';
 
 export type {SyncMode, TaskTriggerType as SyncTriggerType};
 
 export type SyncScheduleStatus = 'NORMAL' | 'PAUSED';
-export type SyncExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
-export type SyncHistoryStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
+// 状态字符串统一在 constants/task.ts 的 ExecutionStatusEnum 声明，这里只收窄出业务域子集
+export type SyncExecutionStatus = Extract<AnyExecutionStatus, 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'>;
+export type SyncHistoryStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED'>;
 export type SyncLogLevel = 'INFO' | 'WARN' | 'ERROR';
 
 export interface SyncFieldMapping {

@@ -1,6 +1,7 @@
 package com.datanest.governance.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -87,18 +88,15 @@ public class ComplianceCheckService {
         } else {
             for (Long datasourceId : datasourceIds) {
                 List<MetadataTable> tables = listTables(datasourceId, databaseName, schemaName);
-                for (MetadataTable table : tables) {
-                    checkTable(table, tableStandards, results, checkedAt);
-                    List<MetadataColumn> columns = metadataColumnMapper.selectByTableId(table.getId());
-                    for (MetadataColumn column : columns) {
-                        checkColumn(column, table, columnStandards, standardMap, results, checkedAt);
-                    }
+                if (!tables.isEmpty()) {
+                    checkTables(tables, tableStandards, columnStandards, standardMap, results, checkedAt);
                 }
             }
         }
 
-        for (ComplianceCheckResult r : results) {
-            complianceCheckResultMapper.insert(r);
+        // 批量插入检查结果，避免数千条结果逐条 insert
+        if (!results.isEmpty()) {
+            complianceCheckResultMapper.insertBatch(results);
         }
         return results.stream().map(this::toDTO).collect(Collectors.toList());
     }
@@ -138,10 +136,30 @@ public class ComplianceCheckService {
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
-        checkTable(table, tableStandards, results, checkedAt);
-        List<MetadataColumn> columns = metadataColumnMapper.selectByTableId(tableId);
-        for (MetadataColumn column : columns) {
-            checkColumn(column, table, columnStandards, standardMap, results, checkedAt);
+        checkTables(List.of(table), tableStandards, columnStandards, standardMap, results, checkedAt);
+    }
+
+    /**
+     * 批量检查一组表：一次性查出所有字段并按表分组，避免逐表 selectByTableId 的 N+1 查询。
+     */
+    private void checkTables(List<MetadataTable> tables, List<NamingStandard> tableStandards,
+                             List<NamingStandard> columnStandards,
+                             Map<Long, FieldTypeStandard> standardMap,
+                             List<ComplianceCheckResult> results, LocalDateTime checkedAt) {
+        List<Long> tableIds = tables.stream().map(MetadataTable::getId).collect(Collectors.toList());
+        Map<Long, List<MetadataColumn>> columnsByTableId = metadataColumnMapper.selectList(
+                        new QueryWrapper<MetadataColumn>()
+                                .in("table_id", tableIds)
+                                .eq("source_status", MetadataSourceStatus.ONLINE.getCode())
+                                .orderByAsc("ordinal_position")
+                                .orderByAsc("column_name"))
+                .stream()
+                .collect(Collectors.groupingBy(MetadataColumn::getTableId));
+        for (MetadataTable table : tables) {
+            checkTable(table, tableStandards, results, checkedAt);
+            for (MetadataColumn column : columnsByTableId.getOrDefault(table.getId(), List.of())) {
+                checkColumn(column, table, columnStandards, standardMap, results, checkedAt);
+            }
         }
     }
 
@@ -306,6 +324,8 @@ public class ComplianceCheckService {
                                               String violationType, LocalDateTime checkedAt,
                                               List<ComplianceCheckResult.ApplicableStandard> applicableStandards) {
         ComplianceCheckResult r = new ComplianceCheckResult();
+        // 自定义 insertBatch 不会触发 ASSIGN_ID，需提前生成主键
+        r.setId(IdWorker.getId());
         r.setDatasourceId(table.getDatasourceId());
         r.setDatabaseName(table.getDatabaseName());
         r.setSchemaName(table.getSchemaName());

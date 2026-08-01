@@ -85,7 +85,7 @@ public class ConnectionTester {
         return buildJdbcUrl(request.getType(), request.getHost(), request.getPort(), request.getDatabaseName(), request.getSchemaName());
     }
 
-    private String buildJdbcUrl(String type, String host, int port, String database, String schema) {
+    public String buildJdbcUrl(String type, String host, int port, String database, String schema) {
         DataSourceType dataSourceType = DataSourceType.fromCode(type);
         if (dataSourceType == null) {
             throw new IllegalArgumentException("Unsupported data source type: " + type);

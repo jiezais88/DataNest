@@ -1,5 +1,7 @@
-import {useCallback, useEffect, useState} from 'react';
-import {message} from 'antd';
+import {type HTMLAttributes, useMemo, useState} from 'react';
+import {Table, Tooltip} from 'antd';
+import {notify} from '../../../utils/notify';
+import type {ColumnsType} from 'antd/es/table';
 import {
     createDataSource,
     deleteDataSource,
@@ -16,23 +18,26 @@ import type {
 import {DataSourceStatus, DataSourceStatusEnum, DataSourceType, TYPE_OPTIONS} from '../../../constants/datasource';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import DsModal from '../../../components/DsModal';
+import DsButton from '../../../components/DsButton';
+import DsIconButton from '../../../components/DsIconButton';
+import DsStatusBadge, {type DsStatusVariant} from '../../../components/DsStatusBadge';
+import DsTableEmpty from '../../../components/DsTableEmpty';
 import DataSourceDrawer from './DataSourceDrawer';
 import TypeBadge from '../../../components/TypeBadge';
 import TestResultModal from '../../../components/TestResultModal';
 import SearchInput from '../../../components/SearchInput';
-import {formatRelativeTime} from '../../../utils/time';
-import {useAuthStore} from '../../../store/useAuthStore';
-import {previewDataSource} from '../../../api/preview';
+import {formatDateTime, formatRelativeTime} from '../../../utils/format';
+import type {ApiError} from '../../../utils/error';
+import {previewDataSource, type PreviewResult} from '../../../api/preview';
 import PreviewModal from '../../../components/PreviewModal';
 import DatasourcePreviewSelector from './DatasourcePreviewSelector';
-import {
-    HiChevronRight,
-    HiOutlineBolt,
-    HiOutlineEye,
-    HiOutlinePencilSquare,
-    HiOutlinePlus,
-    HiOutlineTrash,
-} from 'react-icons/hi2';
+import usePagedList from '../../../hooks/usePagedList';
+import {useHasRole} from '../../../hooks/useHasRole';
+import {ENGINEERING_WRITE_ROLES, ROLE} from '../../../constants/roles';
+import DsFilterSelect from '../../../components/DsFilterSelect';
+import DsToolbar from '../../../components/DsToolbar';
+import {HiOutlineBolt, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
 
 const STATUS_OPTIONS: { value: DataSourceStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
@@ -42,32 +47,46 @@ const STATUS_OPTIONS: { value: DataSourceStatus | ''; label: string }[] = [
     {value: DataSourceStatusEnum.UNKNOWN, label: '未检测'},
 ];
 
-function formatDateTime(value?: string) {
-    if (!value) return '-';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '-';
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+const STATUS_BADGE: Record<DataSourceStatus, { label: string; variant: DsStatusVariant }> = {
+    [DataSourceStatusEnum.NORMAL]: {label: '正常', variant: 'success'},
+    [DataSourceStatusEnum.ERROR]: {label: '异常', variant: 'danger'},
+    [DataSourceStatusEnum.OFFLINE]: {label: '已下线', variant: 'disabled'},
+    [DataSourceStatusEnum.UNKNOWN]: {label: '未检测', variant: 'pending'},
+};
+
+interface DataSourceQuery {
+    keyword: string;
+    type: DataSourceType | '';
+    status: DataSourceStatus | '';
 }
 
-export default function DataSourcesPage() {
-    const {userInfo} = useAuthStore();
-    const roles = userInfo?.roles || [];
-    const canWrite = roles.includes('SUPER_ADMIN') || roles.includes('DATA_ENGINEER');
+const INITIAL_QUERY: DataSourceQuery = {keyword: '', type: '', status: ''};
 
-    const [items, setItems] = useState<DataSource[]>([]);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-    const [keyword, setKeyword] = useState('');
-    const [type, setType] = useState<DataSourceType | ''>('');
-    const [status, setStatus] = useState<DataSourceStatus | ''>('');
+export default function DataSourcesPage() {
+    const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
+
+    const {
+        list, total, page, pageSize, loading,
+        setPage, setPageSize, applyQuery, reload,
+    } = usePagedList<DataSourceQuery, DataSource>({
+        fetcher: async ({keyword, type, status, page, pageSize}) => {
+            const result = await getDataSources({
+                page,
+                pageSize,
+                keyword: keyword || undefined,
+                type: type || undefined,
+                status: status || undefined,
+            });
+            return {list: result.data.records, total: result.data.total};
+        },
+        initialQuery: INITIAL_QUERY,
+        defaultPageSize: 10,
+    });
 
     const [draftKeyword, setDraftKeyword] = useState('');
     const [draftType, setDraftType] = useState<DataSourceType | ''>('');
     const [draftStatus, setDraftStatus] = useState<DataSourceStatus | ''>('');
 
-    const [loading, setLoading] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editItem, setEditItem] = useState<DataSource | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<DataSource | null>(null);
@@ -76,7 +95,6 @@ export default function DataSourcesPage() {
     const [deleteReferences, setDeleteReferences] = useState<DataSourceReference[]>([]);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [testingId, setTestingId] = useState<string | null>(null);
-    const [searchTrigger, setSearchTrigger] = useState(0);
     const [testModalOpen, setTestModalOpen] = useState(false);
     const [testModalSuccess, setTestModalSuccess] = useState(false);
     const [testModalMessage, setTestModalMessage] = useState('');
@@ -84,90 +102,55 @@ export default function DataSourcesPage() {
     const [previewTarget, setPreviewTarget] = useState<DataSource | null>(null);
     const [previewModalOpen, setPreviewModalOpen] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
-    const [previewResult, setPreviewResult] = useState<{
-        columns: string[];
-        rows: Array<Record<string, any>>;
-        rowCount: number
-    } | null>(null);
+    const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
     const [previewTitle, setPreviewTitle] = useState('');
 
-    const canPreview = roles.includes('SUPER_ADMIN') || roles.includes('GOVERNANCE_ADMIN') || roles.includes('DATA_ENGINEER');
-
-    const loadData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const result = await getDataSources({
-                page,
-                pageSize,
-                keyword: keyword || undefined,
-                type: type || undefined,
-                status: status || undefined,
-            });
-            if (result.code === 200) {
-                setItems(result.data.records);
-                setTotal(result.data.total);
-            }
-        } finally {
-            setLoading(false);
-        }
-    }, [page, pageSize, keyword, type, status, searchTrigger]);
-
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
+    const canPreview = useHasRole(ROLE.SUPER_ADMIN, ROLE.GOVERNANCE_ADMIN, ROLE.DATA_ENGINEER);
 
     const handleSearch = () => {
-        setKeyword(draftKeyword);
-        setType(draftType);
-        setStatus(draftStatus);
-        setPage(1);
-        setSearchTrigger((v) => v + 1);
+        applyQuery({keyword: draftKeyword, type: draftType, status: draftStatus});
     };
 
     const handleReset = () => {
         setDraftKeyword('');
         setDraftType('');
         setDraftStatus('');
-        setKeyword('');
-        setType('');
-        setStatus('');
-        setPage(1);
         setPageSize(10);
+        applyQuery(INITIAL_QUERY);
     };
 
     const handlePageChange = (nextPage: number, nextPageSize: number) => {
-        setPage(nextPage);
-        setPageSize(nextPageSize);
+        if (nextPageSize !== pageSize) {
+            setPageSize(nextPageSize);
+        } else {
+            setPage(nextPage);
+        }
     };
 
     const handleCreate = async (data: DataSourceCreateRequest | DataSourceUpdateRequest) => {
         const result = await createDataSource(data as DataSourceCreateRequest);
-        if (result.code === 200) {
-            if (result.message) {
-                message.success(result.message);
-            } else {
-                message.success('数据源创建成功');
-            }
-            setDrawerOpen(false);
-            setEditItem(null);
-            loadData();
+        if (result.message) {
+            notify.success(result.message);
+        } else {
+            notify.success('数据源创建成功');
         }
+        setDrawerOpen(false);
+        setEditItem(null);
+        reload();
         return result;
     };
 
     const handleUpdate = async (data: DataSourceCreateRequest | DataSourceUpdateRequest) => {
         if (!editItem) return;
         const result = await updateDataSource(editItem.id, data as DataSourceUpdateRequest);
-        if (result.code === 200) {
-            if (result.message) {
-                message.success(result.message);
-            } else {
-                message.success('数据源更新成功');
-            }
-            setDrawerOpen(false);
-            setEditItem(null);
-            loadData();
+        if (result.message) {
+            notify.success(result.message);
+        } else {
+            notify.success('数据源更新成功');
         }
+        setDrawerOpen(false);
+        setEditItem(null);
+        reload();
         return result;
     };
 
@@ -175,17 +158,15 @@ export default function DataSourcesPage() {
         if (!deleteTarget) return;
         setDeleteLoading(true);
         try {
-            const result = await deleteDataSource(deleteTarget.id);
-            if (result.code === 200) {
-                message.success('数据源已删除');
-                setDeleteOpen(false);
-                setDeleteTarget(null);
-                loadData();
-            }
-        } catch (err: any) {
-            const errorData = err?.response?.data;
+            await deleteDataSource(deleteTarget.id);
+            notify.success('数据源已删除');
+            setDeleteOpen(false);
+            setDeleteTarget(null);
+            reload();
+        } catch (err) {
+            const errorData = (err as ApiError)?.response?.data;
             if (errorData?.code === 3005 && Array.isArray(errorData?.data)) {
-                setDeleteReferences(errorData.data);
+                setDeleteReferences(errorData.data as DataSourceReference[]);
                 setDeleteOpen(false);
                 setDeleteBlockedOpen(true);
             }
@@ -198,37 +179,12 @@ export default function DataSourcesPage() {
         setTestingId(item.id);
         const result = await testSavedDataSource(item.id);
         setTestingId(null);
-        if (result.code === 200) {
-            setTestModalSuccess(result.data.success);
-            setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
-            setTestModalOpen(true);
-            loadData();
-        }
+        setTestModalSuccess(result.data.success);
+        setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
+        setTestModalOpen(true);
+        reload();
     };
 
-    const getTypeLabel = (value: DataSourceType) => TYPE_OPTIONS.find((o) => o.value === value)?.label || value;
-
-    const statusClass = (value: DataSourceStatus) => {
-        if (value === DataSourceStatusEnum.NORMAL) return {
-            dot: 'bg-ds-success',
-            bg: 'bg-ds-success-light',
-            text: 'text-ds-success',
-            label: '正常'
-        };
-        if (value === DataSourceStatusEnum.ERROR) return {
-            dot: 'bg-ds-danger',
-            bg: 'bg-ds-danger-light',
-            text: 'text-ds-danger',
-            label: '异常'
-        };
-        if (value === DataSourceStatusEnum.OFFLINE) return {
-            dot: 'bg-ds-text-muted',
-            bg: 'bg-ds-bg-hover',
-            text: 'text-ds-text-muted',
-            label: '已下线'
-        };
-        return {dot: 'bg-ds-text-muted', bg: 'bg-ds-bg-hover', text: 'text-ds-text-muted', label: '未检测'};
-    };
     const handlePreview = async (database: string, schema: string | undefined, table: string) => {
         if (!previewTarget) return;
         setPreviewSelectorOpen(false);
@@ -238,7 +194,7 @@ export default function DataSourcesPage() {
         setPreviewTitle(`${previewTarget.name} / ${database}${schema && schema !== database ? ` / ${schema}` : ''} / ${table}`);
         try {
             const result = await previewDataSource(previewTarget.id, database, schema, table);
-            if (result.code === 200 && result.data) {
+            if (result.data) {
                 setPreviewResult({
                     columns: result.data.columns,
                     rows: result.data.rows,
@@ -250,6 +206,123 @@ export default function DataSourcesPage() {
         }
     };
 
+    const columns = useMemo<ColumnsType<DataSource>>(() => [
+        {
+            title: '数据源名称',
+            dataIndex: 'name',
+            ellipsis: true,
+            render: (v: string) => (
+                <span className="text-ds-body text-ds-text-primary font-medium" title={v}>{v}</span>
+            ),
+        },
+        {
+            title: '类型',
+            dataIndex: 'type',
+            render: (v: DataSourceType) => <TypeBadge type={v}/>,
+        },
+        {
+            title: '主机地址',
+            ellipsis: true,
+            render: (_, item) => (
+                <span className="text-ds-body text-ds-text-secondary"
+                      title={`${item.host}:${item.port}/${item.databaseName}`}>
+                    {item.host}:{item.port}/{item.databaseName}
+                </span>
+            ),
+        },
+        {
+            title: '描述',
+            dataIndex: 'description',
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '状态',
+            dataIndex: 'status',
+            render: (v: DataSourceStatus, item) => {
+                const badge = STATUS_BADGE[v] ?? STATUS_BADGE[DataSourceStatusEnum.UNKNOWN];
+                return (
+                    <span title={item.errorMessage || ''}>
+                        <DsStatusBadge label={badge.label} variant={badge.variant}/>
+                    </span>
+                );
+            },
+        },
+        {
+            title: '最近连接时间',
+            dataIndex: 'lastTestTime',
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={formatDateTime(v)}>
+                    {formatRelativeTime(v)}
+                </span>
+            ),
+        },
+        {
+            title: '操作',
+            align: 'center',
+            render: (_, item) => (
+                <div className="flex items-center justify-center w-full gap-1">
+                    {canWrite && (
+                        <>
+                            <Tooltip title="编辑">
+                                <DsIconButton
+                                    tone="accent"
+                                    data-testid={`datasource-edit-btn-${item.name}`}
+                                    onClick={() => {
+                                        setEditItem(item);
+                                        setDrawerOpen(true);
+                                    }}
+                                    aria-label="编辑"
+                                >
+                                    <HiOutlinePencilSquare size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                            <Tooltip title="测试连接">
+                                <DsIconButton
+                                    tone="accent"
+                                    data-testid={`datasource-test-btn-${item.name}`}
+                                    onClick={() => handleTest(item)}
+                                    disabled={testingId === item.id}
+                                    aria-label="测试连接"
+                                >
+                                    <HiOutlineBolt size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                            <Tooltip title="预览数据">
+                                <DsIconButton
+                                    tone="accent"
+                                    data-testid={`datasource-preview-btn-${item.name}`}
+                                    onClick={() => {
+                                        setPreviewTarget(item);
+                                        setPreviewSelectorOpen(true);
+                                    }}
+                                    aria-label="预览数据"
+                                >
+                                    <HiOutlineEye size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                            <Tooltip title="删除">
+                                <DsIconButton
+                                    tone="danger"
+                                    data-testid={`datasource-delete-btn-${item.name}`}
+                                    onClick={() => {
+                                        setDeleteTarget(item);
+                                        setDeleteOpen(true);
+                                    }}
+                                    aria-label="删除"
+                                >
+                                    <HiOutlineTrash size={16}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        </>
+                    )}
+                </div>
+            ),
+        },
+    ], [canWrite, testingId]);
+
     return (
         <div className="h-full flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
@@ -259,23 +332,40 @@ export default function DataSourcesPage() {
                         Server 等数据源连接</p>
                 </div>
                 {canWrite && (
-                    <button
+                    <DsButton
                         data-testid="datasource-create-btn"
                         onClick={() => {
                             setEditItem(null);
                             setDrawerOpen(true);
                         }}
-                        className="flex items-center gap-ds-1 px-ds-3 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
                     >
                         <HiOutlinePlus size={16}/>
                         新增数据源
-                    </button>
+                    </DsButton>
                 )}
             </div>
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
-                <div className="flex items-center gap-ds-3 flex-wrap">
+                <DsToolbar
+                    extra={
+                        <>
+                            <DsButton
+                                onClick={handleSearch}
+                                disabled={loading}
+                            >
+                                {loading ? '查询中...' : '查询'}
+                            </DsButton>
+                            <DsButton
+                                variant="secondary"
+                                onClick={handleReset}
+                                disabled={loading}
+                            >
+                                重置
+                            </DsButton>
+                        </>
+                    }
+                >
                     <SearchInput
                         data-testid="datasource-search-input"
                         value={draftKeyword}
@@ -284,177 +374,40 @@ export default function DataSourcesPage() {
                         placeholder="搜索数据源名称或主机..."
                     />
 
-                    <div className="relative">
-                        <select
-                            value={draftType}
-                            onChange={(e) => setDraftType(e.target.value as DataSourceType | '')}
-                            aria-label="按类型筛选"
-                            className="appearance-none min-w-[140px] pl-ds-3 pr-9 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer"
-                        >
-                            {TYPE_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
-                        <HiChevronRight
-                            size={14}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"
-                        />
-                    </div>
+                    <DsFilterSelect
+                        value={draftType}
+                        onChange={(v) => setDraftType(v as DataSourceType | '')}
+                        options={TYPE_OPTIONS}
+                        aria-label="按类型筛选"
+                    />
 
-                    <div className="relative">
-                        <select
-                            value={draftStatus}
-                            onChange={(e) => setDraftStatus(e.target.value as DataSourceStatus | '')}
-                            aria-label="按状态筛选"
-                            className="appearance-none min-w-[140px] pl-ds-3 pr-9 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer"
-                        >
-                            {STATUS_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
-                        <HiChevronRight
-                            size={14}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-ds-text-muted pointer-events-none"
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-ds-2 ml-auto">
-                        <button
-                            onClick={handleSearch}
-                            disabled={loading}
-                            className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover disabled:opacity-60 disabled:cursor-not-allowed text-white text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
-                        >
-                            {loading ? '查询中...' : '查询'}
-                        </button>
-                        <button
-                            onClick={handleReset}
-                            disabled={loading}
-                            className="px-ds-4 py-ds-2 bg-white border border-ds-border-subtle hover:border-ds-border-strong disabled:opacity-60 disabled:cursor-not-allowed text-ds-text-secondary text-ds-small font-semibold rounded-ds-sm transition-colors ds-fast"
-                        >
-                            重置
-                        </button>
-                    </div>
-                </div>
+                    <DsFilterSelect
+                        value={draftStatus}
+                        onChange={(v) => setDraftStatus(v as DataSourceStatus | '')}
+                        options={STATUS_OPTIONS}
+                        aria-label="按状态筛选"
+                    />
+                </DsToolbar>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto">
-                <div className="ds-table-card">
-                    <div className="ds-table-scroll">
-                        <table className="ds-table">
-                            <thead>
-                            <tr>
-                                <th>数据源名称</th>
-                                <th>类型</th>
-                                <th>主机地址</th>
-                                <th>描述</th>
-                                <th>状态</th>
-                                <th>最近连接时间</th>
-                                <th className="text-center">操作</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {items.map((item) => {
-                                const statusStyle = statusClass(item.status);
-                                return (
-                                    <tr
-                                        key={item.id}
-                                        data-testid={`datasource-row-${item.name}`}
-                                    >
-                                        <td className="ds-table-cell-truncate" title={item.name}>
-                                            <span
-                                                className="text-ds-body text-ds-text-primary font-medium">{item.name}</span>
-                                        </td>
-                                        <td>
-                                            <TypeBadge type={item.type}/>
-                                        </td>
-                                        <td className="text-ds-body text-ds-text-secondary"
-                                            title={`${item.host}:${item.port}/${item.databaseName}`}>
-                                            {item.host}:{item.port}/{item.databaseName}
-                                        </td>
-                                        <td className="ds-table-cell-truncate text-ds-small text-ds-text-secondary"
-                                            title={item.description || ''}>
-                                            {item.description || '-'}
-                                        </td>
-                                        <td>
-                                            <span
-                                                title={item.errorMessage || ''}
-                                                className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${statusStyle.bg} ${statusStyle.text}`}
-                                            >
-                                                <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`}/>
-                                                {statusStyle.label}
-                                            </span>
-                                        </td>
-                                        <td className="text-ds-small text-ds-text-secondary"
-                                            title={formatDateTime(item.lastTestTime)}>
-                                            {formatRelativeTime(item.lastTestTime)}
-                                        </td>
-                                        <td className="ds-table-cell-no-truncate">
-                                            <div className="flex items-center justify-center w-full gap-1">
-                                            {canWrite && (
-                                                <>
-                                                    <button
-                                                        data-testid={`datasource-edit-btn-${item.name}`}
-                                                        onClick={() => {
-                                                            setEditItem(item);
-                                                            setDrawerOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="编辑"
-                                                        aria-label="编辑"
-                                                    >
-                                                        <HiOutlinePencilSquare size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`datasource-test-btn-${item.name}`}
-                                                        onClick={() => handleTest(item)}
-                                                        disabled={testingId === item.id}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors disabled:opacity-60"
-                                                        title="测试连接"
-                                                        aria-label="测试连接"
-                                                    >
-                                                        <HiOutlineBolt size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`datasource-preview-btn-${item.name}`}
-                                                        onClick={() => {
-                                                            setPreviewTarget(item);
-                                                            setPreviewSelectorOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light rounded transition-colors"
-                                                        title="预览数据"
-                                                        aria-label="预览数据"
-                                                    >
-                                                        <HiOutlineEye size={16}/>
-                                                    </button>
-                                                    <button
-                                                        data-testid={`datasource-delete-btn-${item.name}`}
-                                                        onClick={() => {
-                                                            setDeleteTarget(item);
-                                                            setDeleteOpen(true);
-                                                        }}
-                                                        className="p-1.5 text-ds-text-muted hover:text-ds-danger hover:bg-ds-danger-light rounded transition-colors"
-                                                        title="删除"
-                                                        aria-label="删除"
-                                                    >
-                                                        <HiOutlineTrash size={16}/>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                            {items.length === 0 && !loading && (
-                                <tr>
-                                    <td colSpan={7}
-                                        className="py-ds-16 text-center text-ds-text-muted text-ds-body">
-                                        暂无数据源
-                                    </td>
-                                </tr>
-                            )}
-                            </tbody>
-                        </table>
+            <div className="flex-1 min-h-0 flex flex-col">
+                <div
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
+                    <div className="flex-1 overflow-auto">
+                        <Table<DataSource>
+                            dataSource={list}
+                            rowKey="id"
+                            loading={loading}
+                            pagination={false}
+                            columns={columns}
+                            className="prototype-table prototype-table-flush"
+                            onRow={(item) => ({'data-testid': `datasource-row-${item.name}`}) as HTMLAttributes<HTMLElement>}
+                            locale={{
+                                emptyText: (
+                                    <DsTableEmpty description="暂无数据源"/>
+                                ),
+                            }}
+                        />
                     </div>
 
                     <Pagination
@@ -463,20 +416,6 @@ export default function DataSourcesPage() {
                         total={total}
                         onChange={handlePageChange}
                     />
-
-                    {loading && (
-                        <div
-                            className="absolute inset-0 z-20 bg-ds-bg-surface/70 backdrop-blur-[1px] flex flex-col items-center justify-center gap-ds-2">
-                            <svg className="animate-spin h-6 w-6 text-ds-accent" xmlns="http://www.w3.org/2000/svg"
-                                 fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                        strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                            </svg>
-                            <span className="text-ds-small text-ds-text-secondary">加载中...</span>
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -510,54 +449,47 @@ export default function DataSourcesPage() {
                 }}
             />
 
-            {deleteBlockedOpen && (
-                <div className="fixed inset-0 z-ds-dialog flex items-center justify-center p-ds-6">
-                    <div className="absolute inset-0 bg-black/30" onClick={() => setDeleteBlockedOpen(false)}/>
-                    <div
-                        className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-xl w-[520px] max-h-[85vh] flex flex-col">
-                        <div className="px-ds-5 py-ds-4 border-b border-ds-border-subtle">
-                            <h3 className="text-ds-subhead text-ds-text-primary font-semibold">无法删除数据源</h3>
-                        </div>
-                        <div className="p-ds-5 overflow-auto">
-                            <p className="text-ds-body text-ds-text-secondary mb-ds-4">
-                                数据源 <strong>"{deleteTarget?.name}"</strong> 已被以下任务引用，请先删除或修改这些任务后再删除数据源。
-                            </p>
-                            {deleteReferences.filter(r => r.type === 'COLLECT').length > 0 && (
-                                <div className="mb-ds-4">
-                                    <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">元数据采集任务：</h4>
-                                    <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
-                                        {deleteReferences.filter(r => r.type === 'COLLECT').map(r => (
-                                            <li key={r.taskId}>{r.taskName}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                            {deleteReferences.filter(r => r.type === 'SYNC').length > 0 && (
-                                <div className="mb-ds-4">
-                                    <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">批量数据同步任务：</h4>
-                                    <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
-                                        {deleteReferences.filter(r => r.type === 'SYNC').map(r => (
-                                            <li key={r.taskId}>{r.taskName}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                        <div className="px-ds-5 py-ds-4 border-t border-ds-border-subtle flex justify-end">
-                            <button
-                                onClick={() => {
-                                    setDeleteBlockedOpen(false);
-                                    setDeleteTarget(null);
-                                    setDeleteReferences([]);
-                                }}
-                                className="px-ds-4 py-ds-2 bg-ds-accent hover:bg-ds-accent-hover text-white text-ds-small font-semibold rounded-ds-sm transition-colors"
-                            >
-                                我知道了
-                            </button>
-                        </div>
+            <DsModal
+                open={deleteBlockedOpen}
+                onClose={() => setDeleteBlockedOpen(false)}
+                title="无法删除数据源"
+                closable={false}
+                footer={
+                    <DsButton
+                        onClick={() => {
+                            setDeleteBlockedOpen(false);
+                            setDeleteTarget(null);
+                            setDeleteReferences([]);
+                        }}
+                    >
+                        我知道了
+                    </DsButton>
+                }
+            >
+                <p className="text-ds-body text-ds-text-secondary mb-ds-4">
+                    数据源 <strong>"{deleteTarget?.name}"</strong> 已被以下任务引用，请先删除或修改这些任务后再删除数据源。
+                </p>
+                {deleteReferences.filter(r => r.type === 'COLLECT').length > 0 && (
+                    <div className="mb-ds-4">
+                        <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">元数据采集任务：</h4>
+                        <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
+                            {deleteReferences.filter(r => r.type === 'COLLECT').map(r => (
+                                <li key={r.taskId}>{r.taskName}</li>
+                            ))}
+                        </ul>
                     </div>
-                </div>
-            )}
+                )}
+                {deleteReferences.filter(r => r.type === 'SYNC').length > 0 && (
+                    <div className="mb-ds-4">
+                        <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">批量数据同步任务：</h4>
+                        <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
+                            {deleteReferences.filter(r => r.type === 'SYNC').map(r => (
+                                <li key={r.taskId}>{r.taskName}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </DsModal>
 
             <TestResultModal
                 open={testModalOpen}

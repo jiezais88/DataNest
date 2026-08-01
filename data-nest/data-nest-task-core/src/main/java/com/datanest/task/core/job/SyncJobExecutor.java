@@ -5,6 +5,7 @@ import com.datanest.task.core.entity.SyncJobHistory;
 import com.datanest.task.core.mapper.SyncJobHistoryMapper;
 import com.datanest.task.core.mapper.SyncJobMapper;
 import com.datanest.task.core.service.SyncJobExecutorService;
+import com.datanest.task.core.service.SyncJobRetryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,12 +24,14 @@ public class SyncJobExecutor {
     private final SyncJobExecutorService syncJobExecutorService;
     private final SyncJobMapper syncJobMapper;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
+    private final SyncJobRetryService syncJobRetryService;
 
     public SyncJobExecutor(SyncJobExecutorService syncJobExecutorService, SyncJobMapper syncJobMapper,
-                           SyncJobHistoryMapper syncJobHistoryMapper) {
+                           SyncJobHistoryMapper syncJobHistoryMapper, SyncJobRetryService syncJobRetryService) {
         this.syncJobExecutorService = syncJobExecutorService;
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
+        this.syncJobRetryService = syncJobRetryService;
     }
 
     public void execute(String param) {
@@ -77,6 +80,8 @@ public class SyncJobExecutor {
                         history.setDurationMs(java.time.Duration.between(history.getStartTime(), history.getEndTime()).toMillis());
                     }
                     syncJobHistoryMapper.updateById(history);
+                    // 异常失败收尾：剩余重试次数 > 0 时登记持久化重试
+                    syncJobRetryService.registerRetryIfNeeded(job, history);
                 }
             }
         } catch (Exception ex) {

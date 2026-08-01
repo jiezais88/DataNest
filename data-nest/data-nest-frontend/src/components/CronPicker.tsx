@@ -1,7 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
-import cronstrue from 'cronstrue';
-import 'cronstrue/locales/zh_CN';
-import parseExpression from 'cron-parser';
+import {describeCron, nextRunTimes} from '../utils/cron';
 
 interface CronPickerProps {
     value: string;
@@ -79,26 +77,12 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
 
     const cron = useMemo(() => buildCron(minute, hour, day, month, week), [minute, hour, day, month, week]);
 
-    const description = useMemo(() => {
-        try {
-            return cronstrue.toString(cron, {locale: 'zh_CN'});
-        } catch {
-            return '';
-        }
-    }, [cron]);
+    const description = useMemo(() => describeCron(cron, ''), [cron]);
 
-    const nextRuns = useMemo(() => {
-        try {
-            const interval = parseExpression.parse(cron);
-            const runs: string[] = [];
-            for (let i = 0; i < 5; i++) {
-                runs.push(interval.next().toDate().toLocaleString('zh-CN'));
-            }
-            return runs;
-        } catch {
-            return [];
-        }
-    }, [cron]);
+    const nextRuns = useMemo(
+        () => nextRunTimes(cron, 5).map((d) => d.toLocaleString('zh-CN')),
+        [cron],
+    );
 
     const handlePreset = (cronStr: string) => {
         onChange(cronStr);

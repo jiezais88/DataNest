@@ -1,6 +1,8 @@
 import {useAuthStore} from '../../store/useAuthStore';
-import {Badge, Button, Card, List, Progress} from 'antd';
+import {Button, Card, List, Progress} from 'antd';
 import {useNavigate} from 'react-router-dom';
+import DsStatusBadge from '../../components/DsStatusBadge';
+import {executionStatusVariant} from '../../utils/status';
 import {
     HiArrowTrendingDown,
     HiArrowTrendingUp,
@@ -45,7 +47,7 @@ const MOCK_STATS = [
         trend: '-1',
         trendUp: false,
         icon: <HiCloudArrowUp size={22}/>,
-        colorClass: 'bg-emerald-50 text-emerald-600',
+        colorClass: 'bg-ds-success-light text-ds-success',
     },
     {
         label: '同步任务',
@@ -54,7 +56,7 @@ const MOCK_STATS = [
         trend: '+3',
         trendUp: true,
         icon: <HiBolt size={22}/>,
-        colorClass: 'bg-amber-50 text-amber-600',
+        colorClass: 'bg-ds-warning-light text-ds-warning',
     },
 ];
 
@@ -94,9 +96,14 @@ const MOCK_QUICK_LINKS = [
         label: '采集任务',
         path: '/governance/collect-tasks',
         icon: <HiCloudArrowUp size={20}/>,
-        color: 'bg-emerald-50 text-emerald-600'
+        color: 'bg-ds-success-light text-ds-success'
     },
-    {label: '同步任务', path: '/engineering/sync-jobs', icon: <HiBolt size={20}/>, color: 'bg-amber-50 text-amber-600'},
+    {
+        label: '同步任务',
+        path: '/engineering/sync-jobs',
+        icon: <HiBolt size={20}/>,
+        color: 'bg-ds-warning-light text-ds-warning'
+    },
     {
         label: '元数据管理',
         path: '/governance/metadata',
@@ -107,26 +114,23 @@ const MOCK_QUICK_LINKS = [
         label: '数据标准',
         path: '/governance/data-standards',
         icon: <HiShieldCheck size={20}/>,
-        color: 'bg-rose-50 text-rose-600'
+        color: 'bg-ds-danger-light text-ds-danger'
     },
     {label: '用户管理', path: '/system/users', icon: <HiUsers size={20}/>, color: 'bg-slate-100 text-slate-600'},
 ];
 
 const MOCK_NOTICES = [
     '建议每周 review 一次元数据变更，及时同步业务侧表结构变更。',
-    'Doris 内置数据源已连接，可直接在元数据管理中查看表结构。',
+    'Doris 数仓已连接，可直接在元数据管理中查看表结构。',
     '批量数据同步任务支持失败重试，配置后可在执行历史中查看重试记录。',
 ];
 
-function statusBadge(status: string) {
-    if (status === 'SUCCESS') {
-        return <Badge status="success" text="成功"/>;
-    }
-    if (status === 'RUNNING') {
-        return <Badge status="processing" text="运行中"/>;
-    }
-    return <Badge status="error" text="失败"/>;
-}
+/** 执行状态中文标签，variant 统一走 executionStatusVariant */
+const STATUS_LABELS: Record<string, string> = {
+    SUCCESS: '成功',
+    RUNNING: '运行中',
+    FAILED: '失败',
+};
 
 function StatCard({item}: { item: typeof MOCK_STATS[number] }) {
     return (
@@ -262,8 +266,8 @@ export default function HomePage() {
                                         <div
                                             className={`w-9 h-9 rounded-ds-md flex items-center justify-center ${
                                                 item.type === 'collect'
-                                                    ? 'bg-emerald-50 text-emerald-600'
-                                                    : 'bg-amber-50 text-amber-600'
+                                                    ? 'bg-ds-success-light text-ds-success'
+                                                    : 'bg-ds-warning-light text-ds-warning'
                                             }`}
                                         >
                                             {item.type === 'collect' ? <HiCloudArrowUp size={18}/> :
@@ -279,7 +283,10 @@ export default function HomePage() {
                                     <div className="flex items-center gap-ds-4">
                                         <span
                                             className="text-ds-small text-ds-text-secondary">耗时 {item.duration}</span>
-                                        {statusBadge(item.status)}
+                                        <DsStatusBadge
+                                            label={STATUS_LABELS[item.status] ?? item.status}
+                                            variant={executionStatusVariant(item.status)}
+                                        />
                                     </div>
                                 </div>
                             </List.Item>
