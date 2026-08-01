@@ -1265,7 +1265,7 @@ function DagEditorInner() {
                 title="节点配置"
                 open={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
-                extra={canEdit && selectedNodeId && (
+                extra={canEdit && selectedNodeId && selectedNode?.data.nodeType !== 'SYNC' && (
                     <DsButton variant="danger" onClick={() => {
                         handleDeleteNode(selectedNodeId);
                         setDrawerOpen(false);
