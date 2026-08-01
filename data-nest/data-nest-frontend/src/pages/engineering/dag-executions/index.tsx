@@ -9,7 +9,6 @@ import {listAllDagExecutions, rerunFailed} from '../dags/api';
 import type {DagExecution} from '../dags/types';
 import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../utils/format';
 import {useCanEdit} from '../../../hooks/useCanEdit';
-import {usePollingWhile} from '../../../hooks/usePollingWhile';
 import usePagedList from '../../../hooks/usePagedList';
 import SearchInput from '../../../components/SearchInput';
 import Pagination from '../../../components/Pagination';
@@ -153,10 +152,6 @@ export default function DagExecutionsGlobalPage() {
             applyQuery(rest);
         }
     }, [searchParams, setSearchParams, applied, applyQuery]);
-
-    // RUNNING 自动刷新：1s 轮询，60s 兜底停止（统一走 usePollingWhile）
-    const hasRunning = useMemo(() => data.some(d => d.status === 'RUNNING'), [data]);
-    usePollingWhile(hasRunning, reload, {interval: 1000});
 
     const handleSearch = () => {
         if (!draftStartTimeFrom || !draftStartTimeTo) {

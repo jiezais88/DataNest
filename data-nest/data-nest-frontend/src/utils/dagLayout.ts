@@ -5,7 +5,7 @@ import dagre from 'dagre';
 import type {Edge, Node} from 'reactflow';
 
 const NODE_WIDTH = 200;
-const NODE_HEIGHT = 80;
+const NODE_HEIGHT = 120;
 
 export type LayoutDirection = 'LR' | 'TB' | 'RL' | 'BT';
 
@@ -24,7 +24,7 @@ export function layoutWithDagre<TNodeData = unknown>(
 
     const g = new dagre.graphlib.Graph();
     g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({rankdir: direction, nodesep: 50, ranksep: 100});
+    g.setGraph({rankdir: direction, nodesep: 100, ranksep: 140});
 
     nodes.forEach(n => g.setNode(n.id, {width: NODE_WIDTH, height: NODE_HEIGHT}));
     edges.forEach(e => g.setEdge(e.source, e.target));
