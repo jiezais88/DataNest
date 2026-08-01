@@ -12,6 +12,7 @@ import com.datanest.engineering.dto.DsTaskDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 
@@ -45,7 +46,9 @@ public class DagDsConverter {
         for (DagNodePayload node : dag.getNodes()) {
             DsTaskDefinition task = new DsTaskDefinition();
             task.setCode(codeMap.get(node.getNodeId()));
-            task.setName(node.getNodeName() != null ? node.getNodeName() : node.getNodeId());
+            // DS 工作流内 task name 必须唯一；默认节点名（如“同步任务”）重复时会导致后一个覆盖前一个，
+            // 所以用“节点名_节点ID后8位”保证唯一性，同时保留可读性。
+            task.setName(buildDsTaskName(node));
             task.setDescription(null);
             task.setTaskType("HTTP");   // Sprint 3：所有节点用 HTTP 回调 engineering
             task.setWorkerGroup("default");
@@ -147,6 +150,16 @@ public class DagDsConverter {
         if (obj == null) return null;
         String v = obj.getString(field);
         return v == null || v.isEmpty() ? null : v;
+    }
+
+    private String buildDsTaskName(DagNodePayload node) {
+        String base = StringUtils.hasText(node.getNodeName()) ? node.getNodeName() : node.getNodeId();
+        String nodeId = node.getNodeId() == null ? "" : node.getNodeId();
+        String suffix = nodeId.length() > 8 ? nodeId.substring(nodeId.length() - 8) : nodeId;
+        if (base == null) {
+            base = node.getNodeType();
+        }
+        return base + "_" + suffix;
     }
 
     /**

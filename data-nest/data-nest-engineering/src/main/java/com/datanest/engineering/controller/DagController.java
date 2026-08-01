@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionDTO;
 import com.datanest.engineering.dto.DagPayload;
+import com.datanest.engineering.dto.SyncJobLogDTO;
 import com.datanest.engineering.service.DagExecutionService;
 import com.datanest.engineering.service.DagService;
 import org.springframework.web.bind.annotation.*;
@@ -104,5 +105,15 @@ public class DagController {
     @GetMapping("/{id}/executions")
     public Result<List<DagExecutionDTO>> executions(@PathVariable Long id) {
         return Result.ok(dagExecutionService.listByDag(id));
+    }
+
+    /**
+     * SYNC 节点执行日志：按 node_execution.sync_job_history_id 读 sync_job_log。
+     * 返回结构与 /dev/sync-jobs/{id}/history/{historyId}/logs 一致，前端复用同一日志 UI。
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @GetMapping("/node-executions/{nodeExecutionId}/logs")
+    public Result<List<SyncJobLogDTO>> nodeExecutionLogs(@PathVariable Long nodeExecutionId) {
+        return Result.ok(dagExecutionService.getNodeExecutionLogs(nodeExecutionId));
     }
 }

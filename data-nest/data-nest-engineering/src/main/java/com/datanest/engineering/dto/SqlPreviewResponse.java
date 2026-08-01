@@ -31,6 +31,10 @@ public class SqlPreviewResponse {
         private List<List<Object>> rows;
         private String message;
         private String error;
+        /** 该语句执行耗时（毫秒），含失败语句 */
+        private Long durationMs;
+        /** QUERY 结果集是否被行数上限截断（见 GenericSqlExecutor.PREVIEW_MAX_ROWS） */
+        private boolean truncated;
 
         public String getStmt() {
             return stmt;
@@ -94,6 +98,22 @@ public class SqlPreviewResponse {
 
         public void setError(String error) {
             this.error = error;
+        }
+
+        public Long getDurationMs() {
+            return durationMs;
+        }
+
+        public void setDurationMs(Long durationMs) {
+            this.durationMs = durationMs;
+        }
+
+        public boolean isTruncated() {
+            return truncated;
+        }
+
+        public void setTruncated(boolean truncated) {
+            this.truncated = truncated;
         }
     }
 }

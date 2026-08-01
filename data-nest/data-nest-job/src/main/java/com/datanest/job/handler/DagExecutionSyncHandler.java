@@ -8,9 +8,7 @@ import com.datanest.common.scheduler.SchedulerClient;
 import com.datanest.task.core.entity.SyncJobHistory;
 import com.datanest.task.core.mapper.SyncJobHistoryMapper;
 import com.datanest.task.core.service.DagExecutionSyncService;
-import com.datanest.task.core.service.DagExecutionSyncService.DsTaskInstance;
-import com.datanest.task.core.service.DagExecutionSyncService.SyncHistoryResult;
-import com.datanest.task.core.service.DagExecutionSyncService.SyncResult;
+import com.datanest.task.core.service.DagExecutionSyncService.*;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
@@ -26,6 +24,7 @@ import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -108,7 +107,29 @@ public class DagExecutionSyncHandler {
         long start = System.currentTimeMillis();
         try {
             SyncResult result = dagExecutionSyncService.syncRunningExecutions(
-                    this::fetchTaskInstances, this::fetchLatestSyncHistory, this::releaseSyncLock);
+                    new DsTaskInstanceFetcher() {
+                        @Override
+                        public List<DsTaskInstance> listTaskInstances(Long dsProjectCode, Long dsProcessInstanceId) {
+                            return fetchTaskInstances(dsProjectCode, dsProcessInstanceId);
+                        }
+
+                        @Override
+                        public Integer fetchWorkflowState(Long dsProjectCode, Long dsProcessInstanceId) {
+                            return DagExecutionSyncHandler.this.fetchWorkflowState(dsProjectCode, dsProcessInstanceId);
+                        }
+                    },
+                    new SyncJobHistoryFetcher() {
+                        @Override
+                        public SyncHistoryResult fetchLatestHistory(Long syncJobId) {
+                            return fetchLatestSyncHistory(syncJobId, null);
+                        }
+
+                        @Override
+                        public SyncHistoryResult fetchLatestHistory(Long syncJobId, LocalDateTime nodeStartTime) {
+                            return fetchLatestSyncHistory(syncJobId, nodeStartTime);
+                        }
+                    },
+                    this::releaseSyncLock);
             long cost = System.currentTimeMillis() - start;
             logger.info("DAG 执行状态同步完成: synced={}, stillRunning={}, cost={}ms",
                     result.synced(), result.stillRunning(), cost);
@@ -164,14 +185,20 @@ public class DagExecutionSyncHandler {
     /**
      * Sprint 3 P1-2：SYNC 节点 history 查询
      * 反查 sync_job_history 拿最新一条，看 status（RUNNING/SUCCESS/FAILED）决定是否收尾
+     * <p>
+     * 负数耗时修复：nodeStartTime 非空时只接受 end_time 不早于它的 history
+     * （即"属于本次运行"的 history），取不到则返回 null 本轮跳过收尾，等下一轮。
      */
-    private SyncHistoryResult fetchLatestSyncHistory(Long syncJobId) {
+    private SyncHistoryResult fetchLatestSyncHistory(Long syncJobId, LocalDateTime nodeStartTime) {
         if (syncJobId == null) return null;
-        SyncJobHistory h = syncJobHistoryMapper.selectList(
-                        new QueryWrapper<SyncJobHistory>()
-                                .eq("sync_job_id", syncJobId)
-                                .orderByDesc("id")
-                                .last("LIMIT 1"))
+        QueryWrapper<SyncJobHistory> wrapper = new QueryWrapper<SyncJobHistory>()
+                .eq("sync_job_id", syncJobId)
+                .orderByDesc("id")
+                .last("LIMIT 1");
+        if (nodeStartTime != null) {
+            wrapper.ge("end_time", nodeStartTime);
+        }
+        SyncJobHistory h = syncJobHistoryMapper.selectList(wrapper)
                 .stream().findFirst().orElse(null);
         if (h == null) return null;
         // RUNNING 状态不收尾（让 sync 继续跑）
@@ -180,7 +207,8 @@ public class DagExecutionSyncHandler {
                 h.getStatus(),
                 h.getEndTime(),
                 h.getErrorMessage(),
-                h.getSourceRows() + " source rows, " + h.getTargetRows() + " target rows");
+                h.getSourceRows() + " source rows, " + h.getTargetRows() + " target rows",
+                h.getId());
     }
 
     /**
@@ -234,6 +262,27 @@ public class DagExecutionSyncHandler {
      * 返回流程实例 duration（毫秒），用于和 DS UI 的 DAG 整体耗时保持一致。
      */
     public Long fetchWorkflowDurationMs(Long dsProjectCode, Long dsProcessInstanceId) {
+        JSONObject instance = fetchWorkflowInstance(dsProjectCode, dsProcessInstanceId);
+        if (instance == null) return null;
+        return parseDsDuration(strOrNull(instance.get("duration")));
+    }
+
+    /**
+     * DS API: 拉取流程实例状态 code（5=STOP / 6=FAILURE / 7=SUCCESS / 9=KILL 为终态）。
+     * 用于 DagExecutionSyncService 在流程实例终态后把本地仍 WAITING 的节点标 SKIPPED。
+     * 查询失败返回 null（按非终态处理，绝不误标）。
+     */
+    public Integer fetchWorkflowState(Long dsProjectCode, Long dsProcessInstanceId) {
+        JSONObject instance = fetchWorkflowInstance(dsProjectCode, dsProcessInstanceId);
+        if (instance == null) return null;
+        return stateOrNull(instance.get("state"));
+    }
+
+    /**
+     * DS API: GET /projects/{code}/workflow-instances?id={id}&pageSize=1&pageNo=1
+     * 返回流程实例 JSON（totalList 第一条），失败返回 null。
+     */
+    private JSONObject fetchWorkflowInstance(Long dsProjectCode, Long dsProcessInstanceId) {
         String url = dsApiBaseUrl + "/projects/" + dsProjectCode
                 + "/workflow-instances?id=" + dsProcessInstanceId + "&pageSize=1&pageNo=1";
         HttpHeaders headers = new HttpHeaders();
@@ -256,8 +305,7 @@ public class DagExecutionSyncHandler {
             if (data == null) return null;
             JSONArray totalList = data.getJSONArray("totalList");
             if (totalList == null || totalList.isEmpty()) return null;
-            String durationStr = strOrNull(totalList.getJSONObject(0).get("duration"));
-            return parseDsDuration(durationStr);
+            return totalList.getJSONObject(0);
         } catch (Exception e) {
             logger.warn("DS workflow-instances 拉取失败: dsProjectCode={}, dsProcessInstanceId={}",
                     dsProjectCode, dsProcessInstanceId, e);

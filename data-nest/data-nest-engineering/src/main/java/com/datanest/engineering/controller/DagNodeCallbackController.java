@@ -3,26 +3,25 @@ package com.datanest.engineering.controller;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.exception.BusinessException;
+import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
+import com.datanest.engineering.service.DagEdgeSnapshot;
 import com.datanest.engineering.service.SyncJobService;
 import com.datanest.engineering.service.SyncNodeMutexService;
 import com.datanest.task.core.entity.Dag;
 import com.datanest.task.core.entity.DagExecution;
 import com.datanest.task.core.entity.DagNode;
 import com.datanest.task.core.entity.NodeExecution;
-import com.datanest.task.core.mapper.DagExecutionMapper;
-import com.datanest.task.core.mapper.DagMapper;
-import com.datanest.task.core.mapper.DagNodeMapper;
-import com.datanest.task.core.mapper.NodeExecutionMapper;
+import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.DagExecutionSyncService;
 import com.datanest.task.core.service.DorisSqlExecutor;
 import com.datanest.task.core.service.MetadataRegistrationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -54,25 +53,31 @@ public class DagNodeCallbackController {
     private final NodeExecutionMapper nodeExecutionMapper;
     private final DagMapper dagMapper;
     private final DagNodeMapper dagNodeMapper;
+    private final DagEdgeMapper dagEdgeMapper;
     private final DorisSqlExecutor dorisSqlExecutor;
     private final MetadataRegistrationService metadataRegistrationService;
     private final SyncJobService syncJobService;
     private final SyncNodeMutexService syncNodeMutexService;
+    private final DagExecutionSyncService dagExecutionSyncService;
 
     public DagNodeCallbackController(DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                                      DagMapper dagMapper, DagNodeMapper dagNodeMapper,
+                                     DagEdgeMapper dagEdgeMapper,
                                      DorisSqlExecutor dorisSqlExecutor,
                                      MetadataRegistrationService metadataRegistrationService,
                                      SyncJobService syncJobService,
-                                     SyncNodeMutexService syncNodeMutexService) {
+                                     SyncNodeMutexService syncNodeMutexService,
+                                     DagExecutionSyncService dagExecutionSyncService) {
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
+        this.dagEdgeMapper = dagEdgeMapper;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.metadataRegistrationService = metadataRegistrationService;
         this.syncJobService = syncJobService;
         this.syncNodeMutexService = syncNodeMutexService;
+        this.dagExecutionSyncService = dagExecutionSyncService;
     }
 
     @PostMapping("/sql/callback")
@@ -87,25 +92,29 @@ public class DagNodeCallbackController {
 
     @PostMapping("/unknown/callback")
     public Result<Map<String, Integer>> unknownCallback(@RequestBody Map<String, Object> body) {
-        return error("未知节点类型", 400);
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "未知节点类型");
     }
 
     /**
      * Sprint 3 P0-1：executionId 是 DS processInstanceId（来自 ${system.workflow.instance.id} 变量）
      * 用它反查 DataNest 的 dag_execution.id，再去查 node_execution
      */
+    /** SQL 节点输出信息里结果集预览的最大行数 */
+    private static final int SQL_OUTPUT_PREVIEW_MAX_ROWS = 50;
+
     private Result<Map<String, Integer>> handleSqlNode(Map<String, Object> body) {
         String nodeId = stringOf(body.get("nodeId"));
         String sqlContent = stringOf(body.get("sqlContent"));
         Long dsProcessInstanceId = longOf(body.get("executionId"));
         Long dagId = longOf(body.get("dagId"));
         if (nodeId == null || sqlContent == null) {
-            return error("缺少 nodeId / sqlContent", 400);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / sqlContent");
         }
         NodeExecutionLookup lookup = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
         if (lookup.nodeExecution == null) {
             logger.warn("回调找不到对应 node_execution: nodeId={}, dsProcessInstanceId={}", nodeId, dsProcessInstanceId);
-            return error("node execution not found", 404);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
         }
         NodeExecution ne = lookup.nodeExecution;
         ne.setStatus("RUNNING");
@@ -113,34 +122,164 @@ public class DagNodeCallbackController {
         nodeExecutionMapper.updateById(ne);
 
         try {
-            int affected = dorisSqlExecutor.execute(sqlContent);
-            ne.setOutputInfo("{\"affectedRows\":" + affected + "}");
+            String type = classifySql(sqlContent);
+            SqlOutputInfo output = switch (type) {
+                case "QUERY" -> executeQuery(sqlContent);
+                case "DML" -> executeDml(sqlContent);
+                case "DDL" -> executeDdl(sqlContent);
+                default -> executeUnknown(sqlContent);
+            };
+
+            // 元数据注册：仅对 DDL/DML 尽力而为，失败不影响节点成功
             try {
-                List<String> registered = metadataRegistrationService.registerFromSql(sqlContent, currentUserId());
-                if (!registered.isEmpty()) {
-                    ne.setOutputInfo(ne.getOutputInfo() + ",\"registeredTables\":" + JSON.toJSONString(registered));
+                if ("DDL".equals(type) || "DML".equals(type)) {
+                    List<String> registered = metadataRegistrationService.registerFromSql(sqlContent, currentUserId());
+                    if (!registered.isEmpty()) {
+                        output.registeredTables = registered;
+                    }
                 }
             } catch (Exception e) {
                 logger.warn("元数据注册失败（不影响 SQL 执行结果）: {}", e.getMessage());
             }
+
+            ne.setOutputInfo(JSON.toJSONString(output));
             ne.setStatus("SUCCESS");
             ne.setEndTime(LocalDateTime.now());
             ne.setDurationMs(java.time.Duration.between(ne.getStartTime(), ne.getEndTime()).toMillis());
             nodeExecutionMapper.updateById(ne);
-            return success(affected);
+            // 耗时准实时：节点写完终态后立即推断 dag_execution 终态，不等下一轮定时同步
+            finalizeExecutionQuietly(ne.getExecutionId());
+            return success("DML".equals(type) ? output.affectedRows : 0);
         } catch (BusinessException e) {
             ne.setStatus("FAILED");
             ne.setErrorMessage(e.getMessage());
             ne.setEndTime(LocalDateTime.now());
             nodeExecutionMapper.updateById(ne);
-            return error(e.getMessage(), 500);
+            finalizeExecutionQuietly(ne.getExecutionId());
+            throw e;
         } catch (Exception e) {
             logger.error("SQL 节点执行失败: nodeId={}", nodeId, e);
             ne.setStatus("FAILED");
             ne.setErrorMessage(e.getMessage());
             ne.setEndTime(LocalDateTime.now());
             nodeExecutionMapper.updateById(ne);
-            return error(e.getMessage(), 500);
+            finalizeExecutionQuietly(ne.getExecutionId());
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "SQL 节点执行失败: " + e.getMessage(), e);
+        }
+    }
+
+    private SqlOutputInfo executeQuery(String sql) {
+        DorisSqlExecutor.QueryResult qr = dorisSqlExecutor.query(sql);
+        SqlOutputInfo info = new SqlOutputInfo();
+        info.sqlType = "QUERY";
+        info.returnedRows = qr.rows().size();
+        info.columns = qr.columns();
+        info.previewRows = qr.rows().stream()
+                .map(row -> qr.columns().stream().map(row::get).toList())
+                .limit(SQL_OUTPUT_PREVIEW_MAX_ROWS)
+                .toList();
+        info.truncated = qr.rows().size() > SQL_OUTPUT_PREVIEW_MAX_ROWS || qr.truncated();
+        info.targetTable = extractTargetTable(sql);
+        return info;
+    }
+
+    private SqlOutputInfo executeDml(String sql) {
+        int affected = dorisSqlExecutor.execute(sql);
+        SqlOutputInfo info = new SqlOutputInfo();
+        info.sqlType = "DML";
+        info.affectedRows = affected;
+        info.targetTable = extractTargetTable(sql);
+        return info;
+    }
+
+    private SqlOutputInfo executeDdl(String sql) {
+        int affected = dorisSqlExecutor.execute(sql);
+        SqlOutputInfo info = new SqlOutputInfo();
+        info.sqlType = "DDL";
+        info.affectedRows = affected;
+        info.targetTable = extractTargetTable(sql);
+        return info;
+    }
+
+    private SqlOutputInfo executeUnknown(String sql) {
+        int affected = dorisSqlExecutor.execute(sql);
+        SqlOutputInfo info = new SqlOutputInfo();
+        info.sqlType = "UNKNOWN";
+        info.affectedRows = affected;
+        info.targetTable = extractTargetTable(sql);
+        return info;
+    }
+
+    private String classifySql(String sql) {
+        String trimmed = sql.trim();
+        int firstSpace = trimmed.indexOf(' ');
+        String first = firstSpace > 0 ? trimmed.substring(0, firstSpace) : trimmed;
+        String upper = first.toUpperCase();
+        if (upper.startsWith("SELECT") || upper.startsWith("WITH") || upper.startsWith("SHOW")
+                || upper.startsWith("DESC") || upper.startsWith("EXPLAIN") || upper.startsWith("VALUES")) {
+            return "QUERY";
+        }
+        if (upper.startsWith("CREATE") || upper.startsWith("DROP") || upper.startsWith("ALTER")
+                || upper.startsWith("TRUNCATE") || upper.startsWith("RENAME") || upper.startsWith("COMMENT")) {
+            return "DDL";
+        }
+        if (upper.startsWith("INSERT") || upper.startsWith("UPDATE") || upper.startsWith("DELETE")
+                || upper.startsWith("MERGE")) {
+            return "DML";
+        }
+        return "UNKNOWN";
+    }
+
+    /**
+     * 从 SQL 中粗略提取目标表名（CREATE TABLE / INSERT INTO / UPDATE / DELETE FROM / CTAS）。
+     * 仅用于展示，不需要 100% 精确；提取失败返回 null。
+     */
+    private String extractTargetTable(String sql) {
+        if (sql == null) return null;
+        String normalized = sql.replaceAll("--[^\n]*", " ").replaceAll("/\\*.*?\\*/", " ")
+                .replaceAll("\\s+", " ").trim();
+        String upper = normalized.toUpperCase();
+        java.util.regex.Pattern[] patterns = new java.util.regex.Pattern[]{
+                java.util.regex.Pattern.compile("\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([A-Za-z0-9_.]+)"),
+                java.util.regex.Pattern.compile("\\bINSERT\\s+(?:INTO\\s+)?([A-Za-z0-9_.]+)"),
+                java.util.regex.Pattern.compile("\\bUPDATE\\s+([A-Za-z0-9_.]+)"),
+                java.util.regex.Pattern.compile("\\bDELETE\\s+FROM\\s+([A-Za-z0-9_.]+)"),
+                java.util.regex.Pattern.compile("\\bFROM\\s+([A-Za-z0-9_.]+)")
+        };
+        for (java.util.regex.Pattern p : patterns) {
+            java.util.regex.Matcher m = p.matcher(upper);
+            if (m.find()) {
+                String raw = normalized.substring(m.start(1), m.end(1));
+                return raw;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * SQL 节点输出信息的结构化摘要（写入 node_execution.output_info）。
+     */
+    private static class SqlOutputInfo {
+        public String sqlType;
+        public Integer affectedRows;
+        public Integer returnedRows;
+        public List<String> columns;
+        public List<List<Object>> previewRows;
+        public Boolean truncated;
+        public String targetTable;
+        public List<String> registeredTables;
+    }
+
+    /**
+     * 节点写完终态后立即推断 dag_execution 终态（耗时准实时）。
+     * 失败只记日志不影响回调响应，由 DagExecutionSyncHandler 定时同步兜底。
+     */
+    private void finalizeExecutionQuietly(Long executionId) {
+        try {
+            dagExecutionSyncService.finalizeIfAllDone(executionId);
+        } catch (Exception e) {
+            logger.warn("节点回调后立即收尾 dag_execution 失败（由定时同步兜底）: executionId={}", executionId, e);
         }
     }
 
@@ -158,14 +297,14 @@ public class DagNodeCallbackController {
         Long dagId = longOf(body.get("dagId"));
         Object syncJobObj = body.get("syncJob");
         if (nodeId == null || syncJobObj == null) {
-            return error("缺少 nodeId / syncJob", 400);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / syncJob");
         }
         Long syncJobId = longOf(((Map<?, ?>) syncJobObj).get("id"));
         if (syncJobId == null) {
-            return error("syncJob.id 缺失", 400);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "syncJob.id 缺失");
         }
 
-        // P0-2：互斥锁（拿不到抛 DAG_ALREADY_RUNNING，DS 那边按 HTTP 5xx 处理会重试）
+        // P0-2：互斥锁（拿不到抛 DAG_ALREADY_RUNNING，由本地 @ExceptionHandler 转为 HTTP 503，DS 会重试）
         String lockToken = syncNodeMutexService.tryLock(syncJobId);
         try {
             NodeExecutionLookup lookup = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
@@ -173,17 +312,21 @@ public class DagNodeCallbackController {
                 logger.warn("回调找不到对应 node_execution: nodeId={}, dsProcessInstanceId={}", nodeId, dsProcessInstanceId);
                 // 回调找不到记录时立即释放锁，避免阻塞后续触发
                 syncNodeMutexService.unlock(syncJobId, lockToken);
-                return error("node execution not found", 404);
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
             }
             NodeExecution ne = lookup.nodeExecution;
             ne.setStatus("RUNNING");
             ne.setStartTime(LocalDateTime.now());
             // P1-2：存 sync_job_id 给 DagExecutionSyncService 收尾
             ne.setSyncJobId(syncJobId);
-            nodeExecutionMapper.updateById(ne);
 
             // 触发 XXL-JOB（异步；本方法返回时 sync 不一定跑完）
-            syncJobService.execute(syncJobId);
+            Long historyId = syncJobService.execute(syncJobId);
+            // 立即把 history_id 写回节点执行记录，「查看日志」不用等 DagExecutionSyncService 收尾就能拉到
+            ne.setSyncJobHistoryId(historyId);
+            nodeExecutionMapper.updateById(ne);
+
             // 注意：这里不标 SUCCESS！由 DagExecutionSyncService 根据 sync_job_history 收尾
             return success(0);
         } catch (BusinessException e) {
@@ -194,7 +337,8 @@ public class DagNodeCallbackController {
             logger.error("同步节点触发失败: nodeId={}, syncJobId={}", nodeId, syncJobId, e);
             // callback 内部异常时立即释放锁，避免 6h TTL 阻塞
             syncNodeMutexService.unlock(syncJobId, lockToken);
-            return error(e.getMessage(), 500);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "同步节点触发失败: " + e.getMessage(), e);
         }
         // 正常路径：锁由 DagExecutionSyncService SPI 收尾时释放
     }
@@ -251,6 +395,8 @@ public class DagNodeCallbackController {
             ex.setStartTime(LocalDateTime.now());
             ex.setCreatedBy(0L);
             ex.setCreatedAt(LocalDateTime.now());
+            // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
+            ex.setEdgeSnapshot(DagEdgeSnapshot.capture(dagEdgeMapper, dagId));
             try {
                 dagExecutionMapper.insert(ex);
             } catch (DuplicateKeyException e) {
@@ -315,5 +461,26 @@ public class DagNodeCallbackController {
 
     private Result<Map<String, Integer>> error(String msg, int httpStatus) {
         return Result.fail(httpStatus, msg);
+    }
+
+    /**
+     * 本地异常处理：DS HTTP 任务只认 HTTP 状态码，callback 失败时必须返回非 2xx，
+     * 否则 DS 会把本次任务标记为 SUCCESS，导致 DataNest 侧没有真正执行却显示成功、也看不到日志。
+     * 这里覆盖全局的 @RestControllerAdvice，让 callback 专用错误码映射到合适的 HTTP 状态。
+     */
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<Result<Object>> handleBusinessException(BusinessException e) {
+        HttpStatus status = (e.getErrorCode() == ErrorCode.DAG_ALREADY_RUNNING)
+                ? HttpStatus.SERVICE_UNAVAILABLE
+                : HttpStatus.INTERNAL_SERVER_ERROR;
+        return ResponseEntity.status(status)
+                .body(Result.fail(e.getErrorCode().getCode(), e.getMessage(), e.getData()));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Result<Object>> handleException(Exception e) {
+        logger.error("DAG 节点回调未捕获异常", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Result.fail(ErrorCode.INTERNAL_ERROR.getCode(), e.getMessage()));
     }
 }

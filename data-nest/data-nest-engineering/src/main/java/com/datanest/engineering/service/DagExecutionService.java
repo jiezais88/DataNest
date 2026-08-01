@@ -9,10 +9,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.engineering.config.DolphinSchedulerConfig;
-import com.datanest.engineering.dto.DagExecutionDTO;
-import com.datanest.engineering.dto.DagExecutionGlobalDto;
-import com.datanest.engineering.dto.GlobalExecutionFilter;
-import com.datanest.engineering.dto.NodeExecutionDTO;
+import com.datanest.engineering.dto.*;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
@@ -53,21 +50,30 @@ public class DagExecutionService {
 
     private final DagMapper dagMapper;
     private final DagNodeMapper dagNodeMapper;
+    private final DagEdgeMapper dagEdgeMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
     private final DagProjectMapper dagProjectMapper;
     private final DolphinSchedulerClient dolphinSchedulerClient;
+    private final SyncJobService syncJobService;
+    private final DagService dagService;
 
     public DagExecutionService(DagMapper dagMapper, DagNodeMapper dagNodeMapper,
+                               DagEdgeMapper dagEdgeMapper,
                                DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                                DagProjectMapper dagProjectMapper,
-                               DolphinSchedulerClient dolphinSchedulerClient) {
+                               DolphinSchedulerClient dolphinSchedulerClient,
+                               SyncJobService syncJobService,
+                               DagService dagService) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
+        this.dagEdgeMapper = dagEdgeMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.dagProjectMapper = dagProjectMapper;
         this.dolphinSchedulerClient = dolphinSchedulerClient;
+        this.syncJobService = syncJobService;
+        this.dagService = dagService;
     }
 
     /**
@@ -90,6 +96,16 @@ public class DagExecutionService {
         if (!"ENABLED".equalsIgnoreCase(dag.getStatus())) {
             throw new BusinessException(ErrorCode.DAG_DISABLED);
         }
+
+        // 若 DS 工作流未上线（OFFLINE 或尚未同步），先自动同步并上线；同步失败会抛异常，调用方可见具体原因
+        if (!"ONLINE".equalsIgnoreCase(dag.getReleaseState())) {
+            logger.info("DAG 触发前检测到 release_state={}，先同步到 DS: dagId={}", dag.getReleaseState(), dagId);
+            dagService.syncToDs(dagId);
+            dag = dagMapper.selectById(dagId);
+            if (dag == null) {
+                throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
+            }
+        }
         if (dag.getDsProcessDefinitionCode() == null) {
             throw new BusinessException(ErrorCode.DS_API_ERROR, "DAG 未同步到 DolphinScheduler");
         }
@@ -104,6 +120,8 @@ public class DagExecutionService {
         execution.setStartTime(LocalDateTime.now());
         execution.setCreatedBy(currentUserId());
         execution.setCreatedAt(LocalDateTime.now());
+        // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
+        execution.setEdgeSnapshot(DagEdgeSnapshot.capture(dagEdgeMapper, dagId));
         try {
             dagExecutionMapper.insert(execution);
         } catch (DuplicateKeyException e) {
@@ -143,6 +161,7 @@ public class DagExecutionService {
                             dsProjectCode, dsProcessDefinitionCode, "END", "START_PROCESS", operator, "");
                 } catch (Exception e) {
                     // 补偿：DB 已提交不能回滚，把 RUNNING 占位行标 FAILED，避免无人轮询的悬挂记录
+                    String reason = "触发失败: " + e.getMessage();
                     logger.error("DS 触发工作流失败，占位执行记录标为 FAILED: dagId={}, executionId={}",
                             dagId, executionId, e);
                     try {
@@ -150,15 +169,24 @@ public class DagExecutionService {
                         if (failed != null && "RUNNING".equalsIgnoreCase(failed.getStatus())) {
                             failed.setStatus("FAILED");
                             failed.setEndTime(LocalDateTime.now());
+                            failed.setErrorMessage(reason);
                             if (failed.getStartTime() != null) {
                                 failed.setDurationMs(Duration.between(failed.getStartTime(), failed.getEndTime()).toMillis());
                             }
                             dagExecutionMapper.updateById(failed);
                         }
+                        // 节点从未实际运行，标为 SKIPPED，避免历史详情里一直显示 WAITING
+                        NodeExecution skipped = new NodeExecution();
+                        skipped.setStatus("SKIPPED");
+                        skipped.setErrorMessage("DAG 触发失败，节点未运行");
+                        nodeExecutionMapper.update(skipped,
+                                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<NodeExecution>()
+                                        .eq("execution_id", executionId)
+                                        .eq("status", "WAITING"));
                     } catch (Exception ex) {
-                        logger.error("补偿标记 FAILED 失败，需人工处理悬挂执行记录: executionId={}", executionId, ex);
+                        logger.error("补偿标记 FAILED/SKIPPED 失败，需人工处理悬挂执行记录: executionId={}", executionId, ex);
                     }
-                    throw new BusinessException(ErrorCode.DS_API_ERROR, "触发失败: " + e.getMessage());
+                    throw new BusinessException(ErrorCode.DS_API_ERROR, reason);
                 }
                 // 回写 DS 流程实例 ID，供 DagExecutionSyncService 轮询收尾
                 DagExecution fresh = dagExecutionMapper.selectById(executionId);
@@ -500,9 +528,24 @@ public class DagExecutionService {
         dto.setStartTime(ex.getStartTime());
         dto.setEndTime(ex.getEndTime());
         dto.setDurationMs(ex.getDurationMs());
+        dto.setEdgeSnapshot(ex.getEdgeSnapshot());
+        dto.setErrorMessage(ex.getErrorMessage());
         List<NodeExecution> neList = nodeExecutionMapper.selectByExecutionId(ex.getId());
         dto.setNodeExecutions(neList.stream().map(this::toNodeExecutionDTO).toList());
         return dto;
+    }
+
+    /**
+     * SYNC 节点执行日志：按 node_execution.sync_job_history_id 读 sync_job_log。
+     * 返回结构与 SyncJobService.getLogs 一致，前端复用同一日志 UI。
+     * 无 history id（非 SYNC 节点 / sync 尚未收尾 / 节点不存在）时返回空列表。
+     */
+    public List<SyncJobLogDTO> getNodeExecutionLogs(Long nodeExecutionId) {
+        NodeExecution ne = nodeExecutionMapper.selectById(nodeExecutionId);
+        if (ne == null || ne.getSyncJobHistoryId() == null) {
+            return List.of();
+        }
+        return syncJobService.getLogs(ne.getSyncJobHistoryId());
     }
 
     private NodeExecutionDTO toNodeExecutionDTO(NodeExecution ne) {
@@ -515,6 +558,7 @@ public class DagExecutionService {
         dto.setStatus(ne.getStatus());
         dto.setDsTaskInstanceId(ne.getDsTaskInstanceId());
         dto.setSyncJobId(ne.getSyncJobId());
+        dto.setSyncJobHistoryId(ne.getSyncJobHistoryId());
         dto.setStartTime(ne.getStartTime());
         dto.setEndTime(ne.getEndTime());
         dto.setDurationMs(ne.getDurationMs());

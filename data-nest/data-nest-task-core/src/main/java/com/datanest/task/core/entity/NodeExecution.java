@@ -33,6 +33,9 @@ public class NodeExecution {
     /** Sprint 3 P1-2：SYNC 节点关联的 sync_job_id，用于 DagExecutionSyncService 反查 sync_job_history 同步终态 */
     private Long syncJobId;
 
+    /** SYNC 节点收尾时命中的 sync_job_history.id，用于按执行实例查 sync_job_log 日志 */
+    private Long syncJobHistoryId;
+
     private LocalDateTime startTime;
 
     private LocalDateTime endTime;

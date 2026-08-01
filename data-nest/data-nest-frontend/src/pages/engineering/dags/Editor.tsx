@@ -1,6 +1,6 @@
 // DAG 编辑器（ReactFlow 画布 + 节点配置 + 右侧属性面板）
 // Sprint 3: 节点状态边框/端口/状态图标 + design token + 三栏布局 + 同步任务摘要
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation, useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import ReactFlow, {
     addEdge,
@@ -20,19 +20,20 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Form, Input, Modal, Popover, Select, Spin, Tag} from 'antd';
-import {HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
+import {HiOutlineDocumentText, HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
 import DsButton from '../../../components/DsButton';
 import Drawer from '../../../components/Drawer';
-import {createDag, getDag, getDagExecution, triggerDag, updateDag} from './api';
+import {createDag, getDag, getDagExecution, getNodeExecutionLogs, triggerDag, updateDag} from './api';
 import {getSyncJob, querySyncJobs} from '../../../api/sync';
-import {formatDuration} from '../../../utils/format';
+import {formatDateTime, formatDuration} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
 import {layoutWithDagre} from '../../../utils/dagLayout';
 import CronPicker from '../../../components/CronPicker';
 import SqlEditorModal from './components/SqlEditorModal';
+import {HistoryLogModal} from '../sync-jobs/history-common';
 import {describeCron} from '../../../utils/cron';
 import type {Dag, DagExecution, NodeExecution, NodeType} from './types';
-import type {SyncJob} from '../../../types/sync';
+import type {SyncJob, SyncJobLog} from '../../../types/sync';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import {usePollingWhile} from '../../../hooks/usePollingWhile';
 import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '../../../constants/statusColors';
@@ -62,6 +63,10 @@ type RFNodeData = {
     errorMessage?: string;
     nodeExecutionStartTime?: string;
     nodeExecutionEndTime?: string;
+    /** 执行视图：节点执行记录 id（SYNC 节点「查看日志」用） */
+    nodeExecutionId?: string;
+    /** SQL 节点最近一次「运行测试」结果（随 dag config 持久化） */
+    lastTestStatus?: 'PASSED' | 'FAILED';
     /** 节点卡片铅笔图标的显式编辑入口（双击/属性面板共用同一处理） */
     onEditRequest?: (nodeId: string, data: RFNodeData) => void;
 };
@@ -100,10 +105,17 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                 className="!w-[10px] !h-[10px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface hover:!bg-ds-accent"
                 style={{left: -6}}
             />
+            {/* SQL 节点最近运行测试结果小圆点（PASSED 绿 / FAILED 红） */}
+            {data.lastTestStatus && (
+                <span
+                    className={`absolute top-2 right-2 w-2 h-2 rounded-full ${data.lastTestStatus === 'PASSED' ? 'bg-ds-success' : 'bg-ds-danger'}`}
+                    title={data.lastTestStatus === 'PASSED' ? '最近一次运行测试通过' : '最近一次运行测试失败'}
+                />
+            )}
             {/* 显式编辑入口：仅编辑模式且选中时出现 */}
             {selected && data.onEditRequest && (
                 <button
-                    className="nodrag absolute top-2 right-2 p-1 rounded-md text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light transition-colors"
+                    className={`nodrag absolute top-2 p-1 rounded-md text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light transition-colors ${data.lastTestStatus ? 'right-6' : 'right-2'}`}
                     title="编辑节点"
                     onClick={e => {
                         e.stopPropagation();
@@ -137,6 +149,11 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                             </span>
                         </div>
                         <div>耗时：{formatDuration(data.durationMs)}</div>
+                        {data.nodeType === 'SQL' && (
+                            <div className="truncate">
+                                输出：{sqlOutputSummary(data.outputInfo) || '—'}
+                            </div>
+                        )}
                     </>
                 )}
             </div>
@@ -263,15 +280,180 @@ function PropertyRow({label, value}: { label: string; value: React.ReactNode }) 
     );
 }
 
+interface SqlOutputInfo {
+    sqlType?: 'QUERY' | 'DML' | 'DDL' | 'UNKNOWN';
+    affectedRows?: number;
+    returnedRows?: number;
+    columns?: string[];
+    previewRows?: (string | number | boolean | null)[][];
+    truncated?: boolean;
+    targetTable?: string;
+    registeredTables?: string[];
+}
+
+function parseSqlOutputInfo(outputInfo?: string): SqlOutputInfo | null {
+    if (!outputInfo) return null;
+    try {
+        const parsed = JSON.parse(outputInfo) as SqlOutputInfo;
+        if (parsed && typeof parsed === 'object') return parsed;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function sqlOutputSummary(outputInfo?: string): string | null {
+    const info = parseSqlOutputInfo(outputInfo);
+    if (!info) return null;
+    if (info.sqlType === 'QUERY') {
+        return `返回 ${info.returnedRows ?? 0} 行`;
+    }
+    if (info.sqlType === 'DML') {
+        return `影响 ${info.affectedRows ?? 0} 行`;
+    }
+    if (info.sqlType === 'DDL') {
+        return info.targetTable ? `${info.targetTable}` : 'DDL 执行成功';
+    }
+    return null;
+}
+
+function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
+    const info = parseSqlOutputInfo(outputInfo);
+    if (!info) {
+        return (
+            <pre
+                className="text-[11px] text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
+                {outputInfo}
+            </pre>
+        );
+    }
+
+    const summaryItems: { label: string; value: React.ReactNode }[] = [];
+    if (info.targetTable) {
+        summaryItems.push({
+            label: '目标表',
+            value: <span className="font-mono text-[12px]">{info.targetTable}</span>,
+        });
+    }
+    if (info.sqlType === 'QUERY') {
+        summaryItems.push({
+            label: '返回行数',
+            value: (
+                <span>
+                    {info.returnedRows ?? 0}
+                    {info.truncated && (
+                        <span className="text-ds-text-muted ml-1">（仅预览前 50 行）</span>
+                    )}
+                </span>
+            ),
+        });
+    } else if (info.sqlType === 'DML') {
+        summaryItems.push({label: '影响行数', value: info.affectedRows ?? 0});
+    }
+    if (info.registeredTables && info.registeredTables.length > 0) {
+        summaryItems.push({label: '注册表', value: info.registeredTables.join(', ')});
+    }
+
+    return (
+        <div className="space-y-3">
+            {/* 类型标签 + 摘要 */}
+            <div className="flex items-center gap-2">
+                <span
+                    className="text-ds-caption font-semibold px-2 py-0.5 rounded bg-ds-bg-hover text-ds-text-secondary">
+                    {info.sqlType || 'UNKNOWN'}
+                </span>
+                {info.sqlType === 'QUERY' && (
+                    <span className="text-ds-small text-ds-text-muted">
+                        返回 {info.returnedRows ?? 0} 行
+                    </span>
+                )}
+                {info.sqlType === 'DML' && (
+                    <span className="text-ds-small text-ds-text-muted">
+                        影响 {info.affectedRows ?? 0} 行
+                    </span>
+                )}
+                {info.sqlType === 'DDL' && info.targetTable && (
+                    <span className="text-ds-small text-ds-text-muted truncate">
+                        {info.targetTable}
+                    </span>
+                )}
+            </div>
+
+            {summaryItems.length > 0 && (
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-ds-small items-baseline">
+                    {summaryItems.map(item => (
+                        <Fragment key={item.label}>
+                            <span className="text-ds-text-muted">{item.label}</span>
+                            <span className="text-ds-text-primary text-right truncate" title={String(item.value)}>
+                                {item.value}
+                            </span>
+                        </Fragment>
+                    ))}
+                </div>
+            )}
+
+            {/* QUERY 结果预览表 */}
+            {info.sqlType === 'QUERY' && (
+                <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden">
+                    {(info.previewRows || []).length > 0 ? (
+                        <div className="overflow-auto max-h-52">
+                            <table className="w-full text-left">
+                                <thead className="bg-ds-bg-hover sticky top-0">
+                                <tr>
+                                    {(info.columns || []).map(col => (
+                                        <th
+                                            key={col}
+                                            className="px-3 py-1.5 text-ds-caption text-ds-text-primary font-semibold whitespace-nowrap border-b border-ds-border-subtle"
+                                        >
+                                            {col}
+                                        </th>
+                                    ))}
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {info.previewRows!.map((row, ri) => (
+                                    <tr
+                                        key={ri}
+                                        className="border-t border-ds-border-subtle first:border-t-0 hover:bg-ds-bg-hover"
+                                    >
+                                        {row.map((cell, ci) => (
+                                            <td
+                                                key={ci}
+                                                className="px-3 py-1.5 text-ds-caption text-ds-text-secondary whitespace-nowrap"
+                                            >
+                                                {cell === null || cell === undefined
+                                                    ? <span className="text-ds-text-muted italic">NULL</span>
+                                                    : String(cell)}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-ds-small text-ds-text-muted text-center py-4">
+                            执行成功，返回 0 行
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ─────────── 右侧属性面板（编辑模式：只读摘要 + 编辑按钮；运行模式：运行信息） ───────────
 function PropertyPanel({
                            node,
                            onEdit,
                            readOnly,
+                           onViewLogs,
                        }: {
     node: Node<RFNodeData> | null;
     onEdit: () => void;
     readOnly?: boolean;
+    /** 运行视图 SYNC 节点「查看日志」（仅 nodeExecutionId 存在时可点） */
+    onViewLogs?: () => void;
 }) {
     if (!node) {
         return (
@@ -310,19 +492,31 @@ function PropertyPanel({
                             }
                         />
                         <PropertyRow label="耗时" value={formatDuration(node.data.durationMs)}/>
-                        <PropertyRow label="开始时间" value={node.data.nodeExecutionStartTime || '—'}/>
-                        <PropertyRow label="结束时间" value={node.data.nodeExecutionEndTime || '—'}/>
+                        <PropertyRow label="开始时间"
+                                     value={node.data.nodeExecutionStartTime ? formatDateTime(node.data.nodeExecutionStartTime) : '—'}/>
+                        <PropertyRow label="结束时间"
+                                     value={node.data.nodeExecutionEndTime ? formatDateTime(node.data.nodeExecutionEndTime) : '—'}/>
                         {node.data.errorMessage && (
                             <div className="text-ds-danger text-[12px] break-all">{node.data.errorMessage}</div>
                         )}
                         {node.data.outputInfo && (
                             <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-2 mt-2">
                                 <div className="text-ds-caption text-ds-text-muted mb-1">输出</div>
-                                <pre
-                                    className="text-[11px] text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
-                                    {node.data.outputInfo}
-                                </pre>
+                                {node.data.nodeType === 'SQL' ? (
+                                    <SqlOutputDisplay outputInfo={node.data.outputInfo}/>
+                                ) : (
+                                    <pre
+                                        className="text-[11px] text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
+                                        {node.data.outputInfo}
+                                    </pre>
+                                )}
                             </div>
+                        )}
+                        {/* SYNC 节点执行日志（复用同步任务的 HistoryLogModal） */}
+                        {node.data.nodeType === 'SYNC' && node.data.nodeExecutionId && onViewLogs && (
+                            <DsButton variant="secondary" onClick={onViewLogs} className="w-full">
+                                <HiOutlineDocumentText size={14}/> 查看日志
+                            </DsButton>
                         )}
                     </>
                 )}
@@ -382,10 +576,23 @@ function DagEditorInner() {
     // SQL 节点编辑 modal(Sprint 3 §6.5：900x600 dark Monaco modal,替代 Drawer)
     const [sqlModalOpen, setSqlModalOpen] = useState(false);
     const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
+    // 运行视图 SYNC 节点「查看日志」弹窗（复用同步任务的 HistoryLogModal）
+    const [nodeLogOpen, setNodeLogOpen] = useState(false);
+    const [nodeLogs, setNodeLogs] = useState<SyncJobLog[]>([]);
+    const [nodeLogsLoading, setNodeLogsLoading] = useState(false);
     const [form] = Form.useForm();
     const watchedSyncJobId = Form.useWatch('syncJobId', form);
     const nodeIdRef = useRef(0);
     const edgeIdRef = useRef(0);
+    // 运行视图自动布局位置缓存（nodeId → position）：轮询重建节点时避免已布局节点位置抖动
+    const runViewPosCacheRef = useRef(new Map<string, { x: number; y: number }>());
+    // 最新 dag 的 ref：refreshExecution 轮询用它取坐标/边，
+    // 避免把 dag 加进 useCallback 依赖导致加载 effect 在 setDag 后反复触发
+    const dagRef = useRef(dag);
+
+    useEffect(() => {
+        dagRef.current = dag;
+    }, [dag]);
 
     // 当前选中节点（属性面板 + Drawer 摘要共用）
     const selectedNode = useMemo(
@@ -404,7 +611,6 @@ function DagEditorInner() {
             return;
         }
         form.setFieldsValue({
-            nodeId,
             nodeName: nodeData.nodeName,
             sqlContent: nodeData.sqlContent || '',
             syncJobId: nodeData.syncJobId,
@@ -412,38 +618,28 @@ function DagEditorInner() {
         setDrawerOpen(true);
     }, [form]);
 
-    // 拉取执行实例并把节点运行状态映射到画布（执行详情模式的初始加载与轮询共用）
+    // 拉取执行实例并重建画布：节点以 nodeExecutions 执行快照、边以 edgeSnapshot 边快照为准
+    // （执行详情模式的初始加载与轮询共用），当前 DAG 定义只补充坐标 —— 已删除节点/连线的历史执行记录仍然可见
     const refreshExecution = useCallback(() => {
         if (!id || !executionId) return Promise.resolve();
         // 不转 Number()：19 位 Snowflake id 保持 string 比较，防止精度丢失
         return getDagExecution(id, executionId).then(ex => {
             setExecution(ex);
-            const runByNodeId = new Map<string, NodeExecution>();
-            (ex.nodeExecutions || []).forEach(ne => {
-                if (ne.nodeId) runByNodeId.set(ne.nodeId, ne);
+            const {nodes, edges} = buildRunViewGraph(ex, dagRef.current, runViewPosCacheRef.current);
+            // 轮询重建会丢 selected 标志：按 id 保留选中态，避免选中高亮/属性面板闪断
+            setRfNodes(prev => {
+                const selectedIds = new Set(prev.filter(n => n.selected).map(n => n.id));
+                return nodes.map(n => (selectedIds.has(n.id) ? {...n, selected: true} : n));
             });
-            setRfNodes(prev => prev.map(n => {
-                const run = runByNodeId.get(n.id);
-                if (!run) return n;
-                return {
-                    ...n,
-                    data: {
-                        ...n.data,
-                        status: (run.status as NodeStatus) || undefined,
-                        durationMs: run.durationMs,
-                        outputInfo: run.outputInfo,
-                        errorMessage: run.errorMessage,
-                        nodeExecutionStartTime: run.startTime,
-                        nodeExecutionEndTime: run.endTime,
-                    },
-                };
-            }));
+            setRfEdges(edges);
         });
-    }, [id, executionId, setRfNodes]);
+    }, [id, executionId, setRfNodes, setRfEdges]);
 
     // 加载已有 DAG（编辑模式）或 DAG + execution（执行详情模式）
     useEffect(() => {
         if (isNew || !id) return;
+        // 切换 DAG/执行实例时清空运行视图布局缓存，避免旧快照的自动布局位置串到新实例
+        runViewPosCacheRef.current.clear();
         // 不转 Number()：19 位 Snowflake id 会被截断精度，reactflow 拿不到 nodes
         getDag(id).then(d => {
             setDag(d);
@@ -459,6 +655,7 @@ function DagEditorInner() {
                         sqlContent: cfg.sqlContent,
                         syncJobId: cfg.syncJobId,
                         syncJobName: cfg.syncJobName,
+                        lastTestStatus: cfg.lastTestStatus,
                         onEditRequest: canEdit ? handleEditRequest : undefined,
                     },
                 };
@@ -483,8 +680,8 @@ function DagEditorInner() {
         }).catch(e => notify.error('加载 DAG 失败: ' + (e?.message || '')));
     }, [id, executionId, isRunView, handleEditRequest, refreshExecution, canEdit, isNew, setRfNodes, setRfEdges]);
 
-    // 执行详情模式：RUNNING 时轮询刷新节点状态（与列表页统一的 usePollingWhile，5s 间隔）
-    usePollingWhile(isRunView && execution?.status === 'RUNNING', refreshExecution);
+    // 执行详情模式：RUNNING 时轮询刷新节点状态（与列表页统一的 usePollingWhile，1s 间隔）
+    usePollingWhile(isRunView && execution?.status === 'RUNNING', refreshExecution, {interval: 1000});
 
     // 加载同步任务列表
     useEffect(() => {
@@ -555,7 +752,6 @@ function DagEditorInner() {
                 // SYNC 节点不默认选中任务：静默绑定错任务的风险太大，让用户显式选择（Drawer 有 required 校验）
                 syncJobId: undefined,
                 syncJobName: undefined,
-                status: 'IDLE',
                 onEditRequest: handleEditRequest,
             },
         };
@@ -616,6 +812,33 @@ function DagEditorInner() {
         if (!selectedNode) return;
         handleEditRequest(selectedNode.id, selectedNode.data);
     }, [selectedNode, handleEditRequest]);
+
+    // 运行视图 SYNC 节点「查看日志」：按节点执行记录 id 拉日志（返回结构对齐同步任务日志接口）
+    const handleViewNodeLogs = useCallback(async () => {
+        const neId = selectedNode?.data.nodeExecutionId;
+        if (!neId) return;
+        setNodeLogOpen(true);
+        setNodeLogsLoading(true);
+        try {
+            const result = await getNodeExecutionLogs(neId);
+            setNodeLogs(result.data || []);
+        } catch {
+            // 错误提示由 request 拦截器统一弹出
+            setNodeLogs([]);
+        } finally {
+            setNodeLogsLoading(false);
+        }
+    }, [selectedNode]);
+
+    // SQL 节点「运行测试」结果回写节点 data：驱动卡片右上角状态点，随 serializeConfig 持久化
+    const handleSqlTested = useCallback((status: 'PASSED' | 'FAILED') => {
+        if (!selectedNodeId) return;
+        setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
+            ...n,
+            data: {...n.data, lastTestStatus: status},
+        } : n));
+        setIsDirty(true);
+    }, [selectedNodeId, setRfNodes]);
 
     const handleSaveNode = async () => {
         const v = await form.validateFields();
@@ -843,15 +1066,23 @@ function DagEditorInner() {
                             {dag.name || '—'}
                         </div>
                         {execution && (
-                            <div className="flex items-center gap-4 text-[13px]">
-                                <span className="flex items-center gap-1">
-                                    状态：
-                                    <span style={{color: executionStatusColor, fontWeight: 600}}>
-                                        {NODE_STATUS_LABEL[execution.status] || execution.status}
+                            <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-4 text-[13px]">
+                                    <span className="flex items-center gap-1">
+                                        状态：
+                                        <span style={{color: executionStatusColor, fontWeight: 600}}>
+                                            {NODE_STATUS_LABEL[execution.status] || execution.status}
+                                        </span>
                                     </span>
-                                </span>
-                                <span>触发：{execution.triggerType === 'MANUAL' ? '手动' : '定时'}</span>
-                                <span>耗时：{formatDuration(execution.durationMs)}</span>
+                                    <span>触发：{execution.triggerType === 'MANUAL' ? '手动' : '定时'}</span>
+                                    <span>耗时：{formatDuration(execution.durationMs)}</span>
+                                </div>
+                                {execution.status === 'FAILED' && execution.errorMessage && (
+                                    <div className="text-ds-danger text-[12px] max-w-[600px] truncate"
+                                         title={execution.errorMessage}>
+                                        失败原因：{execution.errorMessage}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </>
@@ -1025,7 +1256,8 @@ function DagEditorInner() {
                 </div>
 
                 {/* 右侧：属性面板（260px） */}
-                <PropertyPanel node={selectedNode} onEdit={handleEditFromPanel} readOnly={isRunView}/>
+                <PropertyPanel node={selectedNode} onEdit={handleEditFromPanel} readOnly={isRunView}
+                               onViewLogs={handleViewNodeLogs}/>
             </div>
 
             {/* 节点配置抽屉 */}
@@ -1042,7 +1274,6 @@ function DagEditorInner() {
             >
                 {selectedNode && <NodeSummary node={selectedNode} watchedSyncJobId={watchedSyncJobId}/>}
                 <Form form={form} layout="vertical">
-                    <Form.Item label="节点 ID" name="nodeId"><Input disabled/></Form.Item>
                     <Form.Item label="节点名称" name="nodeName" rules={[{required: true}]}>
                         <Input/>
                     </Form.Item>
@@ -1080,12 +1311,117 @@ function DagEditorInner() {
                     setIsDirty(true);
                     notify.success('SQL 节点已更新');
                 }}
+                onTested={handleSqlTested}
+            />
+
+            {/* 运行视图 SYNC 节点执行日志（复用同步任务日志弹窗） */}
+            <HistoryLogModal
+                open={nodeLogOpen}
+                title={selectedNode?.data.nodeName}
+                logs={nodeLogs}
+                loading={nodeLogsLoading}
+                onClose={() => setNodeLogOpen(false)}
             />
         </div>
     );
 }
 
-function parseConfig(config?: string): { sqlContent?: string; syncJobId?: number; syncJobName?: string } {
+/**
+ * 运行视图（执行快照）画布构建：节点以 execution.nodeExecutions 为准，边以 execution.edgeSnapshot 为准
+ * （无快照时回退当前定义）。已删除节点/连线的历史执行记录仍然可见；
+ * 用 dagre 整体自动布局，避免已删除节点与现存节点贴在一起。
+ */
+function buildRunViewGraph(
+    ex: DagExecution,
+    dag: Dag,
+    _positionCache: Map<string, { x: number; y: number }>,
+): { nodes: Node<RFNodeData>[]; edges: Edge[] } {
+    const snapshot = (ex.nodeExecutions || []).filter(
+        (ne): ne is NodeExecution & { nodeId: string } => !!ne.nodeId,
+    );
+    const snapshotIds = new Set(snapshot.map(ne => ne.nodeId));
+
+    // 边优先取执行实例创建时的边快照（edgeSnapshot）—— 后续删除节点/改连线不影响历史视图；
+    // 只保留两端都在快照节点集合里的；快照缺失或解析失败时回退当前定义 dag.edges（老执行实例无快照数据）
+    const snapshotEdges = parseEdgeSnapshot(ex.edgeSnapshot);
+    const edges: Edge[] = snapshotEdges
+        ? snapshotEdges
+            .filter(e => snapshotIds.has(e.source) && snapshotIds.has(e.target))
+            .map(e => ({
+                id: `${e.source}-${e.target}`,
+                source: e.source,
+                target: e.target,
+                animated: true,
+            }))
+        : (dag.edges || [])
+            .filter(e => snapshotIds.has(e.sourceNodeId) && snapshotIds.has(e.targetNodeId))
+            .map(e => ({
+                id: e.edgeId,
+                source: e.sourceNodeId,
+                target: e.targetNodeId,
+                animated: true,
+            }));
+
+    // 用当前 DAG 定义里的 config 补充已删除节点的同步任务名/SQL 等信息（历史视图尽量展示完整）
+    const defConfigByNodeId = new Map((dag.nodes || []).map(n => [n.nodeId, parseConfig(n.config)]));
+
+    const nodes: Node<RFNodeData>[] = snapshot.map(ne => {
+        const nodeType: NodeType = ne.nodeType === 'SYNC' ? 'SYNC' : 'SQL';
+        const cfg = defConfigByNodeId.get(ne.nodeId);
+        return {
+            id: ne.nodeId,
+            type: nodeType,
+            position: {x: 0, y: 0},
+            data: {
+                nodeName: ne.nodeName || ne.nodeId,
+                nodeType,
+                status: (ne.status as NodeStatus) || undefined,
+                durationMs: ne.durationMs,
+                outputInfo: ne.outputInfo,
+                errorMessage: ne.errorMessage,
+                nodeExecutionStartTime: ne.startTime,
+                nodeExecutionEndTime: ne.endTime,
+                // 节点执行记录 id：SYNC 节点「查看日志」入口依赖它
+                nodeExecutionId: ne.id != null ? String(ne.id) : undefined,
+                // 同步任务名优先取当前定义；已删除节点回退到 execution 里的 syncJobId
+                syncJobId: nodeType === 'SYNC' ? (cfg?.syncJobId ?? ne.syncJobId) : undefined,
+                syncJobName: nodeType === 'SYNC' ? cfg?.syncJobName : undefined,
+                sqlContent: nodeType === 'SQL' ? cfg?.sqlContent : undefined,
+            },
+        };
+    });
+
+    // 用 dagre 自动布局，避免手动补坐标导致节点贴在一起；dagre 对相同图输入是确定性的
+    const layoutedNodes = layoutWithDagre(nodes, edges, 'LR');
+    return {nodes: layoutedNodes, edges};
+}
+
+/**
+ * 解析执行实例的边快照 JSON（[{source,target},...]）。
+ * 返回 null 表示无快照或非法，调用方回退用当前 DAG 定义的边；合法的 [] 原样返回（触发时无边）。
+ */
+function parseEdgeSnapshot(edgeSnapshot?: string): { source: string; target: string }[] | null {
+    if (!edgeSnapshot) return null;
+    try {
+        const parsed: unknown = JSON.parse(edgeSnapshot);
+        if (!Array.isArray(parsed)) return null;
+        return parsed.filter(
+            (e): e is { source: string; target: string } =>
+                !!e && typeof e === 'object' &&
+                typeof (e as { source?: unknown }).source === 'string' &&
+                typeof (e as { target?: unknown }).target === 'string',
+        );
+    } catch {
+        return null;
+    }
+}
+
+function parseConfig(config?: string): {
+    sqlContent?: string;
+    syncJobId?: number;
+    syncJobName?: string;
+    lastTestStatus?: 'PASSED' | 'FAILED';
+} {
     if (!config) return {};
     try {
         return JSON.parse(config);
@@ -1116,7 +1452,12 @@ function wouldCreateCycle(edges: Edge[], source: string, target: string): boolea
 
 function serializeConfig(data: RFNodeData): string {
     if (data.nodeType === 'SQL') {
-        return JSON.stringify({type: 'SQL', sqlContent: data.sqlContent || ''});
+        return JSON.stringify({
+            type: 'SQL',
+            sqlContent: data.sqlContent || '',
+            // SQL 节点最近运行测试结果（有值才写入，避免污染历史 config）
+            ...(data.lastTestStatus ? {lastTestStatus: data.lastTestStatus} : {}),
+        });
     }
     return JSON.stringify({type: 'SYNC', syncJobId: data.syncJobId, syncJobName: data.syncJobName});
 }

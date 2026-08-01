@@ -113,13 +113,14 @@ public class GenericSqlExecutor {
                 rowCount++;
             }
             String msg;
-            if (rowCount >= PREVIEW_MAX_ROWS) {
+            boolean truncated = rowCount >= PREVIEW_MAX_ROWS;
+            if (truncated) {
                 msg = String.format("Query returned at least %d rows (truncated, max %d displayed)",
                         PREVIEW_MAX_ROWS, PREVIEW_MAX_ROWS);
             } else {
                 msg = String.format("Query returned %d row(s)", rowCount);
             }
-            return new PreviewResult("QUERY", rowCount, columns, rows, msg, null);
+            return new PreviewResult("QUERY", rowCount, columns, rows, msg, null, truncated);
         }
     }
 
@@ -210,9 +211,16 @@ public class GenericSqlExecutor {
         public final String message;
         public final String error;
         public final boolean success;
+        /** QUERY 结果集是否被 PREVIEW_MAX_ROWS 截断；非 QUERY / 失败恒为 false */
+        public final boolean truncated;
 
         private PreviewResult(String type, int rowCount, List<String> columns, List<List<Object>> rows,
                               String message, String error) {
+            this(type, rowCount, columns, rows, message, error, false);
+        }
+
+        private PreviewResult(String type, int rowCount, List<String> columns, List<List<Object>> rows,
+                              String message, String error, boolean truncated) {
             this.type = type;
             this.rowCount = rowCount;
             this.columns = columns;
@@ -220,6 +228,7 @@ public class GenericSqlExecutor {
             this.message = message;
             this.error = error;
             this.success = error == null;
+            this.truncated = truncated;
         }
 
         public static PreviewResult failed(String errorCode, String errorMsg) {

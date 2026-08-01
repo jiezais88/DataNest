@@ -321,12 +321,15 @@ public class DagService {
         Integer timeout = 0;
 
         Long newCode = null;
+        boolean isCreate = dag.getDsProcessDefinitionCode() == null;
         try {
-            if (dag.getDsProcessDefinitionCode() == null) {
+            if (isCreate) {
                 newCode = dolphinSchedulerClient.createWorkflowDefinition(
                         dsProjectCode, dag.getName(), dag.getName(),
                         taskDefs, relations, locations, globalParams, "PARALLEL", timeout);
             } else {
+                // DS 工作流处于 ONLINE 时不能直接更新，需要先 OFFLINE -> update -> ONLINE
+                dolphinSchedulerClient.releaseWorkflow(dsProjectCode, dag.getDsProcessDefinitionCode(), dag.getName(), "OFFLINE");
                 newCode = dolphinSchedulerClient.updateWorkflowDefinition(
                         dsProjectCode, dag.getDsProcessDefinitionCode(), dag.getName(), dag.getName(),
                         taskDefs, relations, locations, globalParams, "PARALLEL", timeout);
@@ -347,7 +350,7 @@ public class DagService {
             dolphinSchedulerClient.releaseWorkflow(dsProjectCode, newCode, dag.getName(), "ONLINE");
         } catch (Exception e) {
             logger.warn("DS 工作流发布失败: dagId={}, dsCode={}, err={}", dagId, newCode, e.getMessage());
-            // 发布失败：DB 标 OFFLINE，DS 端创建但未上线
+            // 发布失败：DB 标 OFFLINE，DS 端创建/更新但未上线
             dag.setDsProjectCode(dsProjectCode);
             dag.setDsProcessDefinitionCode(newCode);
             dag.setReleaseState("OFFLINE");
@@ -366,6 +369,18 @@ public class DagService {
 
         dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.updateById(dag);
+    }
+
+    /**
+     * 强制把当前 DB 中的 DAG 同步到 DS 并尝试上线。
+     * 用于触发前发现 release_state=OFFLINE 时自动修复，避免用户手动保存/发布。
+     */
+    public void syncToDs(Long dagId) {
+        DagPayload payload = getDetail(dagId);
+        Map<String, Long> codeMap = dagNodeMapper.selectByDagId(dagId).stream()
+                .filter(n -> n.getNodeId() != null && n.getDsTaskCode() != null)
+                .collect(Collectors.toMap(DagNode::getNodeId, DagNode::getDsTaskCode, (a, b) -> a));
+        syncToDs(dagId, payload, codeMap);
     }
 
     /**

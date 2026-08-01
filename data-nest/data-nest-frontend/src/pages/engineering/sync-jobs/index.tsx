@@ -175,7 +175,7 @@ export default function SyncJobsPage() {
     }, []);
 
     const hasRunning = list.some((i) => i.executionStatus === 'RUNNING') || executingId != null;
-    usePollingWhile(hasRunning, reload);
+    usePollingWhile(hasRunning, reload, {interval: 1000});
 
     const loadDataSources = useCallback(async () => {
         try {

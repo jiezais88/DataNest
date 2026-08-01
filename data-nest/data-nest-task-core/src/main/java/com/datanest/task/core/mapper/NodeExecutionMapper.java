@@ -78,6 +78,9 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
             "output_info = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.outputInfo,jdbcType=VARCHAR}</foreach> " +
             "END, " +
+            "sync_job_history_id = CASE id " +
+            "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.syncJobHistoryId,jdbcType=BIGINT}</foreach> " +
+            "END, " +
             "version = version + 1 " +
             "WHERE (id, version) IN " +
             "<foreach collection='list' item='item' open='(' separator=',' close=')'>" +

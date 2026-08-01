@@ -1,7 +1,5 @@
 package com.datanest.engineering.service;
 
-import org.apache.ibatis.jdbc.SQL;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,30 +9,15 @@ import java.util.List;
  * 规则：
  * - 按 ; 切分（多 statement 用分号分隔是 SQL 通用约定）
  * - 跳过字符串字面量（'…' / "…"）内的分号，识别 '' / "" 转义
- * - 跳过单行注释（-- …）和多行注释（/* … */）
-        *-跳过空 /
-纯注释 statement
+ * - 跳过单行注释（-- …）和多行注释（星号斜杠风格的块注释）
+ * - 跳过空 / 纯注释 statement
  * <p>
- *边界：
-未处理 PL/
-SQL 块（DECLARE…BEGIN…END）、
-未处理 $$
-美元引号（PostgreSQL）。
-        *
-这些场景超出 Sprint 3
-preview 需求；
-DAG 节点
-SQL 通常是单条
-DDL/DML/SELECT。
-        * <p>
- *
-决策 ADR-S3-FJ-005：自己写切分器，
-避免引入 jsqlparser
-依赖；
-        *
-preview 场景对边界容忍度高（失败回退到单条执行），
-不需要工业级 parser。
-        */
+ * 边界：未处理 PL/SQL 块（DECLARE…BEGIN…END）、未处理 $$ 美元引号（PostgreSQL）。
+ * 这些场景超出 Sprint 3 preview 需求；DAG 节点 SQL 通常是单条 DDL/DML/SELECT。
+ * <p>
+ * 决策 ADR-S3-FJ-005：自己写切分器，避免引入 jsqlparser 依赖；
+ * preview 场景对边界容忍度高（失败回退到单条执行），不需要工业级 parser。
+ */
 
 public final class SqlStatementSplitter {
 

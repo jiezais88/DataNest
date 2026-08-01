@@ -15,6 +15,8 @@ export function formatDuration(ms: number | string | null | undefined): string {
     if (ms == null) return '-';
     const n = typeof ms === 'string' ? Number(ms) : ms;
     if (Number.isNaN(n)) return '-';
+    // 负数耗时（时钟漂移/数据异常）无意义，兜底显示 "-"
+    if (n < 0) return '-';
     if (n < 1000) return `${n}ms`;
     const s = Math.floor(n / 1000);
     const remMs = n % 1000;

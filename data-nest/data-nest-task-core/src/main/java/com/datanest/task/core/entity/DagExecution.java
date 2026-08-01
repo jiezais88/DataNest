@@ -35,4 +35,8 @@ public class DagExecution {
     private Long createdBy;
 
     private LocalDateTime createdAt;
+
+    private String edgeSnapshot;         // 创建执行实例时的 dag_edge JSON 快照（历史视图渲染边用）
+
+    private String errorMessage;         // 执行失败原因（如 DS 触发失败、工作流未上线等）
 }

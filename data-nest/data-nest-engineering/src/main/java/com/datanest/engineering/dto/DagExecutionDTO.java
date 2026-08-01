@@ -16,5 +16,7 @@ public class DagExecutionDTO {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private Long durationMs;
+    private String edgeSnapshot;
+    private String errorMessage;
     private List<NodeExecutionDTO> nodeExecutions;
 }

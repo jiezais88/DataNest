@@ -226,7 +226,9 @@ public class DagExecutionSyncService {
                 if (!"RUNNING".equalsIgnoreCase(ne.getStatus())) continue;
                 if (!"SYNC".equalsIgnoreCase(ne.getNodeType())) continue;
                 if (ne.getSyncJobId() == null) continue;
-                SyncHistoryResult sh = syncFetcher.fetchLatestHistory(ne.getSyncJobId());
+                // 负数耗时修复：只接受 end_time 不早于本节点 start_time 的 history，
+                // 取不到合格 history 时本轮跳过收尾，等下一轮
+                SyncHistoryResult sh = syncFetcher.fetchLatestHistory(ne.getSyncJobId(), ne.getStartTime());
                 if (sh == null) continue;
                 if ("SUCCESS".equalsIgnoreCase(sh.status())) {
                     ne.setStatus("SUCCESS");
@@ -235,6 +237,7 @@ public class DagExecutionSyncService {
                         ne.setDurationMs(Duration.between(ne.getStartTime(), ne.getEndTime()).toMillis());
                     }
                     ne.setOutputInfo(sh.outputInfo());
+                    ne.setSyncJobHistoryId(sh.historyId());
                     updatedNodes.add(ne);
                     changed = true;
                     // Sprint3-Fix4：sync 跑完释放互斥锁，让 callback 端能拿到下一个并发请求
@@ -249,6 +252,7 @@ public class DagExecutionSyncService {
                     ne.setStatus("FAILED");
                     ne.setEndTime(sh.endTime() != null ? sh.endTime() : LocalDateTime.now());
                     ne.setErrorMessage(sh.errorMessage());
+                    ne.setSyncJobHistoryId(sh.historyId());
                     updatedNodes.add(ne);
                     changed = true;
                     // FAILED 也要释放锁（哪怕失败了，新一轮也要能起来）
@@ -258,6 +262,29 @@ public class DagExecutionSyncService {
                         } catch (Exception e) {
                             logger.warn("释放 sync 互斥锁失败: syncJobId={}", ne.getSyncJobId(), e);
                         }
+                    }
+                }
+            }
+        }
+
+        // 3.5 实例节点数错乱修复：DS 流程实例到达终态后，本地仍 WAITING 的节点（因上游失败
+        // 等原因从未在 DS 侧运行）标记为 SKIPPED。只在 DS 终态分支做，运行中实例绝不误标。
+        boolean hasWaiting = false;
+        for (NodeExecution ne : nodeList) {
+            if ("WAITING".equalsIgnoreCase(ne.getStatus())) {
+                hasWaiting = true;
+                break;
+            }
+        }
+        if (hasWaiting) {
+            Integer workflowState = fetcher.fetchWorkflowState(dag.getDsProjectCode(), execution.getDsProcessInstanceId());
+            if (isDsTerminalState(workflowState)) {
+                for (NodeExecution ne : nodeList) {
+                    if ("WAITING".equalsIgnoreCase(ne.getStatus())) {
+                        ne.setStatus("SKIPPED");
+                        ne.setEndTime(LocalDateTime.now());
+                        updatedNodes.add(ne);
+                        changed = true;
                     }
                 }
             }
@@ -275,40 +302,71 @@ public class DagExecutionSyncService {
         }
 
         // 4. 推断 workflow 整体状态（性能7：复用 nodeList 不再查一次）
-        if (!nodeList.isEmpty()) {
-            boolean allDone = nodeList.stream().allMatch(n -> {
-                String s = n.getStatus();
-                return "SUCCESS".equalsIgnoreCase(s) || "FAILED".equalsIgnoreCase(s)
-                        || "SKIPPED".equalsIgnoreCase(s) || "TERMINATED".equalsIgnoreCase(s);
-            });
-            if (allDone) {
-                boolean anyFailed = nodeList.stream().anyMatch(n -> {
-                    String s = n.getStatus();
-                    return "FAILED".equalsIgnoreCase(s) || "TERMINATED".equalsIgnoreCase(s);
-                });
-                String newWorkflowStatus = anyFailed ? "FAILED" : "SUCCESS";
-                if (!newWorkflowStatus.equals(execution.getStatus())) {
-                    execution.setStatus(newWorkflowStatus);
-                    // 与 DS 保持一致：DAG 结束时间取所有节点 endTime 的最大值
-                    LocalDateTime dagEndTime = nodeList.stream()
-                            .map(NodeExecution::getEndTime)
-                            .filter(t -> t != null)
-                            .max(LocalDateTime::compareTo)
-                            .orElse(LocalDateTime.now());
-                    execution.setEndTime(dagEndTime);
-                    // 保留毫秒精度：DAG 耗时 = 最后一个节点完成时间 - DAG 开始时间
-                    if (execution.getStartTime() != null) {
-                        execution.setDurationMs(Duration.between(
-                                execution.getStartTime(), dagEndTime).toMillis());
-                    }
-                    dagExecutionMapper.updateById(execution);
-                    changed = true;
-                    logger.info("DAG 执行完成: executionId={}, status={}, endTime={}, durationMs={}",
-                            execution.getId(), newWorkflowStatus, execution.getEndTime(), execution.getDurationMs());
-                }
-            }
+        // SYNC 节点收尾（步骤 3）也在这里同轮完成 dag_execution 终态推断
+        if (finalizeIfAllDone(execution, nodeList)) {
+            changed = true;
         }
         return changed;
+    }
+
+    /**
+     * 所有节点到达终态时收尾 dag_execution（写 status/endTime/durationMs）。
+     * 抽成 public 供节点回调（DagNodeCallbackController）在写完节点终态后立即调用，
+     * 不必等下一轮定时同步，让 DAG 整体耗时准实时。
+     * 仅在 execution 仍为 RUNNING 时处理，已是终态的直接返回。
+     *
+     * @return true 表示本次把 execution 写成了终态
+     */
+    public boolean finalizeIfAllDone(Long executionId) {
+        if (executionId == null) return false;
+        DagExecution execution = dagExecutionMapper.selectById(executionId);
+        if (execution == null || !"RUNNING".equalsIgnoreCase(execution.getStatus())) {
+            return false;
+        }
+        List<NodeExecution> nodeList = nodeExecutionMapper.selectByExecutionId(executionId);
+        return finalizeIfAllDone(execution, nodeList);
+    }
+
+    /**
+     * allDone 推断核心逻辑：调用方负责保证 nodeList 与 execution 对应。
+     */
+    private boolean finalizeIfAllDone(DagExecution execution, List<NodeExecution> nodeList) {
+        if (nodeList.isEmpty()) {
+            return false;
+        }
+        boolean allDone = nodeList.stream().allMatch(n -> {
+            String s = n.getStatus();
+            return "SUCCESS".equalsIgnoreCase(s) || "FAILED".equalsIgnoreCase(s)
+                    || "SKIPPED".equalsIgnoreCase(s) || "TERMINATED".equalsIgnoreCase(s);
+        });
+        if (!allDone) {
+            return false;
+        }
+        boolean anyFailed = nodeList.stream().anyMatch(n -> {
+            String s = n.getStatus();
+            return "FAILED".equalsIgnoreCase(s) || "TERMINATED".equalsIgnoreCase(s);
+        });
+        String newWorkflowStatus = anyFailed ? "FAILED" : "SUCCESS";
+        if (newWorkflowStatus.equals(execution.getStatus())) {
+            return false;
+        }
+        execution.setStatus(newWorkflowStatus);
+        // 与 DS 保持一致：DAG 结束时间取所有节点 endTime 的最大值
+        LocalDateTime dagEndTime = nodeList.stream()
+                .map(NodeExecution::getEndTime)
+                .filter(t -> t != null)
+                .max(LocalDateTime::compareTo)
+                .orElse(LocalDateTime.now());
+        execution.setEndTime(dagEndTime);
+        // 保留毫秒精度：DAG 耗时 = 最后一个节点完成时间 - DAG 开始时间
+        if (execution.getStartTime() != null) {
+            execution.setDurationMs(Duration.between(
+                    execution.getStartTime(), dagEndTime).toMillis());
+        }
+        dagExecutionMapper.updateById(execution);
+        logger.info("DAG 执行完成: executionId={}, status={}, endTime={}, durationMs={}",
+                execution.getId(), newWorkflowStatus, execution.getEndTime(), execution.getDurationMs());
+        return true;
     }
 
     /**
@@ -372,6 +430,15 @@ public class DagExecutionSyncService {
         };
     }
 
+    /**
+     * DS 流程实例是否到达终态（5=STOP / 6=FAILURE / 7=SUCCESS / 9=KILL）。
+     * null（查询失败或不支持）按非终态处理，绝不误标。
+     */
+    private boolean isDsTerminalState(Integer dsState) {
+        if (dsState == null) return false;
+        return dsState == DS_SUCCESS || dsState == DS_FAILURE || dsState == DS_STOP || dsState == DS_KILL;
+    }
+
     private LocalDateTime parseDsTime(String s) {
         if (s == null) return null;
         try {
@@ -403,6 +470,15 @@ public class DagExecutionSyncService {
         default Long fetchWorkflowDurationMs(Long dsProjectCode, Long dsProcessInstanceId) {
             return null;
         }
+
+        /**
+         * 拉取 DS 流程实例状态 code（与 mapDsState 约定一致：5/6/7/9 为终态）。
+         * 默认返回 null（不支持），sync 端只在本地有 WAITING 节点时调用，
+         * 用于「DS 流程实例终态后把从未运行的 WAITING 节点标 SKIPPED」的兜底。
+         */
+        default Integer fetchWorkflowState(Long dsProjectCode, Long dsProcessInstanceId) {
+            return null;
+        }
     }
 
     /**
@@ -411,9 +487,19 @@ public class DagExecutionSyncService {
      */
     public interface SyncJobHistoryFetcher {
         SyncHistoryResult fetchLatestHistory(Long syncJobId);
+
+        /**
+         * 负数耗时修复：只接受 end_time 不早于 nodeStartTime（node_execution.start_time）的 history，
+         * 避免拿到上一轮运行的 history 算出负耗时。取不到合格 history 返回 null，本轮跳过收尾。
+         * 默认退化为不过滤的单参版本；调用方应覆盖此方法实现过滤。
+         */
+        default SyncHistoryResult fetchLatestHistory(Long syncJobId, LocalDateTime nodeStartTime) {
+            return fetchLatestHistory(syncJobId);
+        }
     }
 
-    public record SyncHistoryResult(String status, LocalDateTime endTime, String errorMessage, String outputInfo) {
+    public record SyncHistoryResult(String status, LocalDateTime endTime, String errorMessage, String outputInfo,
+                                    Long historyId) {
     }
 
     /**

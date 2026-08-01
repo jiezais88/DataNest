@@ -3,6 +3,7 @@
 // 拦截器负责 code !== 200 时 reject；本层统一 .then(r => r.data) 拆信封，与老接口（sync.ts 等）用法一致。
 import request from '../../../api/request';
 import type {PageResult, Result} from '../../../types/common';
+import type {SyncJobLog} from '../../../types/sync';
 import type {Dag, DagExecution, DagProject, SqlPreviewResult} from './types';
 
 // 执行类操作（trigger/rerun/sql-preview）可能超过全局 10s 默认超时
@@ -65,6 +66,12 @@ export const getDagExecution = async (dagId: string | number, executionId: strin
 // 复用 trigger：Mvp 简化版会重新跑所有节点，真正的"只重跑失败节点"留 P2
 export const rerunFailed = (dagId: string | number, executionId: string | number) =>
     request.post<Result<DagExecution>>(`/engineering/dev/dags/${dagId}/executions/${executionId}/rerun-failed`, undefined, {timeout: LONG_TIMEOUT}).then(r => r.data);
+
+// DAG 节点执行日志（运行画布 SYNC 节点「查看日志」）：
+// 返回结构与同步任务日志接口 GET /sync-jobs/{id}/history/{historyId}/logs 一致（SyncJobLog[]），
+// 因此直接复用 SyncJobLog 类型与 HistoryLogModal 组件
+export const getNodeExecutionLogs = (nodeExecutionId: string | number) =>
+    request.get<Result<SyncJobLog[]>>(`/engineering/dev/dags/node-executions/${nodeExecutionId}/logs`);
 
 // =================== SQL Preview ===================
 // Sprint 3: "Run Test" button in the SQL editor modal.

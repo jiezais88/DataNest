@@ -242,7 +242,15 @@ public class SyncJobService {
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
-    public void execute(Long id) {
+    public Long execute(Long id) {
+        return execute(id, TaskTriggerType.MANUAL.getCode());
+    }
+
+    /**
+     * 触发同步任务执行，返回生成的 sync_job_history.id。
+     * DAG 回调场景通过 triggerType 区分来源。
+     */
+    public Long execute(Long id, String triggerType) {
         SyncJob job = syncJobMapper.selectById(id);
         if (job == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
@@ -260,7 +268,7 @@ public class SyncJobService {
 
         SyncJobHistory history = new SyncJobHistory();
         history.setSyncJobId(id);
-        history.setTriggerType(TaskTriggerType.MANUAL.getCode());
+        history.setTriggerType(triggerType);
         history.setStatus("RUNNING");
         history.setStartTime(LocalDateTime.now());
         history.setRetryCount(0);
@@ -269,9 +277,11 @@ public class SyncJobService {
         history.setCreatedAt(LocalDateTime.now());
         syncJobHistoryMapper.insert(history);
 
-        String param = id + "," + TaskTriggerType.MANUAL.getCode() + "," + history.getId();
+        String param = id + "," + triggerType + "," + history.getId();
         schedulerService.triggerJob(job.getXxlJobId(), param);
-        logger.info("已触发同步任务手动执行: syncJobId={}, historyId={}, param={}", id, history.getId(), param);
+        logger.info("已触发同步任务执行: syncJobId={}, historyId={}, triggerType={}, param={}",
+                id, history.getId(), triggerType, param);
+        return history.getId();
     }
 
     @Transactional

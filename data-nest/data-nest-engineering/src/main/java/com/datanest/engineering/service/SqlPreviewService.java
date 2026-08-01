@@ -32,6 +32,9 @@ public class SqlPreviewService {
 
     private static final Logger logger = LoggerFactory.getLogger(SqlPreviewService.class);
 
+    /** 与 GenericSqlExecutor.PREVIEW_MAX_ROWS 保持一致的预览行数上限 */
+    private static final int PREVIEW_MAX_ROWS = 200;
+
     private final GenericSqlExecutor genericSqlExecutor;
     private final DorisSqlExecutor dorisSqlExecutor;
 
@@ -56,14 +59,41 @@ public class SqlPreviewService {
     private StatementResult executeOne(String stmt, Long datasourceId) {
         StatementResult r = new StatementResult();
         r.setStmt(stmt);
+        long startMs = System.currentTimeMillis();
         try {
             if (datasourceId == null) {
-                int affected = dorisSqlExecutor.execute(stmt);
                 String type = classify(stmt);
-                r.setStatus("SUCCESS");
-                r.setType(type);
-                r.setRowCount(affected);
-                r.setMessage(type.equals("DDL") ? "DDL executed" : "Affected " + affected + " row(s)");
+                if ("QUERY".equals(type)) {
+                    // 查询语句要走 query() 拿结果集；execute() 只返回行数，结果集会被丢弃
+                    DorisSqlExecutor.QueryResult qr = dorisSqlExecutor.query(stmt);
+                    r.setStatus("SUCCESS");
+                    r.setType(type);
+                    r.setColumns(qr.columns());
+                    // Map 行按列顺序转为位置数组，与 GenericSqlExecutor 的契约一致
+                    List<List<Object>> rows = new java.util.ArrayList<>();
+                    for (java.util.Map<String, Object> row : qr.rows()) {
+                        List<Object> cells = new java.util.ArrayList<>(qr.columns().size());
+                        for (String col : qr.columns()) {
+                            cells.add(row.get(col));
+                        }
+                        rows.add(cells);
+                    }
+                    // 与 GenericSqlExecutor.PREVIEW_MAX_ROWS=200 保持同一截断口径
+                    boolean truncated = qr.truncated() || rows.size() > PREVIEW_MAX_ROWS;
+                    if (rows.size() > PREVIEW_MAX_ROWS) {
+                        rows = new java.util.ArrayList<>(rows.subList(0, PREVIEW_MAX_ROWS));
+                    }
+                    r.setRows(rows);
+                    r.setRowCount(rows.size());
+                    r.setTruncated(truncated);
+                    r.setMessage(rows.size() + " row(s)" + (truncated ? " (truncated)" : ""));
+                } else {
+                    int affected = dorisSqlExecutor.execute(stmt);
+                    r.setStatus("SUCCESS");
+                    r.setType(type);
+                    r.setRowCount(affected);
+                    r.setMessage(type.equals("DDL") ? "DDL executed" : "Affected " + affected + " row(s)");
+                }
             } else {
                 DataSourceConnection ds = genericSqlExecutor.getDataSource(datasourceId);
                 GenericSqlExecutor.PreviewResult pr = genericSqlExecutor.execute(ds, stmt);
@@ -74,6 +104,7 @@ public class SqlPreviewService {
                 r.setRows(pr.rows);
                 r.setMessage(pr.message);
                 r.setError(pr.error);
+                r.setTruncated(pr.truncated);
             }
         } catch (BusinessException e) {
             r.setStatus("FAILED");
@@ -84,6 +115,8 @@ public class SqlPreviewService {
             r.setStatus("FAILED");
             r.setType("UNKNOWN");
             r.setError("[SQL_PREVIEW_FAILED] " + e.getMessage());
+        } finally {
+            r.setDurationMs(System.currentTimeMillis() - startMs);
         }
         return r;
     }

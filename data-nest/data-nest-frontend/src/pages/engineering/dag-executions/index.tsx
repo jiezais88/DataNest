@@ -1,13 +1,12 @@
 // 全局 DAG 执行历史（PRD §6.7.3）
 // 跨 DAG 的运行实例列表，支持按名称/状态/触发方式/时间范围过滤
-// 展开行展示「微缩 DAG 拓扑图」（简化版 v1：节点按数组顺序水平排列）
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Button, Modal, Space, Table, Tooltip,} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {HiOutlineArrowPath, HiOutlineDocumentText, HiOutlineShare} from 'react-icons/hi2';
+import {HiOutlineArrowPath, HiOutlineDocumentText} from 'react-icons/hi2';
 import {listAllDagExecutions, rerunFailed} from '../dags/api';
-import type {DagExecution, NodeExecution} from '../dags/types';
+import type {DagExecution} from '../dags/types';
 import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../utils/format';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import {usePollingWhile} from '../../../hooks/usePollingWhile';
@@ -20,21 +19,15 @@ import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
-import Drawer from '../../../components/Drawer';
 import {executionStatusVariant} from '../../../utils/status';
 import {notify} from '../../../utils/notify';
-import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '../../../constants/statusColors';
+import {NODE_STATUS_LABEL} from '../../../constants/statusColors';
 
 // =================== 常量映射 ===================
 const TRIGGER_LABEL: Record<string, string> = {
     MANUAL: '手动触发',
     CRON: '定时触发',
     SCHEDULE: '定时触发',
-};
-
-const NODE_TYPE_ICON: Record<string, string> = {
-    SQL: '📝',
-    SYNC: '🔄',
 };
 
 const STATUS_OPTIONS = [
@@ -73,87 +66,6 @@ function normalizeDateTime(v: string): string {
     return v && v.length === 16 ? `${v}:00` : v;
 }
 
-// =================== 微缩 DAG 图 ===================
-// 简化版 v1：节点按 NodeExecution[] 数组顺序水平排列，相邻节点之间画一个箭头
-// 暂不画真实 DAG 拓扑（后端 NodeExecution 暂无 parentId）— PRD 已说明这是「简化版」
-function MiniDagNode({node}: { node: NodeExecution }) {
-    const borderColor = NODE_STATUS_COLOR[node.status] || NODE_STATUS_COLOR.WAITING;
-    const stateLabel = NODE_STATUS_LABEL[node.status] || node.status || '-';
-    const icon = NODE_TYPE_ICON[node.nodeType || ''] || '📦';
-    const name = node.nodeName || node.nodeId || '?';
-    return (
-        <Tooltip
-            title={node.errorMessage || name}
-            mouseEnterDelay={0.3}
-            placement="top"
-        >
-            <div
-                className="w-[150px] min-h-[74px] p-3 bg-white border border-ds-border-subtle rounded-ds-sm shadow-ds-xs flex flex-col gap-1 shrink-0"
-                style={{borderLeft: `4px solid ${borderColor}`}}
-            >
-                <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap">
-                    <span className="text-[15px] leading-none">{icon}</span>
-                    <span className="text-[13px] font-semibold text-ds-text-primary truncate flex-1" title={name}>
-                        {name}
-                    </span>
-                </div>
-                <div className="text-[12px] font-medium" style={{color: borderColor}}>{stateLabel}</div>
-                <div className="text-[12px] text-ds-text-muted">{formatDuration(node.durationMs)}</div>
-                {node.errorMessage && (
-                    <div className="text-[11px] text-ds-danger truncate" title={node.errorMessage}>
-                        {node.errorMessage}
-                    </div>
-                )}
-            </div>
-        </Tooltip>
-    );
-}
-
-function MiniDagArrow() {
-    return (
-        <svg width="40" height="74" className="shrink-0 block" viewBox="0 0 40 74">
-            <line x1="0" y1="37" x2="32" y2="37" stroke="#cbd5e1" strokeWidth={2}/>
-            <polygon points="32,32 40,37 32,42" fill="#cbd5e1"/>
-        </svg>
-    );
-}
-
-function MiniDag({nodes}: { nodes: NodeExecution[] }) {
-    if (nodes.length === 0) {
-        return <DsTableEmpty description="无节点执行记录"/>;
-    }
-    return (
-        <div>
-            <div className="text-ds-small font-semibold text-ds-text-secondary mb-ds-3">
-                节点执行详情
-            </div>
-            <div
-                className="flex items-center p-ds-3 bg-ds-bg-secondary border border-ds-border-subtle rounded-ds-md overflow-x-auto min-h-[110px]">
-                {nodes.map((n, i) => (
-                    <span key={String(n.id ?? n.nodeId ?? i)} className="inline-flex items-center">
-                        {i > 0 && <MiniDagArrow/>}
-                        <MiniDagNode node={n}/>
-                    </span>
-                ))}
-            </div>
-            <div className="flex gap-ds-4 mt-ds-3 text-ds-small text-ds-text-muted">
-                <span className="inline-flex items-center gap-ds-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{background: NODE_STATUS_COLOR.SUCCESS}}/>
-                    成功
-                </span>
-                <span className="inline-flex items-center gap-ds-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{background: NODE_STATUS_COLOR.FAILED}}/>
-                    失败
-                </span>
-                <span className="inline-flex items-center gap-ds-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{background: NODE_STATUS_COLOR.SKIPPED}}/>
-                    被跳过
-                </span>
-            </div>
-        </div>
-    );
-}
-
 // =================== 页面 ===================
 interface AppliedFilters {
     dagName: string;
@@ -183,8 +95,6 @@ export default function DagExecutionsGlobalPage() {
     const navigate = useNavigate();
     const canEdit = useCanEdit();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [drawerOpen, setDrawerOpen] = useState(false);
-    const [selectedExecution, setSelectedExecution] = useState<DagExecution | null>(null);
 
     // 草稿：用户在工具栏里编辑但未点查询
     const defaultRange = getDefaultTimeRange();
@@ -244,9 +154,9 @@ export default function DagExecutionsGlobalPage() {
         }
     }, [searchParams, setSearchParams, applied, applyQuery]);
 
-    // RUNNING 自动刷新：5s 轮询，60s 兜底停止（统一走 usePollingWhile）
+    // RUNNING 自动刷新：1s 轮询，60s 兜底停止（统一走 usePollingWhile）
     const hasRunning = useMemo(() => data.some(d => d.status === 'RUNNING'), [data]);
-    usePollingWhile(hasRunning, reload);
+    usePollingWhile(hasRunning, reload, {interval: 1000});
 
     const handleSearch = () => {
         if (!draftStartTimeFrom || !draftStartTimeTo) {
@@ -373,7 +283,16 @@ export default function DagExecutionsGlobalPage() {
             dataIndex: 'nodeExecutions',
             width: 280,
             render: (_, r) => (
-                <span style={{color: '#475569', fontSize: 13}}>{nodeSummary(r)}</span>
+                <div style={{color: '#475569', fontSize: 13}}>
+                    <div>{nodeSummary(r)}</div>
+                    {r.status === 'FAILED' && r.errorMessage && (
+                        <Tooltip title={r.errorMessage}>
+                            <div className="text-ds-danger text-[12px] truncate max-w-[260px]">
+                                {r.errorMessage}
+                            </div>
+                        </Tooltip>
+                    )}
+                </div>
             ),
         },
         {
@@ -394,17 +313,6 @@ export default function DagExecutionsGlobalPage() {
                             </DsIconButton>
                         </Tooltip>
                     )}
-                    <Tooltip title="节点执行详情">
-                        <DsIconButton
-                            tone="accent"
-                            onClick={() => {
-                                setSelectedExecution(r);
-                                setDrawerOpen(true);
-                            }}
-                        >
-                            <HiOutlineShare size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
                     <Tooltip title="Sprint 5 支持">
                         <DsIconButton tone="default" disabled>
                             <HiOutlineDocumentText size={14}/>
@@ -533,31 +441,6 @@ export default function DagExecutionsGlobalPage() {
                     />
                 </div>
             </div>
-
-            {/* 右侧节点执行详情抽屉 */}
-            <Drawer
-                title={
-                    <div>
-                        <div className="text-ds-text-primary font-semibold">
-                            {selectedExecution?.dagName || 'DAG'} 节点执行详情
-                        </div>
-                        <div className="text-ds-text-muted text-ds-small mt-ds-1">
-                            {formatDateTime(selectedExecution?.startTime)}
-                            {' · '}
-                            <DsStatusBadge
-                                label={NODE_STATUS_LABEL[selectedExecution?.status || ''] || selectedExecution?.status || '-'}
-                                variant={executionStatusVariant(selectedExecution?.status)}
-                            />
-                        </div>
-                    </div>
-                }
-                open={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-            >
-                {selectedExecution && (
-                    <MiniDag nodes={selectedExecution.nodeExecutions || []}/>
-                )}
-            </Drawer>
         </div>
     );
 }
