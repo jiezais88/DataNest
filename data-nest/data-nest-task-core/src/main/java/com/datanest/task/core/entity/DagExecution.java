@@ -39,4 +39,10 @@ public class DagExecution {
     private String edgeSnapshot;         // 创建执行实例时的 dag_edge JSON 快照（历史视图渲染边用）
 
     private String errorMessage;         // 执行失败原因（如 DS 触发失败、工作流未上线等）
+
+    /**
+     * Sprint 4 Phase 1：本次执行解析后的参数键值对 JSON 字符串。
+     * 参考 scope/source_tables_detail 等列，统一用 TEXT 存储以避免 PG jsonb 与 MyBatis-Plus 的类型冲突。
+     */
+    private String resolvedParams;
 }

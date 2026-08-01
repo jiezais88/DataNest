@@ -7,6 +7,12 @@ public class SyncJobHistoryDTO {
     private Long id;
     private Long syncJobId;
     private String taskName;
+    /** 由 DAG 编排触发时的 dag_execution.id；手动/定时触发为 null */
+    private Long dagExecutionId;
+    /** DAG 编排触发时的 dag.id（用于前端跳转） */
+    private Long dagId;
+    /** DAG 编排触发时的 DAG 名称（用于展示） */
+    private String dagName;
     private String triggerType;
     private String status;
     private LocalDateTime startTime;
@@ -43,6 +49,30 @@ public class SyncJobHistoryDTO {
 
     public void setSyncJobId(Long syncJobId) {
         this.syncJobId = syncJobId;
+    }
+
+    public Long getDagExecutionId() {
+        return dagExecutionId;
+    }
+
+    public void setDagExecutionId(Long dagExecutionId) {
+        this.dagExecutionId = dagExecutionId;
+    }
+
+    public Long getDagId() {
+        return dagId;
+    }
+
+    public void setDagId(Long dagId) {
+        this.dagId = dagId;
+    }
+
+    public String getDagName() {
+        return dagName;
+    }
+
+    public void setDagName(String dagName) {
+        this.dagName = dagName;
     }
 
     public String getTaskName() {

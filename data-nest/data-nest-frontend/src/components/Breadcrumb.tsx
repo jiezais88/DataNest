@@ -24,7 +24,7 @@ export default function Breadcrumb({pathname}: Props) {
         <nav
             aria-label="breadcrumb"
             data-testid="ds-breadcrumb"
-            className="flex items-center gap-2 text-[13px] text-ds-text-muted mb-5"
+            className="flex items-center gap-2 text-ds-small text-ds-text-muted mb-5"
         >
             {segments.map((seg, idx) => {
                 const isLast = idx === segments.length - 1;
@@ -44,7 +44,7 @@ export default function Breadcrumb({pathname}: Props) {
                             <button
                                 type="button"
                                 onClick={() => navigate(seg.path)}
-                                className="text-ds-accent cursor-pointer hover:underline bg-transparent border-0 p-0 text-[13px] leading-none"
+                                className="text-ds-accent cursor-pointer hover:underline bg-transparent border-0 p-0 text-ds-small leading-none"
                             >
                                 {seg.label}
                             </button>

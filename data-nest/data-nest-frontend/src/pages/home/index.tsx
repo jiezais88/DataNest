@@ -1,6 +1,7 @@
 import {useAuthStore} from '../../store/useAuthStore';
-import {Button, Card, List, Progress} from 'antd';
+import {Card, List, Progress} from 'antd';
 import {useNavigate} from 'react-router-dom';
+import DsButton from '../../components/DsButton';
 import DsStatusBadge from '../../components/DsStatusBadge';
 import {executionStatusVariant} from '../../utils/status';
 import {
@@ -68,11 +69,21 @@ const MOCK_ACTIVITIES = [
     {type: 'collect', name: '手动采集-pg_dw', status: 'SUCCESS', time: '3 小时前', duration: '8.7s'},
 ];
 
+// 图表 hex 色：antd Progress 的 strokeColor/trailColor 只接受具体颜色值，
+// 无法使用 Tailwind 的 ds token class，故提取为常量集中管理（豁免 ds token 约束）。
+const CHART_COLORS = {
+    mysql: '#3b82f6',
+    postgresql: '#6366f1',
+    doris: '#f59e0b',
+    other: '#94a3b8',
+    trail: '#f1f3f6',
+} as const;
+
 const MOCK_SOURCE_DISTRIBUTION = [
-    {name: 'MySQL', count: 5, percent: 42, color: '#3b82f6'},
-    {name: 'PostgreSQL', count: 3, percent: 25, color: '#6366f1'},
-    {name: 'Doris', count: 1, percent: 17, color: '#f59e0b'},
-    {name: '其他', count: 3, percent: 16, color: '#94a3b8'},
+    {name: 'MySQL', count: 5, percent: 42, color: CHART_COLORS.mysql},
+    {name: 'PostgreSQL', count: 3, percent: 25, color: CHART_COLORS.postgresql},
+    {name: 'Doris', count: 1, percent: 17, color: CHART_COLORS.doris},
+    {name: '其他', count: 3, percent: 16, color: CHART_COLORS.other},
 ];
 
 const MOCK_WEEKLY_TREND = [
@@ -208,31 +219,31 @@ export default function HomePage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-ds-2 flex-wrap">
-                    <Button
-                        type="primary"
-                        icon={<HiPlus size={16}/>}
-                        onClick={() => navigate('/engineering/datasources')}
-                    >
+                    <DsButton onClick={() => navigate('/engineering/datasources')}>
+                        <HiPlus size={16}/>
                         新建数据源
-                    </Button>
-                    <Button
-                        icon={<HiCloudArrowUp size={16}/>}
+                    </DsButton>
+                    <DsButton
+                        variant="secondary"
                         onClick={() => navigate('/governance/collect-tasks')}
                     >
+                        <HiCloudArrowUp size={16}/>
                         采集任务
-                    </Button>
-                    <Button
-                        icon={<HiBolt size={16}/>}
+                    </DsButton>
+                    <DsButton
+                        variant="secondary"
                         onClick={() => navigate('/engineering/sync-jobs')}
                     >
+                        <HiBolt size={16}/>
                         同步任务
-                    </Button>
-                    <Button
-                        icon={<HiDocumentMagnifyingGlass size={16}/>}
+                    </DsButton>
+                    <DsButton
+                        variant="secondary"
                         onClick={() => navigate('/governance/metadata')}
                     >
+                        <HiDocumentMagnifyingGlass size={16}/>
                         元数据
-                    </Button>
+                    </DsButton>
                 </div>
             </div>
 
@@ -315,7 +326,7 @@ export default function HomePage() {
                                         <Progress
                                             percent={s.percent}
                                             strokeColor={s.color}
-                                            trailColor="#f1f3f6"
+                                            trailColor={CHART_COLORS.trail}
                                             showInfo={false}
                                             size="small"
                                             className="flex-1"

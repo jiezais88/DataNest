@@ -1,17 +1,17 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.datanest.common.constant.SyncJobExecutionStatus;
-import com.datanest.common.constant.SyncJobScheduleStatus;
-import com.datanest.common.constant.SyncMode;
-import com.datanest.common.constant.TaskTriggerType;
+import com.datanest.common.constant.*;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.engineering.dto.*;
+import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
@@ -41,21 +41,26 @@ public class SyncJobService {
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final DagNodeMapper dagNodeMapper;
     private final DagMapper dagMapper;
+    private final DagExecutionMapper dagExecutionMapper;
     private final SchedulerServiceForEngineering schedulerService;
     private final RetryService retryService;
+    private final SyncNodeMutexService syncNodeMutexService;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
                           SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
-                          DagNodeMapper dagNodeMapper, DagMapper dagMapper,
-                          SchedulerServiceForEngineering schedulerService, RetryService retryService) {
+                          DagNodeMapper dagNodeMapper, DagMapper dagMapper, DagExecutionMapper dagExecutionMapper,
+                          SchedulerServiceForEngineering schedulerService, RetryService retryService,
+                          SyncNodeMutexService syncNodeMutexService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagMapper = dagMapper;
+        this.dagExecutionMapper = dagExecutionMapper;
         this.schedulerService = schedulerService;
         this.retryService = retryService;
+        this.syncNodeMutexService = syncNodeMutexService;
     }
 
     @Transactional
@@ -243,7 +248,7 @@ public class SyncJobService {
     }
 
     public Long execute(Long id) {
-        return execute(id, TaskTriggerType.MANUAL.getCode());
+        return execute(id, TaskTriggerType.MANUAL.getCode(), null);
     }
 
     /**
@@ -251,6 +256,13 @@ public class SyncJobService {
      * DAG 回调场景通过 triggerType 区分来源。
      */
     public Long execute(Long id, String triggerType) {
+        return execute(id, triggerType, null);
+    }
+
+    /**
+     * 触发同步任务执行并记录来源 DAG 执行实例。
+     */
+    public Long execute(Long id, String triggerType, Long dagExecutionId) {
         SyncJob job = syncJobMapper.selectById(id);
         if (job == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
@@ -268,6 +280,7 @@ public class SyncJobService {
 
         SyncJobHistory history = new SyncJobHistory();
         history.setSyncJobId(id);
+        history.setDagExecutionId(dagExecutionId);
         history.setTriggerType(triggerType);
         history.setStatus("RUNNING");
         history.setStartTime(LocalDateTime.now());
@@ -355,6 +368,47 @@ public class SyncJobService {
         }
     }
 
+    /**
+     * 手动停止同步执行历史（协作式停止）。
+     * worker 线程阻塞在 Addax 子进程的 readLine()，无法走 XXL logKill/interrupt，
+     * 因此这里只把 DB 置为 TERMINATED，由 worker 侧 watcher 轮询发现后 destroy 子进程。
+     */
+    public void stopHistory(Long historyId) {
+        SyncJobHistory history = syncJobHistoryMapper.selectById(historyId);
+        if (history == null) {
+            throw new BusinessException(ErrorCode.HISTORY_NOT_FOUND, "同步执行历史不存在");
+        }
+        // 幂等：非 RUNNING 说明已收尾（成功/失败/已被停止），直接返回
+        if (!ExecutionStatus.RUNNING.getCode().equalsIgnoreCase(history.getStatus())) {
+            return;
+        }
+        // 条件更新防并发：只有仍处于 RUNNING 才置 TERMINATED；
+        // 更新 0 行说明已被 worker 收尾并发写掉，无需再改任务状态/放锁
+        int updated = syncJobHistoryMapper.update(null,
+                new UpdateWrapper<SyncJobHistory>()
+                        .eq("id", historyId)
+                        .eq("status", ExecutionStatus.RUNNING.getCode())
+                        .set("status", ExecutionStatus.TERMINATED.getCode())
+                        .set("end_time", LocalDateTime.now()));
+        if (updated == 0) {
+            return;
+        }
+        Long syncJobId = history.getSyncJobId();
+        SyncJob job = syncJobMapper.selectById(syncJobId);
+        if (job != null) {
+            job.setExecutionStatus(SyncJobExecutionStatus.TERMINATED.getCode());
+            job.setUpdatedAt(LocalDateTime.now());
+            syncJobMapper.updateById(job);
+        }
+        // 主动放锁：否则互斥锁要等 watcher 收尾或兜底轮询才释放，阻塞下一次执行
+        try {
+            syncNodeMutexService.unlockBySyncJobId(syncJobId);
+        } catch (Exception e) {
+            logger.warn("手动停止后释放同步互斥锁失败: syncJobId={}, historyId={}", syncJobId, historyId, e);
+        }
+        logger.info("已手动停止同步执行: syncJobId={}, historyId={}", syncJobId, historyId);
+    }
+
     public PageResult<SyncJobHistoryDTO> historyPage(Long syncJobId, SyncJobHistoryQueryRequest request) {
         IPage<SyncJobHistory> page = new Page<>(request.getPage(), request.getPageSize());
         QueryWrapper<SyncJobHistory> wrapper = new QueryWrapper<>();
@@ -397,8 +451,28 @@ public class SyncJobService {
                 : syncJobMapper.selectBatchIds(jobIds).stream()
                 .collect(Collectors.toMap(SyncJob::getId, j -> j, (a, b) -> a));
 
+        // DAG 来源信息：一次性取回页内涉及的 dag_execution 与 dag，避免 N+1
+        List<Long> dagExecutionIds = result.getRecords().stream()
+                .map(SyncJobHistory::getDagExecutionId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, DagExecution> dagExecutionMap = dagExecutionIds.isEmpty()
+                ? Map.of()
+                : dagExecutionMapper.selectBatchIds(dagExecutionIds).stream()
+                .collect(Collectors.toMap(DagExecution::getId, e -> e, (a, b) -> a));
+        List<Long> dagIds = dagExecutionMap.values().stream()
+                .map(DagExecution::getDagId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, Dag> dagMap = dagIds.isEmpty()
+                ? Map.of()
+                : dagMapper.selectBatchIds(dagIds).stream()
+                .collect(Collectors.toMap(Dag::getId, d -> d, (a, b) -> a));
+
         List<SyncJobHistoryDTO> records = result.getRecords().stream()
-                .map(h -> toHistoryDTO(h, jobMap.get(h.getSyncJobId())))
+                .map(h -> toHistoryDTO(h, jobMap.get(h.getSyncJobId()), dagExecutionMap, dagMap))
                 .toList();
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
@@ -540,6 +614,17 @@ public class SyncJobService {
         dto.setExecutionStatus(entity.getExecutionStatus());
         dto.setTargetDatabase(entity.getTargetDatabase());
         dto.setTargetTable(entity.getTargetTable());
+        // Sprint 4：多表映射与限流字段暴露给前端
+        if (StringUtils.hasText(entity.getSourceTablesDetail())) {
+            try {
+                dto.setSourceTablesDetail(JSON.parseArray(entity.getSourceTablesDetail(), SourceTableDetail.class));
+            } catch (Exception e) {
+                logger.warn("解析 sourceTablesDetail 失败: syncJobId={}", entity.getId(), e);
+            }
+        }
+        dto.setReadRateLimitMbps(entity.getReadRateLimitMbps());
+        dto.setWriteRateLimitRowsPerSecond(entity.getWriteRateLimitRowsPerSecond());
+        dto.setRateLimitEnabled(entity.getRateLimitEnabled() != null && entity.getRateLimitEnabled() == 1);
         dto.setNextExecutionTime(entity.getNextExecutionTime());
         dto.setScheduleEnabled(entity.getScheduleEnabled() != null && entity.getScheduleEnabled() == 1);
         dto.setXxlJobId(entity.getXxlJobId());
@@ -551,10 +636,12 @@ public class SyncJobService {
         return dto;
     }
 
-    private SyncJobHistoryDTO toHistoryDTO(SyncJobHistory entity, SyncJob job) {
+    private SyncJobHistoryDTO toHistoryDTO(SyncJobHistory entity, SyncJob job,
+                                           Map<Long, DagExecution> dagExecutionMap, Map<Long, Dag> dagMap) {
         SyncJobHistoryDTO dto = new SyncJobHistoryDTO();
         dto.setId(entity.getId());
         dto.setSyncJobId(entity.getSyncJobId());
+        dto.setDagExecutionId(entity.getDagExecutionId());
         dto.setTriggerType(entity.getTriggerType());
         dto.setStatus(entity.getStatus());
         dto.setStartTime(entity.getStartTime());
@@ -583,6 +670,18 @@ public class SyncJobService {
             dto.setTargetTable(job.getTargetTable());
             dto.setSyncMode(job.getSyncMode());
             dto.setIncrementalField(job.getIncrementalField());
+        }
+
+        // DAG 来源：带出 dagId/dagName，前端可点击跳到对应 DAG 执行实例
+        if (entity.getDagExecutionId() != null) {
+            DagExecution dagExecution = dagExecutionMap.get(entity.getDagExecutionId());
+            if (dagExecution != null && dagExecution.getDagId() != null) {
+                dto.setDagId(dagExecution.getDagId());
+                Dag dag = dagMap.get(dagExecution.getDagId());
+                if (dag != null) {
+                    dto.setDagName(dag.getName());
+                }
+            }
         }
         return dto;
     }

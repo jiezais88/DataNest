@@ -81,6 +81,13 @@ public class SyncJobController {
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/history/{historyId}/stop")
+    public Result<Void> stopHistory(@PathVariable Long historyId) {
+        syncJobService.stopHistory(historyId);
+        return Result.ok(null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/history/page")
     public Result<PageResult<SyncJobHistoryDTO>> allHistoryPage(@Valid @RequestBody SyncJobHistoryQueryRequest request) {
         return Result.ok(syncJobService.historyPage(null, request));

@@ -27,9 +27,9 @@ import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import {
     HiOutlineBookOpen,
+    HiOutlineCalendar,
     HiOutlineDocumentText,
     HiOutlinePencilSquare,
-    HiOutlinePlay,
     HiOutlinePlus,
     HiOutlineShieldCheck,
     HiOutlineTrash,
@@ -44,6 +44,7 @@ import type {
     NamingStandardQueryParams,
 } from '../../../types/dataStandard';
 import type {MetadataDatasource} from '../../../types/metadata';
+import {formatDateTime} from '../../../utils/format';
 import NamingStandardDrawer from './NamingStandardDrawer';
 import FieldTypeStandardDrawer from './FieldTypeStandardDrawer';
 import ComplianceCheckPanel from './ComplianceCheckPanel';
@@ -209,7 +210,7 @@ export default function DataStandardsPage() {
         try {
             const res = await runComplianceCheck(params);
             notify.success('合规检查完成');
-            const checkedAtValue = new Date().toLocaleString('zh-CN');
+            const checkedAtValue = formatDateTime(new Date().toISOString());
             setComplianceResults(res.data || []);
             setComplianceParams(params);
             setComplianceCheckedAt(checkedAtValue);
@@ -309,14 +310,14 @@ export default function DataStandardsPage() {
             dataIndex: 'name',
             ellipsis: true,
             render: (v: string) => (
-                <span title={v} className="text-ds-body text-ds-text-primary font-medium">{v}</span>
+                <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
             ),
         },
         {
             title: '适用对象',
             dataIndex: 'appliesTo',
             render: (v: string) => (
-                <span className="text-ds-body text-ds-text-secondary">{v === 'TABLE' ? '表名' : '字段名'}</span>
+                <span className="text-ds-small text-ds-text-secondary">{v === 'TABLE' ? '表名' : '字段名'}</span>
             ),
         },
         {
@@ -369,32 +370,21 @@ export default function DataStandardsPage() {
                     {canWrite && (
                         <>
                             <Tooltip title={item.enabled === 1 ? '停用' : '启用'}>
-                                <button
+                                <DsIconButton
+                                    tone="success"
+                                    active={item.enabled === 1}
                                     onClick={() => handleToggleNamingEnabled(item)}
-                                    className={`p-1.5 rounded transition-colors ${
-                                        item.enabled === 1
-                                            ? 'text-ds-text-muted hover:text-ds-warning hover:bg-ds-warning-light'
-                                            : 'text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light'
-                                    }`}
+                                    aria-label={item.enabled === 1 ? '停用' : '启用'}
                                 >
-                                    {item.enabled === 1 ? (
-                                        <svg xmlns="http://www.w3.org/2000/svg"
-                                             viewBox="0 0 24 24"
-                                             fill="currentColor" className="w-4 h-4">
-                                            <rect x="6" y="4" width="4" height="16" rx="1"/>
-                                            <rect x="14" y="4" width="4" height="16" rx="1"/>
-                                        </svg>
-                                    ) : (
-                                        <HiOutlinePlay size={16}/>
-                                    )}
-                                </button>
+                                    <HiOutlineCalendar size={14}/>
+                                </DsIconButton>
                             </Tooltip>
                             <Tooltip title="编辑">
                                 <DsIconButton
                                     tone="accent"
                                     onClick={() => openNamingEdit(item)}
                                 >
-                                    <HiOutlinePencilSquare size={16}/>
+                                    <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="删除">
@@ -409,7 +399,7 @@ export default function DataStandardsPage() {
                                         setDeleteOpen(true);
                                     }}
                                 >
-                                    <HiOutlineTrash size={16}/>
+                                    <HiOutlineTrash size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                         </>
@@ -425,7 +415,7 @@ export default function DataStandardsPage() {
             dataIndex: 'name',
             ellipsis: true,
             render: (v: string) => (
-                <span title={v} className="text-ds-body text-ds-text-primary font-medium">{v}</span>
+                <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
             ),
         },
         {
@@ -433,7 +423,7 @@ export default function DataStandardsPage() {
             dataIndex: 'category',
             ellipsis: true,
             render: (v?: string) => (
-                <span title={v || '—'} className="text-ds-body text-ds-text-secondary">{v || '—'}</span>
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
             ),
         },
         {
@@ -443,7 +433,7 @@ export default function DataStandardsPage() {
                 <div className="flex flex-wrap gap-ds-1">
                     {types.map((t) => (
                         <span key={t}
-                              className="px-ds-2 py-ds-1 bg-ds-accent-light text-ds-accent text-ds-small rounded-ds-sm">{t}</span>
+                              className="px-2.5 py-1 bg-ds-accent-light text-ds-accent text-[11px] font-semibold rounded-full whitespace-nowrap">{t}</span>
                     ))}
                 </div>
             ),
@@ -469,7 +459,7 @@ export default function DataStandardsPage() {
                                     tone="accent"
                                     onClick={() => openFieldTypeEdit(item)}
                                 >
-                                    <HiOutlinePencilSquare size={16}/>
+                                    <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="删除">
@@ -484,7 +474,7 @@ export default function DataStandardsPage() {
                                         setDeleteOpen(true);
                                     }}
                                 >
-                                    <HiOutlineTrash size={16}/>
+                                    <HiOutlineTrash size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                         </>
@@ -619,6 +609,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={namingLoading}
                                 pagination={false}
+                                scroll={{x: 1000}}
                                 columns={namingColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{
@@ -686,6 +677,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={fieldTypeLoading}
                                 pagination={false}
+                                scroll={{x: 900}}
                                 columns={fieldTypeColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{

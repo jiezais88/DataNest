@@ -38,6 +38,7 @@ import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import SyncJobDrawer from './SyncJobDrawer';
+import {triggerBadge} from './history-common-utils';
 import {
     HiOutlineCalendar,
     HiOutlineClock,
@@ -71,13 +72,6 @@ function syncModeBadge(syncMode?: string, incrementalField?: string) {
         );
     }
     return <DsStatusBadge variant="success" label="全量同步"/>;
-}
-
-function triggerBadge(triggerType: string) {
-    if (triggerType === 'MANUAL') {
-        return <DsStatusBadge variant="accent" label="手动"/>;
-    }
-    return <DsStatusBadge variant="disabled" label="Cron 定时"/>;
 }
 
 function scheduleStatusBadge(item: SyncJob) {
@@ -277,7 +271,7 @@ export default function SyncJobsPage() {
             dataIndex: 'name',
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-body text-ds-text-primary font-medium" title={v}>{v}</span>
+                <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
             ),
         },
         {
@@ -299,8 +293,9 @@ export default function SyncJobsPage() {
         },
         {
             title: '下次执行时间',
+            width: 170,
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary">
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                     {formatNextExecutionTime(item)}
                 </span>
             ),
@@ -330,8 +325,9 @@ export default function SyncJobsPage() {
         },
         {
             title: '最近执行',
+            width: 170,
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary"
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap"
                       title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
                     {formatRelativeTime(item.lastExecuteTime)}
                 </span>
@@ -349,7 +345,7 @@ export default function SyncJobsPage() {
                             onClick={() => navigate(`/engineering/sync-job-history?syncJobId=${item.id}&jobName=${encodeURIComponent(item.name || '')}`)}
                             aria-label="历史记录"
                         >
-                            <HiOutlineClock size={16}/>
+                            <HiOutlineClock size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     {canWrite && (
@@ -364,7 +360,7 @@ export default function SyncJobsPage() {
                                         disabled={schedulingId === item.id}
                                         aria-label={item.scheduleEnabled ? '停用调度' : '启用调度'}
                                     >
-                                        <HiOutlineCalendar size={16}/>
+                                        <HiOutlineCalendar size={14}/>
                                     </DsIconButton>
                                 </Tooltip>
                             )}
@@ -376,7 +372,7 @@ export default function SyncJobsPage() {
                                     disabled={executingId === item.id}
                                     aria-label="立即执行"
                                 >
-                                    <HiOutlinePlay size={16}/>
+                                    <HiOutlinePlay size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="编辑">
@@ -386,7 +382,7 @@ export default function SyncJobsPage() {
                                     onClick={() => openEdit(item)}
                                     aria-label="编辑"
                                 >
-                                    <HiOutlinePencilSquare size={16}/>
+                                    <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="删除">
@@ -399,7 +395,7 @@ export default function SyncJobsPage() {
                                     }}
                                     aria-label="删除"
                                 >
-                                    <HiOutlineTrash size={16}/>
+                                    <HiOutlineTrash size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                         </>
@@ -481,6 +477,7 @@ export default function SyncJobsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1200}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({

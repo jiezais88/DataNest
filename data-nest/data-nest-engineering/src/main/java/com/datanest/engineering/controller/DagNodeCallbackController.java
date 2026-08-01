@@ -2,12 +2,11 @@ package com.datanest.engineering.controller;
 
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
-import com.datanest.engineering.service.DagEdgeSnapshot;
-import com.datanest.engineering.service.SyncJobService;
-import com.datanest.engineering.service.SyncNodeMutexService;
+import com.datanest.engineering.service.*;
 import com.datanest.task.core.entity.Dag;
 import com.datanest.task.core.entity.DagExecution;
 import com.datanest.task.core.entity.DagNode;
@@ -16,6 +15,7 @@ import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.DagExecutionSyncService;
 import com.datanest.task.core.service.DorisSqlExecutor;
 import com.datanest.task.core.service.MetadataRegistrationService;
+import com.datanest.task.core.service.SqlLineageExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -59,6 +59,9 @@ public class DagNodeCallbackController {
     private final SyncJobService syncJobService;
     private final SyncNodeMutexService syncNodeMutexService;
     private final DagExecutionSyncService dagExecutionSyncService;
+    private final DagParameterService dagParameterService;
+    private final NodeExecutionLogService nodeExecutionLogService;
+    private final SqlLineageExtractor sqlLineageExtractor;
 
     public DagNodeCallbackController(DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                                      DagMapper dagMapper, DagNodeMapper dagNodeMapper,
@@ -67,7 +70,10 @@ public class DagNodeCallbackController {
                                      MetadataRegistrationService metadataRegistrationService,
                                      SyncJobService syncJobService,
                                      SyncNodeMutexService syncNodeMutexService,
-                                     DagExecutionSyncService dagExecutionSyncService) {
+                                     DagExecutionSyncService dagExecutionSyncService,
+                                     DagParameterService dagParameterService,
+                                     NodeExecutionLogService nodeExecutionLogService,
+                                     SqlLineageExtractor sqlLineageExtractor) {
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.dagMapper = dagMapper;
@@ -78,6 +84,9 @@ public class DagNodeCallbackController {
         this.syncJobService = syncJobService;
         this.syncNodeMutexService = syncNodeMutexService;
         this.dagExecutionSyncService = dagExecutionSyncService;
+        this.dagParameterService = dagParameterService;
+        this.nodeExecutionLogService = nodeExecutionLogService;
+        this.sqlLineageExtractor = sqlLineageExtractor;
     }
 
     @PostMapping("/sql/callback")
@@ -104,10 +113,10 @@ public class DagNodeCallbackController {
 
     private Result<Map<String, Integer>> handleSqlNode(Map<String, Object> body) {
         String nodeId = stringOf(body.get("nodeId"));
-        String sqlContent = stringOf(body.get("sqlContent"));
+        String rawSqlContent = stringOf(body.get("sqlContent"));
         Long dsProcessInstanceId = longOf(body.get("executionId"));
         Long dagId = longOf(body.get("dagId"));
-        if (nodeId == null || sqlContent == null) {
+        if (nodeId == null || rawSqlContent == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / sqlContent");
         }
         NodeExecutionLookup lookup = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
@@ -121,6 +130,13 @@ public class DagNodeCallbackController {
         ne.setStartTime(LocalDateTime.now());
         nodeExecutionMapper.updateById(ne);
 
+        DagExecution execution = dagExecutionMapper.selectById(ne.getExecutionId());
+        Map<String, Object> params = dagParameterService.resolveParams(
+                dagId, execution != null ? parseJsonMap(execution.getResolvedParams()) : null);
+        String sqlContent = dagParameterService.replacePlaceholders(rawSqlContent, params);
+
+        List<String> logLines = new java.util.concurrent.CopyOnWriteArrayList<>();
+        LocalDateTime startTime = LocalDateTime.now();
         try {
             String type = classifySql(sqlContent);
             SqlOutputInfo output = switch (type) {
@@ -147,6 +163,14 @@ public class DagNodeCallbackController {
             ne.setEndTime(LocalDateTime.now());
             ne.setDurationMs(java.time.Duration.between(ne.getStartTime(), ne.getEndTime()).toMillis());
             nodeExecutionMapper.updateById(ne);
+
+            // 写入执行日志
+            logLines.add("[INFO] SQL 执行成功，类型: " + type);
+            saveNodeLogs(ne.getExecutionId(), nodeId, logLines);
+
+            // SQL 血缘
+            recordSqlLineage(sqlContent, dagId, nodeId, ne.getExecutionId());
+
             // 耗时准实时：节点写完终态后立即推断 dag_execution 终态，不等下一轮定时同步
             finalizeExecutionQuietly(ne.getExecutionId());
             return success("DML".equals(type) ? output.affectedRows : 0);
@@ -154,7 +178,10 @@ public class DagNodeCallbackController {
             ne.setStatus("FAILED");
             ne.setErrorMessage(e.getMessage());
             ne.setEndTime(LocalDateTime.now());
+            ne.setDurationMs(java.time.Duration.between(startTime, LocalDateTime.now()).toMillis());
             nodeExecutionMapper.updateById(ne);
+            logLines.add("[ERROR] " + e.getMessage());
+            saveNodeLogs(ne.getExecutionId(), nodeId, logLines);
             finalizeExecutionQuietly(ne.getExecutionId());
             throw e;
         } catch (Exception e) {
@@ -162,7 +189,10 @@ public class DagNodeCallbackController {
             ne.setStatus("FAILED");
             ne.setErrorMessage(e.getMessage());
             ne.setEndTime(LocalDateTime.now());
+            ne.setDurationMs(java.time.Duration.between(startTime, LocalDateTime.now()).toMillis());
             nodeExecutionMapper.updateById(ne);
+            logLines.add("[ERROR] " + e.getMessage());
+            saveNodeLogs(ne.getExecutionId(), nodeId, logLines);
             finalizeExecutionQuietly(ne.getExecutionId());
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                     "SQL 节点执行失败: " + e.getMessage(), e);
@@ -321,8 +351,8 @@ public class DagNodeCallbackController {
             // P1-2：存 sync_job_id 给 DagExecutionSyncService 收尾
             ne.setSyncJobId(syncJobId);
 
-            // 触发 XXL-JOB（异步；本方法返回时 sync 不一定跑完）
-            Long historyId = syncJobService.execute(syncJobId);
+            // 触发 XXL-JOB（异步；本方法返回时 sync 不一定跑完）；记录 DAG 来源，历史页可跳转对应 DAG 实例
+            Long historyId = syncJobService.execute(syncJobId, TaskTriggerType.DAG.getCode(), ne.getExecutionId());
             // 立即把 history_id 写回节点执行记录，「查看日志」不用等 DagExecutionSyncService 收尾就能拉到
             ne.setSyncJobHistoryId(historyId);
             nodeExecutionMapper.updateById(ne);
@@ -427,6 +457,45 @@ public class DagNodeCallbackController {
     }
 
     private record NodeExecutionLookup(NodeExecution nodeExecution) {
+    }
+
+    private Map<String, Object> parseJsonMap(String json) {
+        if (!org.springframework.util.StringUtils.hasText(json)) {
+            return Map.of();
+        }
+        try {
+            return JSON.parseObject(json, new com.alibaba.fastjson2.TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private void saveNodeLogs(Long executionId, String nodeId, List<String> lines) {
+        if (lines == null || lines.isEmpty()) return;
+        try {
+            List<NodeExecutionLogService.LogLine> logLines = lines.stream()
+                    .map(line -> new NodeExecutionLogService.LogLine(
+                            line.startsWith("[ERROR]") ? "ERROR" : "INFO", line))
+                    .toList();
+            nodeExecutionLogService.saveLogs(executionId, nodeId, logLines);
+        } catch (Exception e) {
+            logger.warn("保存 SQL 节点日志失败", e);
+        }
+    }
+
+    private void recordSqlLineage(String sqlContent, Long dagId, String nodeId, Long executionId) {
+        try {
+            Dag dag = dagMapper.selectById(dagId);
+            DagNode node = dagNodeMapper.selectList(
+                            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<DagNode>()
+                                    .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
+                    .stream().findFirst().orElse(null);
+            sqlLineageExtractor.extract(sqlContent, dagId, dag == null ? null : dag.getName(),
+                    nodeId, node == null ? null : node.getNodeName(), executionId);
+        } catch (Exception e) {
+            logger.warn("记录 SQL 血缘失败", e);
+        }
     }
 
     private long currentUserId() {

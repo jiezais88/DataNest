@@ -9,10 +9,7 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.entity.MetadataColumn;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
-import com.datanest.task.core.mapper.MetadataColumnMapper;
-import com.datanest.task.core.mapper.MetadataTableMapper;
-import com.datanest.task.core.mapper.SyncJobMapper;
+import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,16 +41,19 @@ public class MetadataRegistrationService {
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
+    private final LineageRecordMapper lineageRecordMapper;
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
 
     public MetadataRegistrationService(SyncJobMapper syncJobMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                                        MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
+                                       LineageRecordMapper lineageRecordMapper,
                                        EncryptionConfig encryptionConfig, ConnectionTester connectionTester) {
         this.syncJobMapper = syncJobMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
+        this.lineageRecordMapper = lineageRecordMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
     }
@@ -88,7 +88,7 @@ public class MetadataRegistrationService {
         try (Connection connection = dorisConn()) {
             for (String sourceTable : job.getSourceTables()) {
                 String targetTableName = resolveTargetTableName(job, sourceTable);
-                registerTable(targetDb, targetTableName, connection);
+                registerTable(targetDb, targetTableName, connection, new SourceContext("SYNC", null, null, null, null));
             }
         } catch (BusinessException e) {
             throw e;
@@ -113,8 +113,9 @@ public class MetadataRegistrationService {
         return "sync_" + db + "_" + table;
     }
 
-    private void registerTable(String targetDb, String targetTableName, Connection connection) throws SQLException {
-        MetadataTable table = findOrCreateTable(targetDb, targetTableName);
+    private void registerTable(String targetDb, String targetTableName, Connection connection,
+                               SourceContext ctx) throws SQLException {
+        MetadataTable table = findOrCreateTable(targetDb, targetTableName, ctx);
         List<MetadataColumn> columns = extractColumns(connection, targetDb, targetTableName, table.getId());
         refreshColumns(table.getId(), columns);
         table.setColumnCount(columns.size());
@@ -124,7 +125,7 @@ public class MetadataRegistrationService {
                 table.getId(), targetTableName, columns.size());
     }
 
-    private MetadataTable findOrCreateTable(String targetDb, String targetTableName) {
+    private MetadataTable findOrCreateTable(String targetDb, String targetTableName, SourceContext ctx) {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
         wrapper.eq("datasource_id", BUILTIN_DORIS_DATASOURCE_ID)
                 .eq("database_name", targetDb)
@@ -140,6 +141,7 @@ public class MetadataRegistrationService {
             table.setTableName(targetTableName);
             table.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
             table.setSourceType(SOURCE_TYPE);
+            applySourceContext(table, ctx);
             table.setColumnCount(0);
             table.setCreatedAt(now);
             table.setUpdatedAt(now);
@@ -148,11 +150,25 @@ public class MetadataRegistrationService {
             return table;
         }
         existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
-        existing.setSourceType(SOURCE_TYPE);
+        // source_type 保持不变；任务来源字段按本次注册覆盖
+        applySourceContext(existing, ctx);
         existing.setUpdatedAt(now);
         metadataTableMapper.updateById(existing);
         logger.info("更新 BUILTIN_DORIS 元数据表: tableId={}, table={}", existing.getId(), targetTableName);
         return existing;
+    }
+
+    private void applySourceContext(MetadataTable table, SourceContext ctx) {
+        if (ctx == null) return;
+        if (ctx.taskSourceType() != null) table.setTaskSourceType(ctx.taskSourceType());
+        if (ctx.sourceDagId() != null) table.setSourceDagId(ctx.sourceDagId());
+        if (ctx.sourceDagName() != null) table.setSourceDagName(ctx.sourceDagName());
+        if (ctx.sourceNodeId() != null) table.setSourceNodeId(ctx.sourceNodeId());
+        if (ctx.sourceNodeName() != null) table.setSourceNodeName(ctx.sourceNodeName());
+    }
+
+    public record SourceContext(String taskSourceType, Long sourceDagId, String sourceDagName,
+                                String sourceNodeId, String sourceNodeName) {
     }
 
     private List<MetadataColumn> extractColumns(Connection connection, String targetDb, String targetTableName, Long tableId) throws SQLException {
@@ -312,7 +328,7 @@ public class MetadataRegistrationService {
                 logger.warn("表 {}.{} 在 Doris 中不存在，元数据无法注册", targetDb, tableName);
                 return;
             }
-            MetadataTable table = findOrCreateTable(targetDb, tableName);
+            MetadataTable table = findOrCreateTable(targetDb, tableName, new SourceContext("SQL", null, null, null, null));
             table.setCreatedBy(operatorId);
             table.setUpdatedBy(operatorId);
             table.setUpdatedAt(LocalDateTime.now());
@@ -337,7 +353,7 @@ public class MetadataRegistrationService {
                 logger.debug("表 {}.{} 不存在，跳过元数据刷新", targetDb, tableName);
                 return false;
             }
-            MetadataTable table = findOrCreateTable(targetDb, tableName);
+            MetadataTable table = findOrCreateTable(targetDb, tableName, new SourceContext("SQL", null, null, null, null));
             table.setUpdatedBy(operatorId);
             table.setUpdatedAt(LocalDateTime.now());
             List<MetadataColumn> columns = extractColumns(conn, targetDb, tableName, table.getId());
@@ -414,6 +430,52 @@ public class MetadataRegistrationService {
             return table.getSchemaName() + "." + table.getName();
         }
         return table.getName();
+    }
+
+    /**
+     * Phase 4（Sprint 3）：从 Python 节点输出表注册 Doris 元数据。
+     * 表名由 Python 脚本上报，已在 Doris 中真实存在，本方法做幂等注册/刷新。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void registerFromPython(String tableName, Long dagId, String dagName,
+                                   String nodeId, String nodeName, Long executionId) {
+        if (!StringUtils.hasText(tableName)) {
+            return;
+        }
+        String targetDb = targetDatabase;
+        try (Connection conn = dorisConn()) {
+            if (!tableExists(conn, targetDb, tableName)) {
+                logger.warn("Python 输出表 {}.{} 在 Doris 中不存在，跳过元数据注册", targetDb, tableName);
+                return;
+            }
+            SourceContext ctx = new SourceContext("PYTHON", dagId, dagName, nodeId, nodeName);
+            MetadataTable table = findOrCreateTable(targetDb, tableName, ctx);
+            Long operatorId = currentUserId();
+            if (table.getCreatedBy() == null) {
+                table.setCreatedBy(operatorId);
+            }
+            table.setUpdatedBy(operatorId);
+            table.setUpdatedAt(LocalDateTime.now());
+            List<MetadataColumn> columns = extractColumns(conn, targetDb, tableName, table.getId());
+            refreshColumns(table.getId(), columns);
+            table.setColumnCount(columns.size());
+            metadataTableMapper.updateById(table);
+            logger.info("从 Python 注册元数据: db={}, table={}, cols={}", targetDb, tableName, columns.size());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("从 Python 注册元数据失败: table={}", tableName, e);
+            throw new BusinessException(ErrorCode.METADATA_REGISTRATION_FAILED,
+                    "元数据注册失败: " + e.getMessage());
+        }
+    }
+
+    private long currentUserId() {
+        try {
+            return cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return 0L;
+        }
     }
 
 }

@@ -64,6 +64,16 @@ public class SyncJobExecutor {
 
     private void markFailed(Long syncJobId, Long historyId, String errorMessage) {
         try {
+            // 手动停止防覆盖：history 已被置为 TERMINATED（终态）时，
+            // 不再覆盖为 FAILED，也不登记重试，由停止方负责收尾
+            if (historyId != null) {
+                SyncJobHistory current = syncJobHistoryMapper.selectById(historyId);
+                if (current != null && !"RUNNING".equalsIgnoreCase(current.getStatus())) {
+                    logger.info("同步任务已被手动停止，跳过失败标记与重试登记: syncJobId={}, historyId={}, status={}",
+                            syncJobId, historyId, current.getStatus());
+                    return;
+                }
+            }
             SyncJob job = syncJobMapper.selectById(syncJobId);
             if (job != null) {
                 job.setExecutionStatus("FAILED");

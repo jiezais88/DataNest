@@ -4,10 +4,10 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Button, Modal, Space, Table, Tooltip,} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {HiOutlineArrowPath, HiOutlineDocumentText} from 'react-icons/hi2';
-import {listAllDagExecutions, rerunFailed} from '../dags/api';
+import {HiOutlineArrowPath, HiOutlineDocumentText, HiOutlineStop} from 'react-icons/hi2';
+import {listAllDagExecutions, rerunFailed, stopDag} from '../dags/api';
 import type {DagExecution} from '../dags/types';
-import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../utils/format';
+import {formatDateTime, formatExecutionDuration, getDefaultTimeRange} from '../../../utils/format';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import usePagedList from '../../../hooks/usePagedList';
 import SearchInput from '../../../components/SearchInput';
@@ -223,13 +223,33 @@ export default function DagExecutionsGlobalPage() {
         });
     }, [reload]);
 
+    // 手动停止运行中的执行实例（停止后状态归一为 TERMINATED）
+    const handleStop = useCallback((record: DagExecution) => {
+        if (record.dagId == null || record.id == null) {
+            notify.warning('记录缺少 dagId/executionId，无法停止');
+            return;
+        }
+        Modal.confirm({
+            centered: true,
+            wrapClassName: 'prototype-modal',
+            title: '停止执行',
+            content: `确定停止 DAG「${record.dagName || record.dagId}」的本次执行吗？停止后状态将标记为「已终止」。`,
+            okText: '停止',
+            cancelText: '取消',
+            onOk: async () => {
+                try {
+                    // 不转 Number()：保持 string id 避免 19 位 Snowflake 精度丢失
+                    await stopDag(record.dagId!, record.id!);
+                    notify.success('已发送停止指令，3s 后刷新列表');
+                    setTimeout(reload, 3000);
+                } catch {
+                    // 错误提示由 request 拦截器统一弹出
+                }
+            },
+        });
+    }, [reload]);
+
     const columns = useMemo<ColumnsType<DagExecution>>(() => [
-        {
-            title: '执行时间',
-            dataIndex: 'startTime',
-            width: 170,
-            render: (v?: string) => formatDateTime(v),
-        },
         {
             title: '所属 DAG',
             dataIndex: 'dagName',
@@ -268,10 +288,23 @@ export default function DagExecutionsGlobalPage() {
             ),
         },
         {
+            title: '开始时间',
+            dataIndex: 'startTime',
+            width: 170,
+            render: (v?: string) => formatDateTime(v),
+        },
+        {
+            title: '结束时间',
+            dataIndex: 'endTime',
+            width: 170,
+            render: (v?: string) => formatDateTime(v),
+        },
+        {
             title: '耗时',
             dataIndex: 'durationMs',
             width: 100,
-            render: (v?: number) => formatDuration(v),
+            // 运行中（endTime 为空）：用当前时间静态计算一次，不做定时刷新
+            render: (v: number | undefined, r) => formatExecutionDuration(v, r.startTime, r.endTime),
         },
         {
             title: '节点执行情况',
@@ -297,6 +330,17 @@ export default function DagExecutionsGlobalPage() {
             fixed: 'right' as const,
             render: (_, r) => (
                 <Space size={4}>
+                    {r.status === 'RUNNING' && (
+                        <Tooltip title={canEdit ? '停止执行' : '只读模式：您没有编辑权限'}>
+                            <DsIconButton
+                                tone="danger"
+                                disabled={!canEdit}
+                                onClick={() => handleStop(r)}
+                            >
+                                <HiOutlineStop size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                    )}
                     {(r.status === 'FAILED' || r.status === 'TERMINATED') && (
                         <Tooltip title={canEdit ? '重跑失败节点' : '只读模式：您没有编辑权限'}>
                             <DsIconButton
@@ -316,7 +360,7 @@ export default function DagExecutionsGlobalPage() {
                 </Space>
             ),
         },
-    ], [canEdit, handleDagNameClick, handleRerun]);
+    ], [canEdit, handleDagNameClick, handleRerun, handleStop]);
 
     return (
         <div className="flex flex-col">

@@ -111,6 +111,13 @@
             <version>4.9</version>
         </dependency>
 
+        <!-- Sprint 4：Python 节点、血缘等使用 fastjson2 -->
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Sprint 3 性能优化：Dag 信息本地缓存 -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
@@ -129,6 +136,13 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Sprint 4：邮件告警（由消费方提供 JavaMailSender） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
             <scope>provided</scope>
         </dependency>
     </dependencies>

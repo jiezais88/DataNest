@@ -1,8 +1,8 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
-import {Empty, Table, Tooltip} from 'antd';
+import {Empty, Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {getCollectHistoryLogs, queryAllCollectHistory} from '../../../../api/collect';
+import {getCollectHistoryLogs, queryAllCollectHistory, stopCollectHistory} from '../../../../api/collect';
 import type {
     CollectExecutionLog,
     CollectHistoryQueryParams,
@@ -18,9 +18,12 @@ import DsModal from '../../../../components/DsModal';
 import DsStatusBadge from '../../../../components/DsStatusBadge';
 import DsFilterSelect from '../../../../components/DsFilterSelect';
 import DsToolbar from '../../../../components/DsToolbar';
-import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../../utils/format';
+import {formatDateTime, formatDuration, formatExecutionDuration, getDefaultTimeRange} from '../../../../utils/format';
 import {executionStatusVariant} from '../../../../utils/status';
-import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye,} from 'react-icons/hi2';
+import {useHasRole} from '../../../../hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '../../../../constants/roles';
+import {notify} from '../../../../utils/notify';
+import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye, HiOutlineStop,} from 'react-icons/hi2';
 
 const STATUS_OPTIONS: { value: ExecutionStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
@@ -28,6 +31,7 @@ const STATUS_OPTIONS: { value: ExecutionStatus | ''; label: string }[] = [
     {value: 'SUCCESS', label: '成功'},
     {value: 'PARTIAL', label: '部分成功'},
     {value: 'FAILED', label: '失败'},
+    {value: 'TERMINATED', label: '已终止'},
 ];
 
 const STATUS_LABELS: Record<ExecutionStatus, string> = {
@@ -35,6 +39,7 @@ const STATUS_LABELS: Record<ExecutionStatus, string> = {
     RUNNING: '执行中',
     PARTIAL: '部分成功',
     FAILED: '失败',
+    TERMINATED: '已终止',
 };
 
 // 「已应用」查询条件：接口分页参数由 usePagedList 注入，页面只管业务条件
@@ -49,14 +54,14 @@ function triggerBadge(triggerType: string) {
     if (triggerType === 'MANUAL') {
         return (
             <span
-                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-blue-50 text-blue-700">
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-blue-50 text-blue-700">
                 手动触发
             </span>
         );
     }
     return (
         <span
-            className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-slate-100 text-blue-600">
+            className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-slate-100 text-blue-600">
             定时触发
         </span>
     );
@@ -64,6 +69,7 @@ function triggerBadge(triggerType: string) {
 
 export default function CollectHistoryGlobalPage() {
     const navigate = useNavigate();
+    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
     const [searchParams, setSearchParams] = useSearchParams();
 
     const defaultRange = getDefaultTimeRange();
@@ -78,7 +84,7 @@ export default function CollectHistoryGlobalPage() {
         return {list: result.data.records, total: result.data.total};
     }, []);
 
-    const {list, total, page, pageSize, loading, query, setPage, setPageSize, applyQuery} =
+    const {list, total, page, pageSize, loading, query, setPage, setPageSize, applyQuery, reload} =
         usePagedList<HistoryQuery, CollectTaskExecution>({
             fetcher,
             initialQuery: {startTimeFrom: defaultRange.from, startTimeTo: defaultRange.to},
@@ -163,13 +169,34 @@ export default function CollectHistoryGlobalPage() {
         setLogsLoading(false);
     };
 
+    // 手动停止运行中的执行实例（停止后状态归一为 TERMINATED）
+    const handleStop = useCallback((item: CollectTaskExecution) => {
+        Modal.confirm({
+            centered: true,
+            wrapClassName: 'prototype-modal',
+            title: '停止执行',
+            content: `确定停止任务「${item.taskName || item.taskId}」的本次执行吗？停止后状态将标记为「已终止」。`,
+            okText: '停止',
+            cancelText: '取消',
+            onOk: async () => {
+                try {
+                    await stopCollectHistory(item.id);
+                    notify.success('已发送停止指令，3s 后刷新列表');
+                    setTimeout(reload, 3000);
+                } catch {
+                    // 错误提示由 request 拦截器统一弹出
+                }
+            },
+        });
+    }, [reload]);
+
     const columns = useMemo<ColumnsType<CollectTaskExecution>>(() => [
         {
             title: '任务名称',
             dataIndex: 'taskName',
             ellipsis: {showTitle: true},
             render: (v?: string) => (
-                <span className="text-ds-body text-ds-text-primary font-medium">{v || '-'}</span>
+                <span className="text-ds-small text-ds-text-primary font-medium">{v || '-'}</span>
             ),
         },
         {
@@ -187,22 +214,26 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '开始时间',
             dataIndex: 'startedAt',
+            width: 170,
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary">{formatDateTime(v)}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
         },
         {
             title: '结束时间',
             dataIndex: 'endedAt',
+            width: 170,
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary">{formatDateTime(v)}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
         },
         {
             title: '耗时',
             dataIndex: 'durationMs',
-            render: (v?: number) => (
-                <span className="text-ds-body text-ds-text-secondary">{formatDuration(v)}</span>
+            // 运行中（endedAt 为空）：用当前时间静态计算一次，不做定时刷新
+            render: (v: number | undefined, item) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary">{formatExecutionDuration(v, item.startedAt, item.endedAt)}</span>
             ),
         },
         {
@@ -227,13 +258,25 @@ export default function CollectHistoryGlobalPage() {
             width: 100,
             render: (_, item) => (
                 <div className="flex items-center justify-center w-full gap-1">
+                    {item.status === 'RUNNING' && (
+                        <Tooltip title={canWrite ? '停止执行' : '只读模式：您没有编辑权限'}>
+                            <DsIconButton
+                                tone="danger"
+                                disabled={!canWrite}
+                                onClick={() => handleStop(item)}
+                                aria-label="停止执行"
+                            >
+                                <HiOutlineStop size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                    )}
                     <Tooltip title="详情">
                         <DsIconButton
                             tone="accent"
                             onClick={() => handleOpenDetail(item)}
                             aria-label="详情"
                         >
-                            <HiOutlineEye size={16}/>
+                            <HiOutlineEye size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="查看日志">
@@ -242,13 +285,13 @@ export default function CollectHistoryGlobalPage() {
                             onClick={() => handleOpenLogs(item)}
                             aria-label="查看日志"
                         >
-                            <HiOutlineDocumentText size={16}/>
+                            <HiOutlineDocumentText size={14}/>
                         </DsIconButton>
                     </Tooltip>
                 </div>
             ),
         },
-    ], []);
+    ], [canWrite, handleStop]);
 
     return (
         <div className="flex flex-col">
@@ -345,6 +388,7 @@ export default function CollectHistoryGlobalPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1100}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{

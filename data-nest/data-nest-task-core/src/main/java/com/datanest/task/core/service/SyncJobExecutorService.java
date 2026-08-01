@@ -70,7 +70,7 @@ public class SyncJobExecutorService {
         updateExecutionStatus(job, ExecutionStatus.RUNNING.getCode());
         logInfo(history, lineCounter, "开始 Addax 同步执行, syncJobId=" + syncJobId + ", triggerType=" + triggerType);
 
-        AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId);
+        AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId, historyId);
         writeLogLines(history, lineCounter, result.logLines());
 
         if (result.success()) {
@@ -85,6 +85,15 @@ public class SyncJobExecutorService {
                 logger.error("Doris 元数据注册失败（不影响本次同步结果）: syncJobId={}", syncJobId, e);
                 logError(history, lineCounter, "同步成功，但 Doris 元数据注册失败: " + e.getMessage());
             }
+            return;
+        }
+
+        // 手动停止防覆盖：watcher 强杀子进程后 Addax 以失败收尾，
+        // 此处重读 history，若已被置为 TERMINATED 则不再覆盖为 FAILED，也不登记重试
+        SyncJobHistory fresh = syncJobHistoryMapper.selectById(history.getId());
+        if (fresh != null && !ExecutionStatus.RUNNING.getCode().equalsIgnoreCase(fresh.getStatus())) {
+            logger.info("同步任务已被手动停止，跳过失败覆盖与重试登记: syncJobId={}, historyId={}, status={}",
+                    syncJobId, history.getId(), fresh.getStatus());
             return;
         }
 

@@ -69,6 +69,7 @@ public enum ErrorCode {
     DAG_RERUN_ALREADY_RUNNING(7017, "重跑失败节点时检测到 DAG 正在执行中"),
     DAG_PROJECT_ID_REQUIRED(7018, "DAG 所属项目 ID 不能为空"),
     DAG_NAME_REQUIRED(7019, "DAG 名称不能为空"),
+    DAG_VERSION_NOT_FOUND(7020, "DAG 版本不存在"),
 
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");

@@ -46,11 +46,13 @@ public class DagService {
     private final DolphinSchedulerClient dolphinSchedulerClient;
     private final DagDsConverter dagDsConverter;
     private final DagProjectService dagProjectService;   // 用于校验项目存在（暂不直接调，留接口）
+    private final DagVersionService dagVersionService;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                       DagTopologyService topologyService, DolphinSchedulerClient dolphinSchedulerClient,
-                      DagDsConverter dagDsConverter, DagProjectService dagProjectService) {
+                      DagDsConverter dagDsConverter, DagProjectService dagProjectService,
+                      DagVersionService dagVersionService) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -60,6 +62,7 @@ public class DagService {
         this.dolphinSchedulerClient = dolphinSchedulerClient;
         this.dagDsConverter = dagDsConverter;
         this.dagProjectService = dagProjectService;
+        this.dagVersionService = dagVersionService;
     }
 
     @Transactional
@@ -154,6 +157,9 @@ public class DagService {
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
         Map<String, Long> codeMap = saveNodesAndEdges(id, payload, existingCodeMap);
+
+        // 生成版本快照（与 DB 更新在同一事务，失败则整体回滚）
+        dagVersionService.createVersion(id);
 
         // 重新同步到 DS（HTTP 调用不能放在 DB 事务里：提交后先下线旧定义，再全量同步）
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

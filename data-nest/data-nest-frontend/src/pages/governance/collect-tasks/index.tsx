@@ -59,7 +59,7 @@ function collectModeBadge(collectMode?: string) {
     if (collectMode === 'FULL_INCREMENT') {
         return (
             <span
-                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-purple-50 text-purple-700">
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-purple-50 text-purple-700">
                 {'全量+增量'}
             </span>
         );
@@ -207,9 +207,11 @@ export default function CollectTasksPage() {
             case 'SUCCESS':
                 return '成功';
             case 'RUNNING':
-                return '运行中';
+                return '执行中';
             case 'FAILED':
                 return '失败';
+            case 'TERMINATED':
+                return '已终止';
             case 'NEVER_EXECUTED':
                 return '未执行';
             default:
@@ -221,15 +223,15 @@ export default function CollectTasksPage() {
         if (triggerType === 'MANUAL') {
             return (
                 <span
-                    className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-blue-50 text-blue-700">
-                    {'手动'}
+                    className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-blue-50 text-blue-700">
+                    {'手动触发'}
                 </span>
             );
         }
         return (
             <span
-                className="inline-flex items-center px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium bg-slate-100 text-blue-600">
-                {'Cron 定时'}
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-slate-100 text-blue-600">
+                {'定时触发'}
             </span>
         );
     };
@@ -250,7 +252,7 @@ export default function CollectTasksPage() {
             dataIndex: 'name',
             ellipsis: true,
             render: (v: string) => (
-                <span title={v} className="text-ds-body text-ds-text-primary font-medium">{v}</span>
+                <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
             ),
         },
         {
@@ -268,7 +270,7 @@ export default function CollectTasksPage() {
             ellipsis: true,
             render: (_, item) => (
                 <span title={formatScope(item.scope)}
-                      className="text-ds-body text-ds-text-secondary">{formatScope(item.scope)}</span>
+                      className="text-ds-small text-ds-text-secondary">{formatScope(item.scope)}</span>
             ),
         },
         {
@@ -293,7 +295,8 @@ export default function CollectTasksPage() {
         },
         {
             title: '下次执行时间',
-            className: 'text-ds-small text-ds-text-secondary',
+            width: 170,
+            className: 'text-ds-small text-ds-text-secondary whitespace-nowrap',
             render: (_, item) => computeNextExecutionTime(item),
         },
         {
@@ -306,10 +309,12 @@ export default function CollectTasksPage() {
         {
             title: '最近执行',
             dataIndex: 'lastExecuteTime',
+            width: 170,
             className: 'text-ds-small text-ds-text-secondary',
             render: (_, item) => (
                 <span
-                    title={item.lastExecuteTime ? new Date(item.lastExecuteTime).toLocaleString('zh-CN') : ''}>
+                    className="whitespace-nowrap"
+                    title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
                     {formatRelativeTime(item.lastExecuteTime)}
                 </span>
             ),
@@ -317,8 +322,9 @@ export default function CollectTasksPage() {
         {
             title: '操作',
             align: 'center',
+            width: 170,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1">
+                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
                     <Tooltip title="历史记录">
                         <DsIconButton
                             tone="accent"
@@ -326,7 +332,7 @@ export default function CollectTasksPage() {
                             onClick={() => navigate(`/governance/collect-task-history?taskId=${item.id}&taskName=${encodeURIComponent(item.name || '')}`)}
                             aria-label="历史记录"
                         >
-                            <HiOutlineClock size={16}/>
+                            <HiOutlineClock size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     {canWrite && (
@@ -342,7 +348,7 @@ export default function CollectTasksPage() {
                                         className="disabled:opacity-60"
                                         aria-label={item.scheduleEnabled === 1 ? '关闭调度' : '开启调度'}
                                     >
-                                        <HiOutlineCalendar size={16}/>
+                                        <HiOutlineCalendar size={14}/>
                                     </DsIconButton>
                                 </Tooltip>
                             )}
@@ -355,7 +361,7 @@ export default function CollectTasksPage() {
                                     className="disabled:opacity-60"
                                     aria-label="立即执行"
                                 >
-                                    <HiOutlinePlay size={16}/>
+                                    <HiOutlinePlay size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="编辑">
@@ -365,7 +371,7 @@ export default function CollectTasksPage() {
                                     onClick={() => openEdit(item)}
                                     aria-label="编辑"
                                 >
-                                    <HiOutlinePencilSquare size={16}/>
+                                    <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="删除">
@@ -378,7 +384,7 @@ export default function CollectTasksPage() {
                                     }}
                                     aria-label="删除"
                                 >
-                                    <HiOutlineTrash size={16}/>
+                                    <HiOutlineTrash size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                         </>
@@ -453,6 +459,7 @@ export default function CollectTasksPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1200}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) =>

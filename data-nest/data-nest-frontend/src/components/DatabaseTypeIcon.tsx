@@ -10,6 +10,7 @@ export interface DatabaseTypeIconProps {
     className?: string;
 }
 
+// 数据库品牌色，豁免 ds token 约束
 const TYPE_COLORS: Record<DataSourceType, string> = {
     [DataSourceTypeEnum.MYSQL]: '#4479A1',
     [DataSourceTypeEnum.POSTGRESQL]: '#4169E1',

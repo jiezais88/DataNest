@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {describeCron, nextRunTimes} from '../utils/cron';
+import {formatDateTime} from '../utils/format';
 
 interface CronPickerProps {
     value: string;
@@ -80,7 +81,7 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
     const description = useMemo(() => describeCron(cron, ''), [cron]);
 
     const nextRuns = useMemo(
-        () => nextRunTimes(cron, 5).map((d) => d.toLocaleString('zh-CN')),
+        () => nextRunTimes(cron, 5).map((d) => formatDateTime(d.toISOString())),
         [cron],
     );
 

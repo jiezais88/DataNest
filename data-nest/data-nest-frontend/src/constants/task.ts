@@ -8,6 +8,7 @@ export type SyncMode = typeof SyncModeEnum[keyof typeof SyncModeEnum];
 export const TaskTriggerTypeEnum = {
     MANUAL: 'MANUAL',
     CRON: 'CRON',
+    DAG: 'DAG',
 } as const;
 
 export type TaskTriggerType = typeof TaskTriggerTypeEnum[keyof typeof TaskTriggerTypeEnum];
@@ -33,6 +34,7 @@ export const ExecutionStatusEnum = {
     RUNNING: 'RUNNING',
     PARTIAL: 'PARTIAL',
     PENDING: 'PENDING',
+    TERMINATED: 'TERMINATED',
 } as const;
 
 /**

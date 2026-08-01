@@ -603,6 +603,8 @@ services:
       start_period: 60s
     networks:
       - datanest-net
+    volumes:
+      - ./data/python-sandbox:/tmp/datanest-python-sandbox
 
   # ============================================
   # Governance — 元数据采集与治理服务

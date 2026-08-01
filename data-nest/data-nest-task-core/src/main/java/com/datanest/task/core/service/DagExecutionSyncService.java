@@ -55,14 +55,17 @@ public class DagExecutionSyncService {
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
     private final long silentPeriodMs;
+    private final List<DagExecutionFinishedListener> finishedListeners;
 
     public DagExecutionSyncService(DagMapper dagMapper, DagExecutionMapper dagExecutionMapper,
                                    NodeExecutionMapper nodeExecutionMapper,
-                                   @Value("${datanest.job.dag-sync.silent-period-ms:10000}") long silentPeriodMs) {
+                                   @Value("${datanest.job.dag-sync.silent-period-ms:10000}") long silentPeriodMs,
+                                   List<DagExecutionFinishedListener> finishedListeners) {
         this.dagMapper = dagMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.silentPeriodMs = Math.max(0L, silentPeriodMs);
+        this.finishedListeners = finishedListeners == null ? List.of() : finishedListeners;
     }
 
     /**
@@ -263,6 +266,21 @@ public class DagExecutionSyncService {
                             logger.warn("释放 sync 互斥锁失败: syncJobId={}", ne.getSyncJobId(), e);
                         }
                     }
+                } else if ("TERMINATED".equalsIgnoreCase(sh.status())) {
+                    // 手动停止：与 FAILED 一样收尾并放锁，仅状态值不同
+                    ne.setStatus("TERMINATED");
+                    ne.setEndTime(sh.endTime() != null ? sh.endTime() : LocalDateTime.now());
+                    ne.setErrorMessage(sh.errorMessage() != null ? sh.errorMessage() : "手动停止");
+                    ne.setSyncJobHistoryId(sh.historyId());
+                    updatedNodes.add(ne);
+                    changed = true;
+                    if (mutexReleaser != null) {
+                        try {
+                            mutexReleaser.release(ne.getSyncJobId());
+                        } catch (Exception e) {
+                            logger.warn("释放 sync 互斥锁失败: syncJobId={}", ne.getSyncJobId(), e);
+                        }
+                    }
                 }
             }
         }
@@ -366,6 +384,14 @@ public class DagExecutionSyncService {
         dagExecutionMapper.updateById(execution);
         logger.info("DAG 执行完成: executionId={}, status={}, endTime={}, durationMs={}",
                 execution.getId(), newWorkflowStatus, execution.getEndTime(), execution.getDurationMs());
+        // 回调终态监听器（告警等副作用）
+        try {
+            for (DagExecutionFinishedListener listener : finishedListeners) {
+                listener.onFinished(execution, nodeList);
+            }
+        } catch (Exception e) {
+            logger.warn("DAG 执行终态监听器处理失败: executionId={}", execution.getId(), e);
+        }
         return true;
     }
 

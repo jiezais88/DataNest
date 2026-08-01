@@ -1,6 +1,7 @@
 package com.datanest.engineering.dto;
 
 import com.datanest.task.core.dto.FieldMappingItem;
+import com.datanest.task.core.dto.SourceTableDetail;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,6 +25,10 @@ public class SyncJobDTO {
     private String executionStatus;
     private String targetDatabase;
     private String targetTable;
+    private List<SourceTableDetail> sourceTablesDetail;
+    private Integer readRateLimitMbps;
+    private Integer writeRateLimitRowsPerSecond;
+    private Boolean rateLimitEnabled;
     private LocalDateTime nextExecutionTime;
     private Boolean scheduleEnabled;
     private Integer xxlJobId;
@@ -167,6 +172,38 @@ public class SyncJobDTO {
 
     public void setTargetTable(String targetTable) {
         this.targetTable = targetTable;
+    }
+
+    public List<SourceTableDetail> getSourceTablesDetail() {
+        return sourceTablesDetail;
+    }
+
+    public void setSourceTablesDetail(List<SourceTableDetail> sourceTablesDetail) {
+        this.sourceTablesDetail = sourceTablesDetail;
+    }
+
+    public Integer getReadRateLimitMbps() {
+        return readRateLimitMbps;
+    }
+
+    public void setReadRateLimitMbps(Integer readRateLimitMbps) {
+        this.readRateLimitMbps = readRateLimitMbps;
+    }
+
+    public Integer getWriteRateLimitRowsPerSecond() {
+        return writeRateLimitRowsPerSecond;
+    }
+
+    public void setWriteRateLimitRowsPerSecond(Integer writeRateLimitRowsPerSecond) {
+        this.writeRateLimitRowsPerSecond = writeRateLimitRowsPerSecond;
+    }
+
+    public Boolean getRateLimitEnabled() {
+        return rateLimitEnabled;
+    }
+
+    public void setRateLimitEnabled(Boolean rateLimitEnabled) {
+        this.rateLimitEnabled = rateLimitEnabled;
     }
 
     public LocalDateTime getNextExecutionTime() {

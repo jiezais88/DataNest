@@ -5,7 +5,7 @@ export type {SyncMode, TaskTriggerType as SyncTriggerType};
 export type SyncScheduleStatus = 'NORMAL' | 'PAUSED';
 // 状态字符串统一在 constants/task.ts 的 ExecutionStatusEnum 声明，这里只收窄出业务域子集
 export type SyncExecutionStatus = Extract<AnyExecutionStatus, 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'>;
-export type SyncHistoryStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED'>;
+export type SyncHistoryStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED' | 'TERMINATED'>;
 export type SyncLogLevel = 'INFO' | 'WARN' | 'ERROR';
 
 export interface SyncFieldMapping {
@@ -77,6 +77,12 @@ export interface SyncJobHistory {
     id: string;
     syncJobId: string;
     taskName?: string;
+    /** 由 DAG 编排触发时的 dag_execution.id；手动/定时触发为 undefined */
+    dagExecutionId?: string | number;
+    /** DAG 编排触发时的 dag.id（用于跳转） */
+    dagId?: string | number;
+    /** DAG 编排触发时的 DAG 名称（用于展示） */
+    dagName?: string;
     triggerType: TaskTriggerType;
     status: SyncHistoryStatus;
     startTime?: string;

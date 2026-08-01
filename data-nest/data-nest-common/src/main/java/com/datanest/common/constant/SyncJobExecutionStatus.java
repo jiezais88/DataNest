@@ -12,7 +12,8 @@ public enum SyncJobExecutionStatus {
     PENDING("PENDING", "未执行"),
     RUNNING("RUNNING", "运行中"),
     SUCCESS("SUCCESS", "成功"),
-    FAILED("FAILED", "失败");
+    FAILED("FAILED", "失败"),
+    TERMINATED("TERMINATED", "已终止");
 
     private final String code;
     private final String label;

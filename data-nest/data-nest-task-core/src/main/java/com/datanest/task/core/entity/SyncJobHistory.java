@@ -16,6 +16,9 @@ public class SyncJobHistory {
 
     private Long syncJobId;
 
+    /** 由 DAG 编排触发时的 dag_execution.id；手动/定时触发为 NULL */
+    private Long dagExecutionId;
+
     private String triggerType;
 
     private String status;

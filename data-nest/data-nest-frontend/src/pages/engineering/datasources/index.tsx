@@ -212,7 +212,7 @@ export default function DataSourcesPage() {
             dataIndex: 'name',
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-body text-ds-text-primary font-medium" title={v}>{v}</span>
+                <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
             ),
         },
         {
@@ -224,7 +224,7 @@ export default function DataSourcesPage() {
             title: '主机地址',
             ellipsis: true,
             render: (_, item) => (
-                <span className="text-ds-body text-ds-text-secondary"
+                <span className="text-ds-small text-ds-text-secondary"
                       title={`${item.host}:${item.port}/${item.databaseName}`}>
                     {item.host}:{item.port}/{item.databaseName}
                 </span>
@@ -253,8 +253,9 @@ export default function DataSourcesPage() {
         {
             title: '最近连接时间',
             dataIndex: 'lastTestTime',
+            width: 170,
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary" title={formatDateTime(v)}>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap" title={formatDateTime(v)}>
                     {formatRelativeTime(v)}
                 </span>
             ),
@@ -262,8 +263,9 @@ export default function DataSourcesPage() {
         {
             title: '操作',
             align: 'center',
+            width: 160,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1">
+                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
                     {canWrite && (
                         <>
                             <Tooltip title="编辑">
@@ -276,7 +278,7 @@ export default function DataSourcesPage() {
                                     }}
                                     aria-label="编辑"
                                 >
-                                    <HiOutlinePencilSquare size={16}/>
+                                    <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="测试连接">
@@ -287,7 +289,7 @@ export default function DataSourcesPage() {
                                     disabled={testingId === item.id}
                                     aria-label="测试连接"
                                 >
-                                    <HiOutlineBolt size={16}/>
+                                    <HiOutlineBolt size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="删除">
@@ -300,7 +302,7 @@ export default function DataSourcesPage() {
                                     }}
                                     aria-label="删除"
                                 >
-                                    <HiOutlineTrash size={16}/>
+                                    <HiOutlineTrash size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                         </>
@@ -316,7 +318,7 @@ export default function DataSourcesPage() {
                                 }}
                                 aria-label="预览数据"
                             >
-                                <HiOutlineEye size={16}/>
+                                <HiOutlineEye size={14}/>
                             </DsIconButton>
                         </Tooltip>
                     )}
@@ -401,6 +403,7 @@ export default function DataSourcesPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1000}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({'data-testid': `datasource-row-${item.name}`}) as HTMLAttributes<HTMLElement>}

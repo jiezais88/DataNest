@@ -17,6 +17,24 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
     NodeExecution selectByDsTaskInstanceId(@Param("dsTaskInstanceId") Long dsTaskInstanceId);
 
     /**
+     * Sprint 4：查询 RUNNING 且开始时间早于阈值的节点，用于超时告警扫描。
+     */
+    @Select("SELECT * FROM node_execution WHERE status = 'RUNNING' " +
+            "AND start_time IS NOT NULL AND start_time < #{threshold} " +
+            "ORDER BY start_time ASC LIMIT #{limit}")
+    List<NodeExecution> selectTimeoutRunning(@Param("threshold") LocalDateTime threshold,
+                                             @Param("limit") int limit);
+
+    /**
+     * Sprint 4 review：查询 RUNNING 节点并附带 dag_id，用于按 DAG 告警配置判断超时。
+     */
+    @Select("SELECT ne.*, de.dag_id AS dag_id FROM node_execution ne " +
+            "JOIN dag_execution de ON ne.execution_id = de.id " +
+            "WHERE ne.status = 'RUNNING' AND ne.start_time IS NOT NULL " +
+            "ORDER BY ne.start_time ASC LIMIT #{limit}")
+    List<NodeExecution> selectRunningWithDagId(@Param("limit") int limit);
+
+    /**
      * Sprint 3 P1-2：按 syncJobId 查 SYNC 节点执行（最新一条）
      * 用于 DagExecutionSyncService 反查 sync_job_history 同步终态
      */
@@ -47,6 +65,10 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
      * 使用 MySQL CASE WHEN 语法，避免 multi-statement 限制。
      * 注意：可能为 null 的参数必须显式 jdbcType，否则 Postgres 会把 CASE WHEN 表达式
      * 推断为 text，报 "column xxx is of type bigint but expression is of type text"。
+     * 仅 jdbcType 仍不够：当某列的所有 WHEN 分支都绑 null（如 SKIPPED 节点从未启动，
+     * start_time 全为 null）时，驱动上报的参数类型不足以让 PG 推断 CASE 类型，
+     * 仍会推断为 text 报 "column xxx is of type timestamp but expression is of type text"。
+     * 因此对 timestamp/bigint 列的 CASE 整体再显式 :: 强转一次，全 null 时转换结果仍是 null。
      * <p>
      * 乐观锁：WHERE 按 (id, version) 成对匹配并 version+1，与 V3.2.2"用乐观锁防 sync
      * 并发覆盖"的意图一致。version 不匹配的行（已被 callback 等并发写入 bump 过）会被
@@ -62,16 +84,16 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
             "END, " +
             "ds_task_instance_id = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.dsTaskInstanceId,jdbcType=BIGINT}</foreach> " +
-            "END, " +
+            "END::bigint, " +
             "start_time = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.startTime,jdbcType=TIMESTAMP}</foreach> " +
-            "END, " +
+            "END::timestamp, " +
             "end_time = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.endTime,jdbcType=TIMESTAMP}</foreach> " +
-            "END, " +
+            "END::timestamp, " +
             "duration_ms = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.durationMs,jdbcType=BIGINT}</foreach> " +
-            "END, " +
+            "END::bigint, " +
             "error_message = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.errorMessage,jdbcType=VARCHAR}</foreach> " +
             "END, " +
@@ -80,7 +102,7 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
             "END, " +
             "sync_job_history_id = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.syncJobHistoryId,jdbcType=BIGINT}</foreach> " +
-            "END, " +
+            "END::bigint, " +
             "version = version + 1 " +
             "WHERE (id, version) IN " +
             "<foreach collection='list' item='item' open='(' separator=',' close=')'>" +

@@ -1,6 +1,7 @@
 package com.datanest.task.core.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -19,6 +20,10 @@ public class NodeExecution {
     private Long id;
 
     private Long executionId;
+
+    /** Sprint 4 review：超时扫描 join dag_execution 时临时带入，非持久化字段 */
+    @TableField(exist = false)
+    private Long dagId;
 
     private String nodeId;
 

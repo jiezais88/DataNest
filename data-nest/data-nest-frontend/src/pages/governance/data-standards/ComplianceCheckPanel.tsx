@@ -1,12 +1,13 @@
 import type {ReactNode} from 'react';
 import {useMemo} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Table} from 'antd';
+import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import type {ComplianceCheckParams, ComplianceCheckResult} from '../../../types/dataStandard';
 import type {MetadataDatasource} from '../../../types/metadata';
 import EmptyState from '../../../components/EmptyState';
 import DsButton from '../../../components/DsButton';
+import DsIconButton from '../../../components/DsIconButton';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import {HiOutlineArrowLeft, HiOutlineEye} from 'react-icons/hi2';
 
@@ -124,13 +125,15 @@ function ResultTable({items, columns, onView}: {
             align: 'center' as const,
             className: 'ds-table-cell-no-truncate',
             render: (_: unknown, r: ComplianceCheckResult) => (
-                <button
-                    onClick={() => onView(r)}
-                    className="inline-flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium"
-                >
-                    <HiOutlineEye size={14}/>
-                    查看
-                </button>
+                <Tooltip title="查看">
+                    <DsIconButton
+                        tone="accent"
+                        onClick={() => onView(r)}
+                        aria-label="查看"
+                    >
+                        <HiOutlineEye size={14}/>
+                    </DsIconButton>
+                </Tooltip>
             ),
         },
     ], [columns, onView]);
@@ -143,6 +146,7 @@ function ResultTable({items, columns, onView}: {
                     dataSource={items}
                     rowKey="id"
                     pagination={false}
+                    scroll={{x: 1100}}
                     columns={tableColumns}
                     className="prototype-table prototype-table-flush"
                     locale={{
@@ -192,13 +196,13 @@ export default function ComplianceCheckPanel({
             className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden h-full flex flex-col">
             <div className="p-ds-4 border-b border-ds-border-subtle flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-ds-3">
-                    <button
+                    <DsButton
+                        variant="ghost"
                         onClick={onClose}
-                        className="flex items-center gap-ds-1 text-ds-small text-ds-text-muted hover:text-ds-accent transition-colors"
                     >
                         <HiOutlineArrowLeft size={16}/>
                         返回命名规范
-                    </button>
+                    </DsButton>
                     <span className="text-ds-subhead text-ds-text-primary font-semibold">合规检查结果</span>
                 </div>
                 <div className="flex items-center gap-ds-3">

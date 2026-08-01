@@ -53,8 +53,6 @@ public class DagDsConverter {
             task.setTaskType("HTTP");   // Sprint 3：所有节点用 HTTP 回调 engineering
             task.setWorkerGroup("default");
             task.setFlag("YES");
-            task.setTimeoutFlag("CLOSE");
-            task.setTimeout(0);
             task.setDelayTime(0);
             task.setFailRetryTimes(0);
             task.setFailRetryInterval(1);
@@ -67,8 +65,10 @@ public class DagDsConverter {
             String nodeType = node.getNodeType();
             String configJson = node.getConfig() == null ? "{}" : node.getConfig();
 
-            // 提取 type/sqlContent/syncJobId
-            String type = null, sqlContent = null, syncJobId = null, syncJobName = null;
+            // 提取 type/sqlContent/syncJobId/pythonScript/timeoutMinutes
+            String type = null, sqlContent = null, syncJobId = null, syncJobName = null,
+                    pythonScript = null;
+            Integer timeoutMinutes = null;
             try {
                 JSONObject cfg = JSON.parseObject(configJson);
                 type = stringOrNull(cfg, "type");
@@ -77,6 +77,9 @@ public class DagDsConverter {
                 } else if ("SYNC".equalsIgnoreCase(type)) {
                     syncJobId = stringOrNull(cfg, "syncJobId");
                     syncJobName = stringOrNull(cfg, "syncJobName");
+                } else if ("PYTHON".equalsIgnoreCase(type)) {
+                    pythonScript = stringOrNull(cfg, "pythonScript");
+                    timeoutMinutes = cfg.getInteger("timeoutMinutes");
                 } else {
                     throw new BusinessException(ErrorCode.DS_API_ERROR,
                             "未知节点 type: " + type + " (nodeId=" + node.getNodeId() + ")");
@@ -88,6 +91,16 @@ public class DagDsConverter {
                         "节点 config JSON 解析失败 (nodeId=" + node.getNodeId() + "): " + e.getMessage());
             }
 
+            // PYTHON 节点按配置的超时时间启用 DS 任务级超时
+            if ("PYTHON".equalsIgnoreCase(type)) {
+                task.setTimeoutFlag("OPEN");
+                int tm = timeoutMinutes == null || timeoutMinutes <= 0 ? 30 : timeoutMinutes;
+                task.setTimeout(tm * 60);
+            } else {
+                task.setTimeoutFlag("CLOSE");
+                task.setTimeout(0);
+            }
+
             // DS 3.4.2 HTTP 任务参数类：org.apache.dolphinscheduler.plugin.task.http.HttpParameters
             // 字段必须严格匹配，否则 checkParameters() 失败
             Map<String, Object> requestBody = new HashMap<>();
@@ -97,11 +110,13 @@ public class DagDsConverter {
             requestBody.put("executionId", "${system.workflow.instance.id}");   // DS 内置变量：工作流实例 ID
             if ("SQL".equalsIgnoreCase(type)) {
                 requestBody.put("sqlContent", sqlContent);
-            } else {
+            } else if ("SYNC".equalsIgnoreCase(type)) {
                 Map<String, Object> syncJob = new HashMap<>();
                 syncJob.put("id", syncJobId);
                 syncJob.put("name", syncJobName);
                 requestBody.put("syncJob", syncJob);
+            } else if ("PYTHON".equalsIgnoreCase(type)) {
+                requestBody.put("pythonScript", pythonScript);
             }
 
             // httpParams 是 List<HttpProperty>，字段：prop / httpParametersType / value
@@ -139,9 +154,12 @@ public class DagDsConverter {
      */
     private String buildCallbackUrl(DagNodePayload node, DagPayload dag) {
         String type = node.getNodeType();
-        String path = "SQL".equalsIgnoreCase(type) ? "/dev/internal/sql/callback"
-                : "SYNC".equalsIgnoreCase(type) ? "/dev/internal/sync/callback"
-                : "/dev/internal/unknown";
+        String path = switch (type.toUpperCase()) {
+            case "SQL" -> "/dev/internal/sql/callback";
+            case "SYNC" -> "/dev/internal/sync/callback";
+            case "PYTHON" -> "/dev/internal/python/callback";
+            default -> "/dev/internal/unknown";
+        };
         // 不带尾斜杠：base url 默认已含 /api/engineering，path 前缀 /dev/...
         return dsConfig.getCallbackBaseUrl() + path;
     }
@@ -153,11 +171,19 @@ public class DagDsConverter {
     }
 
     private String buildDsTaskName(DagNodePayload node) {
-        String base = StringUtils.hasText(node.getNodeName()) ? node.getNodeName() : node.getNodeId();
-        String nodeId = node.getNodeId() == null ? "" : node.getNodeId();
-        String suffix = nodeId.length() > 8 ? nodeId.substring(nodeId.length() - 8) : nodeId;
+        return buildDsTaskName(node.getNodeName(), node.getNodeId(), node.getNodeType());
+    }
+
+    /**
+     * 生成 DS 任务名称（项目内唯一）。
+     * 公开静态方法供重跑失败节点时反查 startNodeList 使用。
+     */
+    public static String buildDsTaskName(String nodeName, String nodeId, String nodeType) {
+        String base = StringUtils.hasText(nodeName) ? nodeName : nodeId;
+        String id = nodeId == null ? "" : nodeId;
+        String suffix = id.length() > 8 ? id.substring(id.length() - 8) : id;
         if (base == null) {
-            base = node.getNodeType();
+            base = nodeType;
         }
         return base + "_" + suffix;
     }

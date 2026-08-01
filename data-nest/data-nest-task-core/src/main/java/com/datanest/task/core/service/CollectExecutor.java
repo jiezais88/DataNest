@@ -125,11 +125,18 @@ public class CollectExecutor {
         int deletedColumns = 0;
         String errorMessage = null;
         String lastStatus = ExecutionStatus.SUCCESS.getCode();
+        // 手动停止标记：停止后仍需走收尾（保留 TERMINATED 终态并补统计），故不能靠异常跳出
+        boolean terminated = false;
 
         MetadataExtractor extractor = extractorFactory.getExtractor(ds.getType());
         try {
             log(history, "INFO", "开始采集任务：" + task.getName() + "，数据源：" + ds.getName());
             for (String schema : scope) {
+                // 协作式停止：手动停止接口会把历史状态置为 TERMINATED，每轮迭代前重查以便尽快退出
+                if (isTerminated(history.getId())) {
+                    terminated = true;
+                    break;
+                }
                 List<TableMetadata> tables = extractor.extractTables(ds, schema);
                 dbCount++;
                 log(history, "INFO", "采集到 " + tables.size() + " 张表，范围：" + (schema == null ? "默认" : schema));
@@ -137,6 +144,10 @@ public class CollectExecutor {
                         .map(TableMetadata::getTableName)
                         .collect(Collectors.toSet());
                 for (TableMetadata table : tables) {
+                    if (isTerminated(history.getId())) {
+                        terminated = true;
+                        break;
+                    }
                     TableChange change = upsertTable(task, ds, table, history.getId());
                     if (change.added) addedTables++;
                     if (change.updated) updatedTables++;
@@ -147,12 +158,21 @@ public class CollectExecutor {
                     deletedColumns += colChange.deleted;
                     columnCount += table.getColumns().size();
                 }
+                if (terminated) {
+                    // 停止时跳过删除检测：表清单未采完，若继续会把未采集的表误判为已删除
+                    break;
+                }
                 int deletedInSchema = detectDeletedTables(ds, tables, collectedTableNames, history.getId());
                 deletedTables += deletedInSchema;
             }
-            log(history, "INFO", "采集完成：库/表/字段 = " + dbCount + "/" + tableCount + "/" + columnCount
-                    + "，新增/修改/删除表 = " + addedTables + "/" + updatedTables + "/" + deletedTables
-                    + "，新增/修改/删除字段 = " + addedColumns + "/" + updatedColumns + "/" + deletedColumns);
+            if (terminated) {
+                lastStatus = ExecutionStatus.TERMINATED.getCode();
+                log(history, "INFO", "手动停止，已采集部分保留");
+            } else {
+                log(history, "INFO", "采集完成：库/表/字段 = " + dbCount + "/" + tableCount + "/" + columnCount
+                        + "，新增/修改/删除表 = " + addedTables + "/" + updatedTables + "/" + deletedTables
+                        + "，新增/修改/删除字段 = " + addedColumns + "/" + updatedColumns + "/" + deletedColumns);
+            }
         } catch (Exception e) {
             logger.error("采集任务执行失败: taskId={}", taskId, e);
             errorMessage = e.getMessage();
@@ -160,6 +180,15 @@ public class CollectExecutor {
             log(history, "ERROR", "采集失败：" + errorMessage);
         }
 
+        // 收尾前最后确认一次停止状态：停止请求若恰好落在循环最后一次检查之后，
+        // 这里兜底，避免 finishHistory/updateTaskStatus 把 TERMINATED 覆盖回 SUCCESS
+        if (!terminated && ExecutionStatus.SUCCESS.getCode().equals(lastStatus) && isTerminated(history.getId())) {
+            terminated = true;
+            lastStatus = ExecutionStatus.TERMINATED.getCode();
+            log(history, "INFO", "手动停止，已采集部分保留");
+        }
+
+        // 停止分支同样走收尾：lastStatus 为 TERMINATED，finishHistory/updateTaskStatus 只会保持终态并补统计
         finishHistory(history, tableCount, columnCount, dbCount, addedTables, updatedTables, deletedTables,
                 addedColumns, updatedColumns, deletedColumns, errorMessage, lastStatus);
         updateTaskStatus(task, history, lastStatus);
@@ -200,6 +229,12 @@ public class CollectExecutor {
         log.setLevel(level);
         log.setMessage(message);
         logMapper.insert(log);
+    }
+
+    // 手动停止通过 DB 状态传递（不走 XXL-JOB kill），执行器循环中重查实现协作式退出
+    private boolean isTerminated(Long historyId) {
+        CollectHistory current = collectHistoryMapper.selectById(historyId);
+        return current != null && ExecutionStatus.TERMINATED.getCode().equals(current.getStatus());
     }
 
     private TableChange upsertTable(CollectTask task, DataSourceConnection ds, TableMetadata table, Long historyId) {

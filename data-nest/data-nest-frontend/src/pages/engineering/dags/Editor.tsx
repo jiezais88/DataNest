@@ -93,7 +93,7 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
     return (
         <div
             className={[
-                'relative rounded-xl p-4 w-[220px] text-[13px] bg-ds-bg-surface font-sans shadow-sm',
+                'relative rounded-xl p-4 w-[220px] text-ds-small bg-ds-bg-surface font-sans shadow-sm',
                 'border border-ds-border-subtle',
                 selected ? 'ring-4 ring-ds-accent-glow' : '',
             ].filter(Boolean).join(' ')}
@@ -126,10 +126,10 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                 </button>
             )}
             <div className="flex items-center gap-2 mb-2 pb-2 border-b border-ds-border-subtle">
-                <span className="text-[15px]">{icon}</span>
+                <span className="text-ds-body">{icon}</span>
                 <span className="font-semibold text-ds-text-primary truncate flex-1">{data.nodeName}</span>
             </div>
-            <div className="text-ds-text-secondary text-[12px] leading-relaxed space-y-1">
+            <div className="text-ds-text-secondary text-ds-caption leading-relaxed space-y-1">
                 <div>类型：{data.nodeType === 'SQL' ? 'SQL 任务' : '同步任务'}</div>
                 {data.nodeType === 'SQL' ? (
                     <div className="truncate" title={outputTable || '（未配置输出表）'}>
@@ -200,10 +200,10 @@ function NodeSummary({node, watchedSyncJobId}: { node: Node<RFNodeData>; watched
 
     if (node.data.nodeType === 'SQL') {
         return (
-            <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-3">
-                <div className="text-ds-caption text-ds-text-muted uppercase mb-1">SQL 摘要</div>
+            <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-ds-3">
+                <div className="text-ds-caption text-ds-text-muted uppercase mb-ds-1">SQL 摘要</div>
                 <pre
-                    className="text-[12px] text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-32 overflow-auto">
+                    className="text-ds-caption text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-32 overflow-auto">
                     {node.data.sqlContent || '（未配置 SQL）'}
                 </pre>
             </div>
@@ -211,12 +211,12 @@ function NodeSummary({node, watchedSyncJobId}: { node: Node<RFNodeData>; watched
     }
 
     return (
-        <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-3">
-            <div className="text-ds-caption text-ds-text-muted uppercase mb-2">同步任务摘要</div>
+        <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-ds-3">
+            <div className="text-ds-caption text-ds-text-muted uppercase mb-ds-2">同步任务摘要</div>
             {loading ? (
                 <Spin size="small"/>
             ) : syncDetail ? (
-                <div className="space-y-1 text-ds-small">
+                <div className="space-y-ds-1 text-ds-small">
                     <SummaryRow label="名称" value={syncDetail.name || '—'}/>
                     <SummaryRow
                         label="源表"
@@ -262,9 +262,9 @@ function NodeSummary({node, watchedSyncJobId}: { node: Node<RFNodeData>; watched
 
 function SummaryRow({label, value, mono}: { label: string; value: React.ReactNode; mono?: boolean }) {
     return (
-        <div className="flex justify-between gap-2">
+        <div className="flex justify-between gap-ds-2">
             <span className="text-ds-text-muted shrink-0">{label}</span>
-            <span className={`text-ds-text-primary text-right truncate ${mono ? 'font-mono text-[12px]' : ''}`}>
+            <span className={`text-ds-text-primary text-right truncate ${mono ? 'font-mono text-ds-caption' : ''}`}>
                 {value}
             </span>
         </div>
@@ -273,9 +273,9 @@ function SummaryRow({label, value, mono}: { label: string; value: React.ReactNod
 
 function PropertyRow({label, value}: { label: string; value: React.ReactNode }) {
     return (
-        <div className="flex justify-between gap-2 text-ds-small">
+        <div className="flex justify-between gap-ds-2 text-ds-small">
             <span className="text-ds-text-muted shrink-0">{label}</span>
-            <span className="text-ds-text-primary text-right truncate ml-2">{value}</span>
+            <span className="text-ds-text-primary text-right truncate ml-ds-2">{value}</span>
         </div>
     );
 }
@@ -322,7 +322,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
     if (!info) {
         return (
             <pre
-                className="text-[11px] text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
+                className="text-ds-nano text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
                 {outputInfo}
             </pre>
         );
@@ -332,7 +332,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
     if (info.targetTable) {
         summaryItems.push({
             label: '目标表',
-            value: <span className="font-mono text-[12px]">{info.targetTable}</span>,
+            value: <span className="font-mono text-ds-caption">{info.targetTable}</span>,
         });
     }
     if (info.sqlType === 'QUERY') {
@@ -342,7 +342,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
                 <span>
                     {info.returnedRows ?? 0}
                     {info.truncated && (
-                        <span className="text-ds-text-muted ml-1">（仅预览前 50 行）</span>
+                        <span className="text-ds-text-muted ml-ds-1">（仅预览前 50 行）</span>
                     )}
                 </span>
             ),
@@ -355,11 +355,11 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
     }
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-ds-3">
             {/* 类型标签 + 摘要 */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-ds-2">
                 <span
-                    className="text-ds-caption font-semibold px-2 py-0.5 rounded bg-ds-bg-hover text-ds-text-secondary">
+                    className="text-ds-caption font-semibold px-ds-2 py-0.5 rounded bg-ds-bg-hover text-ds-text-secondary">
                     {info.sqlType || 'UNKNOWN'}
                 </span>
                 {info.sqlType === 'QUERY' && (
@@ -380,7 +380,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
             </div>
 
             {summaryItems.length > 0 && (
-                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-ds-small items-baseline">
+                <div className="grid grid-cols-[auto_1fr] gap-x-ds-4 gap-y-1.5 text-ds-small items-baseline">
                     {summaryItems.map(item => (
                         <Fragment key={item.label}>
                             <span className="text-ds-text-muted">{item.label}</span>
@@ -403,7 +403,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
                                     {(info.columns || []).map(col => (
                                         <th
                                             key={col}
-                                            className="px-3 py-1.5 text-ds-caption text-ds-text-primary font-semibold whitespace-nowrap border-b border-ds-border-subtle"
+                                            className="px-ds-3 py-1.5 text-ds-caption text-ds-text-primary font-semibold whitespace-nowrap border-b border-ds-border-subtle"
                                         >
                                             {col}
                                         </th>
@@ -419,7 +419,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
                                         {row.map((cell, ci) => (
                                             <td
                                                 key={ci}
-                                                className="px-3 py-1.5 text-ds-caption text-ds-text-secondary whitespace-nowrap"
+                                                className="px-ds-3 py-1.5 text-ds-caption text-ds-text-secondary whitespace-nowrap"
                                             >
                                                 {cell === null || cell === undefined
                                                     ? <span className="text-ds-text-muted italic">NULL</span>
@@ -432,7 +432,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
                             </table>
                         </div>
                     ) : (
-                        <div className="text-ds-small text-ds-text-muted text-center py-4">
+                        <div className="text-ds-small text-ds-text-muted text-center py-ds-4">
                             执行成功，返回 0 行
                         </div>
                     )}
@@ -458,10 +458,10 @@ function PropertyPanel({
     if (!node) {
         return (
             <div
-                className="w-[260px] bg-ds-bg-surface border-l border-ds-border-subtle p-5 overflow-y-auto flex-shrink-0">
+                className="w-ds-property-panel bg-ds-bg-surface border-l border-ds-border-subtle p-ds-5 overflow-y-auto flex-shrink-0">
                 <div
-                    className="text-[16px] font-bold text-ds-text-primary mb-4">{readOnly ? '节点运行信息' : '节点属性'}</div>
-                <div className="text-[13px] text-ds-text-muted leading-relaxed">
+                    className="text-ds-subhead text-ds-text-primary mb-ds-4">{readOnly ? '节点运行信息' : '节点属性'}</div>
+                <div className="text-ds-small text-ds-text-muted leading-relaxed">
                     {readOnly ? '选中节点查看本次执行状态、耗时及输出。' : '选中画布上的节点，查看节点基础信息。双击节点可进入编辑弹窗。'}
                 </div>
             </div>
@@ -470,10 +470,11 @@ function PropertyPanel({
     const outputTable = node.data.nodeType === 'SQL' ? extractOutputTable(node.data.sqlContent) : null;
     const statusColor = node.data.status ? NODE_STATUS_COLOR[node.data.status] : undefined;
     return (
-        <div className="w-[260px] bg-ds-bg-surface border-l border-ds-border-subtle p-5 overflow-y-auto flex-shrink-0">
+        <div
+            className="w-ds-property-panel bg-ds-bg-surface border-l border-ds-border-subtle p-ds-5 overflow-y-auto flex-shrink-0">
             <div
-                className="text-[16px] font-bold text-ds-text-primary mb-4">{readOnly ? '节点运行信息' : '节点属性'}</div>
-            <div className="space-y-3 mb-5 text-[13px]">
+                className="text-ds-subhead text-ds-text-primary mb-ds-4">{readOnly ? '节点运行信息' : '节点属性'}</div>
+            <div className="space-y-ds-3 mb-ds-5 text-ds-small">
                 <PropertyRow label="名称" value={node.data.nodeName}/>
                 <PropertyRow label="类型" value={node.data.nodeType === 'SQL' ? 'SQL 任务' : '同步任务'}/>
                 {node.data.nodeType === 'SQL' ? (
@@ -497,16 +498,16 @@ function PropertyPanel({
                         <PropertyRow label="结束时间"
                                      value={node.data.nodeExecutionEndTime ? formatDateTime(node.data.nodeExecutionEndTime) : '—'}/>
                         {node.data.errorMessage && (
-                            <div className="text-ds-danger text-[12px] break-all">{node.data.errorMessage}</div>
+                            <div className="text-ds-danger text-ds-caption break-all">{node.data.errorMessage}</div>
                         )}
                         {node.data.outputInfo && (
-                            <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-2 mt-2">
-                                <div className="text-ds-caption text-ds-text-muted mb-1">输出</div>
+                            <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-ds-2 mt-ds-2">
+                                <div className="text-ds-caption text-ds-text-muted mb-ds-1">输出</div>
                                 {node.data.nodeType === 'SQL' ? (
                                     <SqlOutputDisplay outputInfo={node.data.outputInfo}/>
                                 ) : (
                                     <pre
-                                        className="text-[11px] text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
+                                        className="text-ds-nano text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
                                         {node.data.outputInfo}
                                     </pre>
                                 )}
@@ -1052,22 +1053,22 @@ function DagEditorInner() {
         <div className="h-screen flex flex-col bg-ds-bg-root">
             {/* 顶部工具栏 */}
             <div
-                className="h-[56px] bg-ds-bg-surface border-b border-ds-border-subtle flex items-center px-4 gap-4 flex-shrink-0">
+                className="h-[56px] bg-ds-bg-surface border-b border-ds-border-subtle flex items-center px-ds-4 gap-ds-4 flex-shrink-0">
                 <button
                     onClick={handleBack}
-                    className="text-[13px] text-ds-text-secondary hover:text-ds-text-primary flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-ds-bg-hover transition-colors"
+                    className="text-ds-small text-ds-text-secondary hover:text-ds-text-primary flex items-center gap-ds-1 px-ds-3 py-1.5 rounded-lg hover:bg-ds-bg-hover transition-colors"
                 >
                     <span>←</span> {isRunView ? '返回执行历史' : '返回项目 DAG 列表'}
                 </button>
                 {isRunView ? (
                     <>
                         <div
-                            className="h-[34px] px-3 flex items-center text-[14px] font-semibold text-ds-text-primary bg-ds-bg-root border border-ds-border-subtle rounded-lg w-[220px]">
+                            className="h-[34px] px-ds-3 flex items-center text-ds-body font-semibold text-ds-text-primary bg-ds-bg-root border border-ds-border-subtle rounded-lg w-[220px]">
                             {dag.name || '—'}
                         </div>
                         {execution && (
-                            <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-4 text-[13px]">
+                            <div className="flex flex-col gap-ds-1">
+                                <div className="flex items-center gap-ds-4 text-ds-small">
                                     <span className="flex items-center gap-1">
                                         状态：
                                         <span style={{color: executionStatusColor, fontWeight: 600}}>
@@ -1078,7 +1079,7 @@ function DagEditorInner() {
                                     <span>耗时：{formatDuration(execution.durationMs)}</span>
                                 </div>
                                 {execution.status === 'FAILED' && execution.errorMessage && (
-                                    <div className="text-ds-danger text-[12px] max-w-[600px] truncate"
+                                    <div className="text-ds-danger text-ds-caption max-w-[600px] truncate"
                                          title={execution.errorMessage}>
                                         失败原因：{execution.errorMessage}
                                     </div>
@@ -1089,7 +1090,7 @@ function DagEditorInner() {
                 ) : (
                     <>
                         <input
-                            className="h-[34px] px-3 text-[14px] font-semibold text-ds-text-primary bg-ds-bg-root border border-ds-border-subtle rounded-lg outline-none focus:border-ds-accent w-[220px]"
+                            className="h-[34px] px-ds-3 text-ds-body font-semibold text-ds-text-primary bg-ds-bg-root border border-ds-border-subtle rounded-lg outline-none focus:border-ds-accent w-[220px]"
                             placeholder="DAG 名称"
                             value={dag.name}
                             onChange={e => {
@@ -1097,8 +1098,8 @@ function DagEditorInner() {
                                 setIsDirty(true);
                             }}
                         />
-                        <div className="flex items-center gap-2">
-                            <span className="text-[13px] text-ds-text-secondary">触发方式</span>
+                        <div className="flex items-center gap-ds-2">
+                            <span className="text-ds-small text-ds-text-secondary">触发方式</span>
                             <Select
                                 value={dag.triggerType}
                                 onChange={v => {
@@ -1113,8 +1114,8 @@ function DagEditorInner() {
                             />
                         </div>
                         {dag.triggerType === 'CRON' && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-[13px] text-ds-text-secondary">Cron</span>
+                            <div className="flex items-center gap-ds-2">
+                                <span className="text-ds-small text-ds-text-secondary">Cron</span>
                                 <Popover
                                     trigger="click"
                                     placement="bottomLeft"
@@ -1134,12 +1135,12 @@ function DagEditorInner() {
                                     <button
                                         disabled={!canEdit}
                                         title={!canEdit ? '只读模式：您没有编辑权限' : undefined}
-                                        className="h-[34px] w-[200px] px-3 flex items-center justify-between gap-2 bg-white border border-ds-border-subtle rounded-lg text-[13px] text-ds-text-primary hover:border-ds-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        className="h-[34px] w-[200px] px-ds-3 flex items-center justify-between gap-ds-2 bg-white border border-ds-border-subtle rounded-lg text-ds-small text-ds-text-primary hover:border-ds-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
                                         <span className="truncate">
                                             {describeCron(dag.cronExpression) || '选择调度周期'}
                                         </span>
-                                        <span className="text-ds-text-muted text-[10px] flex-shrink-0">▼</span>
+                                        <span className="text-ds-text-muted text-ds-nano flex-shrink-0">▼</span>
                                     </button>
                                 </Popover>
                             </div>
@@ -1173,11 +1174,11 @@ function DagEditorInner() {
                 {/* 左侧：编辑模式显示节点添加面板；运行模式隐藏 */}
                 {!isRunView && (
                     <div
-                        className="w-[200px] bg-ds-bg-surface border-r border-ds-border-subtle p-4 flex-shrink-0 overflow-y-auto">
+                        className="w-[200px] bg-ds-bg-surface border-r border-ds-border-subtle p-ds-4 flex-shrink-0 overflow-y-auto">
                         <div
-                            className="text-[12px] font-bold text-ds-text-muted uppercase tracking-wider mb-3">节点面板
+                            className="text-ds-caption font-bold text-ds-text-muted uppercase tracking-wider mb-ds-3">节点面板
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-ds-3">
                             {/* 拖拽源：SQL 节点（对齐原型 .palette-node：1.5px 边框、radius 12、padding 16px 12px） */}
                             <div
                                 draggable={canEdit}
@@ -1189,13 +1190,13 @@ function DagEditorInner() {
                                     e.dataTransfer.setData('application/reactflow', 'SQL');
                                     e.dataTransfer.effectAllowed = 'move';
                                 }}
-                                className={`flex flex-col items-center justify-center gap-2 px-3 py-4 rounded-xl border-[1.5px] border-ds-border-subtle bg-ds-bg-surface ${
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-ds-border-subtle bg-ds-bg-surface ${
                                     canEdit ? 'cursor-grab active:cursor-grabbing hover:border-ds-accent hover:bg-ds-accent-light' : 'cursor-not-allowed opacity-50'
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : undefined}
                             >
-                                <span className="text-[20px]">📝</span>
-                                <span className="text-[13px] font-semibold text-ds-text-secondary">SQL 任务</span>
+                                <span className="text-ds-heading">📝</span>
+                                <span className="text-ds-small font-semibold text-ds-text-secondary">SQL 任务</span>
                             </div>
                             {/* 拖拽源：同步节点 */}
                             <div
@@ -1208,16 +1209,16 @@ function DagEditorInner() {
                                     e.dataTransfer.setData('application/reactflow', 'SYNC');
                                     e.dataTransfer.effectAllowed = 'move';
                                 }}
-                                className={`flex flex-col items-center justify-center gap-2 px-3 py-4 rounded-xl border-[1.5px] border-ds-border-subtle bg-ds-bg-surface ${
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-ds-border-subtle bg-ds-bg-surface ${
                                     canEdit ? 'cursor-grab active:cursor-grabbing hover:border-ds-accent hover:bg-ds-accent-light' : 'cursor-not-allowed opacity-50'
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : undefined}
                             >
-                                <span className="text-[20px]">🔄</span>
-                                <span className="text-[13px] font-semibold text-ds-text-secondary">同步任务</span>
+                                <span className="text-ds-heading">🔄</span>
+                                <span className="text-ds-small font-semibold text-ds-text-secondary">同步任务</span>
                             </div>
                         </div>
-                        <div className="mt-6 text-[12px] text-ds-text-muted text-center">
+                        <div className="mt-ds-6 text-ds-caption text-ds-text-muted text-center">
                             拖拽节点到画布上添加
                         </div>
                     </div>

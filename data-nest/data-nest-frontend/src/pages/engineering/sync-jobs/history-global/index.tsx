@@ -1,8 +1,8 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
-import {Table, Tooltip} from 'antd';
+import {Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {getSyncJobLogs, queryAllSyncJobHistory} from '../../../../api/sync';
+import {getSyncJobLogs, queryAllSyncJobHistory, stopSyncHistory} from '../../../../api/sync';
 import type {SyncHistoryStatus, SyncJobHistory, SyncJobLog,} from '../../../../types/sync';
 import Pagination from '../../../../components/Pagination';
 import DsTableEmpty from '../../../../components/DsTableEmpty';
@@ -11,12 +11,14 @@ import DsButton from '../../../../components/DsButton';
 import DsFilterSelect from '../../../../components/DsFilterSelect';
 import DsIconButton from '../../../../components/DsIconButton';
 import DsToolbar from '../../../../components/DsToolbar';
-import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye,} from 'react-icons/hi2';
-import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../../utils/format';
+import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye, HiOutlineStop,} from 'react-icons/hi2';
+import {formatDateTime, formatExecutionDuration, getDefaultTimeRange} from '../../../../utils/format';
 import {HistoryDetailModal, HistoryLogModal,} from '../history-common';
 import {STATUS_OPTIONS, statusLabel, triggerBadge,} from '../history-common-utils';
 import DsStatusBadge from '../../../../components/DsStatusBadge';
 import {executionStatusVariant} from '../../../../utils/status';
+import {useCanEdit} from '../../../../hooks/useCanEdit';
+import {notify} from '../../../../utils/notify';
 import usePagedList from '../../../../hooks/usePagedList';
 
 interface HistoryQuery {
@@ -29,6 +31,7 @@ interface HistoryQuery {
 
 export default function SyncJobHistoryGlobalPage() {
     const navigate = useNavigate();
+    const canEdit = useCanEdit();
     const [searchParams, setSearchParams] = useSearchParams();
 
     // 草稿查询条件（点「查询」才应用）
@@ -48,6 +51,7 @@ export default function SyncJobHistoryGlobalPage() {
         setPage,
         setPageSize,
         applyQuery,
+        reload,
     } = usePagedList<HistoryQuery, SyncJobHistory>({
         fetcher: async (q) => {
             const result = await queryAllSyncJobHistory({
@@ -151,6 +155,27 @@ export default function SyncJobHistoryGlobalPage() {
         setLogsLoading(false);
     };
 
+    // 手动停止运行中的执行实例（停止后状态归一为 TERMINATED）
+    const handleStop = useCallback((item: SyncJobHistory) => {
+        Modal.confirm({
+            centered: true,
+            wrapClassName: 'prototype-modal',
+            title: '停止执行',
+            content: `确定停止任务「${item.taskName || item.syncJobId}」的本次执行吗？停止后状态将标记为「已终止」。`,
+            okText: '停止',
+            cancelText: '取消',
+            onOk: async () => {
+                try {
+                    await stopSyncHistory(item.id);
+                    notify.success('已发送停止指令，3s 后刷新列表');
+                    setTimeout(reload, 3000);
+                } catch {
+                    // 错误提示由 request 拦截器统一弹出
+                }
+            },
+        });
+    }, [reload]);
+
     const closeDetail = () => {
         setDetailOpen(false);
         setSelectedHistory(null);
@@ -165,22 +190,40 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '任务名称',
             dataIndex: 'taskName',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <Tooltip title={v || '-'}>
                     <span
-                        className="text-ds-body text-ds-text-primary font-medium">{v || '-'}</span>
+                        className="text-ds-small text-ds-text-primary font-medium">{v || '-'}</span>
                 </Tooltip>
             ),
         },
         {
             title: '触发方式',
             dataIndex: 'triggerType',
-            render: (v: SyncJobHistory['triggerType']) => triggerBadge(v),
+            width: 120,
+            render: (_, item) => {
+                // DAG 编排触发：点击直接跳到对应 DAG 执行实例画布
+                if (item.triggerType === 'DAG' && item.dagId != null && item.dagExecutionId != null) {
+                    return (
+                        <Tooltip title={`查看 DAG「${item.dagName || item.dagId}」本次执行实例`}>
+                            <button
+                                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors"
+                                onClick={() => navigate(`/engineering/dags/${item.dagId}/executions/${item.dagExecutionId}`)}
+                            >
+                                DAG 编排
+                            </button>
+                        </Tooltip>
+                    );
+                }
+                return triggerBadge(item.triggerType);
+            },
         },
         {
             title: '状态',
             dataIndex: 'status',
+            width: 100,
             render: (v: SyncJobHistory['status']) => (
                 <DsStatusBadge label={statusLabel(v)} variant={executionStatusVariant(v)}/>
             ),
@@ -188,41 +231,50 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '开始时间',
             dataIndex: 'startTime',
+            width: 170,
             render: (v: string) => (
-                <span className="text-ds-small text-ds-text-secondary">{formatDateTime(v)}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
         },
         {
             title: '结束时间',
             dataIndex: 'endTime',
+            width: 170,
             render: (v: string) => (
-                <span className="text-ds-small text-ds-text-secondary">{formatDateTime(v)}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
         },
         {
             title: '耗时',
+            width: 100,
+            // 运行中（endTime 为空）：用当前时间静态计算一次，不做定时刷新
             render: (_, item) => (
                 <span
-                    className="text-ds-body text-ds-text-secondary">{formatDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined))}</span>
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime)}</span>
             ),
         },
         {
             title: '源行数',
             dataIndex: 'sourceRows',
+            width: 100,
+            align: 'right',
             render: (v?: number) => (
-                <span className="text-ds-body text-ds-text-secondary">{v ?? '—'}</span>
+                <span className="text-ds-small text-ds-text-secondary">{v ?? '—'}</span>
             ),
         },
         {
             title: '目标行数',
             dataIndex: 'targetRows',
+            width: 100,
+            align: 'right',
             render: (v?: number) => (
-                <span className="text-ds-body text-ds-text-secondary">{v ?? '—'}</span>
+                <span className="text-ds-small text-ds-text-secondary">{v ?? '—'}</span>
             ),
         },
         {
             title: '错误信息',
             dataIndex: 'errorMessage',
+            width: 200,
             ellipsis: true,
             render: (v?: string) => (
                 <Tooltip title={v || ''}>
@@ -232,16 +284,29 @@ export default function SyncJobHistoryGlobalPage() {
         },
         {
             title: '操作',
+            width: 100,
             align: 'center',
             render: (_, item) => (
                 <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
+                    {item.status === 'RUNNING' && (
+                        <Tooltip title={canEdit ? '停止执行' : '只读模式：您没有编辑权限'}>
+                            <DsIconButton
+                                tone="danger"
+                                disabled={!canEdit}
+                                onClick={() => handleStop(item)}
+                                aria-label="停止执行"
+                            >
+                                <HiOutlineStop size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                    )}
                     <Tooltip title="详情">
                         <DsIconButton
                             tone="accent"
                             onClick={() => handleOpenDetail(item)}
                             aria-label="详情"
                         >
-                            <HiOutlineEye size={16}/>
+                            <HiOutlineEye size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="查看日志">
@@ -250,13 +315,13 @@ export default function SyncJobHistoryGlobalPage() {
                             onClick={() => handleOpenLogs(item)}
                             aria-label="查看日志"
                         >
-                            <HiOutlineDocumentText size={16}/>
+                            <HiOutlineDocumentText size={14}/>
                         </DsIconButton>
                     </Tooltip>
                 </div>
             ),
         },
-    ], []);
+    ], [navigate, canEdit, handleStop]);
 
     return (
         <div className="flex flex-col">
@@ -356,6 +421,7 @@ export default function SyncJobHistoryGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
+                            scroll={{x: 1160}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (

@@ -199,7 +199,8 @@ export default function SqlEditorModal({
             <div className="space-y-ds-4">
                 {/* node name */}
                 <div>
-                    <label className="block text-[12px] font-bold uppercase tracking-wider text-ds-text-secondary mb-1">
+                    <label
+                        className="block text-ds-caption font-bold uppercase tracking-wider text-ds-text-secondary mb-1">
                         节点名称 <span className="text-ds-danger">*</span>
                     </label>
                     <input

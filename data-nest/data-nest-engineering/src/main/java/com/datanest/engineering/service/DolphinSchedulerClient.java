@@ -21,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * DolphinScheduler 3.4.2 客户端
@@ -283,11 +284,20 @@ public class DolphinSchedulerClient {
     public Long startWorkflowInstance(Long projectCode, Long workflowDefinitionCode,
                                       String failureStrategy, String execType,
                                       Long execUserId, String scheduleTime) {
+        return startWorkflowInstance(projectCode, workflowDefinitionCode,
+                failureStrategy, execType, execUserId, scheduleTime, List.of());
+    }
+
+    public Long startWorkflowInstance(Long projectCode, Long workflowDefinitionCode,
+                                      String failureStrategy, String execType,
+                                      Long execUserId, String scheduleTime,
+                                      List<Long> startNodeCodes) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("workflowDefinitionCode", String.valueOf(workflowDefinitionCode));
         form.add("failureStrategy", failureStrategy == null ? "END" : failureStrategy);
         form.add("execType", execType == null ? "START_PROCESS" : execType);
-        form.add("startNodeList", "");
+        form.add("startNodeList", startNodeCodes == null || startNodeCodes.isEmpty()
+                ? "" : startNodeCodes.stream().map(String::valueOf).collect(Collectors.joining(",")));
         form.add("taskDependType", "TASK_POST");
         form.add("runMode", "RUN_MODE_SERIAL");
         form.add("warningType", "NONE");
@@ -343,12 +353,16 @@ public class DolphinSchedulerClient {
     }
 
     /**
-     * 停止工作流实例
+     * 停止工作流实例。
+     * DS 3.4.2 的正确端点是 ExecutorController.controlWorkflowInstance：
+     * POST /projects/{code}/executors/execute?workflowInstanceId={id}&executeType=STOP
+     * （旧实现 POST /workflow-instances/{id} 在 DS 3.4.2 无映射，返回 405）
      */
     public void stopWorkflowInstance(Long projectCode, Long workflowInstanceId) {
         HttpEntity<?> entity = new HttpEntity<>(authHeaders());
         executeAndRequire("POST",
-                url("/projects/" + projectCode + "/workflow-instances/" + workflowInstanceId),
+                url("/projects/" + projectCode + "/executors/execute?workflowInstanceId="
+                        + workflowInstanceId + "&executeType=STOP"),
                 entity, Object.class);
     }
 

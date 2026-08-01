@@ -112,6 +112,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Sprint 4：DAG 邮件告警 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Fastjson2（Sprint 3 起统一 JSON 序列化，替代 Jackson ObjectMapper） -->
         <dependency>
             <groupId>com.alibaba.fastjson2</groupId>

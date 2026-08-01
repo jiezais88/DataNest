@@ -31,6 +31,21 @@ public class MetadataTable {
 
     private String sourceType;
 
+    /** Sprint 4 Phase 1：任务来源类型（COLLECT / SYNC / SQL / PYTHON），与 source_type 区分 */
+    private String taskSourceType;
+
+    /** Sprint 4 Phase 1：来源 DAG ID */
+    private Long sourceDagId;
+
+    /** Sprint 4 Phase 1：来源 DAG 名称 */
+    private String sourceDagName;
+
+    /** Sprint 4 Phase 1：来源节点 node_id */
+    private String sourceNodeId;
+
+    /** Sprint 4 Phase 1：来源节点名称 */
+    private String sourceNodeName;
+
     private Long lastCollectHistoryId;
 
     @TableField(exist = false)

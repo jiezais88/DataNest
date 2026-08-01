@@ -15,6 +15,7 @@ import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
 import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
+import {formatDateTime} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
 
 export default function DagsPage() {
@@ -100,13 +101,14 @@ export default function DagsPage() {
         {
             title: '项目名称',
             dataIndex: 'name',
-            width: '22%',
+            width: 200,
             ellipsis: true,
             render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
         },
         {
             title: '项目描述',
             dataIndex: 'description',
+            width: 320,
             ellipsis: true,
             render: (v?: string) => v
                 ? <span className="text-ds-text-secondary">{v}</span>
@@ -114,22 +116,42 @@ export default function DagsPage() {
         },
         {
             title: 'DAG 数',
-            width: '15%',
+            width: 100,
             align: 'center',
             render: (_, r: DagProject) => r.dagCount ?? 0
         },
         {
+            title: '创建时间',
+            width: 170,
+            dataIndex: 'createdAt',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                </Tooltip>
+            )
+        },
+        {
+            title: '更新时间',
+            width: 170,
+            dataIndex: 'updatedAt',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                </Tooltip>
+            )
+        },
+        {
             title: '操作',
-            width: '20%',
+            width: 200,
             align: 'center',
             render: (_, r: DagProject) => (
-                <div className="flex items-center gap-1 whitespace-nowrap">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="进入">
                         <DsIconButton
                             tone="accent"
                             aria-label="进入"
                             onClick={() => navigate(`/engineering/dags/${r.id}`)}>
-                            <HiOutlineArrowRightOnRectangle size={16}/>
+                            <HiOutlineArrowRightOnRectangle size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     {canEdit && (
@@ -142,7 +164,7 @@ export default function DagsPage() {
                                     projectForm.setFieldsValue(r);
                                     setProjectModalOpen(true);
                                 }}>
-                                <HiOutlinePencilSquare size={16}/>
+                                <HiOutlinePencilSquare size={14}/>
                             </DsIconButton>
                         </Tooltip>
                     )}
@@ -152,7 +174,7 @@ export default function DagsPage() {
                                 tone="danger"
                                 aria-label="删除"
                                 onClick={() => openDeleteModal(r)}>
-                                <HiOutlineTrash size={16}/>
+                                <HiOutlineTrash size={14}/>
                             </DsIconButton>
                         </Tooltip>
                     )}
@@ -217,6 +239,7 @@ export default function DagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1160}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description="暂无项目"/>}}
@@ -258,7 +281,7 @@ export default function DagsPage() {
                 <Form form={projectForm} layout="vertical" requiredMark={false} className="mt-ds-2">
                     <Form.Item
                         label={<span
-                            className="block text-[12px] font-bold text-ds-text-secondary uppercase tracking-[0.5px]">项目名称 <span
+                            className="block text-ds-caption font-bold text-ds-text-secondary uppercase tracking-[0.5px]">项目名称 <span
                             className="text-ds-danger">*</span></span>}
                         name="name"
                         rules={[
@@ -266,21 +289,21 @@ export default function DagsPage() {
                             {pattern: /^[一-龥A-Za-z0-9_]{3,30}$/, message: '支持中文、字母、数字、下划线，3-30 位'},
                         ]}
                         extra={<span
-                            className="text-[11px] text-ds-text-muted">支持中文、字母、数字、下划线，3-30 位</span>}
+                            className="text-ds-nano text-ds-text-muted">支持中文、字母、数字、下划线，3-30 位</span>}
                     >
                         <Input id="name" placeholder="输入项目名称，3-30 位"
                                disabled={!!editingProject}
-                               className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-[13px]"/>
+                               className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-ds-small"/>
                     </Form.Item>
                     <Form.Item
                         label={<span
-                            className="block text-[12px] font-bold text-ds-text-secondary uppercase tracking-[0.5px]">项目描述</span>}
+                            className="block text-ds-caption font-bold text-ds-text-secondary uppercase tracking-[0.5px]">项目描述</span>}
                         name="description"
                         rules={[{max: 200, message: '最多 200 字'}]}
-                        extra={<span className="text-[11px] text-ds-text-muted">最多 200 字</span>}
+                        extra={<span className="text-ds-nano text-ds-text-muted">最多 200 字</span>}
                     >
                         <Input placeholder="可选，最多 200 字"
-                               className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-[13px]"/>
+                               className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-ds-small"/>
                     </Form.Item>
                 </Form>
             </Modal>
@@ -297,11 +320,11 @@ export default function DagsPage() {
                 centered
                 wrapClassName="prototype-modal"
             >
-                <div className="text-[14px] mb-ds-4">
+                <div className="text-ds-body mb-ds-4">
                     确定删除项目「<strong>{deleteTarget?.name}</strong>」吗？
                 </div>
                 <div
-                    className="bg-ds-bg-root rounded-ds-sm px-ds-4 py-[14px] text-[13px] text-ds-text-secondary leading-[1.7] mb-ds-5">
+                    className="bg-ds-bg-root rounded-ds-sm px-ds-4 py-[14px] text-ds-small text-ds-text-secondary leading-[1.7] mb-ds-5">
                     <div className="font-semibold text-ds-text-primary mb-[6px]">
                         该项目包含 {deleteTarget?.dagCount ?? deleteDagNames?.length ?? 0} 个 DAG，将一并删除：
                     </div>

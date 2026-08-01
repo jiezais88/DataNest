@@ -18,6 +18,7 @@ import {ROLE_OPTIONS as ROLE_OPTION_ITEMS} from '../../../constants/roles';
 import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsSpinner from '../../../components/DsSpinner';
+import DsStatusBadge from '../../../components/DsStatusBadge';
 import {HiOutlineCheck, HiOutlineKey, HiOutlineNoSymbol, HiOutlinePencilSquare, HiOutlinePlus,} from 'react-icons/hi2';
 
 const ROLE_OPTIONS = [
@@ -156,7 +157,7 @@ export default function UsersPage() {
             dataIndex: 'username',
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-body text-ds-text-primary font-medium">{v}</span>
+                <span className="text-ds-small text-ds-text-primary font-medium">{v}</span>
             ),
         },
         {
@@ -180,31 +181,24 @@ export default function UsersPage() {
             dataIndex: 'email',
             ellipsis: true,
             render: (v?: string) => (
-                <span className="text-ds-body text-ds-text-secondary">{v || '-'}</span>
+                <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
             ),
         },
         {
             title: '状态',
             dataIndex: 'enabled',
             render: (enabled: boolean) => (
-                <span
-                    className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium ${
-                        enabled
-                            ? 'bg-ds-success-light text-ds-success'
-                            : 'bg-ds-danger-light text-ds-danger'
-                    }`}
-                >
-                    <span
-                        className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-ds-success' : 'bg-ds-danger'}`}/>
-                    {enabled ? '正常' : '已禁用'}
-                </span>
+                enabled
+                    ? <DsStatusBadge variant="success" label="正常"/>
+                    : <DsStatusBadge variant="danger" label="已禁用"/>
             ),
         },
         {
             title: '创建时间',
             dataIndex: 'createdAt',
+            width: 170,
             render: (v: string) => (
-                <span className="text-ds-small text-ds-text-secondary">{formatDateTime(v)}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
         },
         {
@@ -222,7 +216,7 @@ export default function UsersPage() {
                             }}
                             aria-label="编辑"
                         >
-                            <HiOutlinePencilSquare size={16}/>
+                            <HiOutlinePencilSquare size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="重置密码">
@@ -234,7 +228,7 @@ export default function UsersPage() {
                             }}
                             aria-label="重置密码"
                         >
-                            <HiOutlineKey size={16}/>
+                            <HiOutlineKey size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title={user.enabled ? '禁用' : '启用'}>
@@ -246,8 +240,8 @@ export default function UsersPage() {
                             }}
                             aria-label={user.enabled ? '禁用' : '启用'}
                         >
-                            {user.enabled ? <HiOutlineNoSymbol size={16}/> :
-                                <HiOutlineCheck size={16}/>}
+                            {user.enabled ? <HiOutlineNoSymbol size={14}/> :
+                                <HiOutlineCheck size={14}/>}
                         </DsIconButton>
                     </Tooltip>
                 </div>
@@ -329,6 +323,7 @@ export default function UsersPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1000}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{

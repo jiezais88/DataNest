@@ -453,15 +453,15 @@ export default function SyncJobDrawer({
                     >
                         取消
                     </DsButton>
-                    <button
+                    <DsButton
                         data-testid="sync-job-submit-run"
                         onClick={() => handleSubmit(true)}
                         disabled={submitting}
-                        className="px-ds-4 py-ds-2 bg-white border border-ds-accent text-ds-accent hover:bg-ds-accent-light disabled:opacity-60 disabled:cursor-not-allowed text-ds-small font-semibold rounded-ds-sm transition-colors"
                     >
                         {submitting ? '保存中...' : '保存并立即执行'}
-                    </button>
+                    </DsButton>
                     <DsButton
+                        variant="secondary"
                         data-testid="sync-job-submit"
                         onClick={() => handleSubmit(false)}
                         disabled={submitting}

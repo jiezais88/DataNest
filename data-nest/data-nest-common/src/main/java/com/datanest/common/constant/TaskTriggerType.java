@@ -10,7 +10,8 @@ import java.util.stream.Collectors;
 public enum TaskTriggerType {
 
     MANUAL("MANUAL", "手动触发"),
-    CRON("CRON", "Cron 定时");
+    CRON("CRON", "Cron 定时"),
+    DAG("DAG", "DAG 编排");
 
     private final String code;
     private final String label;

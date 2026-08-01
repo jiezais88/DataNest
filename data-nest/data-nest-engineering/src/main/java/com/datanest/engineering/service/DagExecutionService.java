@@ -1,6 +1,7 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
@@ -57,6 +58,7 @@ public class DagExecutionService {
     private final DolphinSchedulerClient dolphinSchedulerClient;
     private final SyncJobService syncJobService;
     private final DagService dagService;
+    private final DagParameterService dagParameterService;
 
     public DagExecutionService(DagMapper dagMapper, DagNodeMapper dagNodeMapper,
                                DagEdgeMapper dagEdgeMapper,
@@ -64,7 +66,8 @@ public class DagExecutionService {
                                DagProjectMapper dagProjectMapper,
                                DolphinSchedulerClient dolphinSchedulerClient,
                                SyncJobService syncJobService,
-                               DagService dagService) {
+                               DagService dagService,
+                               DagParameterService dagParameterService) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -74,6 +77,7 @@ public class DagExecutionService {
         this.dolphinSchedulerClient = dolphinSchedulerClient;
         this.syncJobService = syncJobService;
         this.dagService = dagService;
+        this.dagParameterService = dagParameterService;
     }
 
     /**
@@ -89,6 +93,11 @@ public class DagExecutionService {
      */
     @Transactional
     public DagExecutionDTO trigger(Long dagId) {
+        return trigger(dagId, null);
+    }
+
+    @Transactional
+    public DagExecutionDTO trigger(Long dagId, Map<String, Object> manualParams) {
         Dag dag = dagMapper.selectById(dagId);
         if (dag == null) {
             throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
@@ -120,6 +129,9 @@ public class DagExecutionService {
         execution.setStartTime(LocalDateTime.now());
         execution.setCreatedBy(currentUserId());
         execution.setCreatedAt(LocalDateTime.now());
+        // 解析并保存本次执行的参数（手动覆盖 > 默认值 > 系统变量）
+        Map<String, Object> resolvedParams = dagParameterService.resolveParams(dagId, manualParams);
+        execution.setResolvedParams(JSON.toJSONString(resolvedParams));
         // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
         execution.setEdgeSnapshot(DagEdgeSnapshot.capture(dagEdgeMapper, dagId));
         try {
@@ -231,20 +243,42 @@ public class DagExecutionService {
         logger.info("DAG 执行停止: executionId={}, 子节点清掉 {} 个", executionId, skipped);
 
         // DS 停止（HTTP 调用）放到事务提交后：DB 状态已落库，DS 侧失败仅警告
+        // 注意竞态：trigger 后立刻 stop 时 DS 实例可能还在 SUBMITTED_SUCCESS，
+        // DS 会拒绝停止（can not stop），因此异步做有限次重试，等实例进入可停止状态
         Long dsProjectCode = dag.getDsProjectCode() == null
                 ? DolphinSchedulerConfig.DEFAULT_DS_PROJECT_CODE : dag.getDsProjectCode();
         Long dsProcessInstanceId = execution.getDsProcessInstanceId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                try {
-                    dolphinSchedulerClient.stopWorkflowInstance(dsProjectCode, dsProcessInstanceId);
-                } catch (Exception e) {
-                    logger.warn("DS 停止执行失败: executionId={}", executionId, e);
-                }
+                java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    for (int attempt = 1; attempt <= DS_STOP_MAX_ATTEMPTS; attempt++) {
+                        try {
+                            dolphinSchedulerClient.stopWorkflowInstance(dsProjectCode, dsProcessInstanceId);
+                            return;
+                        } catch (Exception e) {
+                            if (attempt == DS_STOP_MAX_ATTEMPTS) {
+                                logger.warn("DS 停止执行失败（重试 {} 次后放弃）: executionId={}",
+                                        DS_STOP_MAX_ATTEMPTS, executionId, e);
+                                return;
+                            }
+                            try {
+                                Thread.sleep(DS_STOP_RETRY_INTERVAL_MS);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                    }
+                });
             }
         });
     }
+
+    /** DS 停止的最大重试次数（覆盖 SUBMITTED_SUCCESS → RUNNING_EXECUTION 的短暂窗口） */
+    private static final int DS_STOP_MAX_ATTEMPTS = 5;
+    /** DS 停止重试间隔（毫秒） */
+    private static final long DS_STOP_RETRY_INTERVAL_MS = 2000L;
 
     public DagExecutionDTO getDetail(Long executionId) {
         DagExecution execution = dagExecutionMapper.selectById(executionId);
@@ -256,17 +290,8 @@ public class DagExecutionService {
     }
 
     /**
-     * Sprint 3 P1-13（差距分析 §1.13）：重跑失败节点。
-     * <p>
-     * 业务规则：
-     * - executionId 必须存在 → 7016 DAG_EXECUTION_NOT_FOUND
-     * - executionId.dagId 必须等于路径里的 dagId → 7016（不匹配视同查无）
-     * - DAG 必须未在执行中（不能并发触发） → 7017 DAG_RERUN_ALREADY_RUNNING
-     * <p>
-     * MVP 简化（P2 增强点）：
-     * - 当前实现 = 直接 trigger 一个全新的 execution，DagExecutionSyncService 5s 轮询会重新跑所有节点
-     * - 真正的"只重跑失败节点"需要改写 trigger 流程为「只触发 FAILED 节点子图 + 保留上游成功节点结果」，
-     *   后续 Sprint P2 再做（参考 gap-analysis §1.13）
+     * Sprint 4：真正的重跑失败节点。
+     * 仅重新执行原实例中 FAILED / SKIPPED 的节点，上游 SUCCESS 节点结果复用。
      *
      * @param dagId       路径上的 dagId（与 execution 内的 dagId 必须一致）
      * @param executionId 要重跑的旧执行实例 id
@@ -274,26 +299,153 @@ public class DagExecutionService {
      */
     @Transactional
     public DagExecutionDTO rerunFailed(Long dagId, Long executionId) {
-        // 1. 校验 executionId 存在
         DagExecution oldExecution = dagExecutionMapper.selectById(executionId);
         if (oldExecution == null) {
             throw new BusinessException(ErrorCode.DAG_EXECUTION_NOT_FOUND,
                     "执行实例不存在: " + executionId);
         }
-        // 2. 校验路径 dagId 与 execution 的 dagId 一致
         if (oldExecution.getDagId() == null || !oldExecution.getDagId().equals(dagId)) {
             throw new BusinessException(ErrorCode.DAG_EXECUTION_NOT_FOUND,
                     "执行实例 " + executionId + " 不属于 DAG " + dagId);
         }
-        // 3. 校验当前 DAG 未在执行中（专用错误码 7017；与普通 trigger 区分，便于前端差异化提示）
+        String oldStatus = oldExecution.getStatus();
+        if (!"FAILED".equalsIgnoreCase(oldStatus) && !"TERMINATED".equalsIgnoreCase(oldStatus)
+                && !"SUCCESS".equalsIgnoreCase(oldStatus)) {
+            throw new BusinessException(ErrorCode.DAG_RERUN_ALREADY_RUNNING,
+                    "只能对终态执行记录重跑失败节点: " + oldStatus);
+        }
+
         Long runningCount = dagExecutionMapper.selectCount(
                 new QueryWrapper<DagExecution>().eq("dag_id", dagId).eq("status", "RUNNING"));
         if (runningCount != null && runningCount > 0) {
             throw new BusinessException(ErrorCode.DAG_RERUN_ALREADY_RUNNING,
                     "DAG " + dagId + " 当前正在执行中，请等待执行结束或先停止后重试");
         }
-        // 4. 复用现有 trigger：它内置了 ENABLED / dsProcessDefinitionCode / 唯一索引并发安全检查
-        return trigger(dagId);
+
+        Dag dag = dagMapper.selectById(dagId);
+        if (dag == null) {
+            throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
+        }
+        if (!"ENABLED".equalsIgnoreCase(dag.getStatus())) {
+            throw new BusinessException(ErrorCode.DAG_DISABLED);
+        }
+        if (!"ONLINE".equalsIgnoreCase(dag.getReleaseState()) || dag.getDsProcessDefinitionCode() == null) {
+            throw new BusinessException(ErrorCode.DS_API_ERROR, "DAG 未同步到 DolphinScheduler");
+        }
+
+        List<NodeExecution> oldNodes = nodeExecutionMapper.selectByExecutionId(executionId);
+        List<NodeExecution> rerunNodes = oldNodes.stream()
+                .filter(n -> "FAILED".equalsIgnoreCase(n.getStatus()) || "SKIPPED".equalsIgnoreCase(n.getStatus()))
+                .toList();
+        if (rerunNodes.isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "没有需要重跑的失败/跳过节点");
+        }
+
+        // 1. 创建新执行记录
+        DagExecution execution = new DagExecution();
+        execution.setDagId(dagId);
+        execution.setTriggerType("MANUAL");
+        execution.setStatus("RUNNING");
+        execution.setStartTime(LocalDateTime.now());
+        execution.setCreatedBy(currentUserId());
+        execution.setCreatedAt(LocalDateTime.now());
+        execution.setResolvedParams(oldExecution.getResolvedParams());
+        execution.setEdgeSnapshot(oldExecution.getEdgeSnapshot());
+        try {
+            dagExecutionMapper.insert(execution);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ErrorCode.DAG_ALREADY_RUNNING);
+        }
+
+        // 2. 复制 node_execution：失败/跳过重置为 WAITING，成功节点保持 SUCCESS
+        List<DagNode> dagNodes = dagNodeMapper.selectByDagId(dagId);
+        Map<String, DagNode> nodeMap = dagNodes.stream()
+                .collect(Collectors.toMap(DagNode::getNodeId, n -> n, (a, b) -> a));
+        List<NodeExecution> newNodes = new ArrayList<>(oldNodes.size());
+        for (NodeExecution old : oldNodes) {
+            NodeExecution ne = new NodeExecution();
+            ne.setId(IdWorker.getId());
+            ne.setExecutionId(execution.getId());
+            ne.setNodeId(old.getNodeId());
+            ne.setNodeName(old.getNodeName());
+            ne.setNodeType(old.getNodeType());
+            if ("FAILED".equalsIgnoreCase(old.getStatus()) || "SKIPPED".equalsIgnoreCase(old.getStatus())) {
+                ne.setStatus("WAITING");
+            } else {
+                ne.setStatus(old.getStatus());
+                ne.setStartTime(old.getStartTime());
+                ne.setEndTime(old.getEndTime());
+                ne.setDurationMs(old.getDurationMs());
+                ne.setOutputInfo(old.getOutputInfo());
+            }
+            newNodes.add(ne);
+        }
+        if (!newNodes.isEmpty()) {
+            nodeExecutionMapper.insertBatch(newNodes);
+        }
+
+        // 3. 构造 startNodeList：只包含需要重跑的节点对应的 DS task code
+        List<Long> startNodeCodes = rerunNodes.stream()
+                .map(n -> {
+                    DagNode dn = nodeMap.get(n.getNodeId());
+                    return dn != null ? dn.getDsTaskCode() : null;
+                })
+                .filter(c -> c != null)
+                .toList();
+        if (startNodeCodes.isEmpty()) {
+            throw new BusinessException(ErrorCode.DS_API_ERROR,
+                    "需要重跑的节点没有对应的 DS task code，请重新保存 DAG 后再试");
+        }
+
+        // 4. 事务提交后调 DS 触发（带 startNodeList）
+        Long newExecutionId = execution.getId();
+        Long dsProjectCode = dag.getDsProjectCode() == null
+                ? DolphinSchedulerConfig.DEFAULT_DS_PROJECT_CODE : dag.getDsProjectCode();
+        Long dsProcessDefinitionCode = dag.getDsProcessDefinitionCode();
+        long operator = currentUserId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                Long dsProcessInstanceId;
+                try {
+                    dsProcessInstanceId = dolphinSchedulerClient.startWorkflowInstance(
+                            dsProjectCode, dsProcessDefinitionCode, "END", "START_PROCESS",
+                            operator, "", startNodeCodes);
+                } catch (Exception e) {
+                    String reason = "重跑触发失败: " + e.getMessage();
+                    logger.error("DS 重跑工作流失败: dagId={}, executionId={}", dagId, newExecutionId, e);
+                    try {
+                        DagExecution failed = dagExecutionMapper.selectById(newExecutionId);
+                        if (failed != null && "RUNNING".equalsIgnoreCase(failed.getStatus())) {
+                            failed.setStatus("FAILED");
+                            failed.setEndTime(LocalDateTime.now());
+                            failed.setErrorMessage(reason);
+                            if (failed.getStartTime() != null) {
+                                failed.setDurationMs(Duration.between(failed.getStartTime(), failed.getEndTime()).toMillis());
+                            }
+                            dagExecutionMapper.updateById(failed);
+                        }
+                        NodeExecution skipped = new NodeExecution();
+                        skipped.setStatus("SKIPPED");
+                        skipped.setErrorMessage("DAG 重跑触发失败，节点未运行");
+                        nodeExecutionMapper.update(skipped,
+                                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<NodeExecution>()
+                                        .eq("execution_id", newExecutionId)
+                                        .eq("status", "WAITING"));
+                    } catch (Exception ex) {
+                        logger.error("重跑失败补偿标记失败: executionId={}", newExecutionId, ex);
+                    }
+                    throw new BusinessException(ErrorCode.DS_API_ERROR, reason);
+                }
+                DagExecution fresh = dagExecutionMapper.selectById(newExecutionId);
+                if (fresh != null) {
+                    fresh.setDsProcessInstanceId(dsProcessInstanceId);
+                    dagExecutionMapper.updateById(fresh);
+                }
+            }
+        });
+
+        return getDetail(execution.getId());
     }
 
     /**

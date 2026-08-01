@@ -169,7 +169,7 @@ export default function ProjectDagsPage() {
         {
             title: 'Cron 表达式', dataIndex: 'cronExpression', width: 160,
             render: (v?: string) => v
-                ? <span className="font-mono text-[12px] text-ds-text-secondary">{v}</span>
+                ? <span className="font-mono text-ds-caption text-ds-text-secondary">{v}</span>
                 : <span className="text-ds-text-muted">—</span>
         },
         {
@@ -186,21 +186,21 @@ export default function ProjectDagsPage() {
         {
             title: '状态', width: 100,
             render: (_, r: Dag) => {
-                const variant = executionStatusVariant(r.latestExecution?.status);
-                const label = variant === 'success' ? '成功'
-                    : variant === 'danger' ? '失败'
-                        : variant === 'running' ? '运行中'
+                const status = r.latestExecution?.status;
+                const label = status === 'SUCCESS' ? '成功'
+                    : status === 'FAILED' ? '失败'
+                        : status === 'RUNNING' ? '运行中'
                             : '未执行';
-                return <DsStatusBadge label={label} variant={variant}/>;
+                return <DsStatusBadge label={label} variant={executionStatusVariant(status)}/>;
             }
         },
         {
-            title: '最近执行', width: 180,
+            title: '最近执行', width: 170,
             render: (_, r: Dag) => {
                 const t = r.latestExecution?.startTime;
                 return (
                     <Tooltip title={t || '无'}>
-                        <span className="text-ds-text-muted">{formatDateTime(t)}</span>
+                        <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(t)}</span>
                     </Tooltip>
                 );
             }
@@ -218,7 +218,7 @@ export default function ProjectDagsPage() {
                                 disabled={schedulingId === r.id}
                                 aria-label={r.scheduleEnabled ? '停用调度' : '启用调度'}
                             >
-                                <HiOutlineCalendar size={16}/>
+                                <HiOutlineCalendar size={14}/>
                             </DsIconButton>
                         </Tooltip>
                     )}
@@ -324,6 +324,7 @@ export default function ProjectDagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1250}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description={loading ? '加载中...' : '暂无 DAG'}/>}}
@@ -354,11 +355,11 @@ export default function ProjectDagsPage() {
                 centered
                 wrapClassName="prototype-modal"
             >
-                <div className="text-[14px] mb-ds-4">
+                <div className="text-ds-body mb-ds-4">
                     确定删除 DAG「<strong>{deleteTarget?.name}</strong>」吗？
                 </div>
                 <div
-                    className="bg-ds-bg-root rounded-ds-sm px-ds-4 py-[14px] text-[13px] text-ds-text-secondary leading-[1.7] mb-ds-5">
+                    className="bg-ds-bg-root rounded-ds-sm px-ds-4 py-[14px] text-ds-small text-ds-text-secondary leading-[1.7] mb-ds-5">
                     <div>• 该 DAG 的所有节点和连线将被删除</div>
                     <div>• 该 DAG 的执行历史将被删除</div>
                     <div>• 被引用的同步任务不会删除，仅解除引用关系</div>

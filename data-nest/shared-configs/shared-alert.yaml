@@ -1,0 +1,16 @@
+# Sprint 4：DAG 告警邮件配置（全局）
+# 默认关闭告警；生产环境通过环境变量注入真实 SMTP 后开启。
+spring:
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    from: ${MAIL_FROM:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+datanest:
+  alert:
+    enabled: ${ALERT_ENABLED:false}

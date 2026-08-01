@@ -30,6 +30,9 @@ public class JobRegistrar implements ApplicationRunner {
     @Value("${datanest.job.dag-sync.cron:0/30 * * * * ?}")
     private String dagSyncCron;
 
+    @Value("${datanest.job.dag-timeout-alert.cron:0 * * * * ?}")
+    private String dagTimeoutAlertCron;
+
     private final SchedulerClient schedulerClient;
 
     public JobRegistrar(SchedulerClient schedulerClient) {
@@ -51,6 +54,8 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("stuckExecutionReaperHandler", "0 0 * * * ?");
         // 同步任务持久化重试扫描（每小时，实际触发时间 = next_retry_at 之后的第一个整点扫描周期）
         platformJobs.put("syncJobRetryHandler", "0 10 * * * ?");
+        // Sprint 4：DAG 节点超时告警扫描（默认每分钟）
+        platformJobs.put("dagNodeTimeoutAlertHandler", dagTimeoutAlertCron);
 
         int jobGroup = resolveJobGroup();
         logger.info("Ensuring platform jobs registered in XXL-JOB, jobGroup={}", jobGroup);
@@ -100,6 +105,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "dagExecutionHistoryCleanupHandler" -> "DAG 执行历史清理";
             case "stuckExecutionReaperHandler" -> "卡死 RUNNING 执行收割";
             case "syncJobRetryHandler" -> "同步任务失败重试扫描";
+            case "dagNodeTimeoutAlertHandler" -> "DAG 节点超时告警扫描";
             default -> executorHandler;
         };
     }

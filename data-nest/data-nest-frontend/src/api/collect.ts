@@ -65,3 +65,8 @@ export function getCollectHistory(taskId: string, historyId: string) {
 export function getCollectHistoryLogs(taskId: string, historyId: string) {
     return request.get<Result<CollectExecutionLog[]>>(`/governance/collect-tasks/${taskId}/history/${historyId}/logs`);
 }
+
+// 手动停止运行中的采集执行实例（停止后状态归一为 TERMINATED）
+export function stopCollectHistory(historyId: string) {
+    return request.post<Result<null>>(`/governance/collect-tasks/history/${historyId}/stop`);
+}

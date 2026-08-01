@@ -319,17 +319,17 @@ export default function MetadataPage() {
                             setEditingCell(null);
                         }
                     }}
-                    className={`${width} px-ds-2 py-ds-1 text-ds-small bg-ds-bg-surface border border-ds-border-subtle rounded-ds-sm focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent`}
+                    className={`${width} px-ds-2 py-0.5 text-ds-small bg-ds-bg-surface border border-ds-border-subtle rounded-ds-sm focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent`}
                 />
             );
         }
         return (
-            <div className="group flex items-center gap-ds-2 min-h-[28px]">
+            <div className="group flex items-center gap-ds-2 min-h-[24px]">
                 <span className="text-ds-small text-ds-text-secondary truncate">{value || '-'}</span>
                 {canWrite && (
                     <button
                         onClick={() => startEdit(type, id, value || '')}
-                        className="opacity-0 group-hover:opacity-100 text-ds-text-muted hover:text-ds-accent text-ds-caption transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-ds-caption text-ds-text-muted hover:text-ds-accent hover:bg-ds-accent-light transition-colors"
                     >
                         编辑
                     </button>
@@ -363,7 +363,7 @@ export default function MetadataPage() {
             title: '库名',
             ellipsis: true,
             render: (db: string) => (
-                <span className="text-ds-body text-ds-accent font-medium" title={db}>{db}</span>
+                <span className="text-ds-small text-ds-accent font-medium" title={db}>{db}</span>
             ),
         },
     ], []);
@@ -376,6 +376,7 @@ export default function MetadataPage() {
                     rowKey={(db) => db}
                     loading={databasesLoading}
                     pagination={false}
+                    scroll={{x: 400}}
                     columns={databaseColumns}
                     className="prototype-table prototype-table-flush"
                     onRow={(db) => ({
@@ -397,7 +398,7 @@ export default function MetadataPage() {
             title: 'Schema',
             ellipsis: true,
             render: (schema: string) => (
-                <span className="text-ds-body text-ds-accent font-medium" title={schema}>{schema}</span>
+                <span className="text-ds-small text-ds-accent font-medium" title={schema}>{schema}</span>
             ),
         },
     ], []);
@@ -410,6 +411,7 @@ export default function MetadataPage() {
                     rowKey={(schema) => schema}
                     loading={schemasLoading}
                     pagination={false}
+                    scroll={{x: 400}}
                     columns={schemaColumns}
                     className="prototype-table prototype-table-flush"
                     onRow={(schema) => ({
@@ -432,7 +434,7 @@ export default function MetadataPage() {
             dataIndex: 'tableName',
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-body text-ds-accent font-medium" title={v}>{v}</span>
+                <span className="text-ds-small text-ds-accent font-medium" title={v}>{v}</span>
             ),
         },
         {
@@ -470,6 +472,7 @@ export default function MetadataPage() {
                     rowKey="id"
                     loading={tablesLoading}
                     pagination={false}
+                    scroll={{x: 700}}
                     columns={tableColumns}
                     className="prototype-table prototype-table-flush"
                     onRow={(table) => ({
@@ -492,7 +495,7 @@ export default function MetadataPage() {
             dataIndex: 'columnName',
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-body text-ds-text-primary font-medium" title={v}>{v}</span>
+                <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
             ),
         },
         {
@@ -554,13 +557,13 @@ export default function MetadataPage() {
                             表信息
                         </h3>
                         {canPreview && (
-                            <button
+                            <DsButton
+                                variant="secondary"
                                 onClick={() => handlePreviewTable(selectedTable)}
-                                className="inline-flex items-center gap-ds-1 px-ds-3 py-ds-1.5 text-ds-small font-medium text-ds-accent hover:bg-ds-accent-light rounded-ds-sm transition-colors"
                             >
                                 <HiOutlineEye size={16}/>
                                 预览
-                            </button>
+                            </DsButton>
                         )}
                     </div>
                     <div className="grid grid-cols-[100px_1fr] gap-y-ds-3 text-ds-small">
@@ -602,6 +605,7 @@ export default function MetadataPage() {
                                 rowKey={(column) => column.id || column.columnName}
                                 loading={columnsLoading}
                                 pagination={false}
+                                scroll={{x: 850}}
                                 columns={columnColumns}
                                 className="prototype-table prototype-table-flush"
                                 onRow={(column) => ({

@@ -13,7 +13,7 @@ export default function TypeBadge({type}: { type: DataSourceType }) {
     const style = TYPE_STYLES[type] || {bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-100'};
     return (
         <span
-            className={`inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 rounded-ds-full text-ds-small font-medium border ${style.bg} ${style.text} ${style.border}`}
+            className={`inline-flex items-center gap-ds-1 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap border ${style.bg} ${style.text} ${style.border}`}
         >
             <DatabaseTypeIcon type={type} size={14} showLabel={true}/>
         </span>

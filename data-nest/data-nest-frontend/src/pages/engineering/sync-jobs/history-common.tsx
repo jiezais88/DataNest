@@ -1,5 +1,6 @@
+import {Link} from 'react-router-dom';
 import type {SyncJobHistory, SyncJobLog} from '../../../types/sync';
-import {formatDateTime, formatDuration, formatThroughput} from '../../../utils/format';
+import {formatDateTime, formatExecutionDuration, formatThroughput} from '../../../utils/format';
 import DsButton from '../../../components/DsButton';
 import DsModal from '../../../components/DsModal';
 import DsStatusBadge from '../../../components/DsStatusBadge';
@@ -53,6 +54,19 @@ export function HistoryDetailModal({open, item, onClose, onViewLogs}: HistoryDet
                     <span className="text-ds-text-muted">执行方式</span>
                     <span className="text-ds-text-primary">{triggerBadge(item.triggerType)}</span>
 
+                    {item.dagId != null && item.dagExecutionId != null && (
+                        <>
+                            <span className="text-ds-text-muted">DAG 实例</span>
+                            <Link
+                                to={`/engineering/dags/${item.dagId}/executions/${item.dagExecutionId}`}
+                                onClick={onClose}
+                                className="text-ds-accent hover:underline"
+                            >
+                                {item.dagName || `DAG #${item.dagId}`}
+                            </Link>
+                        </>
+                    )}
+
                     <span className="text-ds-text-muted">状态</span>
                     <span className="text-ds-text-primary">
                             <DsStatusBadge label={statusLabel(item.status)}
@@ -61,7 +75,7 @@ export function HistoryDetailModal({open, item, onClose, onViewLogs}: HistoryDet
 
                     <span className="text-ds-text-muted">耗时</span>
                     <span
-                        className="text-ds-text-primary">{formatDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined))}</span>
+                        className="text-ds-text-primary">{formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime)}</span>
 
                     <span className="text-ds-text-muted">源表</span>
                     <span className="text-ds-text-primary font-mono">{formatSourceTable(item)}</span>

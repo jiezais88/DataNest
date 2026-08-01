@@ -129,7 +129,7 @@ export default function Sidebar() {
 
                     return (
                         <div key={group.group} className="mb-ds-4">
-                            <p className="text-[11px] font-bold text-ds-text-muted uppercase tracking-[0.8px] px-3 pt-4 pb-[6px]">
+                            <p className="text-ds-nano font-bold text-ds-text-muted uppercase tracking-[0.8px] px-3 pt-4 pb-[6px]">
                                 {group.group}
                             </p>
                             {visibleItems.map((item) => {
@@ -138,13 +138,13 @@ export default function Sidebar() {
                                     <button
                                         key={item.path}
                                         onClick={() => navigate(item.path)}
-                                        className={`w-full flex items-center gap-[10px] px-4 py-[9px] rounded-lg text-[13px] font-medium transition-colors duration-150 text-left
+                                        className={`w-full flex items-center gap-[10px] px-4 py-[9px] rounded-lg text-ds-small font-medium transition-colors duration-150 text-left
                       ${active
                                             ? 'bg-ds-accent-light text-ds-accent font-semibold'
                                             : 'text-ds-text-secondary hover:bg-ds-bg-hover hover:text-ds-text-primary'
                                         }`}
                                     >
-                                        <span className="text-[15px] leading-none">{item.icon}</span>
+                                        <span className="text-ds-body leading-none">{item.icon}</span>
                                         {item.label}
                                     </button>
                                 );

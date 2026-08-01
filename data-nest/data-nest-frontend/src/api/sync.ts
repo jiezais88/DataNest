@@ -55,3 +55,8 @@ export function queryAllSyncJobHistory(params: SyncJobHistoryQueryParams) {
 export function getSyncJobLogs(syncJobId: string, historyId: string) {
     return request.get<Result<SyncJobLog[]>>(`/engineering/sync-jobs/${syncJobId}/history/${historyId}/logs`);
 }
+
+// 手动停止运行中的同步执行实例（停止后状态归一为 TERMINATED）
+export function stopSyncHistory(historyId: string) {
+    return request.post<Result<null>>(`/engineering/sync-jobs/history/${historyId}/stop`);
+}

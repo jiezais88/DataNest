@@ -5,12 +5,17 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionDTO;
 import com.datanest.engineering.dto.DagPayload;
+import com.datanest.engineering.dto.PythonTestRequest;
 import com.datanest.engineering.dto.SyncJobLogDTO;
 import com.datanest.engineering.service.DagExecutionService;
+import com.datanest.engineering.service.DagParameterService;
 import com.datanest.engineering.service.DagService;
+import com.datanest.task.core.dto.PythonExecuteResult;
+import com.datanest.task.core.service.PythonExecutor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/dev/dags")
@@ -18,10 +23,15 @@ public class DagController {
 
     private final DagService dagService;
     private final DagExecutionService dagExecutionService;
+    private final PythonExecutor pythonExecutor;
+    private final DagParameterService dagParameterService;
 
-    public DagController(DagService dagService, DagExecutionService dagExecutionService) {
+    public DagController(DagService dagService, DagExecutionService dagExecutionService,
+                         PythonExecutor pythonExecutor, DagParameterService dagParameterService) {
         this.dagService = dagService;
         this.dagExecutionService = dagExecutionService;
+        this.pythonExecutor = pythonExecutor;
+        this.dagParameterService = dagParameterService;
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
@@ -57,8 +67,27 @@ public class DagController {
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/{id}/trigger")
-    public Result<DagExecutionDTO> trigger(@PathVariable Long id) {
-        return Result.ok(dagExecutionService.trigger(id));
+    public Result<DagExecutionDTO> trigger(@PathVariable Long id,
+                                           @RequestBody(required = false) Map<String, Object> params) {
+        return Result.ok(dagExecutionService.trigger(id, params));
+    }
+
+    /**
+     * PYTHON 节点脚本测试：执行脚本并返回结果，不注册元数据、不写 node_execution。
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/nodes/{nodeId}/python/test")
+    public Result<PythonExecuteResult> testPythonNode(@PathVariable Long id,
+                                                      @PathVariable String nodeId,
+                                                      @RequestBody PythonTestRequest request) {
+        if (request == null || !org.springframework.util.StringUtils.hasText(request.getPythonScript())) {
+            return Result.fail(400, "pythonScript 不能为空");
+        }
+        Map<String, Object> params = dagParameterService.resolveParams(id, request.getParams());
+        String script = dagParameterService.replacePlaceholders(request.getPythonScript(), params);
+        PythonExecuteResult result = pythonExecutor.execute(
+                script, new PythonExecutor.PythonContext(params, null), null, null);
+        return Result.ok(result);
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)

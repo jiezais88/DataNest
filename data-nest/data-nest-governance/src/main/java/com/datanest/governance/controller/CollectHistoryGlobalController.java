@@ -8,13 +8,11 @@ import com.datanest.governance.dto.CollectHistoryDTO;
 import com.datanest.governance.dto.CollectHistoryQueryRequest;
 import com.datanest.governance.service.CollectHistoryService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+// 类级路径上移到 /collect-tasks，以便同时承载全局历史查询与按历史 ID 停止两个入口
 @RestController
-@RequestMapping("/collect-tasks/global-history")
+@RequestMapping("/collect-tasks")
 public class CollectHistoryGlobalController {
 
     private final CollectHistoryService collectHistoryService;
@@ -24,8 +22,16 @@ public class CollectHistoryGlobalController {
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
-    @PostMapping("/page")
+    @PostMapping("/global-history/page")
     public Result<PageResult<CollectHistoryDTO>> list(@RequestBody @Valid CollectHistoryQueryRequest request) {
         return Result.ok(collectHistoryService.list(request));
+    }
+
+    // 停止为写操作，权限对齐采集任务的 execute/schedule，仅治理写角色可用
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @PostMapping("/history/{historyId}/stop")
+    public Result<Void> stop(@PathVariable Long historyId) {
+        collectHistoryService.stop(historyId);
+        return Result.ok(null);
     }
 }

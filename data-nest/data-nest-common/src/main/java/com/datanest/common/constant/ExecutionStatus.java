@@ -7,7 +7,8 @@ public enum ExecutionStatus {
 
     SUCCESS("SUCCESS", "成功"),
     FAILED("FAILED", "失败"),
-    RUNNING("RUNNING", "运行中");
+    RUNNING("RUNNING", "运行中"),
+    TERMINATED("TERMINATED", "已终止");
 
     private final String code;
     private final String label;
