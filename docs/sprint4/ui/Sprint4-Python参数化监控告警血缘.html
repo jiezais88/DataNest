@@ -1,0 +1,2320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataNest — Sprint 4 原型：Python / 参数化 / 监控告警 / 血缘</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-root: #f7f8fa;
+            --bg-surface: #ffffff;
+            --bg-elevated: #ffffff;
+            --bg-hover: #f1f3f6;
+            --bg-canvas: #f8fafc;
+            --border-subtle: #e2e6ed;
+            --border-strong: #cdd3dc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --accent-light: #eef2ff;
+            --accent-glow: rgba(79, 70, 229, .12);
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --danger-light: #fef2f2;
+            --success: #16a34a;
+            --success-light: #f0fdf4;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --info: #0ea5e9;
+            --info-light: #f0f9ff;
+            --node-waiting: #94a3b8;
+            --node-running: #4f46e5;
+            --node-success: #16a34a;
+            --node-failed: #dc2626;
+            --node-skipped: #d97706;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, .04), 0 2px 4px rgba(0, 0, 0, .03);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, .05), 0 4px 6px rgba(0, 0, 0, .03);
+            --shadow-xl: 0 20px 25px rgba(0, 0, 0, .06), 0 10px 10px rgba(0, 0, 0, .03);
+            --transition-fast: 150ms cubic-bezier(.4, 0, .2, 1);
+            --transition-smooth: 250ms cubic-bezier(.4, 0, .2, 1);
+            --z-elevated: 100;
+            --z-overlay: 200;
+            --z-dialog: 300;
+            --z-drawer: 250;
+            --sidebar-width: 248px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-root);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .view-tabs {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            padding: 4px;
+            z-index: 500;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .view-tab {
+            padding: 8px 20px;
+            border-radius: 100px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all var(--transition-fast);
+            font-family: var(--font-sans);
+            white-space: nowrap;
+        }
+
+        .view-tab.active {
+            background: var(--text-primary);
+            color: #fff;
+        }
+
+        .view-tab:hover:not(.active) {
+            color: var(--text-primary);
+        }
+
+        .page {
+            display: none;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .page.active {
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sb {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+        }
+
+        .sb-logo {
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--accent);
+            padding: 0 24px;
+            margin-bottom: 20px;
+            letter-spacing: -.3px;
+        }
+
+        .ns-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            padding: 16px 24px 6px;
+        }
+
+        .ni {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 20px;
+            margin: 2px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .ni:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .ni.ac {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .mc {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-root);
+        }
+
+        .ch {
+            padding: 20px 28px 0;
+            flex-shrink: 0;
+        }
+
+        .cs {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 28px 28px;
+        }
+
+        .hr {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .pt {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -.3px;
+        }
+
+        .pst {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            border-color: var(--border-subtle);
+        }
+
+        .btn:hover {
+            background: var(--bg-hover);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: #fff;
+            border-color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger-hover);
+        }
+
+        .btn-sm {
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border-color: transparent;
+            color: var(--text-secondary);
+        }
+
+        .btn-ghost:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .tb {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            gap: 12px;
+        }
+
+        .tbs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .inp {
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            background: var(--bg-surface);
+            outline: none;
+            transition: border-color var(--transition-fast);
+        }
+
+        .inp:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .inp::placeholder {
+            color: var(--text-muted);
+        }
+
+        select.inp {
+            min-width: 120px;
+        }
+
+        textarea.inp {
+            height: auto;
+            padding: 10px 12px;
+            resize: vertical;
+            font-family: var(--font-mono);
+        }
+
+        .lbl {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .fld {
+            margin-bottom: 16px;
+        }
+
+        .fld-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* Canvas */
+        .canvas-wrap {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            background: var(--bg-canvas);
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .node-palette {
+            width: 180px;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .palette-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+        }
+
+        .palette-node {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            cursor: grab;
+            box-shadow: var(--shadow-xs);
+            transition: all var(--transition-fast);
+        }
+
+        .palette-node:hover {
+            border-color: var(--accent);
+            box-shadow: var(--shadow-md);
+        }
+
+        .palette-node .icon {
+            width: 28px;
+            height: 28px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .palette-node.sql .icon {
+            background: var(--accent-light);
+        }
+
+        .palette-node.python .icon {
+            background: var(--warning-light);
+        }
+
+        .palette-node.sync .icon {
+            background: var(--success-light);
+        }
+
+        .palette-node .name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .palette-node .desc {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .canvas-toolbar {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 320px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            z-index: 10;
+        }
+
+        .canvas-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .canvas-toolbar-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dag-name {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .back-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            color: var(--accent);
+        }
+
+        .canvas-nodes {
+            position: absolute;
+            top: 80px;
+            left: 80px;
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
+        }
+
+        .dag-node {
+            width: 220px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 14px;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+        }
+
+        .dag-node.python {
+            border-left: 4px solid var(--warning);
+        }
+
+        .dag-node.sql {
+            border-left: 4px solid var(--accent);
+        }
+
+        .dag-node.sync {
+            border-left: 4px solid var(--success);
+        }
+
+        .dag-node-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .dag-node-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .dag-node-type {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .dag-node-preview {
+            font-size: 12px;
+            color: var(--text-secondary);
+            background: var(--bg-hover);
+            border-radius: var(--radius-sm);
+            padding: 8px;
+            margin-top: 8px;
+            font-family: var(--font-mono);
+            max-height: 60px;
+            overflow: hidden;
+        }
+
+        .node-port {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            border: 2px solid var(--bg-surface);
+        }
+
+        .node-port.in {
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .node-port.out {
+            right: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .edge {
+            position: absolute;
+            border-top: 2px solid var(--border-strong);
+            transform-origin: left center;
+        }
+
+        .properties-panel {
+            width: 300px;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-subtle);
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .prop-title {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .prop-empty {
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        .prop-section {
+            margin-bottom: 20px;
+        }
+
+        .prop-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            margin-bottom: 10px;
+        }
+
+        .prop-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .prop-row:last-child {
+            border-bottom: none;
+        }
+
+        .prop-label {
+            color: var(--text-secondary);
+        }
+
+        .prop-value {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .log-area {
+            background: #0f172a;
+            border-radius: var(--radius-sm);
+            padding: 10px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #e2e8f0;
+            max-height: 220px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+
+        .log-line {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-time {
+            color: #64748b;
+        }
+
+        .log-info {
+            color: #38bdf8;
+        }
+
+        .log-error {
+            color: #f87171;
+        }
+
+        /* Modal / Dialog */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: var(--z-dialog);
+            backdrop-filter: blur(2px);
+        }
+
+        .overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            width: 900px;
+            max-width: 96vw;
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .modal-sm {
+            width: 520px;
+        }
+
+        .modal-md {
+            width: 720px;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .modal-title {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-subtle);
+            background: var(--bg-hover);
+        }
+
+        /* Drawer */
+        .drawer-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .35);
+            display: none;
+            z-index: var(--z-drawer);
+        }
+
+        .drawer-overlay.active {
+            display: block;
+        }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 460px;
+            max-width: 90vw;
+            height: 100vh;
+            background: var(--bg-surface);
+            box-shadow: var(--shadow-xl);
+            transform: translateX(100%);
+            transition: transform var(--transition-smooth);
+            z-index: var(--z-drawer);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .drawer.active {
+            transform: translateX(0);
+        }
+
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .drawer-title {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .drawer-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .drawer-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        /* Editor */
+        .code-editor {
+            background: #1e293b;
+            border-radius: var(--radius-sm);
+            border: 1px solid #334155;
+            overflow: hidden;
+        }
+
+        .code-toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+        }
+
+        .code-area {
+            width: 100%;
+            min-height: 280px;
+            padding: 12px;
+            background: #1e293b;
+            color: #e2e8f0;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.6;
+            border: none;
+            outline: none;
+            resize: vertical;
+        }
+
+        .code-status {
+            display: flex;
+            justify-content: flex-end;
+            padding: 6px 12px;
+            background: #0f172a;
+            border-top: 1px solid #334155;
+            color: #94a3b8;
+            font-size: 12px;
+            font-family: var(--font-mono);
+        }
+
+        .result-panel {
+            margin-top: 16px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+        }
+
+        .result-header {
+            display: flex;
+            gap: 12px;
+            padding: 10px 14px;
+            background: var(--bg-hover);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .result-body {
+            padding: 12px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            background: #0f172a;
+            color: #e2e8f0;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+
+        /* Table */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .table th,
+        .table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .table th {
+            background: var(--bg-hover);
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+        }
+
+        .table tr:hover td {
+            background: var(--bg-hover);
+        }
+
+        .table td {
+            color: var(--text-primary);
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .tag-success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .tag-failed {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .tag-running {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .tag-warning {
+            background: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .tag-default {
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-sm {
+            padding: 2px 6px;
+            font-size: 11px;
+        }
+
+        .badge-success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .badge-failed {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .badge-running {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .checkbox {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        .param-table {
+            width: 100%;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+        }
+
+        .param-table th,
+        .param-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 13px;
+        }
+
+        .param-table th {
+            background: var(--bg-hover);
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .param-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .diff-add {
+            color: var(--success);
+            background: var(--success-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .diff-del {
+            color: var(--danger);
+            background: var(--danger-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .diff-mod {
+            color: var(--warning);
+            background: var(--warning-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .source-card {
+            background: var(--info-light);
+            border: 1px solid #bae6fd;
+            border-radius: var(--radius-md);
+            padding: 16px;
+        }
+
+        .source-card-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--info);
+            margin-bottom: 12px;
+        }
+
+        .source-card-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            padding: 5px 0;
+        }
+
+        .lineage-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .lineage-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-hover);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+        }
+
+        .lineage-arrow {
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            padding: 14px 0 0;
+        }
+
+        .page-btn {
+            min-width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .page-btn:hover, .page-btn.active {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: var(--border-strong);
+            border-radius: 100px;
+            transition: .2s;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: .2s;
+        }
+
+        input:checked + .slider {
+            background: var(--accent);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(18px);
+        }
+
+        .hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .section-divider {
+            border: none;
+            border-top: 1px solid var(--border-subtle);
+            margin: 20px 0;
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .form-row .lbl {
+            margin-bottom: 0;
+            min-width: 100px;
+        }
+
+        .form-row .inp {
+            flex: 1;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 16px;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<!-- View Tabs -->
+<div class="view-tabs">
+    <button class="view-tab active" onclick="showPage('editor')">1. DAG 画布</button>
+    <button class="view-tab" onclick="showPage('python')">2. Python 编辑器</button>
+    <button class="view-tab" onclick="showPage('params')">3. DAG 参数</button>
+    <button class="view-tab" onclick="showPage('trigger')">4. 触发执行</button>
+    <button class="view-tab" onclick="showPage('versions')">5. 版本管理</button>
+    <button class="view-tab" onclick="showPage('alert')">6. 告警配置</button>
+    <button class="view-tab" onclick="showPage('history')">7. 执行历史</button>
+    <button class="view-tab" onclick="showPage('sync')">8. 多表同步</button>
+    <button class="view-tab" onclick="showPage('lineage')">9. 血缘/来源</button>
+</div>
+
+<!-- Page 1: DAG Editor -->
+<div class="page active" id="page-editor">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span>📦</span> 数据源管理</div>
+        <div class="ni"><span>🔄</span> 批量数据同步任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni ac"><span>🔧</span> 项目管理</div>
+        <div class="ns-title">数据治理</div>
+        <div class="ni"><span>⏱</span> 元数据采集任务</div>
+        <div class="ni"><span>📋</span> 元数据管理</div>
+        <div class="ni"><span>📏</span> 数据标准</div>
+        <div class="ns-title">执行历史</div>
+        <div class="ni"><span>🔄</span> 同步执行历史</div>
+        <div class="ni"><span>⏱</span> 采集执行历史</div>
+        <div class="ni"><span>🔧</span> DAG 执行历史</div>
+        <div class="ns-title">系统管理</div>
+        <div class="ni"><span>👥</span> 用户管理</div>
+    </aside>
+
+    <main class="mc">
+        <div class="canvas-wrap">
+            <div class="node-palette">
+                <div class="palette-title">节点面板</div>
+                <div class="palette-node sql">
+                    <div class="icon">📝</div>
+                    <div>
+                        <div class="name">SQL 任务</div>
+                        <div class="desc">Doris SQL</div>
+                    </div>
+                </div>
+                <div class="palette-node python">
+                    <div class="icon">🐍</div>
+                    <div>
+                        <div class="name">Python 任务</div>
+                        <div class="desc">标准库 + pandas</div>
+                    </div>
+                </div>
+                <div class="palette-node sync">
+                    <div class="icon">🔄</div>
+                    <div>
+                        <div class="name">同步任务</div>
+                        <div class="desc">引用 SyncJob</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="canvas-area">
+                <div class="canvas-toolbar">
+                    <div class="canvas-toolbar-left">
+                        <a href="#" class="back-link">← 返回列表</a>
+                        <div class="dag-name">订单数据流水线</div>
+                        <span class="tag tag-default">未发布</span>
+                    </div>
+                    <div class="canvas-toolbar-right">
+                        <button class="btn btn-ghost" onclick="showPage('params')">参数</button>
+                        <button class="btn btn-ghost" onclick="showPage('versions')">版本</button>
+                        <button class="btn">保存</button>
+                        <button class="btn btn-primary" onclick="showPage('trigger')">执行</button>
+                    </div>
+                </div>
+
+                <div class="canvas-nodes">
+                    <div class="dag-node sync" style="margin-left: 0;">
+                        <div class="node-port in"></div>
+                        <div class="node-port out"></div>
+                        <div class="dag-node-header">
+                            <div class="dag-node-title"><span>🔄</span> 订单数据同步</div>
+                        </div>
+                        <div class="dag-node-type">SYNC</div>
+                        <div class="dag-node-preview">syncJobId: 1001</div>
+                    </div>
+
+                    <div class="dag-node sql" style="margin-left: 120px;">
+                        <div class="node-port in"></div>
+                        <div class="node-port out"></div>
+                        <div class="dag-node-header">
+                            <div class="dag-node-title"><span>📝</span> 订单数据清洗</div>
+                        </div>
+                        <div class="dag-node-type">SQL</div>
+                        <div class="dag-node-preview">INSERT INTO dwd.orders SELECT * FROM ods.orders WHERE dt =
+                            '${biz_date}'
+                        </div>
+                    </div>
+
+                    <div class="dag-node python" style="margin-left: 240px;">
+                        <div class="node-port in"></div>
+                        <div class="node-port out"></div>
+                        <div class="dag-node-header">
+                            <div class="dag-node-title"><span>🐍</span> 用户行为解析</div>
+                            <span class="tag tag-success" style="font-size: 10px; padding: 2px 6px;">测试通过</span>
+                        </div>
+                        <div class="dag-node-type">PYTHON</div>
+                        <div class="dag-node-preview">df = read_doris_table('dwd.orders')<br>result = df.groupby(...)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="properties-panel">
+                <div class="prop-title">节点属性</div>
+                <div class="prop-section">
+                    <div class="prop-section-title">基本信息</div>
+                    <div class="prop-row">
+                        <span class="prop-label">节点名称</span>
+                        <span class="prop-value">用户行为解析</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">节点类型</span>
+                        <span class="prop-value">PYTHON</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">节点 ID</span>
+                        <span class="prop-value">n3_abc123</span>
+                    </div>
+                </div>
+                <div class="prop-section">
+                    <div class="prop-section-title">执行配置</div>
+                    <div class="prop-row">
+                        <span class="prop-label">超时时间</span>
+                        <span class="prop-value">30 分钟</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">内存限制</span>
+                        <span class="prop-value">2048 MB</span>
+                    </div>
+                </div>
+                <div class="prop-section">
+                    <div class="prop-section-title">最近运行测试</div>
+                    <div class="prop-row">
+                        <span class="prop-label">状态</span>
+                        <span class="prop-value" style="color: var(--success);">PASSED</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">耗时</span>
+                        <span class="prop-value">8s</span>
+                    </div>
+                </div>
+                <div style="margin-top: 16px;">
+                    <button class="btn btn-primary" style="width: 100%;" onclick="showPage('python')">编辑 Python 脚本
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Page 2: Python Editor Modal -->
+<div class="page" id="page-python">
+    <div style="width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; background: rgba(15,23,42,.45);">
+        <div class="modal" style="display: flex;">
+            <div class="modal-header">
+                <div class="modal-title">编辑 Python 任务 — 用户行为解析</div>
+                <button class="modal-close" onclick="showPage('editor')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="fld">
+                    <label class="lbl">节点名称 <span style="color: var(--danger);">*</span></label>
+                    <input type="text" class="inp" value="用户行为解析" style="width: 100%;">
+                </div>
+
+                <div class="fld">
+                    <label class="lbl">Python 脚本 <span style="color: var(--danger);">*</span></label>
+                    <div class="code-editor">
+                        <div class="code-toolbar">
+                            <button class="btn btn-sm btn-primary">▶ 运行测试</button>
+                            <button class="btn btn-sm">全选</button>
+                            <button class="btn btn-sm">撤销</button>
+                            <button class="btn btn-sm">重做</button>
+                        </div>
+                        <textarea class="code-area">import json
+
+# 读取上游 SQL 产出的表
+df = read_doris_table('doris.dwd.orders')
+
+# 复杂解析逻辑
+result = df.groupby('user_id').agg({
+    'amount': 'sum',
+    'order_id': 'count'
+}).reset_index()
+
+# 写回 Doris
+write_doris_table(result, 'doris.dwd.user_behavior')
+
+log(f'处理完成：{len(result)} 行')</textarea>
+                        <div class="code-status">行: 15 &nbsp; 列: 30</div>
+                    </div>
+                </div>
+
+                <div class="fld-row">
+                    <div class="fld" style="margin-bottom: 0;">
+                        <label class="lbl">超时时间（分钟）</label>
+                        <input type="number" class="inp" value="30" style="width: 100%;">
+                    </div>
+                    <div class="fld" style="margin-bottom: 0;">
+                        <label class="lbl">内存限制（MB）</label>
+                        <input type="number" class="inp" value="2048" style="width: 100%;">
+                    </div>
+                </div>
+
+                <div class="result-panel">
+                    <div class="result-header">
+                        <span style="color: var(--success);">✅ 成功（耗时 8s）</span>
+                        <span>stdout: 处理 120,000 行，写入 45,000 行</span>
+                        <span>stderr: —</span>
+                        <span>exitCode: 0</span>
+                    </div>
+                    <div class="result-body">
+                        <div class="log-line">[LOG] 处理完成：45000 行</div>
+                        <div class="log-line">stdout: 处理 120,000 行，写入 45,000 行</div>
+                        <div class="log-line">stderr: —</div>
+                    </div>
+                </div>
+
+                <div class="fld" style="margin-top: 16px;">
+                    <label class="lbl">内置 helper 说明</label>
+                    <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.8;">
+                        • <code>read_doris_table(table)</code>：读取 Doris 表，返回 pandas DataFrame<br>
+                        • <code>write_doris_table(df, table)</code>：将 DataFrame 写入 Doris 表<br>
+                        • <code>get_param(name)</code>：获取 DAG 参数值，如 <code>get_param('biz_date')</code><br>
+                        • <code>log(message)</code>：输出日志，进入节点执行日志
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="showPage('editor')">取消</button>
+                <button class="btn btn-primary" onclick="showPage('editor')">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Page 3: DAG Parameter Drawer -->
+<div class="page" id="page-params">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span>📦</span> 数据源管理</div>
+        <div class="ni"><span>🔄</span> 批量数据同步任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni ac"><span>🔧</span> 项目管理</div>
+    </aside>
+    <main class="mc">
+        <div class="canvas-wrap">
+            <div class="node-palette">
+                <div class="palette-title">节点面板</div>
+                <div class="palette-node sql">
+                    <div class="icon">📝</div>
+                    <div>
+                        <div class="name">SQL 任务</div>
+                    </div>
+                </div>
+                <div class="palette-node python">
+                    <div class="icon">🐍</div>
+                    <div>
+                        <div class="name">Python 任务</div>
+                    </div>
+                </div>
+                <div class="palette-node sync">
+                    <div class="icon">🔄</div>
+                    <div>
+                        <div class="name">同步任务</div>
+                    </div>
+                </div>
+            </div>
+            <div class="canvas-area" style="position: relative;">
+                <div class="canvas-toolbar">
+                    <div class="canvas-toolbar-left">
+                        <a href="#" class="back-link">← 返回列表</a>
+                        <div class="dag-name">订单数据流水线</div>
+                    </div>
+                    <div class="canvas-toolbar-right">
+                        <button class="btn btn-ghost" onclick="showPage('params')">参数</button>
+                        <button class="btn btn-ghost" onclick="showPage('versions')">版本</button>
+                        <button class="btn">保存</button>
+                        <button class="btn btn-primary">执行</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="drawer-overlay active" onclick="showPage('editor')"></div>
+    <div class="drawer active">
+        <div class="drawer-header">
+            <div class="drawer-title">DAG 参数</div>
+            <button class="modal-close" onclick="showPage('editor')">×</button>
+        </div>
+        <div class="drawer-body">
+            <div class="tb" style="margin-bottom: 12px;">
+                <div class="pt" style="font-size: 16px;">自定义参数</div>
+                <button class="btn btn-sm btn-primary">+ 添加参数</button>
+            </div>
+
+            <table class="param-table" style="margin-bottom: 24px;">
+                <thead>
+                <tr>
+                    <th>参数名称</th>
+                    <th>类型</th>
+                    <th>默认值</th>
+                    <th>必填</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td><strong>biz_date</strong></td>
+                    <td>DATE</td>
+                    <td>2026-07-31</td>
+                    <td><input type="checkbox" class="checkbox" checked></td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost">删除</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>env</strong></td>
+                    <td>STRING</td>
+                    <td>prod</td>
+                    <td><input type="checkbox" class="checkbox" checked></td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost">删除</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>retry_flag</strong></td>
+                    <td>BOOLEAN</td>
+                    <td>true</td>
+                    <td><input type="checkbox" class="checkbox" checked></td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost">删除</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+
+            <div class="card" style="padding: 16px;">
+                <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">系统变量（可直接引用）</div>
+                <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.8;">
+                    • <code>$biz_date</code> — 业务日期，默认昨天<br>
+                    • <code>$current_time</code> — 当前时间<br>
+                    • <code>$dag_id</code> — 当前 DAG ID
+                </div>
+            </div>
+
+            <div class="card" style="padding: 16px; margin-top: 16px;">
+                <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">引用示例</div>
+                <div style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); line-height: 1.8;">
+                    SQL 节点：<br>
+                    <code>WHERE dt = '${biz_date}'</code><br><br>
+                    Python 节点：<br>
+                    <code>date = get_param('biz_date')</code>
+                </div>
+            </div>
+        </div>
+        <div class="drawer-footer">
+            <button class="btn" onclick="showPage('editor')">取消</button>
+            <button class="btn btn-primary" onclick="showPage('editor')">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- Page 4: Trigger Modal -->
+<div class="page" id="page-trigger">
+    <div style="width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; background: rgba(15,23,42,.45);">
+        <div class="modal modal-sm" style="display: flex;">
+            <div class="modal-header">
+                <div class="modal-title">触发执行</div>
+                <button class="modal-close" onclick="showPage('editor')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="fld">
+                    <label class="lbl">业务日期 <span style="color: var(--danger);">*</span></label>
+                    <input type="date" class="inp" value="2026-07-31" style="width: 100%;">
+                    <div class="hint">默认值：2026-07-31</div>
+                </div>
+                <div class="fld">
+                    <label class="lbl">环境 <span style="color: var(--danger);">*</span></label>
+                    <select class="inp" style="width: 100%;">
+                        <option value="prod">prod</option>
+                        <option value="test">test</option>
+                        <option value="dev">dev</option>
+                    </select>
+                    <div class="hint">默认值：prod</div>
+                </div>
+                <div class="fld">
+                    <label class="lbl">重试标志 <span style="color: var(--danger);">*</span></label>
+                    <div class="radio-group">
+                        <label class="radio-label"><input type="radio" name="retry" checked> true</label>
+                        <label class="radio-label"><input type="radio" name="retry"> false</label>
+                    </div>
+                    <div class="hint">默认值：true</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="showPage('editor')">取消</button>
+                <button class="btn btn-primary" onclick="showPage('history')">执行</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Page 5: Version Modal -->
+<div class="page" id="page-versions">
+    <div style="width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; background: rgba(15,23,42,.45);">
+        <div class="modal modal-md" style="display: flex;">
+            <div class="modal-header">
+                <div class="modal-title">DAG 版本管理</div>
+                <button class="modal-close" onclick="showPage('editor')">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+                    当前版本：<strong>v3</strong>（2026-07-29 10:00:00，张三）
+                </div>
+
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>版本号</th>
+                        <th>保存时间</th>
+                        <th>保存人</th>
+                        <th>变更摘要</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td><strong>v3</strong></td>
+                        <td>2026-07-29 10:00:00</td>
+                        <td>张三</td>
+                        <td>新增 1 个 Python 节点，修改 1 条参数</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost">对比</button>
+                            <button class="btn btn-sm btn-ghost">回滚</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>v2</strong></td>
+                        <td>2026-07-28 18:30:00</td>
+                        <td>张三</td>
+                        <td>修改 2 条连线</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost">对比</button>
+                            <button class="btn btn-sm btn-ghost">回滚</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>v1</strong></td>
+                        <td>2026-07-28 15:00:00</td>
+                        <td>李四</td>
+                        <td>初始版本</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost">对比</button>
+                            <button class="btn btn-sm btn-ghost">回滚</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+                <hr class="section-divider">
+
+                <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">版本对比：v2 vs v3</div>
+                <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.8;">
+                    <div style="margin-bottom: 8px;"><strong>节点变化</strong></div>
+                    <div style="margin-bottom: 16px;">
+                        <span class="diff-add">+ 新增：Python 任务「用户行为解析」</span><br>
+                        <span class="diff-mod">~ 修改：SQL 任务「订单数据清洗」脚本变更</span>
+                    </div>
+                    <div style="margin-bottom: 8px;"><strong>连线变化</strong></div>
+                    <div style="margin-bottom: 16px;">
+                        <span class="diff-add">+ 新增：订单数据清洗 → 用户行为解析</span>
+                    </div>
+                    <div style="margin-bottom: 8px;"><strong>参数变化</strong></div>
+                    <div>
+                        <span class="diff-add">+ 新增：retry_flag（BOOLEAN，默认值 true）</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="showPage('editor')">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Page 6: Alert Config (System Management) -->
+<div class="page" id="page-alert">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span>📦</span> 数据源管理</div>
+        <div class="ni"><span>🔄</span> 批量数据同步任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni"><span>🔧</span> 项目管理</div>
+        <div class="ns-title">数据治理</div>
+        <div class="ni"><span>⏱</span> 元数据采集任务</div>
+        <div class="ni"><span>📋</span> 元数据管理</div>
+        <div class="ni"><span>📏</span> 数据标准</div>
+        <div class="ns-title">执行历史</div>
+        <div class="ni"><span>🔄</span> 同步执行历史</div>
+        <div class="ni"><span>⏱</span> 采集执行历史</div>
+        <div class="ni"><span>🔧</span> DAG 执行历史</div>
+        <div class="ns-title">系统管理</div>
+        <div class="ni"><span>👥</span> 用户管理</div>
+        <div class="ni ac"><span>🔔</span> DAG 告警配置</div>
+    </aside>
+
+    <main class="mc">
+        <div class="ch">
+            <div class="hr">
+                <div>
+                    <div class="pt">DAG 告警配置</div>
+                    <div class="pst">配置 DAG 失败/超时时的邮件通知（仅超级管理员）</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cs">
+            <div class="card" style="padding: 24px; max-width: 720px;">
+                <div class="form-row">
+                    <label class="lbl" style="min-width: 160px;">启用 DAG 邮件告警</label>
+                    <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="fld">
+                    <label class="lbl">收件人 <span style="color: var(--danger);">*</span></label>
+                    <textarea class="inp" rows="2"
+                              style="width: 100%;">engineer@example.com; admin@example.com</textarea>
+                    <div class="hint">多个收件人用分号分隔</div>
+                </div>
+
+                <div class="fld">
+                    <label class="lbl">触发条件</label>
+                    <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                        <label class="radio-label"><input type="checkbox" class="checkbox" checked> DAG 执行失败</label>
+                        <label class="radio-label"><input type="checkbox" class="checkbox" checked> DAG 节点超时</label>
+                        <label class="radio-label"><input type="checkbox" class="checkbox"> DAG 执行成功</label>
+                    </div>
+                </div>
+
+                <div class="fld">
+                    <label class="lbl">超时阈值（分钟）</label>
+                    <input type="number" class="inp" value="30" style="width: 120px;">
+                    <div class="hint">仅当勾选“节点超时”时生效</div>
+                </div>
+
+                <div class="card" style="padding: 14px; margin-top: 8px; background: var(--bg-hover); border: none;">
+                    <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                        <strong>邮件示例主题：</strong><br>
+                        [DataNest 告警] DAG「订单数据流水线」执行失败<br><br>
+                        <strong>包含内容：</strong>失败节点、错误摘要、查看详情链接
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                    <button class="btn">取消</button>
+                    <button class="btn btn-primary">保存</button>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Page 7: Execution History -->
+<div class="page" id="page-history">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span>📦</span> 数据源管理</div>
+        <div class="ni"><span>🔄</span> 批量数据同步任务</div>
+        <div class="ns-title">数据开发</div>
+        <div class="ni"><span>🔧</span> 项目管理</div>
+        <div class="ns-title">执行历史</div>
+        <div class="ni"><span>🔄</span> 同步执行历史</div>
+        <div class="ni"><span>⏱</span> 采集执行历史</div>
+        <div class="ni ac"><span>🔧</span> DAG 执行历史</div>
+    </aside>
+
+    <main class="mc">
+        <div class="ch">
+            <div class="hr">
+                <div>
+                    <div class="pt">DAG 执行历史</div>
+                    <div class="pst">查看所有 DAG 的执行记录、节点状态与日志</div>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <span class="filter-label">执行时间</span>
+                    <input type="datetime-local" class="inp" value="2026-07-25T00:00">
+                    <span style="color: var(--text-muted);">至</span>
+                    <input type="datetime-local" class="inp" value="2026-07-31T23:59">
+                </div>
+                <div class="filter-group">
+                    <span class="filter-label">状态</span>
+                    <select class="inp">
+                        <option value="">全部</option>
+                        <option value="RUNNING">运行中</option>
+                        <option value="SUCCESS">成功</option>
+                        <option value="FAILED" selected>失败</option>
+                        <option value="TERMINATED">已终止</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <span class="filter-label">触发方式</span>
+                    <select class="inp">
+                        <option value="">全部</option>
+                        <option value="MANUAL">手动</option>
+                        <option value="CRON">定时</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="flex: 1;">
+                    <input type="text" class="inp" placeholder="搜索 DAG 名称" style="width: 220px;">
+                </div>
+                <button class="btn btn-primary">查询</button>
+            </div>
+        </div>
+
+        <div class="cs">
+            <div class="card">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>执行时间</th>
+                        <th>所属 DAG</th>
+                        <th>执行方式</th>
+                        <th>状态</th>
+                        <th>耗时</th>
+                        <th>节点执行情况</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td>2026-07-29 10:00:00</td>
+                        <td><strong>订单数据流水线</strong></td>
+                        <td><span class="tag tag-default">定时触发</span></td>
+                        <td><span class="badge badge-failed"><span class="status-dot"
+                                                                   style="background: var(--danger);"></span> 失败</span>
+                        </td>
+                        <td>2m 15s</td>
+                        <td>3/4 成功，1 失败（<a href="#"
+                                               style="color: var(--danger); font-weight: 600; text-decoration: underline;"
+                                               onclick="showPage('execution-detail')">用户行为解析</a>）
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" onclick="showPage('execution-detail')">日志</button>
+                            <button class="btn btn-sm btn-primary" onclick="showPage('trigger')">重跑失败节点</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>2026-07-28 10:00:00</td>
+                        <td><strong>订单数据流水线</strong></td>
+                        <td><span class="tag tag-default">定时触发</span></td>
+                        <td><span class="badge badge-success"><span class="status-dot"
+                                                                    style="background: var(--success);"></span> 成功</span>
+                        </td>
+                        <td>1m 45s</td>
+                        <td>4/4 成功</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" onclick="showPage('execution-detail')">日志</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+                <div class="pagination">
+                    <button class="page-btn">&lt;</button>
+                    <button class="page-btn active">1</button>
+                    <button class="page-btn">2</button>
+                    <button class="page-btn">3</button>
+                    <button class="page-btn">&gt;</button>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Page 8: Multi-table Sync Drawer -->
+<div class="page" id="page-sync">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">数据工程</div>
+        <div class="ni"><span>📦</span> 数据源管理</div>
+        <div class="ni ac"><span>🔄</span> 批量数据同步任务</div>
+    </aside>
+
+    <main class="mc">
+        <div class="ch">
+            <div class="hr">
+                <div>
+                    <div class="pt">批量数据同步任务</div>
+                    <div class="pst">管理数据源到 Doris 的同步任务</div>
+                </div>
+                <button class="btn btn-primary">+ 创建同步任务</button>
+            </div>
+        </div>
+
+        <div class="cs">
+            <div class="card" style="padding: 16px;">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>任务名称</th>
+                        <th>数据源</th>
+                        <th>源表</th>
+                        <th>目标库/表</th>
+                        <th>触发方式</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td><strong>订单库同步</strong></td>
+                        <td>订单 MySQL</td>
+                        <td>orders, order_logs, payment_records</td>
+                        <td>datanest / orders, order_logs, payment_records</td>
+                        <td><span class="tag tag-default">Cron: 0 0 * * *</span></td>
+                        <td><span class="badge badge-success">正常</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" onclick="showPage('sync')">编辑</button>
+                            <button class="btn btn-sm btn-ghost">执行</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <div class="drawer-overlay active" onclick="showPage('sync')"></div>
+    <div class="drawer active" style="width: 560px;">
+        <div class="drawer-header">
+            <div class="drawer-title">编辑同步任务 — 订单库同步</div>
+            <button class="modal-close" onclick="showPage('sync')">×</button>
+        </div>
+        <div class="drawer-body">
+            <div class="fld">
+                <label class="lbl">任务名称</label>
+                <input type="text" class="inp" value="订单库同步" style="width: 100%;">
+            </div>
+
+            <div class="fld-row">
+                <div class="fld" style="margin-bottom: 0;">
+                    <label class="lbl">源数据源</label>
+                    <select class="inp" style="width: 100%;">
+                        <option>订单 MySQL</option>
+                    </select>
+                </div>
+                <div class="fld" style="margin-bottom: 0;">
+                    <label class="lbl">目标库</label>
+                    <input type="text" class="inp" value="datanest" style="width: 100%;">
+                </div>
+            </div>
+
+            <div class="fld">
+                <label class="lbl">选择源表 <span style="color: var(--danger);">*</span></label>
+                <div class="card" style="padding: 10px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                        <label class="radio-label"><input type="checkbox" class="checkbox" checked> orders</label>
+                        <label class="radio-label"><input type="checkbox" class="checkbox" checked> order_logs</label>
+                        <label class="radio-label"><input type="checkbox" class="checkbox" checked>
+                            payment_records</label>
+                        <label class="radio-label"><input type="checkbox" class="checkbox"> user_profiles</label>
+                    </div>
+                </div>
+                <div class="hint">已选 3 个源表</div>
+            </div>
+
+            <div class="fld">
+                <label class="lbl">源表 → 目标表映射</label>
+                <table class="param-table">
+                    <thead>
+                    <tr>
+                        <th>源表</th>
+                        <th>目标表名</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td>orders</td>
+                        <td><input type="text" class="inp" value="orders" style="width: 100%;"></td>
+                    </tr>
+                    <tr>
+                        <td>order_logs</td>
+                        <td><input type="text" class="inp" value="order_logs" style="width: 100%;"></td>
+                    </tr>
+                    <tr>
+                        <td>payment_records</td>
+                        <td><input type="text" class="inp" value="payment_records" style="width: 100%;"></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="fld">
+                <label class="lbl">字段映射（按源表逐个配置）</label>
+                <div class="card" style="padding: 12px;">
+                    <div style="margin-bottom: 10px;">
+                        <select class="inp">
+                            <option>orders</option>
+                            <option>order_logs</option>
+                            <option>payment_records</option>
+                        </select>
+                    </div>
+                    <table class="param-table">
+                        <thead>
+                        <tr>
+                            <th>源字段</th>
+                            <th>目标字段</th>
+                            <th>目标类型</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td>order_id</td>
+                            <td><input type="text" class="inp" value="order_id"></td>
+                            <td><input type="text" class="inp" value="BIGINT"></td>
+                        </tr>
+                        <tr>
+                            <td>user_id</td>
+                            <td><input type="text" class="inp" value="user_id"></td>
+                            <td><input type="text" class="inp" value="BIGINT"></td>
+                        </tr>
+                        <tr>
+                            <td>amount</td>
+                            <td><input type="text" class="inp" value="amount"></td>
+                            <td><input type="text" class="inp" value="DECIMAL(18,2)"></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">容错配置</div>
+            <div class="fld-row">
+                <div class="fld" style="margin-bottom: 0;">
+                    <label class="lbl">失败重试次数</label>
+                    <select class="inp" style="width: 100%;">
+                        <option>3</option>
+                    </select>
+                </div>
+                <div class="fld" style="margin-bottom: 0;">
+                    <label class="lbl">重试间隔（分钟）</label>
+                    <select class="inp" style="width: 100%;">
+                        <option>5</option>
+                    </select>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">限流配置（可选）</div>
+            <div class="form-row">
+                <label class="lbl" style="min-width: 120px;">启用速率限制</label>
+                <label class="switch">
+                    <input type="checkbox" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="fld-row">
+                <div class="fld" style="margin-bottom: 0;">
+                    <label class="lbl">读取速率上限（MB/s）</label>
+                    <input type="number" class="inp" value="5" style="width: 100%;">
+                </div>
+                <div class="fld" style="margin-bottom: 0;">
+                    <label class="lbl">写入速率上限（行/s）</label>
+                    <input type="number" class="inp" value="10000" style="width: 100%;">
+                </div>
+            </div>
+        </div>
+        <div class="drawer-footer">
+            <button class="btn" onclick="showPage('sync')">取消</button>
+            <button class="btn btn-primary" onclick="showPage('sync')">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- Page 7.5: Execution Detail Canvas (read-only run view) -->
+<div class="page" id="page-execution-detail">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">执行历史</div>
+        <div class="ni"><span>🔄</span> 同步执行历史</div>
+        <div class="ni"><span>⏱</span> 采集执行历史</div>
+        <div class="ni ac"><span>🔧</span> DAG 执行历史</div>
+    </aside>
+
+    <main class="mc">
+        <div class="canvas-wrap">
+            <div class="canvas-area" style="position: relative;">
+                <div class="canvas-toolbar">
+                    <div class="canvas-toolbar-left">
+                        <a href="#" class="back-link" onclick="showPage('history')">← 返回执行历史</a>
+                        <div class="dag-name">订单数据流水线 · 执行 #456</div>
+                        <span class="badge badge-failed">失败</span>
+                    </div>
+                    <div class="canvas-toolbar-right">
+                        <button class="btn btn-primary" onclick="showPage('trigger')">重跑失败节点</button>
+                    </div>
+                </div>
+
+                <div class="canvas-nodes">
+                    <div class="dag-node sync" style="margin-left: 0;">
+                        <div class="node-port in"></div>
+                        <div class="node-port out"></div>
+                        <div class="dag-node-header">
+                            <div class="dag-node-title"><span>🔄</span> 订单数据同步</div>
+                            <span class="badge badge-success badge-sm">成功</span>
+                        </div>
+                        <div class="dag-node-type">SYNC</div>
+                        <div class="dag-node-preview">耗时 45s，同步 500,000 行</div>
+                    </div>
+
+                    <div class="dag-node sql" style="margin-left: 120px;">
+                        <div class="node-port in"></div>
+                        <div class="node-port out"></div>
+                        <div class="dag-node-header">
+                            <div class="dag-node-title"><span>📝</span> 订单数据清洗</div>
+                            <span class="badge badge-success badge-sm">成功</span>
+                        </div>
+                        <div class="dag-node-type">SQL</div>
+                        <div class="dag-node-preview">耗时 12s，影响 50,000 行</div>
+                    </div>
+
+                    <div class="dag-node python"
+                         style="margin-left: 240px; border: 2px solid var(--danger); box-shadow: 0 0 0 4px rgba(220, 38, 38, .1);">
+                        <div class="node-port in"></div>
+                        <div class="node-port out"></div>
+                        <div class="dag-node-header">
+                            <div class="dag-node-title"><span>🐍</span> 用户行为解析</div>
+                            <span class="badge badge-failed badge-sm">失败</span>
+                        </div>
+                        <div class="dag-node-type">PYTHON</div>
+                        <div class="dag-node-preview" style="color: var(--danger);">KeyError: 'amount'</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="properties-panel">
+                <div class="prop-title">节点运行信息</div>
+                <div class="prop-section">
+                    <div class="prop-section-title">基本信息</div>
+                    <div class="prop-row">
+                        <span class="prop-label">名称</span>
+                        <span class="prop-value">用户行为解析</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">类型</span>
+                        <span class="prop-value">PYTHON</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">状态</span>
+                        <span class="prop-value" style="color: var(--danger);">失败</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">耗时</span>
+                        <span class="prop-value">3s</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">开始时间</span>
+                        <span class="prop-value">2026-07-29 10:00:15</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-label">结束时间</span>
+                        <span class="prop-value">2026-07-29 10:00:18</span>
+                    </div>
+                </div>
+
+                <div class="prop-section">
+                    <div class="prop-section-title">实时日志</div>
+                    <div class="log-area">
+                        <div class="log-line"><span class="log-time">10:00:15</span> <span
+                                class="log-info">[INFO]</span> Python 脚本开始执行
+                        </div>
+                        <div class="log-line"><span class="log-time">10:00:16</span> <span
+                                class="log-info">[INFO]</span> 读取 doris.dwd.orders，共 50000 行
+                        </div>
+                        <div class="log-line"><span class="log-time">10:00:18</span> <span
+                                class="log-error">[ERROR]</span> KeyError: 'amount'
+                        </div>
+                        <div class="log-line"><span class="log-time">10:00:18</span> <span
+                                class="log-error">[ERROR]</span> Traceback (most recent call last): ...
+                        </div>
+                    </div>
+                    <div class="hint" style="margin-top: 6px;">RUNNING 状态时每 3 秒自动刷新</div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Page 9: Metadata Lineage -->
+<div class="page" id="page-lineage">
+    <aside class="sb">
+        <div class="sb-logo">◆ DataNest</div>
+        <div class="ns-title">数据治理</div>
+        <div class="ni"><span>⏱</span> 元数据采集任务</div>
+        <div class="ni ac"><span>📋</span> 元数据管理</div>
+        <div class="ni"><span>📏</span> 数据标准</div>
+    </aside>
+
+    <main class="mc">
+        <div class="ch">
+            <div class="hr">
+                <div>
+                    <div class="pt">dwd.user_behavior</div>
+                    <div class="pst">Doris · datanest · 用户行为表</div>
+                </div>
+                <div class="tbs">
+                    <button class="btn">查看 DAG</button>
+                    <button class="btn">查看执行历史</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cs">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <div class="source-card">
+                    <div class="source-card-title">📌 数据来源</div>
+                    <div class="source-card-row">
+                        <span class="prop-label">来源类型</span>
+                        <span class="prop-value">DAG 任务</span>
+                    </div>
+                    <div class="source-card-row">
+                        <span class="prop-label">来源 DAG</span>
+                        <span class="prop-value">订单数据流水线</span>
+                    </div>
+                    <div class="source-card-row">
+                        <span class="prop-label">来源节点</span>
+                        <span class="prop-value">🐍 用户行为解析</span>
+                    </div>
+                    <div class="source-card-row">
+                        <span class="prop-label">最近执行</span>
+                        <span class="prop-value">2026-07-28 10:00:00</span>
+                    </div>
+                </div>
+
+                <div class="card" style="padding: 16px;">
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 14px;">表级血缘</div>
+                    <div class="lineage-list">
+                        <div class="lineage-item">
+                            <span>dwd.orders</span>
+                            <span class="lineage-arrow">→</span>
+                            <span style="font-weight: 600;">dwd.user_behavior</span>
+                        </div>
+                        <div class="lineage-item">
+                            <span>ods.orders</span>
+                            <span class="lineage-arrow">→</span>
+                            <span>dwd.orders</span>
+                        </div>
+                        <div class="lineage-item">
+                            <span>订单 MySQL.orders</span>
+                            <span class="lineage-arrow">→</span>
+                            <span>ods.orders</span>
+                            <span class="tag tag-default" style="margin-left: auto;">同步任务</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding: 16px;">
+                <div style="font-size: 14px; font-weight: 700; margin-bottom: 14px;">字段列表</div>
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>字段名</th>
+                        <th>数据类型</th>
+                        <th>是否可空</th>
+                        <th>注释</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td>user_id</td>
+                        <td>BIGINT</td>
+                        <td>否</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>amount</td>
+                        <td>DECIMAL(18,2)</td>
+                        <td>是</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>order_count</td>
+                        <td>INT</td>
+                        <td>是</td>
+                        <td>-</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    function showPage(pageId) {
+        // Hide all pages
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        // Show target page
+        const target = document.getElementById('page-' + pageId);
+        if (target) target.classList.add('active');
+
+        // Update tabs
+        const tabs = document.querySelectorAll('.view-tab');
+        const tabMap = ['editor', 'python', 'params', 'trigger', 'versions', 'alert', 'history', 'sync', 'lineage'];
+        tabs.forEach((tab, idx) => {
+            tab.classList.toggle('active', tabMap[idx] === pageId);
+        });
+    }
+</script>
+
+</body>
+</html>
