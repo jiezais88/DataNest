@@ -24,4 +24,4 @@ loader.config({monaco});
 
 // Parity with the CDN AMD loader, which exposes window.monaco — handy for
 // debugging and e2e probes (editor.getEditors() etc.).
-(self as any).monaco = monaco;
+(globalThis as typeof globalThis & { monaco: typeof monaco }).monaco = monaco;

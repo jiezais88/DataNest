@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
@@ -26,6 +26,12 @@ import {isWithoutSchema} from '../../../constants/datasource';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
 import DsButton from '../../../components/DsButton';
 import DsTableEmpty from '../../../components/DsTableEmpty';
+
+const extractDatasourceId = (node: MetadataTreeNode) => {
+    if (node.datasourceId) return node.datasourceId;
+    if (node.type === 'datasource') return node.id.replace('ds-', '');
+    return node.id.split('-')[1];
+};
 
 export default function MetadataPage() {
     const navigate = useNavigate();
@@ -61,17 +67,17 @@ export default function MetadataPage() {
 
     const canPreview = useHasRole(...ALL_ROLES);
 
-    const resetDetail = () => {
+    const resetDetail = useCallback(() => {
         setSelectedTable(null);
         setColumns([]);
         setHighlightedColumnId(null);
-    };
+    }, []);
 
-    const resetLists = () => {
+    const resetLists = useCallback(() => {
         setDatabases([]);
         setSchemas([]);
         setTables([]);
-    };
+    }, []);
 
     // 根据 URL query 参数自动选中指定表并展开祖先节点
     useEffect(() => {
@@ -116,6 +122,71 @@ export default function MetadataPage() {
         };
     }, [tableIdParam, columnIdParam]);
 
+    const expandAncestors = (node: MetadataTreeNode) => {
+        const next = new Set(expanded);
+        if (node.type === 'database' || node.type === 'schema' || node.type === 'table') {
+            const datasourceId = extractDatasourceId(node);
+            next.add(`ds-${datasourceId}`);
+        }
+        if (node.type === 'schema' || node.type === 'table') {
+            const datasourceId = extractDatasourceId(node);
+            next.add(`db-${datasourceId}-${node.databaseName}`);
+        }
+        setExpanded(next);
+    };
+
+    const loadDatabases = useCallback(async (node: MetadataTreeNode) => {
+        const datasourceId = extractDatasourceId(node);
+        setDatabasesLoading(true);
+        try {
+            const result = await listMetadataDatabases(datasourceId);
+            setDatabases(result.data);
+        } finally {
+            setDatabasesLoading(false);
+        }
+    }, []);
+
+    const loadSchemas = useCallback(async (node: MetadataTreeNode) => {
+        const datasourceId = extractDatasourceId(node);
+        const databaseName = node.databaseName!;
+        setSchemasLoading(true);
+        try {
+            const result = await listMetadataSchemas(datasourceId, databaseName);
+            setSchemas(result.data);
+        } finally {
+            setSchemasLoading(false);
+        }
+    }, []);
+
+    const loadTables = useCallback(async (node: MetadataTreeNode, schemaName: string) => {
+        const datasourceId = extractDatasourceId(node);
+        const databaseName = node.databaseName!;
+        setTablesLoading(true);
+        try {
+            const result = isWithoutSchema(node.datasourceType)
+                ? await listMetadataTablesWithoutSchema(datasourceId, databaseName)
+                : await listMetadataTables(datasourceId, databaseName, schemaName);
+            setTables(result.data);
+        } finally {
+            setTablesLoading(false);
+        }
+    }, []);
+
+    const loadTableDetail = useCallback(async (node: MetadataTreeNode) => {
+        const tableId = node.id.replace('table-', '');
+        setColumnsLoading(true);
+        try {
+            const [tableResult, columnsResult] = await Promise.all([
+                getMetadataTable(tableId),
+                listMetadataColumns(tableId),
+            ]);
+            setSelectedTable(tableResult.data);
+            setColumns(columnsResult.data);
+        } finally {
+            setColumnsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (!selectedNode) {
             resetLists();
@@ -139,78 +210,7 @@ export default function MetadataPage() {
         } else if (selectedNode.type === 'table') {
             loadTableDetail(selectedNode);
         }
-    }, [selectedNode]);
-
-    const extractDatasourceId = (node: MetadataTreeNode) => {
-        if (node.datasourceId) return node.datasourceId;
-        if (node.type === 'datasource') return node.id.replace('ds-', '');
-        return node.id.split('-')[1];
-    };
-
-    const expandAncestors = (node: MetadataTreeNode) => {
-        const next = new Set(expanded);
-        if (node.type === 'database' || node.type === 'schema' || node.type === 'table') {
-            const datasourceId = extractDatasourceId(node);
-            next.add(`ds-${datasourceId}`);
-        }
-        if (node.type === 'schema' || node.type === 'table') {
-            const datasourceId = extractDatasourceId(node);
-            next.add(`db-${datasourceId}-${node.databaseName}`);
-        }
-        setExpanded(next);
-    };
-
-    const loadDatabases = async (node: MetadataTreeNode) => {
-        const datasourceId = extractDatasourceId(node);
-        setDatabasesLoading(true);
-        try {
-            const result = await listMetadataDatabases(datasourceId);
-            setDatabases(result.data);
-        } finally {
-            setDatabasesLoading(false);
-        }
-    };
-
-    const loadSchemas = async (node: MetadataTreeNode) => {
-        const datasourceId = extractDatasourceId(node);
-        const databaseName = node.databaseName!;
-        setSchemasLoading(true);
-        try {
-            const result = await listMetadataSchemas(datasourceId, databaseName);
-            setSchemas(result.data);
-        } finally {
-            setSchemasLoading(false);
-        }
-    };
-
-    const loadTables = async (node: MetadataTreeNode, schemaName: string) => {
-        const datasourceId = extractDatasourceId(node);
-        const databaseName = node.databaseName!;
-        setTablesLoading(true);
-        try {
-            const result = isWithoutSchema(node.datasourceType)
-                ? await listMetadataTablesWithoutSchema(datasourceId, databaseName)
-                : await listMetadataTables(datasourceId, databaseName, schemaName);
-            setTables(result.data);
-        } finally {
-            setTablesLoading(false);
-        }
-    };
-
-    const loadTableDetail = async (node: MetadataTreeNode) => {
-        const tableId = node.id.replace('table-', '');
-        setColumnsLoading(true);
-        try {
-            const [tableResult, columnsResult] = await Promise.all([
-                getMetadataTable(tableId),
-                listMetadataColumns(tableId),
-            ]);
-            setSelectedTable(tableResult.data);
-            setColumns(columnsResult.data);
-        } finally {
-            setColumnsLoading(false);
-        }
-    };
+    }, [selectedNode, resetLists, resetDetail, loadDatabases, loadSchemas, loadTables, loadTableDetail]);
 
     const selectDatabase = (db: string) => {
         if (!selectedNode || selectedNode.type !== 'datasource') return;
@@ -256,10 +256,10 @@ export default function MetadataPage() {
         setSelectedNode(node);
     };
 
-    const startEdit = (type: 'table-comment' | 'column-comment' | 'column-remark', id: string, value: string) => {
+    const startEdit = useCallback((type: 'table-comment' | 'column-comment' | 'column-remark', id: string, value: string) => {
         if (!canWrite) return;
         setEditingCell({type, id, value: value || ''});
-    };
+    }, [canWrite]);
 
     const handleSaveTableComment = async () => {
         if (!editingCell || !selectedTable || editingCell.type !== 'table-comment') return;
@@ -270,23 +270,23 @@ export default function MetadataPage() {
         setEditingCell(null);
     };
 
-    const handleSaveColumnComment = async (column: MetadataColumn) => {
+    const handleSaveColumnComment = useCallback(async (column: MetadataColumn) => {
         if (!editingCell || editingCell.type !== 'column-comment') return;
         const value = editingCell.value.trim();
         await updateColumnComment(column.id, value);
         setColumns((prev) => prev.map((c) => c.id === column.id ? {...c, manualComment: value} : c));
         setEditingCell(null);
-    };
+    }, [editingCell]);
 
-    const handleSaveColumnRemark = async (column: MetadataColumn) => {
+    const handleSaveColumnRemark = useCallback(async (column: MetadataColumn) => {
         if (!editingCell || editingCell.type !== 'column-remark') return;
         const value = editingCell.value.trim();
         await updateColumnRemark(column.id, value);
         setColumns((prev) => prev.map((c) => c.id === column.id ? {...c, remark: value} : c));
         setEditingCell(null);
-    };
+    }, [editingCell]);
 
-    const renderEditableCell = (
+    const renderEditableCell = useCallback((
         type: 'table-comment' | 'column-comment' | 'column-remark',
         id: string,
         value: string | undefined,
@@ -336,7 +336,7 @@ export default function MetadataPage() {
                 )}
             </div>
         );
-    };
+    }, [editingCell, canWrite, startEdit]);
 
     const handlePreviewTable = async (table: MetadataTable) => {
         if (!table.id || !canPreview) return;
@@ -533,7 +533,7 @@ export default function MetadataPage() {
                 );
             },
         },
-    ], [editingCell, canWrite]);
+    ], [handleSaveColumnComment, handleSaveColumnRemark, renderEditableCell]);
 
     const renderTableDetail = () => {
         if (!selectedTable) return null;

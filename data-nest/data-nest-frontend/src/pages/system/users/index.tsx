@@ -256,7 +256,7 @@ export default function UsersPage() {
     ], []);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
@@ -319,11 +319,11 @@ export default function UsersPage() {
                 </DsToolbar>
             </div>
 
-            {/* 表格卡片 + 底部分页器：卡片高度封顶，表格区内部滚动，分页器始终可见 */}
-            <div className="flex-1 min-h-0 flex flex-col">
+            {/* 表格卡片 + 底部分页器：卡片随内容高度，分页器紧贴表格；内容超高时整页滚动 */}
+            <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table<UserVO>
                             dataSource={users}
                             rowKey="id"

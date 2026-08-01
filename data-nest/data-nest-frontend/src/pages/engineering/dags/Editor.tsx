@@ -439,7 +439,7 @@ function DagEditorInner() {
                 };
             }));
         });
-    }, [id, executionId]);
+    }, [id, executionId, setRfNodes]);
 
     // 加载已有 DAG（编辑模式）或 DAG + execution（执行详情模式）
     useEffect(() => {
@@ -481,7 +481,7 @@ function DagEditorInner() {
             // 加载完成的初始状态不算 dirty（避免首次进入就被拦截）
             setIsDirty(false);
         }).catch(e => notify.error('加载 DAG 失败: ' + (e?.message || '')));
-    }, [id, executionId, isRunView, handleEditRequest, refreshExecution]);
+    }, [id, executionId, isRunView, handleEditRequest, refreshExecution, canEdit, isNew, setRfNodes, setRfEdges]);
 
     // 执行详情模式：RUNNING 时轮询刷新节点状态（与列表页统一的 usePollingWhile，5s 间隔）
     usePollingWhile(isRunView && execution?.status === 'RUNNING', refreshExecution);
@@ -535,14 +535,14 @@ function DagEditorInner() {
         };
         setRfEdges(eds => addEdge(newEdge, eds));
         setIsDirty(true);
-    }, [setRfEdges, rfEdges]);
+    }, [setRfEdges, rfEdges, canEdit]);
 
     /**
      * 在指定画布坐标添加一个节点（拖拽 / 自动布局复用）
      * @param type SQL | SYNC
      * @param position 画布坐标（来自 screenToFlowPosition）
      */
-    const addNodeAt = (type: NodeType, position: { x: number; y: number }) => {
+    const addNodeAt = useCallback((type: NodeType, position: { x: number; y: number }) => {
         const newId = `n${++nodeIdRef.current}_${Date.now()}`;
         const newNode: Node<RFNodeData> = {
             id: newId,
@@ -561,7 +561,7 @@ function DagEditorInner() {
         };
         setRfNodes(ns => [...ns, newNode]);
         setIsDirty(true);
-    };
+    }, [handleEditRequest, setRfNodes]);
 
     /**
      * 自动布局：调用 dagre 重算所有节点 position（PRD §6.10）
@@ -593,7 +593,7 @@ function DagEditorInner() {
             y: event.clientY,
         });
         addNodeAt(type, position);
-    }, [reactFlowInstance, syncJobs, canEdit]);
+    }, [reactFlowInstance, canEdit, addNodeAt]);
 
     const onDragOver = useCallback((event: React.DragEvent) => {
         event.preventDefault();
@@ -636,12 +636,12 @@ function DagEditorInner() {
         setIsDirty(true);
     };
 
-    const handleDeleteNode = (nodeId: string) => {
+    const handleDeleteNode = useCallback((nodeId: string) => {
         setRfNodes(ns => ns.filter(n => n.id !== nodeId));
         setRfEdges(es => es.filter(e => e.source !== nodeId && e.target !== nodeId));
         if (selectedNodeId === nodeId) setSelectedNodeId(null);
         setIsDirty(true);
-    };
+    }, [setRfNodes, setRfEdges, selectedNodeId]);
 
     // 实际保存（通过校验后调用）
     const doSave = useCallback(async () => {
@@ -741,7 +741,7 @@ function DagEditorInner() {
                 navigate(backTarget);
             },
         });
-    }, [isDirty, navigate, handleSave, dag.projectId, fromPath]);
+    }, [isDirty, navigate, handleSave, dag.projectId, dag.name, fromPath, id, isRunView]);
 
     /**
      * 离开页面前拦截：浏览器关闭/刷新时也提示（PRD §6.4.1）
@@ -793,7 +793,7 @@ function DagEditorInner() {
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [selectedNodeId, handleSave, canEdit]);
+    }, [selectedNodeId, handleSave, canEdit, handleDeleteNode]);
 
     const handleTrigger = async () => {
         if (!id) {

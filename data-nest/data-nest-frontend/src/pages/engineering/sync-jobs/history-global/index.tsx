@@ -13,7 +13,8 @@ import DsIconButton from '../../../../components/DsIconButton';
 import DsToolbar from '../../../../components/DsToolbar';
 import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye,} from 'react-icons/hi2';
 import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../../utils/format';
-import {HistoryDetailModal, HistoryLogModal, STATUS_OPTIONS, statusLabel, triggerBadge,} from '../history-common';
+import {HistoryDetailModal, HistoryLogModal,} from '../history-common';
+import {STATUS_OPTIONS, statusLabel, triggerBadge,} from '../history-common-utils';
 import DsStatusBadge from '../../../../components/DsStatusBadge';
 import {executionStatusVariant} from '../../../../utils/status';
 import usePagedList from '../../../../hooks/usePagedList';
@@ -258,7 +259,7 @@ export default function SyncJobHistoryGlobalPage() {
     ], []);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">同步执行历史</h1>
@@ -344,11 +345,11 @@ export default function SyncJobHistoryGlobalPage() {
                 </DsToolbar>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex flex-col">
                 <div
                     data-testid="sync-history-table"
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table<SyncJobHistory>
                             dataSource={list}
                             rowKey="id"

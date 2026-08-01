@@ -238,7 +238,7 @@ export default function DataStandardsPage() {
         return res;
     };
 
-    const handleToggleNamingEnabled = async (item: NamingStandard) => {
+    const handleToggleNamingEnabled = useCallback(async (item: NamingStandard) => {
         const nextEnabled = item.enabled === 1 ? 0 : 1;
         const payload: NamingStandardCreateRequest = {
             name: item.name,
@@ -254,7 +254,7 @@ export default function DataStandardsPage() {
         notify.success(nextEnabled === 1 ? '已启用' : '已停用');
         loadNamingStandards();
         return res;
-    };
+    }, [loadNamingStandards]);
 
     const handleFieldTypeSubmit = async (form: FieldTypeStandardCreateRequest) => {
         const res = fieldTypeEditItem
@@ -287,21 +287,21 @@ export default function DataStandardsPage() {
         setNamingDrawerOpen(true);
     };
 
-    const openNamingEdit = (item: NamingStandard) => {
+    const openNamingEdit = useCallback((item: NamingStandard) => {
         setNamingEditItem(item);
         loadFieldTypeStandards();
         setNamingDrawerOpen(true);
-    };
+    }, [loadFieldTypeStandards]);
 
     const openFieldTypeCreate = () => {
         setFieldTypeEditItem(null);
         setFieldTypeDrawerOpen(true);
     };
 
-    const openFieldTypeEdit = (item: FieldTypeStandard) => {
+    const openFieldTypeEdit = useCallback((item: FieldTypeStandard) => {
         setFieldTypeEditItem(item);
         setFieldTypeDrawerOpen(true);
-    };
+    }, []);
 
     const namingColumns = useMemo<ColumnsType<NamingStandard>>(() => [
         {
@@ -417,7 +417,7 @@ export default function DataStandardsPage() {
                 </div>
             ),
         },
-    ], [canWrite, loadNamingStandards, loadFieldTypeStandards]);
+    ], [canWrite, handleToggleNamingEnabled, openNamingEdit]);
 
     const fieldTypeColumns = useMemo<ColumnsType<FieldTypeStandard>>(() => [
         {
@@ -492,7 +492,7 @@ export default function DataStandardsPage() {
                 </div>
             ),
         },
-    ], [canWrite, loadFieldTypeStandards]);
+    ], [canWrite, openFieldTypeEdit]);
 
     const tabs = [
         {key: 'naming', label: '命名规范', icon: HiOutlineDocumentText},
@@ -515,7 +515,7 @@ export default function DataStandardsPage() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">数据标准</h1>
@@ -562,10 +562,10 @@ export default function DataStandardsPage() {
                 })}
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex flex-col">
                 {activeTab === 'naming' && (
                     <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
                         <div
                             className="p-ds-3 border-b border-ds-border-subtle flex items-center gap-ds-3 flex-wrap flex-shrink-0">
                             <SearchInput
@@ -613,7 +613,7 @@ export default function DataStandardsPage() {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-auto">
+                        <div className="overflow-x-auto">
                             <Table<NamingStandard>
                                 dataSource={namingItems}
                                 rowKey="id"
@@ -653,7 +653,7 @@ export default function DataStandardsPage() {
 
                 {activeTab === 'field-type' && (
                     <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
                         <div
                             className="p-ds-3 border-b border-ds-border-subtle flex items-center gap-ds-3 flex-shrink-0">
                             <SearchInput
@@ -680,7 +680,7 @@ export default function DataStandardsPage() {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-auto">
+                        <div className="overflow-x-auto">
                             <Table<FieldTypeStandard>
                                 dataSource={fieldTypeItems}
                                 rowKey="id"

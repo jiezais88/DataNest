@@ -1,4 +1,4 @@
-import {type ButtonHTMLAttributes, type ReactNode} from 'react';
+import {type ButtonHTMLAttributes, forwardRef, type ReactNode} from 'react';
 
 /**
  * 操作列/工具栏的图标按钮。hover 色调按语义传 tone：
@@ -29,16 +29,18 @@ export interface DsIconButtonProps extends ButtonHTMLAttributes<HTMLButtonElemen
     children: ReactNode;
 }
 
-export default function DsIconButton({
-                                         tone = 'default',
-                                         active = false,
-                                         className = '',
-                                         type = 'button',
-                                         children,
-                                         ...rest
-                                     }: DsIconButtonProps) {
+// antd Tooltip 需要通过 ref 拿到触发元素 DOM 来定位浮层，必须 forwardRef
+const DsIconButton = forwardRef<HTMLButtonElement, DsIconButtonProps>(function DsIconButton({
+                                                                                                tone = 'default',
+                                                                                                active = false,
+                                                                                                className = '',
+                                                                                                type = 'button',
+                                                                                                children,
+                                                                                                ...rest
+                                                                                            }, ref) {
     return (
         <button
+            ref={ref}
             type={type}
             className={`p-1.5 rounded transition-colors duration-ds-fast ${active ? TONE_ACTIVE_TEXT[tone] : 'text-ds-text-muted'} ${TONE_HOVER[tone]} ${className}`.trim()}
             {...rest}
@@ -46,4 +48,6 @@ export default function DsIconButton({
             {children}
         </button>
     );
-}
+});
+
+export default DsIconButton;

@@ -1,5 +1,5 @@
 import type {HTMLAttributes} from 'react';
-import {useMemo, useState} from 'react';
+import {useCallback, useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
@@ -113,14 +113,14 @@ export default function CollectTasksPage() {
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
-    const loadDataSources = async () => {
+    const loadDataSources = useCallback(async () => {
         try {
             const result = await getDataSources({page: 1, pageSize: 1000});
             setDataSources(result.data.records.filter((ds) => ds.status === 'NORMAL'));
         } catch {
             // ignored
         }
-    };
+    }, []);
 
     const openCreate = () => {
         setEditItem(null);
@@ -128,11 +128,11 @@ export default function CollectTasksPage() {
         setDrawerOpen(true);
     };
 
-    const openEdit = (item: CollectTask) => {
+    const openEdit = useCallback((item: CollectTask) => {
         setEditItem(item);
         loadDataSources();
         setDrawerOpen(true);
-    };
+    }, [loadDataSources]);
 
     const handleSubmit = async (payload: CollectTaskCreateRequest) => {
         const result = editItem
@@ -143,7 +143,7 @@ export default function CollectTasksPage() {
         return result;
     };
 
-    const handleExecute = async (item: CollectTask) => {
+    const handleExecute = useCallback(async (item: CollectTask) => {
         setExecutingId(item.id);
         try {
             await executeCollectTask(item.id);
@@ -152,9 +152,9 @@ export default function CollectTasksPage() {
         } finally {
             setExecutingId(null);
         }
-    };
+    }, [reload]);
 
-    const handleToggleSchedule = async (item: CollectTask) => {
+    const handleToggleSchedule = useCallback(async (item: CollectTask) => {
         setSchedulingId(item.id);
         try {
             const isEnabled = item.scheduleEnabled === 1;
@@ -168,7 +168,7 @@ export default function CollectTasksPage() {
         } finally {
             setSchedulingId(null);
         }
-    };
+    }, [reload]);
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
@@ -386,10 +386,10 @@ export default function CollectTasksPage() {
                 </div>
             ),
         },
-    ], [canWrite, executingId, schedulingId, navigate]);
+    ], [canWrite, executingId, schedulingId, navigate, handleExecute, handleToggleSchedule, openEdit]);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">元数据采集任务</h1>
@@ -444,10 +444,10 @@ export default function CollectTasksPage() {
                 </DsToolbar>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table<CollectTask>
                             dataSource={list}
                             rowKey="id"

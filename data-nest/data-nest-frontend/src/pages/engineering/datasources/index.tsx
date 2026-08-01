@@ -1,4 +1,4 @@
-import {type HTMLAttributes, useMemo, useState} from 'react';
+import {type HTMLAttributes, useCallback, useMemo, useState} from 'react';
 import {Table, Tooltip} from 'antd';
 import {notify} from '../../../utils/notify';
 import type {ColumnsType} from 'antd/es/table';
@@ -175,7 +175,7 @@ export default function DataSourcesPage() {
         }
     };
 
-    const handleTest = async (item: DataSource) => {
+    const handleTest = useCallback(async (item: DataSource) => {
         setTestingId(item.id);
         const result = await testSavedDataSource(item.id);
         setTestingId(null);
@@ -183,7 +183,7 @@ export default function DataSourcesPage() {
         setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
         setTestModalOpen(true);
         reload();
-    };
+    }, [reload]);
 
     const handlePreview = async (database: string, schema: string | undefined, table: string) => {
         if (!previewTarget) return;
@@ -290,19 +290,6 @@ export default function DataSourcesPage() {
                                     <HiOutlineBolt size={16}/>
                                 </DsIconButton>
                             </Tooltip>
-                            <Tooltip title="预览数据">
-                                <DsIconButton
-                                    tone="accent"
-                                    data-testid={`datasource-preview-btn-${item.name}`}
-                                    onClick={() => {
-                                        setPreviewTarget(item);
-                                        setPreviewSelectorOpen(true);
-                                    }}
-                                    aria-label="预览数据"
-                                >
-                                    <HiOutlineEye size={16}/>
-                                </DsIconButton>
-                            </Tooltip>
                             <Tooltip title="删除">
                                 <DsIconButton
                                     tone="danger"
@@ -318,13 +305,28 @@ export default function DataSourcesPage() {
                             </Tooltip>
                         </>
                     )}
+                    {canPreview && (
+                        <Tooltip title="预览数据">
+                            <DsIconButton
+                                tone="accent"
+                                data-testid={`datasource-preview-btn-${item.name}`}
+                                onClick={() => {
+                                    setPreviewTarget(item);
+                                    setPreviewSelectorOpen(true);
+                                }}
+                                aria-label="预览数据"
+                            >
+                                <HiOutlineEye size={16}/>
+                            </DsIconButton>
+                        </Tooltip>
+                    )}
                 </div>
             ),
         },
-    ], [canWrite, testingId]);
+    ], [canWrite, canPreview, testingId, handleTest]);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">数据源管理</h1>
@@ -390,10 +392,10 @@ export default function DataSourcesPage() {
                 </DsToolbar>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table<DataSource>
                             dataSource={list}
                             rowKey="id"

@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {
     HiChevronRight,
     HiOutlineFolder,
@@ -28,6 +28,30 @@ interface MetadataTreeProps {
     autoSelectFirst?: boolean;
 }
 
+const updateNodeChildren = (nodes: MetadataTreeNode[], nodeId: string, children: MetadataTreeNode[]): MetadataTreeNode[] => {
+    return nodes.map(n => {
+        if (n.id === nodeId) {
+            return {...n, children};
+        }
+        if (n.children) {
+            return {...n, children: updateNodeChildren(n.children, nodeId, children)};
+        }
+        return n;
+    });
+};
+
+const updateNodeCount = (nodes: MetadataTreeNode[], nodeId: string, count: number): MetadataTreeNode[] => {
+    return nodes.map(n => {
+        if (n.id === nodeId) {
+            return {...n, count};
+        }
+        if (n.children) {
+            return {...n, children: updateNodeCount(n.children, nodeId, count)};
+        }
+        return n;
+    });
+};
+
 export default function MetadataTree({
                                          selectedNode,
                                          onSelect,
@@ -43,28 +67,12 @@ export default function MetadataTree({
     const [isSearchMode, setIsSearchMode] = useState(false);
     const autoSelectRef = useRef<{ active: boolean; pendingId: string | null }>({active: false, pendingId: null});
     const loadedRef = useRef<Set<string>>(new Set());
-
-    useEffect(() => {
-        loadRoots();
-    }, []);
-
-    // 当外部通过 expanded 展开尚未加载子节点的节点时，自动加载其子节点
-    useEffect(() => {
-        const collectNodes = (nodes: MetadataTreeNode[]): MetadataTreeNode[] => {
-            return nodes.reduce<MetadataTreeNode[]>((acc, n) => {
-                acc.push(n);
-                if (n.children) acc.push(...collectNodes(n.children));
-                return acc;
-            }, []);
-        };
-        const allNodes = collectNodes(roots);
-        for (const node of allNodes) {
-            if (expanded.has(node.id) && (!node.children || node.children.length === 0) && !loadedRef.current.has(node.id) && loading !== node.id) {
-                loadedRef.current.add(node.id);
-                loadChildren(node);
-            }
-        }
-    }, [expanded, roots, loading]);
+    // loadRoots/loadChildren 相互及与 handleAutoSelectChildren 存在引用环，
+    // 用 ref 转发保证 useCallback 依赖可静态声明且触发时机不变
+    const loadChildrenRef = useRef<(node: MetadataTreeNode) => Promise<void>>(async () => {
+    });
+    const selectedNodeRef = useRef(selectedNode);
+    selectedNodeRef.current = selectedNode;
 
     const isExpanded = (id: string) => expanded.has(id);
     const setExpanded = (id: string, value: boolean) => {
@@ -74,31 +82,7 @@ export default function MetadataTree({
         onExpandedChange(next);
     };
 
-    const updateNodeChildren = (nodes: MetadataTreeNode[], nodeId: string, children: MetadataTreeNode[]): MetadataTreeNode[] => {
-        return nodes.map(n => {
-            if (n.id === nodeId) {
-                return {...n, children};
-            }
-            if (n.children) {
-                return {...n, children: updateNodeChildren(n.children, nodeId, children)};
-            }
-            return n;
-        });
-    };
-
-    const updateNodeCount = (nodes: MetadataTreeNode[], nodeId: string, count: number): MetadataTreeNode[] => {
-        return nodes.map(n => {
-            if (n.id === nodeId) {
-                return {...n, count};
-            }
-            if (n.children) {
-                return {...n, children: updateNodeCount(n.children, nodeId, count)};
-            }
-            return n;
-        });
-    };
-
-    const loadRoots = async () => {
+    const loadRoots = useCallback(async () => {
         try {
             setSearchLoading(false);
             setIsSearchMode(false);
@@ -129,20 +113,20 @@ export default function MetadataTree({
             });
             setRoots(nodes);
             onRootsLoaded?.(nodes.length > 0);
-            if (autoSelectFirst && nodes.length > 0 && !selectedNode && !autoSelectRef.current.active) {
+            if (autoSelectFirst && nodes.length > 0 && !selectedNodeRef.current && !autoSelectRef.current.active) {
                 const root = nodes[0];
                 autoSelectRef.current = {active: true, pendingId: root.id};
                 const nextExpanded = new Set([root.id]);
                 onExpandedChange(nextExpanded);
                 onSelect(root);
-                loadChildren(root);
+                loadChildrenRef.current(root);
             }
         } catch (err) {
             console.error('loadRoots failed', err);
             setRoots([]);
             onRootsLoaded?.(false);
         }
-    };
+    }, [autoSelectFirst, onExpandedChange, onRootsLoaded, onSelect]);
 
     const handleSearch = async () => {
         const keyword = searchKeyword.trim();
@@ -188,7 +172,22 @@ export default function MetadataTree({
         loadRoots();
     };
 
-    const loadChildren = async (node: MetadataTreeNode) => {
+    const handleAutoSelectChildren = useCallback((node: MetadataTreeNode, children: MetadataTreeNode[]) => {
+        if (!autoSelectRef.current.active || autoSelectRef.current.pendingId !== node.id || children.length === 0) {
+            return;
+        }
+        const firstChild = children[0];
+        if (firstChild.type === 'database') {
+            autoSelectRef.current = {active: false, pendingId: null};
+            onSelect(firstChild);
+            const nextExpanded = new Set(expanded);
+            nextExpanded.add(firstChild.id);
+            onExpandedChange(nextExpanded);
+            loadChildrenRef.current(firstChild);
+        }
+    }, [expanded, onSelect, onExpandedChange]);
+
+    const loadChildren = useCallback(async (node: MetadataTreeNode) => {
         if (node.type === 'table') {
             return;
         }
@@ -281,22 +280,30 @@ export default function MetadataTree({
                 setLoading(null);
             }
         }
-    };
+    }, [handleAutoSelectChildren]);
+    loadChildrenRef.current = loadChildren;
 
-    const handleAutoSelectChildren = (node: MetadataTreeNode, children: MetadataTreeNode[]) => {
-        if (!autoSelectRef.current.active || autoSelectRef.current.pendingId !== node.id || children.length === 0) {
-            return;
+    useEffect(() => {
+        loadRoots();
+    }, [loadRoots]);
+
+    // 当外部通过 expanded 展开尚未加载子节点的节点时，自动加载其子节点
+    useEffect(() => {
+        const collectNodes = (nodes: MetadataTreeNode[]): MetadataTreeNode[] => {
+            return nodes.reduce<MetadataTreeNode[]>((acc, n) => {
+                acc.push(n);
+                if (n.children) acc.push(...collectNodes(n.children));
+                return acc;
+            }, []);
+        };
+        const allNodes = collectNodes(roots);
+        for (const node of allNodes) {
+            if (expanded.has(node.id) && (!node.children || node.children.length === 0) && !loadedRef.current.has(node.id) && loading !== node.id) {
+                loadedRef.current.add(node.id);
+                loadChildren(node);
+            }
         }
-        const firstChild = children[0];
-        if (firstChild.type === 'database') {
-            autoSelectRef.current = {active: false, pendingId: null};
-            onSelect(firstChild);
-            const nextExpanded = new Set(expanded);
-            nextExpanded.add(firstChild.id);
-            onExpandedChange(nextExpanded);
-            loadChildren(firstChild);
-        }
-    };
+    }, [expanded, roots, loading, loadChildren]);
 
     const handleToggle = (node: MetadataTreeNode) => {
         if (!node.children || node.children.length === 0) {

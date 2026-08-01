@@ -1,5 +1,5 @@
 import type {HTMLAttributes} from 'react';
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
@@ -177,14 +177,14 @@ export default function SyncJobsPage() {
     const hasRunning = list.some((i) => i.executionStatus === 'RUNNING') || executingId != null;
     usePollingWhile(hasRunning, reload);
 
-    const loadDataSources = async () => {
+    const loadDataSources = useCallback(async () => {
         try {
             const result = await getDataSources({page: 1, pageSize: 1000});
             setDataSources(result.data.records.filter((ds) => ds.status === 'NORMAL'));
         } catch {
             // ignored
         }
-    };
+    }, []);
 
     const openCreate = async () => {
         await loadDataSources();
@@ -192,11 +192,11 @@ export default function SyncJobsPage() {
         setDrawerOpen(true);
     };
 
-    const openEdit = async (item: SyncJob) => {
+    const openEdit = useCallback(async (item: SyncJob) => {
         await loadDataSources();
         setEditItem(item);
         setDrawerOpen(true);
-    };
+    }, [loadDataSources]);
 
     const handleSubmit = async (payload: SyncJobCreateRequest) => {
         const result = editItem
@@ -207,7 +207,7 @@ export default function SyncJobsPage() {
         return result;
     };
 
-    const handleExecute = async (item: SyncJob) => {
+    const handleExecute = useCallback(async (item: SyncJob) => {
         setExecutingId(item.id);
         try {
             await executeSyncJob(item.id);
@@ -216,9 +216,9 @@ export default function SyncJobsPage() {
         } finally {
             setExecutingId(null);
         }
-    };
+    }, [reload]);
 
-    const handleToggleSchedule = async (item: SyncJob) => {
+    const handleToggleSchedule = useCallback(async (item: SyncJob) => {
         setSchedulingId(item.id);
         try {
             if (item.scheduleEnabled) {
@@ -231,7 +231,7 @@ export default function SyncJobsPage() {
         } finally {
             setSchedulingId(null);
         }
-    };
+    }, [reload]);
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
@@ -407,10 +407,10 @@ export default function SyncJobsPage() {
                 </div>
             ),
         },
-    ], [canWrite, dataSources, executingId, schedulingId, navigate]);
+    ], [canWrite, dataSources, executingId, schedulingId, navigate, handleExecute, handleToggleSchedule, openEdit]);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">批量数据同步任务</h1>
@@ -472,10 +472,10 @@ export default function SyncJobsPage() {
                 </DsToolbar>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table<SyncJob>
                             dataSource={list}
                             rowKey="id"

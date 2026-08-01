@@ -5,13 +5,13 @@ import type {ReactNode} from 'react';
 /**
  * 全局消息提示的唯一入口。历史背景：49 处直接调 antd 静态 message，
  * 在 ConfigProvider 动态主题下会触发 "Static function can not consume context
- * like dynamic theme" 警告。现在 main.tsx 里的 MessageBridge 会把
+ * like dynamic theme" 警告。现在 components/MessageBridge.tsx 会把
  * antd <App> 的 message 实例注入这里，业务代码一律用 notify.xxx，
  * 不要再 import {message} from 'antd'。
  */
 let messageApi: MessageInstance | null = null;
 
-/** 由 main.tsx 的 MessageBridge 在挂载时调用 */
+/** 由 components/MessageBridge.tsx 在挂载时调用 */
 export function injectMessageApi(api: MessageInstance) {
     messageApi = api;
 }

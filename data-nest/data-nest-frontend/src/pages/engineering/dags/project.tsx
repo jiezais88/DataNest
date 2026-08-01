@@ -1,5 +1,5 @@
 // 项目内的 DAG 列表页（PRD §6.3：8 列布局）
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Modal, Space, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
@@ -57,7 +57,7 @@ export default function ProjectDagsPage() {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
 
-    const refresh = async () => {
+    const refresh = useCallback(async () => {
         if (!projectId) return;
         setLoading(true);
         try {
@@ -72,11 +72,11 @@ export default function ProjectDagsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [projectId]);
 
     useEffect(() => {
         refresh();
-    }, [projectId]);
+    }, [refresh]);
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
@@ -93,7 +93,7 @@ export default function ProjectDagsPage() {
         }
     };
 
-    const handleTrigger = async (id: string | number) => {
+    const handleTrigger = useCallback(async (id: string | number) => {
         try {
             await triggerDag(id);
             notify.success('触发成功');
@@ -101,9 +101,9 @@ export default function ProjectDagsPage() {
         } catch {
             // 错误提示由 request 拦截器统一弹出
         }
-    };
+    }, []);
 
-    const handleToggleSchedule = async (dag: Dag) => {
+    const handleToggleSchedule = useCallback(async (dag: Dag) => {
         if (!dag.id) return;
         setSchedulingId(dag.id);
         try {
@@ -121,7 +121,7 @@ export default function ProjectDagsPage() {
         } finally {
             setSchedulingId(null);
         }
-    };
+    }, [refresh]);
 
     const handleQuery = () => {
         setAppliedName(searchName);
@@ -258,7 +258,7 @@ export default function ProjectDagsPage() {
     ], [canEdit, navigate, handleTrigger, handleToggleSchedule, schedulingId]);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             {/* 面包屑 */}
             <div className="text-ds-small text-ds-text-muted mb-ds-3 flex-shrink-0">
                 <Link to="/engineering/dags" className="text-ds-accent hover:underline">数据开发</Link>
@@ -315,10 +315,10 @@ export default function ProjectDagsPage() {
             </div>
 
             {/* 表格卡片 + 底部分页器 */}
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table
                             dataSource={paged}
                             rowKey="id"

@@ -1,4 +1,4 @@
-import {type ButtonHTMLAttributes, type ReactNode} from 'react';
+import {type ButtonHTMLAttributes, forwardRef, type ReactNode} from 'react';
 
 /**
  * 全局统一按钮。历史背景：主/次按钮的 className 曾在 40+ 处复制粘贴并出现微变异
@@ -22,16 +22,20 @@ export interface DsButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     children: ReactNode;
 }
 
-export default function DsButton({
-                                     variant = 'primary',
-                                     className = '',
-                                     type = 'button',
-                                     children,
-                                     ...rest
-                                 }: DsButtonProps) {
+// antd Tooltip 需要通过 ref 拿到触发元素 DOM 来定位浮层，必须 forwardRef
+const DsButton = forwardRef<HTMLButtonElement, DsButtonProps>(function DsButton({
+                                                                                    variant = 'primary',
+                                                                                    className = '',
+                                                                                    type = 'button',
+                                                                                    children,
+                                                                                    ...rest
+                                                                                }, ref) {
     return (
-        <button type={type} className={`${BASE_CLASS} ${VARIANT_CLASS[variant]} ${className}`.trim()} {...rest}>
+        <button ref={ref} type={type}
+                className={`${BASE_CLASS} ${VARIANT_CLASS[variant]} ${className}`.trim()} {...rest}>
             {children}
         </button>
     );
-}
+});
+
+export default DsButton;

@@ -75,7 +75,7 @@ export default function Layout() {
                 </header>
 
                 {/* Page content */}
-                <main className="flex-1 min-h-0 overflow-hidden p-ds-6">
+                <main className="flex-1 min-h-0 overflow-y-auto p-ds-6">
                     {/* Sprint 3 数据开发页面按原型自带面包屑/页头（或全屏画布），不渲染全局面包屑 */}
                     {!location.pathname.startsWith('/engineering/dags') && (
                         <Breadcrumb pathname={location.pathname}/>

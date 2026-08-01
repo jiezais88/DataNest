@@ -1,5 +1,4 @@
-import {lazy, Suspense} from 'react';
-import {createBrowserRouter, Navigate, useParams} from 'react-router-dom';
+import {createBrowserRouter} from 'react-router-dom';
 import LoginPage from '../pages/login';
 import Layout from '../components/Layout';
 import HomePage from '../pages/home';
@@ -14,45 +13,13 @@ import DataStandardsPage from '../pages/governance/data-standards';
 import DagsPage from '../pages/engineering/dags';
 import ProjectDagsPage from '../pages/engineering/dags/project';
 import DagExecutionsGlobalPage from '../pages/engineering/dag-executions';
-import DsSpinner from '../components/DsSpinner';
-
-// DAG 编辑器整页懒加载：画布依赖 ReactFlow + Monaco（SQL 编辑器），
-// 体积约 4MB，只应在这三个画布路由进入时下载
-const DagEditor = lazy(() => import('../pages/engineering/dags/Editor'));
-
-function LazyDagEditor() {
-    return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-ds-bg-root flex items-center justify-center">
-                <DsSpinner size={20}/>
-            </div>
-        }>
-            <DagEditor/>
-        </Suspense>
-    );
-}
-
-// 旧 per-task 历史页已合并进全局历史页（?id= 精确过滤），老链接 301 到全局页
-function SyncJobHistoryRedirect() {
-    const {syncJobId} = useParams();
-    return <Navigate to={`/engineering/sync-job-history?syncJobId=${syncJobId}`} replace/>;
-}
-
-function CollectHistoryRedirect() {
-    const {taskId} = useParams();
-    return <Navigate to={`/governance/collect-task-history?taskId=${taskId}`} replace/>;
-}
-
-function DagExecutionsRedirect() {
-    const {id} = useParams();
-    return <Navigate to={`/engineering/dag-executions?dagId=${id}`} replace/>;
-}
-
-const ProtectedRoute = ({children}: { children: React.ReactNode }) => {
-    const token = localStorage.getItem('token');
-    if (!token) return <Navigate to="/login" replace/>;
-    return <>{children}</>;
-};
+import {
+    CollectHistoryRedirect,
+    DagExecutionsRedirect,
+    LazyDagEditor,
+    ProtectedRoute,
+    SyncJobHistoryRedirect,
+} from './components';
 
 export const router = createBrowserRouter([
     {

@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import type {DataSource} from '../../../types/datasource';
 import {DataSourceTypeEnum} from '../../../constants/datasource';
 import type {SyncFieldMapping, SyncJob, SyncJobCreateRequest, SyncMode, SyncTriggerType,} from '../../../types/sync';
@@ -78,6 +78,19 @@ function buildSchemaLabel(ds: DataSource, schema: string) {
     return schema;
 }
 
+// 字段自动映射：源列按名列出，已存在的同名映射保留目标列名，否则目标列默认同名
+function applyAutoMapping(columns: string[], existingMapping: SyncFieldMapping[]): SyncFieldMapping[] {
+    const existingMap = new Map(
+        existingMapping
+            .filter((m) => columns.includes(m.sourceColumn))
+            .map((m) => [m.sourceColumn, m.targetColumn]),
+    );
+    return columns.map((col) => ({
+        sourceColumn: col,
+        targetColumn: existingMap.get(col) || col,
+    }));
+}
+
 export default function SyncJobDrawer({
                                           open,
                                           editItem,
@@ -103,6 +116,119 @@ export default function SyncJobDrawer({
     const [targetTablesLoading, setTargetTablesLoading] = useState(false);
 
     const isEdit = !!editItem;
+
+    const loadTargetDatabases = async () => {
+        setTargetDbsLoading(true);
+        try {
+            const result = await listBuiltinDorisDatabases();
+            setTargetDatabases(result.data || []);
+        } catch {
+            setTargetDatabases([]);
+        } finally {
+            setTargetDbsLoading(false);
+        }
+    };
+
+    const loadTargetTables = useCallback(async (database: string, preselectTable?: string) => {
+        if (!database) {
+            setTargetTables([]);
+            return;
+        }
+        setTargetTablesLoading(true);
+        try {
+            const result = await listBuiltinDorisTables(database);
+            const names = result.data || [];
+            setTargetTables(names);
+            if (preselectTable && names.includes(preselectTable)) {
+                setForm((prev) => ({...prev, targetTable: preselectTable}));
+            }
+        } catch {
+            setTargetTables([]);
+        } finally {
+            setTargetTablesLoading(false);
+        }
+    }, []);
+
+    const resolveDatabaseSchema = useCallback((datasourceId: string, selectedSchema: string) => {
+        const ds = sourceDataSources.find((d) => d.id === datasourceId);
+        if (!ds || !selectedSchema) return null;
+        if (ds.type === DataSourceTypeEnum.POSTGRESQL || ds.type === DataSourceTypeEnum.ORACLE || ds.type === DataSourceTypeEnum.SQLSERVER) {
+            return {sourceDatabase: ds.databaseName, sourceSchema: selectedSchema};
+        }
+        return {sourceDatabase: selectedSchema, sourceSchema: selectedSchema};
+    }, [sourceDataSources]);
+
+    const loadTables = useCallback(async (datasourceId: string, selectedSchema: string, preselectTable?: string) => {
+        if (!datasourceId || !selectedSchema) {
+            setTables([]);
+            return;
+        }
+        const resolved = resolveDatabaseSchema(datasourceId, selectedSchema);
+        if (!resolved) {
+            setTables([]);
+            return;
+        }
+        setTablesLoading(true);
+        try {
+            const result = await getDataSourceTables(
+                datasourceId,
+                resolved.sourceDatabase,
+                resolved.sourceSchema,
+            );
+            const names = result.data || [];
+            setTables(names);
+            if (preselectTable && names.includes(preselectTable)) {
+                setForm((prev) => ({...prev, sourceTable: preselectTable}));
+            }
+        } finally {
+            setTablesLoading(false);
+        }
+    }, [resolveDatabaseSchema]);
+
+    const loadSchemas = useCallback(async (datasourceId: string, preselectSchema?: string, preselectTable?: string) => {
+        if (!datasourceId) {
+            setSchemas([]);
+            return;
+        }
+        setSchemasLoading(true);
+        try {
+            const result = await getDataSourceSchemas(datasourceId);
+            const list = result.data || [];
+            setSchemas(list);
+            if (preselectSchema && list.includes(preselectSchema)) {
+                loadTables(datasourceId, preselectSchema, preselectTable);
+            }
+        } finally {
+            setSchemasLoading(false);
+        }
+    }, [loadTables]);
+
+    const loadTableColumns = useCallback(async (datasourceId: string, selectedSchema: string, tableName: string) => {
+        const resolved = resolveDatabaseSchema(datasourceId, selectedSchema);
+        if (!resolved) return;
+        setColumnsLoading(true);
+        try {
+            const result = await previewDataSource(
+                datasourceId,
+                resolved.sourceDatabase,
+                resolved.sourceSchema || resolved.sourceDatabase,
+                tableName,
+            );
+            const columns = result.data.columns || [];
+            const types = result.data.columnTypes || {};
+            setColumnOptions(columns);
+            setColumnTypes(types);
+            // 函数式更新：自动映射基于最新 fieldMapping 计算，避免把 fieldMapping 变成 effect 依赖导致循环加载
+            setFieldMapping((prev) => applyAutoMapping(columns, prev));
+            setForm((prev) =>
+                prev.incrementalField && !columns.includes(prev.incrementalField)
+                    ? {...prev, incrementalField: ''}
+                    : prev
+            );
+        } finally {
+            setColumnsLoading(false);
+        }
+    }, [resolveDatabaseSchema]);
 
     useEffect(() => {
         if (!open) return;
@@ -135,16 +261,16 @@ export default function SyncJobDrawer({
         }
         loadTargetDatabases();
         setErrors({});
-    }, [open, editItem]);
+    }, [open, editItem, loadSchemas]);
 
     useEffect(() => {
         if (form.sourceTable && form.selectedSchema && form.sourceDatasourceId) {
-            loadTableColumns(form.sourceDatasourceId, form.selectedSchema, form.sourceTable, fieldMapping);
+            loadTableColumns(form.sourceDatasourceId, form.selectedSchema, form.sourceTable);
         } else {
             setColumnOptions([]);
             setColumnTypes({});
         }
-    }, [form.sourceDatasourceId, form.selectedSchema, form.sourceTable]);
+    }, [form.sourceDatasourceId, form.selectedSchema, form.sourceTable, loadTableColumns]);
 
     useEffect(() => {
         if (form.targetDatabase) {
@@ -152,130 +278,7 @@ export default function SyncJobDrawer({
         } else {
             setTargetTables([]);
         }
-    }, [form.targetDatabase]);
-
-    const loadTargetDatabases = async () => {
-        setTargetDbsLoading(true);
-        try {
-            const result = await listBuiltinDorisDatabases();
-            setTargetDatabases(result.data || []);
-        } catch {
-            setTargetDatabases([]);
-        } finally {
-            setTargetDbsLoading(false);
-        }
-    };
-
-    const loadTargetTables = async (database: string, preselectTable?: string) => {
-        if (!database) {
-            setTargetTables([]);
-            return;
-        }
-        setTargetTablesLoading(true);
-        try {
-            const result = await listBuiltinDorisTables(database);
-            const names = result.data || [];
-            setTargetTables(names);
-            if (preselectTable && names.includes(preselectTable)) {
-                setForm((prev) => ({...prev, targetTable: preselectTable}));
-            }
-        } catch {
-            setTargetTables([]);
-        } finally {
-            setTargetTablesLoading(false);
-        }
-    };
-
-    const loadSchemas = async (datasourceId: string, preselectSchema?: string, preselectTable?: string) => {
-        if (!datasourceId) {
-            setSchemas([]);
-            return;
-        }
-        setSchemasLoading(true);
-        try {
-            const result = await getDataSourceSchemas(datasourceId);
-            const list = result.data || [];
-            setSchemas(list);
-            if (preselectSchema && list.includes(preselectSchema)) {
-                loadTables(datasourceId, preselectSchema, preselectTable);
-            }
-        } finally {
-            setSchemasLoading(false);
-        }
-    };
-
-    const resolveDatabaseSchema = (datasourceId: string, selectedSchema: string) => {
-        const ds = sourceDataSources.find((d) => d.id === datasourceId);
-        if (!ds || !selectedSchema) return null;
-        if (ds.type === DataSourceTypeEnum.POSTGRESQL || ds.type === DataSourceTypeEnum.ORACLE || ds.type === DataSourceTypeEnum.SQLSERVER) {
-            return {sourceDatabase: ds.databaseName, sourceSchema: selectedSchema};
-        }
-        return {sourceDatabase: selectedSchema, sourceSchema: selectedSchema};
-    };
-
-    const loadTables = async (datasourceId: string, selectedSchema: string, preselectTable?: string) => {
-        if (!datasourceId || !selectedSchema) {
-            setTables([]);
-            return;
-        }
-        const resolved = resolveDatabaseSchema(datasourceId, selectedSchema);
-        if (!resolved) {
-            setTables([]);
-            return;
-        }
-        setTablesLoading(true);
-        try {
-            const result = await getDataSourceTables(
-                datasourceId,
-                resolved.sourceDatabase,
-                resolved.sourceSchema,
-            );
-            const names = result.data || [];
-            setTables(names);
-            if (preselectTable && names.includes(preselectTable)) {
-                setForm((prev) => ({...prev, sourceTable: preselectTable}));
-            }
-        } finally {
-            setTablesLoading(false);
-        }
-    };
-
-    const loadTableColumns = async (datasourceId: string, selectedSchema: string, tableName: string, existingMapping: SyncFieldMapping[]) => {
-        const resolved = resolveDatabaseSchema(datasourceId, selectedSchema);
-        if (!resolved) return;
-        setColumnsLoading(true);
-        try {
-            const result = await previewDataSource(
-                datasourceId,
-                resolved.sourceDatabase,
-                resolved.sourceSchema || resolved.sourceDatabase,
-                tableName,
-            );
-            const columns = result.data.columns || [];
-            const types = result.data.columnTypes || {};
-            setColumnOptions(columns);
-            setColumnTypes(types);
-            applyAutoMapping(columns, existingMapping);
-            if (form.incrementalField && !columns.includes(form.incrementalField)) {
-                setForm((prev) => ({...prev, incrementalField: ''}));
-            }
-        } finally {
-            setColumnsLoading(false);
-        }
-    };
-
-    const applyAutoMapping = (columns: string[], existingMapping: SyncFieldMapping[]) => {
-        const existingMap = new Map(
-            existingMapping
-                .filter((m) => columns.includes(m.sourceColumn))
-                .map((m) => [m.sourceColumn, m.targetColumn]),
-        );
-        const next = columns.map((col) => ({
-            sourceColumn: col,
-            targetColumn: existingMap.get(col) || col,
-        }));
-        setFieldMapping(next);
-    };
+    }, [form.targetDatabase, editItem?.targetTable, loadTargetTables]);
 
     const isIncrementalRecommended = (column: string): boolean => {
         const type = (columnTypes[column] || '').toLowerCase();

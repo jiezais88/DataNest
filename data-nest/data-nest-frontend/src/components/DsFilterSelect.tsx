@@ -1,4 +1,5 @@
 import {HiChevronRight} from 'react-icons/hi2';
+import {cn} from '../utils/cn';
 
 /**
  * 工具栏筛选下拉。历史背景：11 个页面各手写一遍
@@ -34,7 +35,7 @@ export default function DsFilterSelect({
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 disabled={disabled}
-                className={`appearance-none min-w-[140px] pl-ds-3 pr-9 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${className}`.trim()}
+                className={cn('appearance-none min-w-[140px] pl-ds-3 pr-9 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed', className)}
                 {...rest}
             >
                 {options.map((o) => (

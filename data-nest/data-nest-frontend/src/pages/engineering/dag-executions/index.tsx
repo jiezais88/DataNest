@@ -238,7 +238,8 @@ export default function DagExecutionsGlobalPage() {
             setSearchParams(next, {replace: true});
         }
         if (applied.dagId) {
-            const {dagId, ...rest} = applied;
+            const rest = {...applied};
+            delete rest.dagId;
             applyQuery(rest);
         }
     }, [searchParams, setSearchParams, applied, applyQuery]);
@@ -282,17 +283,17 @@ export default function DagExecutionsGlobalPage() {
         });
     };
 
-    const handleDagNameClick = (record: DagExecution) => {
+    const handleDagNameClick = useCallback((record: DagExecution) => {
         if (record.dagId != null && record.id != null) {
             // 跳转到只读运行画布，展示该次 execution 的实际节点运行信息
             navigate(`/engineering/dags/${record.dagId}/executions/${record.id}`, {
                 state: {from: '/engineering/dag-executions'},
             });
         }
-    };
+    }, [navigate]);
 
     // Sprint 3 P1-13：重跑失败节点（Mvp 简化版：复用 trigger 重新跑所有节点）
-    const handleRerun = (record: DagExecution) => {
+    const handleRerun = useCallback((record: DagExecution) => {
         if (record.dagId == null || record.id == null) {
             notify.warning('记录缺少 dagId/executionId，无法重跑');
             return;
@@ -315,7 +316,7 @@ export default function DagExecutionsGlobalPage() {
                 }
             },
         });
-    };
+    }, [reload]);
 
     const columns = useMemo<ColumnsType<DagExecution>>(() => [
         {
@@ -415,7 +416,7 @@ export default function DagExecutionsGlobalPage() {
     ], [canEdit, handleDagNameClick, handleRerun]);
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex flex-col">
             {/* 页头 */}
             <div className="mb-ds-5 flex-shrink-0">
                 <h1 className="text-ds-display text-ds-text-primary">DAG 执行历史</h1>
@@ -499,12 +500,12 @@ export default function DagExecutionsGlobalPage() {
                 </DsToolbar>
             </div>
 
-            {/* 表格卡片 + 底部分页器：内容高度，分页器跟随表格 */}
-            <div className="flex-1 min-h-0 flex flex-col">
+            {/* 表格卡片 + 底部分页器：卡片随内容高度，分页器紧贴表格；内容超高时整页滚动 */}
+            <div className="flex flex-col">
                 <div
                     data-testid="dag-executions-table"
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden min-h-0 flex flex-col mb-ds-8">
-                    <div className="flex-1 overflow-auto">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="overflow-x-auto">
                         <Table<DagExecution>
                             dataSource={data}
                             rowKey={r => String(r.id ?? '')}
