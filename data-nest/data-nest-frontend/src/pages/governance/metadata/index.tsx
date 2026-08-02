@@ -196,7 +196,19 @@ export default function MetadataPage() {
                 const tableName = `${table.databaseName}.${table.tableName}`;
                 try {
                     const lineageResult = await getLineageByTargetTable(tableName);
-                    setLineageRecords(lineageResult.data || []);
+                    const records = lineageResult.data || [];
+                    // 同一 DAG/节点/源表/目标表/血缘类型会随每次执行重复落库，按 key 去重并保留最新记录
+                    const seen = new Map<string, LineageRecord>();
+                    for (const r of records) {
+                        const key = [r.sourceTable, r.targetTable, r.dagId, r.lineageType, r.nodeId].join('|');
+                        const existing = seen.get(key);
+                        if (!existing || (r.createdAt && existing.createdAt && r.createdAt > existing.createdAt)) {
+                            seen.set(key, r);
+                        }
+                    }
+                    setLineageRecords(
+                        Array.from(seen.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+                    );
                 } catch (err) {
                     console.error('load lineage failed', err);
                     setLineageRecords([]);
@@ -573,7 +585,7 @@ export default function MetadataPage() {
             title: '是否可空',
             dataIndex: 'nullable',
             render: (v: boolean) => (
-                <span className="text-ds-small text-ds-text-secondary">{v ? 'YES' : 'NO'}</span>
+                <span className="text-ds-small text-ds-text-secondary">{v ? '是' : '否'}</span>
             ),
         },
         {
@@ -601,9 +613,9 @@ export default function MetadataPage() {
             PYTHON: 'DAG 任务（Python 节点）',
         };
         const LINEAGE_TYPE_LABEL: Record<string, string> = {
-            SQL: 'SQL',
+            SQL: 'SQL 节点',
             SYNC: '同步任务',
-            PYTHON: 'Python',
+            PYTHON: 'Python 节点',
         };
         const LINEAGE_TYPE_CLASS: Record<string, string> = {
             SQL: 'bg-ds-accent-light text-ds-accent',
@@ -668,8 +680,8 @@ export default function MetadataPage() {
                 {isTaskRegistered && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-5 mb-ds-6">
                         <div data-testid="metadata-source-card"
-                             className="border border-ds-accent/30 bg-ds-accent-light rounded-ds-sm p-ds-4">
-                            <h3 className="text-ds-small font-semibold text-ds-accent uppercase tracking-wider mb-ds-3">
+                             className="border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
+                            <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider mb-ds-3">
                                 数据来源
                             </h3>
                             <div className="grid grid-cols-[100px_1fr] gap-y-ds-2 text-ds-small">
@@ -700,13 +712,17 @@ export default function MetadataPage() {
                                 <div className="flex items-center gap-ds-3 mt-ds-3">
                                     <DsButton
                                         variant="secondary"
-                                        onClick={() => navigate(`/engineering/dags/${selectedTable.sourceDagId}/edit`)}
+                                        onClick={() => navigate(`/engineering/dags/${selectedTable.sourceDagId}/edit`, {
+                                            state: {from: `/governance/metadata?tableId=${selectedTable.id}`},
+                                        })}
                                     >
                                         查看 DAG
                                     </DsButton>
                                     <DsButton
                                         variant="secondary"
-                                        onClick={() => navigate(`/engineering/dag-executions?dagId=${selectedTable.sourceDagId}&dagName=${encodeURIComponent(selectedTable.sourceDagName || '')}`)}
+                                        onClick={() => navigate(`/engineering/dag-executions?dagId=${selectedTable.sourceDagId}&dagName=${encodeURIComponent(selectedTable.sourceDagName || '')}`, {
+                                            state: {from: `/governance/metadata?tableId=${selectedTable.id}`},
+                                        })}
                                     >
                                         查看执行历史
                                     </DsButton>
@@ -735,40 +751,44 @@ export default function MetadataPage() {
                                             key={record.id}
                                             className={`py-ds-3 text-ds-small ${index !== lineageRecords.length - 1 ? 'border-b border-ds-border-subtle' : ''}`}
                                         >
-                                            <div className="mb-ds-2">
-                                                <div className="text-ds-text-secondary break-all"
-                                                     title={record.sourceTable || '—'}>
-                                                    {record.sourceTable || '—'}
+                                            <div className="flex items-start justify-between gap-ds-3">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-ds-text-primary font-medium break-all"
+                                                         title={record.sourceTable || '—'}>
+                                                        {record.sourceTable || '—'}
+                                                    </div>
+                                                    <div className="text-ds-caption text-ds-text-muted mt-0.5">
+                                                        → {record.targetTable}
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-start gap-ds-2 mt-0.5">
-                                                    <span className="text-ds-text-muted flex-shrink-0">→</span>
-                                                    <span className="text-ds-text-primary font-medium break-all flex-1"
-                                                          title={record.targetTable}>
-                                                        {record.targetTable}
-                                                    </span>
+                                                <div className="flex flex-col items-end gap-ds-1 shrink-0">
                                                     <span
-                                                        className={`flex-shrink-0 px-2 py-0.5 rounded-full text-ds-caption font-medium ${LINEAGE_TYPE_CLASS[record.lineageType] || LINEAGE_TYPE_CLASS.PYTHON}`}>
+                                                        className={`px-2 py-0.5 rounded-full text-ds-caption font-medium ${LINEAGE_TYPE_CLASS[record.lineageType] || LINEAGE_TYPE_CLASS.PYTHON}`}>
                                                         {LINEAGE_TYPE_LABEL[record.lineageType] || record.lineageType}
                                                     </span>
+                                                    {record.dagId != null && (
+                                                        <div className="flex items-center gap-ds-1">
+                                                            <DsButton
+                                                                variant="ghost"
+                                                                className="h-6 px-1.5 py-0 text-ds-caption"
+                                                                onClick={() => navigate(`/engineering/dags/${record.dagId}/edit`, {
+                                                                    state: {from: `/governance/metadata?tableId=${selectedTable!.id}`},
+                                                                })}
+                                                            >
+                                                                查看 DAG
+                                                            </DsButton>
+                                                            <DsButton
+                                                                variant="ghost"
+                                                                className="h-6 px-1.5 py-0 text-ds-caption"
+                                                                onClick={() => navigate(`/engineering/dag-executions?dagId=${record.dagId}&dagName=${encodeURIComponent(record.dagName || '')}`, {
+                                                                    state: {from: `/governance/metadata?tableId=${selectedTable!.id}`},
+                                                                })}
+                                                            >
+                                                                执行历史
+                                                            </DsButton>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                {record.dagId != null && (
-                                                    <div className="flex items-center justify-end gap-ds-2">
-                                                        <DsButton
-                                                            variant="ghost"
-                                                            className="h-7 px-2 py-0.5 text-ds-caption"
-                                                            onClick={() => navigate(`/engineering/dags/${record.dagId}/edit`)}
-                                                        >
-                                                            查看 DAG
-                                                        </DsButton>
-                                                        <DsButton
-                                                            variant="ghost"
-                                                            className="h-7 px-2 py-0.5 text-ds-caption"
-                                                            onClick={() => navigate(`/engineering/dag-executions?dagId=${record.dagId}&dagName=${encodeURIComponent(record.dagName || '')}`)}
-                                                        >
-                                                            执行历史
-                                                        </DsButton>
-                                                    </div>
-                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -889,7 +909,7 @@ export default function MetadataPage() {
     };
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="h-[calc(100vh-9rem)] flex flex-col overflow-hidden">
             <div className="mb-ds-5 flex-shrink-0 flex items-start justify-between">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary flex items-center gap-ds-2">
@@ -910,18 +930,20 @@ export default function MetadataPage() {
 
             <div
                 className="flex-1 min-h-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex">
-                <div className="w-[260px] border-r border-ds-border-subtle flex flex-col">
-                    <div className="px-ds-4 py-ds-3 border-b border-ds-border-subtle">
+                <div className="w-[260px] border-r border-ds-border-subtle flex flex-col min-h-0 overflow-hidden">
+                    <div className="px-ds-4 py-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <h2 className="text-ds-small font-semibold text-ds-text-primary">数据目录</h2>
                     </div>
-                    <MetadataTree
-                        selectedNode={selectedNode}
-                        onSelect={setSelectedNode}
-                        expanded={expanded}
-                        onExpandedChange={setExpanded}
-                        onRootsLoaded={setHasRoots}
-                        autoSelectFirst={false}
-                    />
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                        <MetadataTree
+                            selectedNode={selectedNode}
+                            onSelect={setSelectedNode}
+                            expanded={expanded}
+                            onExpandedChange={setExpanded}
+                            onRootsLoaded={setHasRoots}
+                            autoSelectFirst={false}
+                        />
+                    </div>
                 </div>
 
                 <div className="flex-1 min-h-0 overflow-auto p-ds-6">

@@ -27,7 +27,7 @@ import DsModal from '../../../../components/DsModal';
 import '../../../../lib/monacoSetup';
 import Editor, {type OnMount} from '@monaco-editor/react';
 import {previewSql} from '../api';
-import type {SqlStatementResult} from '../types';
+import type {DagParameter, SqlStatementResult} from '../types';
 import {formatDuration} from '../../../../utils/format';
 import {getErrorMessage} from '../../../../utils/error';
 
@@ -41,6 +41,8 @@ interface SqlEditorModalProps {
     onTested?: (status: 'PASSED' | 'FAILED') => void;
     title?: string;
     datasourceId?: number;
+    /** Sprint 4：当前 DAG 参数草稿（未保存 DAG 时也能替换参数） */
+    dagParams?: DagParameter[];
     /** Sprint 3 权限：true 时禁用「运行测试」「保存」按钮（Sprint 3 差距分析 §1.14 + §1.2） */
     readOnly?: boolean;
 }
@@ -56,6 +58,7 @@ export default function SqlEditorModal({
                                            onTested,
                                            title,
                                            datasourceId,
+                                           dagParams,
                                            readOnly = false,
                                        }: SqlEditorModalProps) {
     const [nodeName, setNodeName] = useState(initialNodeName);
@@ -102,7 +105,12 @@ export default function SqlEditorModal({
         setExpandedErrors({});
         setSelectedQueryIdx(0);
         try {
-            const resp = await previewSql(sql, datasourceId);
+            // Sprint 4：把当前 DAG 参数草稿传给预览接口，未保存 DAG 也能替换 ${param}
+            const paramMap = (dagParams || []).reduce<Record<string, unknown>>((acc, p) => {
+                if (p.paramName) acc[p.paramName] = p.defaultValue ?? '';
+                return acc;
+            }, {});
+            const resp = await previewSql(sql, datasourceId, paramMap);
             setResults(resp.statements);
             // 全部语句成功才算 PASSED；空结果（未检测到语句）视为 FAILED
             const allOk = resp.statements.length > 0 && resp.statements.every(s => s.status === 'SUCCESS');

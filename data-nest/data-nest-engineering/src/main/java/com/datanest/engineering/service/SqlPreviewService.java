@@ -5,6 +5,7 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.engineering.dto.SqlPreviewResponse;
 import com.datanest.engineering.dto.SqlPreviewResponse.StatementResult;
 import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.service.DagParameterResolver;
 import com.datanest.task.core.service.DorisSqlExecutor;
 import com.datanest.task.core.service.GenericSqlExecutor;
 import com.datanest.task.core.service.SqlStatementSplitter;
@@ -12,7 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * SQL preview service: split -> execute -> wrap response.
@@ -35,26 +40,49 @@ public class SqlPreviewService {
 
     /** 与 GenericSqlExecutor.PREVIEW_MAX_ROWS 保持一致的预览行数上限 */
     private static final int PREVIEW_MAX_ROWS = 200;
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final GenericSqlExecutor genericSqlExecutor;
     private final DorisSqlExecutor dorisSqlExecutor;
+    private final DagParameterResolver dagParameterResolver;
 
-    public SqlPreviewService(GenericSqlExecutor genericSqlExecutor, DorisSqlExecutor dorisSqlExecutor) {
+    public SqlPreviewService(GenericSqlExecutor genericSqlExecutor,
+                             DorisSqlExecutor dorisSqlExecutor,
+                             DagParameterResolver dagParameterResolver) {
         this.genericSqlExecutor = genericSqlExecutor;
         this.dorisSqlExecutor = dorisSqlExecutor;
+        this.dagParameterResolver = dagParameterResolver;
     }
 
-    public SqlPreviewResponse preview(String sql, Long datasourceId) {
+    public SqlPreviewResponse preview(String sql, Long datasourceId, Map<String, Object> params) {
         if (sql == null || sql.trim().isEmpty()) {
             throw new BusinessException(ErrorCode.SQL_PREVIEW_FAILED, "SQL must not be empty");
         }
+        Map<String, Object> resolvedParams = resolveParams(params);
         SqlPreviewResponse resp = new SqlPreviewResponse();
         List<String> stmts = SqlStatementSplitter.split(sql);
-        for (String stmt : stmts) {
+        for (String rawStmt : stmts) {
+            String stmt = dagParameterResolver.replacePlaceholders(rawStmt, resolvedParams);
             StatementResult r = executeOne(stmt, datasourceId);
             resp.getStatements().add(r);
         }
         return resp;
+    }
+
+    /**
+     * Sprint 4：构造 SQL 预览用的参数 Map。
+     * 系统变量（biz_date / current_time）始终可用，传入的草稿参数覆盖系统变量。
+     */
+    private Map<String, Object> resolveParams(Map<String, Object> draftParams) {
+        Map<String, Object> resolved = new LinkedHashMap<>();
+        LocalDateTime now = LocalDateTime.now();
+        resolved.put("biz_date", now.minusDays(1).format(DATE_FMT));
+        resolved.put("current_time", now.format(TIME_FMT));
+        if (draftParams != null) {
+            resolved.putAll(draftParams);
+        }
+        return resolved;
     }
 
     private StatementResult executeOne(String stmt, Long datasourceId) {

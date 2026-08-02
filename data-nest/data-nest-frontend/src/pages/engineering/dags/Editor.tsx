@@ -25,6 +25,7 @@ import DsButton from '../../../components/DsButton';
 import Drawer from '../../../components/Drawer';
 import {
     createDag,
+    createDagParameter,
     getDag,
     getDagExecution,
     getNodeExecutionLogs,
@@ -32,6 +33,7 @@ import {
     triggerDag,
     updateDag
 } from './api';
+import {validateDagParameters} from './utils/validateDagParameters';
 import {getSyncJob, querySyncJobs} from '../../../api/sync';
 import {formatDateTime, formatDuration} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
@@ -635,6 +637,8 @@ function DagEditorInner() {
     const [pythonModalOpen, setPythonModalOpen] = useState(false);
     // Sprint 4：DAG 参数抽屉 / 触发参数覆盖弹窗
     const [paramDrawerOpen, setParamDrawerOpen] = useState(false);
+    // 新建 DAG 尚未保存时，参数草稿保存在本地，保存 DAG 后统一提交
+    const [draftParams, setDraftParams] = useState<DagParameter[]>([]);
     const [triggerModalOpen, setTriggerModalOpen] = useState(false);
     const [dagParams, setDagParams] = useState<DagParameter[]>([]);
     const [triggering, setTriggering] = useState(false);
@@ -959,6 +963,14 @@ function DagEditorInner() {
 
     // 实际保存（通过校验后调用）
     const doSave = useCallback(async () => {
+        // 新建 DAG 时：若配置了本地参数草稿，先校验，随 DAG 创建后统一提交
+        if (isNew && draftParams.length > 0) {
+            const paramError = validateDagParameters(draftParams);
+            if (paramError) {
+                notify.error(paramError);
+                return;
+            }
+        }
         const payload: Dag = {
             ...dag,
             nodes: rfNodes.map(n => ({
@@ -980,19 +992,32 @@ function DagEditorInner() {
             if (isNew) {
                 const created = await createDag(payload);
                 savedId = String(created.id);
-                notify.success('DAG 已创建');
+                // 创建参数：DAG 保存成功后统一提交，失败则提示但 DAG 已创建
+                if (draftParams.length > 0) {
+                    try {
+                        for (const p of draftParams) {
+                            await createDagParameter(savedId, p);
+                        }
+                        notify.success('DAG 与参数已创建');
+                    } catch {
+                        notify.error('DAG 已创建，但参数保存失败，请重新打开参数抽屉提交');
+                    }
+                } else {
+                    notify.success('DAG 已创建');
+                }
             } else {
                 // 不转 Number()：保持 string id 避免精度丢失
                 await updateDag(id, payload);
                 notify.success('DAG 已更新');
             }
-            // 保存成功：清 dirty 标志（navigate 之前，避免 onBack 再次拦截）
+            // 保存成功：清 dirty 标志与本地参数草稿（navigate 之前，避免 onBack 再次拦截）
             setIsDirty(false);
+            setDraftParams([]);
             navigate(`/engineering/dags/${savedId}/edit`);
         } catch {
             // 错误提示由 request 拦截器统一弹出
         }
-    }, [dag, rfNodes, rfEdges, id, isNew, navigate]);
+    }, [dag, rfNodes, rfEdges, id, isNew, navigate, draftParams]);
 
     const handleSave = useCallback(() => {
         if (!dag.name) {
@@ -1171,7 +1196,7 @@ function DagEditorInner() {
                     onClick={handleBack}
                     className="text-ds-small text-ds-text-secondary hover:text-ds-text-primary flex items-center gap-ds-1 px-ds-3 py-1.5 rounded-lg hover:bg-ds-bg-hover transition-colors"
                 >
-                    <span>←</span> {isRunView ? '返回执行历史' : '返回项目 DAG 列表'}
+                    <span>←</span> {isRunView ? '返回执行历史' : (fromPath ? '返回' : '返回项目 DAG 列表')}
                 </button>
                 {isRunView ? (
                     <>
@@ -1265,9 +1290,7 @@ function DagEditorInner() {
                 <div className="flex-1"/>
                 {!isRunView && (
                     <>
-                        <DsButton variant="secondary" onClick={() => setParamDrawerOpen(true)}
-                                  disabled={isNew}
-                                  title={isNew ? '请先保存 DAG 后再配置参数' : undefined}>
+                        <DsButton variant="secondary" onClick={() => setParamDrawerOpen(true)}>
                             参数
                         </DsButton>
                         <DsButton variant="secondary" onClick={() => setVersionModalOpen(true)}
@@ -1451,6 +1474,7 @@ function DagEditorInner() {
                     initialSql={rfNodes.find(n => n.id === selectedNodeId)?.data.sqlContent}
                     initialNodeName={rfNodes.find(n => n.id === selectedNodeId)?.data.nodeName}
                     title={`编辑 SQL 任务 — ${rfNodes.find(n => n.id === selectedNodeId)?.data.nodeName || ''}`}
+                    dagParams={isNew ? draftParams : dagParams}
                     readOnly={!canEdit}
                     onSave={(sql, nodeName) => {
                         if (!selectedNodeId) return;
@@ -1507,6 +1531,8 @@ function DagEditorInner() {
             <DagParameterDrawer
                 open={paramDrawerOpen}
                 dagId={id}
+                draftParams={draftParams}
+                onDraftParamsChange={setDraftParams}
                 referenceTexts={rfNodes.map(n => ({
                     nodeName: n.data.nodeName,
                     text: n.data.nodeType === 'SQL' ? n.data.sqlContent : n.data.pythonScript,

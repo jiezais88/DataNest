@@ -372,7 +372,9 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
   （多表目标表解析修复）
 - `data-nest/data-nest-frontend/src/types/lineage.ts`（新增）
 - `data-nest/data-nest-frontend/src/api/lineage.ts`（新增）
-- `data-nest/data-nest-frontend/src/pages/governance/metadata/index.tsx`（接入血缘查询与两栏卡片 UI）
+- `data-nest/data-nest-frontend/src/pages/governance/metadata/index.tsx`（接入血缘查询与两栏卡片 UI；血缘类型标签中文化；字段列表「是否可空」从
+  YES/NO 改为 是/否）
+- `data-nest/data-nest-frontend/src/pages/engineering/dag-executions/index.tsx`（节点类型分布标签中文化）
 
 ### 环境/脏数据状态
 

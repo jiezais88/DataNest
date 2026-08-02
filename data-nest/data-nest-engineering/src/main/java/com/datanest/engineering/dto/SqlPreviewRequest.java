@@ -1,5 +1,7 @@
 package com.datanest.engineering.dto;
 
+import java.util.Map;
+
 /**
  * SQL preview request body.
  * <p>
@@ -8,11 +10,15 @@ package com.datanest.engineering.dto;
  * <p>
  * datasourceId optional: if null, falls back to built-in Doris
  * (same behavior as DagNodeCallback path).
+ * <p>
+ * Sprint 4: params optional, used for placeholder replacement when DAG is not saved yet.
  */
 public class SqlPreviewRequest {
 
     private String sql;
     private Long datasourceId;
+    /** Sprint 4：DAG 参数草稿（未保存 DAG 时也能替换 ${param}） */
+    private Map<String, Object> params;
 
     public String getSql() {
         return sql;
@@ -28,5 +34,13 @@ public class SqlPreviewRequest {
 
     public void setDatasourceId(Long datasourceId) {
         this.datasourceId = datasourceId;
+    }
+
+    public Map<String, Object> getParams() {
+        return params;
+    }
+
+    public void setParams(Map<String, Object> params) {
+        this.params = params;
     }
 }

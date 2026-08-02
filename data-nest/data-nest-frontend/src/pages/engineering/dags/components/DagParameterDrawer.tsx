@@ -13,19 +13,16 @@ import {createDagParameter, deleteDagParameter, listDagParameters, updateDagPara
 import type {DagParameter} from '../types';
 import {notify} from '../../../../utils/notify';
 import {getErrorMessage} from '../../../../utils/error';
-
-/** 系统变量名（参数名不允许与它们重名） */
-const SYSTEM_VARIABLES = ['biz_date', 'current_time', 'dag_id'] as const;
-
-const PARAM_TYPE_OPTIONS = ['STRING', 'NUMBER', 'DATE', 'BOOLEAN'] as const;
-
-// 参数名：字母/数字/下划线，3-30 位（PRD §6.4.1）
-const PARAM_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{2,29}$/;
+import {PARAM_TYPE_OPTIONS, validateDagParameters,} from '../utils/validateDagParameters';
 
 interface DagParameterDrawerProps {
     open: boolean;
-    /** 新建未保存的 DAG 没有 id：参数是服务端资源，此时整体禁用并提示先保存 */
+    /** 已保存 DAG 的 id；新建未保存时为空，使用 draftParams/onDraftParamsChange 本地模式 */
     dagId?: string | number;
+    /** 新建 DAG 时的本地参数草稿（受控） */
+    draftParams?: DagParameter[];
+    /** 本地草稿变更回调；本地模式下点击「完成」时触发 */
+    onDraftParamsChange?: (params: DagParameter[]) => void;
     /** 画布节点脚本引用扫描源：节点名 + 脚本内容（SQL/Python） */
     referenceTexts?: { nodeName: string; text?: string }[];
     readOnly?: boolean;
@@ -43,6 +40,8 @@ const nextKey = () => `k${++keySeq}_${Date.now()}`;
 export default function DagParameterDrawer({
                                                open,
                                                dagId,
+                                               draftParams = [],
+                                               onDraftParamsChange,
                                                referenceTexts = [],
                                                readOnly = false,
                                                onClose,
@@ -61,7 +60,8 @@ export default function DagParameterDrawer({
         setError(null);
         setRemoved([]);
         if (!dagId) {
-            setDraft([]);
+            // 本地模式：从父组件传入的草稿初始化，仍可继续编辑
+            setDraft((draftParams || []).map(p => ({...p, _key: nextKey()})));
             setOriginal(new Map());
             return;
         }
@@ -73,7 +73,7 @@ export default function DagParameterDrawer({
             })
             .catch(e => setError(getErrorMessage(e, '加载参数失败')))
             .finally(() => setLoading(false));
-    }, [open, dagId]);
+    }, [open, dagId, draftParams]);
 
     const addRow = () => {
         setDraft(prev => [...prev, {
@@ -108,24 +108,8 @@ export default function DagParameterDrawer({
         }
     };
 
-    /** 保存前校验：名称格式/重名/系统变量冲突/默认值按类型校验 */
-    const validateDraft = (): string | null => {
-        const seen = new Set<string>();
-        for (const p of draft) {
-            const name = p.paramName.trim();
-            if (!name) return '参数名称不能为空';
-            if (!PARAM_NAME_PATTERN.test(name)) return `参数名「${name}」不合法：字母/数字/下划线，3-30 位`;
-            if ((SYSTEM_VARIABLES as readonly string[]).includes(name)) return `参数名「${name}」与系统变量重名`;
-            if (seen.has(name)) return `参数名「${name}」重复`;
-            seen.add(name);
-            const value = (p.defaultValue ?? '').trim();
-            if (!value) return `参数「${name}」必须填写默认值`;
-            if (p.paramType === 'NUMBER' && Number.isNaN(Number(value))) return `参数「${name}」的默认值必须是数字`;
-            if (p.paramType === 'DATE' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return `参数「${name}」的默认值必须是 yyyy-MM-dd 格式`;
-            if (p.paramType === 'BOOLEAN' && value !== 'true' && value !== 'false') return `参数「${name}」的默认值必须是 true 或 false`;
-        }
-        return null;
-    };
+    /** 保存/完成前校验：名称格式/重名/系统变量冲突/默认值按类型校验 */
+    const validateDraft = (): string | null => validateDagParameters(draft);
 
     const handleSave = async () => {
         if (!dagId) return;
@@ -175,7 +159,29 @@ export default function DagParameterDrawer({
         }
     };
 
-    const footer = (
+    /** 本地模式：校验并把最终草稿回传给父组件 */
+    const handleLocalConfirm = () => {
+        const invalid = validateDraft();
+        if (invalid) {
+            setError(invalid);
+            return;
+        }
+        const cleaned: DagParameter[] = draft.map(p => ({
+            id: p.id,
+            dagId: p.dagId,
+            paramName: p.paramName,
+            paramType: p.paramType,
+            defaultValue: p.defaultValue,
+            required: p.required,
+            description: p.description,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+        }));
+        onDraftParamsChange?.(cleaned);
+        onClose();
+    };
+
+    const footer = dagId ? (
         <>
             <DsButton variant="secondary" onClick={onClose} disabled={saving}>
                 取消
@@ -183,10 +189,19 @@ export default function DagParameterDrawer({
             <DsButton
                 data-testid="dag-param-save"
                 onClick={handleSave}
-                disabled={readOnly || saving || !dagId || loading}
-                title={readOnly ? '只读模式：您没有编辑权限' : !dagId ? '请先保存 DAG' : undefined}
+                disabled={readOnly || saving || loading}
+                title={readOnly ? '只读模式：您没有编辑权限' : undefined}
             >
                 {saving ? '保存中...' : '保存'}
+            </DsButton>
+        </>
+    ) : (
+        <>
+            <DsButton variant="secondary" onClick={onClose}>
+                取消
+            </DsButton>
+            <DsButton onClick={handleLocalConfirm} disabled={readOnly}>
+                完成
             </DsButton>
         </>
     );
@@ -198,9 +213,7 @@ export default function DagParameterDrawer({
             onClose={onClose}
             footer={footer}
         >
-            {!dagId ? (
-                <div className="text-ds-small text-ds-text-muted">请先保存 DAG，然后再配置参数。</div>
-            ) : loading ? (
+            {loading && dagId ? (
                 <div className="flex items-center justify-center py-ds-6 gap-ds-2 text-ds-small text-ds-text-secondary">
                     <Spin size="small"/> 加载参数中...
                 </div>

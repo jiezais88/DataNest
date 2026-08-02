@@ -1,7 +1,7 @@
 // 全局 DAG 执行历史（PRD §6.7.3）
 // 跨 DAG 的运行实例列表，支持按名称/状态/触发方式/时间范围过滤
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {useNavigate, useSearchParams} from 'react-router-dom';
+import {useLocation, useNavigate, useSearchParams} from 'react-router-dom';
 import {Modal, Table, Tooltip,} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {HiOutlineArrowPath, HiOutlineEye, HiOutlineStop} from 'react-icons/hi2';
@@ -45,7 +45,7 @@ const TRIGGER_OPTIONS = [
 ];
 
 // =================== helpers ===================
-const NODE_TYPE_BREAKDOWN_LABEL: Record<string, string> = {SQL: 'SQL', SYNC: '同步', PYTHON: 'Python'};
+const NODE_TYPE_BREAKDOWN_LABEL: Record<string, string> = {SQL: 'SQL 节点', SYNC: '同步节点', PYTHON: 'Python 节点'};
 
 // datetime-local 用户手动编辑后可能只有分钟（YYYY-MM-DDTHH:mm），补秒保证后端 LocalDateTime 解析一致
 function normalizeDateTime(v: string): string {
@@ -79,8 +79,10 @@ function buildDefaultApplied(): AppliedFilters {
 
 export default function DagExecutionsGlobalPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const canEdit = useCanEdit();
     const [searchParams, setSearchParams] = useSearchParams();
+    const fromPath = (location.state as { from?: string } | null)?.from;
 
     // 草稿：用户在工具栏里编辑但未点查询
     const defaultRange = getDefaultTimeRange();
@@ -146,10 +148,12 @@ export default function DagExecutionsGlobalPage() {
             notify.warning('请选择执行时间范围');
             return;
         }
-        clearDagIdFilter();
+        // 从 DAG 列表「历史」跳入时，精确过滤应随查询按钮保留（不要清除 dagId/dagName）
+        const hasDagId = !!applied.dagId;
         applyQuery({
             dagName: draftDagName.trim(),
             projectName: draftProjectName.trim(),
+            ...(hasDagId ? {dagId: applied.dagId} : {}),
             status: draftStatus || undefined,
             triggerType: draftTriggerType || undefined,
             startTimeFrom: normalizeDateTime(draftStartTimeFrom),
@@ -402,9 +406,19 @@ export default function DagExecutionsGlobalPage() {
     return (
         <div className="flex flex-col">
             {/* 页头 */}
-            <div className="mb-ds-5 flex-shrink-0">
-                <h1 className="text-ds-display text-ds-text-primary">DAG 执行历史</h1>
-                <p className="text-ds-small text-ds-text-muted mt-ds-1">查看跨 DAG 的运行实例与节点执行详情</p>
+            <div className="mb-ds-5 flex-shrink-0 flex items-start justify-between">
+                <div>
+                    <h1 className="text-ds-display text-ds-text-primary">DAG 执行历史</h1>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">查看跨 DAG 的运行实例与节点执行详情</p>
+                </div>
+                {fromPath && (
+                    <DsButton
+                        variant="secondary"
+                        onClick={() => navigate(fromPath)}
+                    >
+                        ← 返回
+                    </DsButton>
+                )}
             </div>
 
             {/* 工具栏：独立卡片（与表格分离，对齐原型 .toolbar） */}

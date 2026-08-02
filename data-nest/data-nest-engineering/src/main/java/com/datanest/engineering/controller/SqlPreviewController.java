@@ -39,7 +39,7 @@ public class SqlPreviewController {
         if (request == null) {
             throw new BusinessException(ErrorCode.SQL_PREVIEW_FAILED, "Request body must not be empty");
         }
-        SqlPreviewResponse resp = sqlPreviewService.preview(request.getSql(), request.getDatasourceId());
+        SqlPreviewResponse resp = sqlPreviewService.preview(request.getSql(), request.getDatasourceId(), request.getParams());
         return Result.ok(resp);
     }
 }

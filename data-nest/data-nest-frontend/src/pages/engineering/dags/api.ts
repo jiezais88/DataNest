@@ -87,10 +87,10 @@ export const getNodeExecutionLogs = (nodeExecutionId: string | number) =>
 // Sprint 3: "Run Test" button in the SQL editor modal.
 // Calls backend POST /api/engineering/dev/sql-preview, returns parsed result
 // with one entry per statement (split by ';', string-literal aware).
-export const previewSql = (sql: string, datasourceId?: number) =>
+export const previewSql = (sql: string, datasourceId?: number, params?: Record<string, unknown>) =>
     request.post<{ code: number; message?: string; data: SqlPreviewResult }>(
         '/engineering/dev/sql-preview',
-        {sql, datasourceId},
+        {sql, datasourceId, params},
         {timeout: LONG_TIMEOUT, skipErrorMessage: true},
     ).then(r => r.data);
 
@@ -131,6 +131,17 @@ export const testPythonNode = (dagId: string | number, nodeId: string, pythonScr
         `/engineering/dev/dags/${dagId}/nodes/${nodeId}/python/test`,
         {pythonScript, params},
         // axios 超时跟随脚本的超时配置（+30s 余量），避免用户设置 >10 分钟时前端先 abort 误报失败
+        {timeout: (timeoutMinutes ?? 10) * 60000 + 30000, skipErrorMessage: true},
+    ).then(r => r.data);
+
+/**
+ * 独立 Python 脚本测试：不依赖 DAG/节点 ID，用于新建 DAG 时尚未保存的场景。
+ * 此时无法解析 DAG 级参数占位符，只执行脚本本身。
+ */
+export const testPythonScript = (pythonScript: string, params?: Record<string, unknown>, timeoutMinutes?: number) =>
+    request.post<Result<PythonExecuteResult>>(
+        '/engineering/dev/python/test',
+        {pythonScript, params},
         {timeout: (timeoutMinutes ?? 10) * 60000 + 30000, skipErrorMessage: true},
     ).then(r => r.data);
 

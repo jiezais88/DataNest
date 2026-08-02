@@ -13,7 +13,7 @@ import DsButton from '../../../../components/DsButton';
 import DsModal from '../../../../components/DsModal';
 import '../../../../lib/monacoSetup';
 import Editor, {type OnMount} from '@monaco-editor/react';
-import {testPythonNode} from '../api';
+import {testPythonNode, testPythonScript} from '../api';
 import type {PythonExecuteResult} from '../types';
 import {formatDuration} from '../../../../utils/format';
 import {getErrorMessage} from '../../../../utils/error';
@@ -23,9 +23,9 @@ interface PythonEditorModalProps {
     onClose: () => void;
     /** 运行测试接口路径需要 dagId；新建未保存的 DAG 没有 id，此时禁用运行测试 */
     dagId?: string | number;
-    /** 画布节点 id（nodeId），运行测试接口路径需要 */
+    /** 画布节点 id（nodeId），运行测试接口路径需要；未保存节点可传 draft */
     nodeId?: string;
-    /** DAG 有未保存变更时为 true：此时节点尚未持久化，运行测试按 nodeId 在后端找不到节点，需禁用 */
+    /** DAG 有未保存变更；Python 运行测试只依赖脚本内容，不依赖节点是否已持久化，因此不影响运行测试 */
     hasUnsavedChanges?: boolean;
     initialScript?: string;
     initialNodeName?: string;
@@ -98,16 +98,20 @@ export default function PythonEditorModal({
         });
     };
 
-    // DAG 未保存时没有 dagId；有未保存变更时节点可能尚未持久化，后端按 nodeId 找不到节点
-    const canRunTest = !!dagId && !!nodeId && !hasUnsavedChanges;
-
     const handleRunTest = async () => {
-        if (running || !canRunTest || !dagId || !nodeId) return;
+        if (running) return;
         setRunning(true);
         setError(null);
         setResult(null);
         try {
-            const resp = await testPythonNode(dagId, nodeId, script, {}, timeoutMinutes);
+            let resp: PythonExecuteResult;
+            if (dagId && nodeId) {
+                // DAG 已保存且节点有持久化 id：走带参数解析的接口
+                resp = await testPythonNode(dagId, nodeId, script, {}, timeoutMinutes);
+            } else {
+                // 新建 DAG 或节点未保存：走独立脚本测试接口，不解析 DAG 级参数
+                resp = await testPythonScript(script, {}, timeoutMinutes);
+            }
             setResult(resp);
             onTested?.(resp.success ? 'PASSED' : 'FAILED');
         } catch (e) {
@@ -201,14 +205,8 @@ export default function PythonEditorModal({
                     <DsButton
                         variant="primary"
                         onClick={handleRunTest}
-                        disabled={readOnly || running || !script.trim() || !canRunTest}
-                        title={
-                            readOnly
-                                ? '只读模式：您没有编辑权限'
-                                : !canRunTest
-                                    ? '请先保存 DAG 后再运行测试'
-                                    : undefined
-                        }
+                        disabled={readOnly || running || !script.trim()}
+                        title={readOnly ? '只读模式：您没有编辑权限' : undefined}
                     >
                         {running ? '运行中...' : '▶ 运行测试'}
                     </DsButton>

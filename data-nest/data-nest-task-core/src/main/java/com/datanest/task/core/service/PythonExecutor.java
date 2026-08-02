@@ -166,30 +166,69 @@ public class PythonExecutor {
     private void writeTaskScript(Path workDir, String userScript, PythonContext context) throws IOException {
         StringBuilder sb = new StringBuilder();
 
-        // 安全黑名单
+        // 安全沙箱：允许 import os（pandas/numpy 依赖），但禁掉 os 中所有危险方法
         sb.append("""
                 import sys
                 import os
                 import importlib
                 import builtins
                 
-                _FORBIDDEN_MODULES = {'os', 'subprocess', 'socket', 'urllib', 'urllib2', 'http', 'ftplib', 'telnetlib', 'ssl', 'smtplib', 'poplib', 'imaplib', 'nntplib'}
+                _FORBIDDEN_MODULES = {'socket', 'urllib2', 'http', 'ftplib', 'telnetlib', 'ssl', 'smtplib', 'poplib', 'imaplib', 'nntplib'}
+                # urllib.parse 被 pathlib 等标准库安全使用，只允许 parse 子模块
+                _FORBIDDEN_SUBMODULES = {'urllib.request', 'urllib.error', 'urllib.robotparser'}
                 _ORIGINAL_IMPORT = builtins.__import__
                 
                 def _safe_import(name, *args, **kwargs):
                     base = name.split('.')[0]
                     if base in _FORBIDDEN_MODULES:
                         raise ImportError(f"模块 {name} 已被沙箱禁用")
+                    if name in _FORBIDDEN_SUBMODULES or name.startswith('urllib.request.') or name.startswith('urllib.error.'):
+                        raise ImportError(f"模块 {name} 已被沙箱禁用")
                     return _ORIGINAL_IMPORT(name, *args, **kwargs)
                 
                 builtins.__import__ = _safe_import
                 
-                # 禁止 os.system / os.popen / subprocess.Popen
-                if 'os' in sys.modules:
-                    sys.modules['os'].system = lambda *a, **k: (_ for _ in ()).throw(OSError('os.system 被禁用'))
-                    sys.modules['os'].popen = lambda *a, **k: (_ for _ in ()).throw(OSError('os.popen 被禁用'))
-                if 'subprocess' in sys.modules:
-                    sys.modules['subprocess'].Popen = lambda *a, **k: (_ for _ in ()).throw(OSError('subprocess.Popen 被禁用'))
+                # 即使 urllib.request 被放行，也禁掉网络请求方法
+                try:
+                    import urllib.request as _urllib_req
+                    _URLOPEN_DANGEROUS = ['urlopen', 'urlretrieve', 'URLopener', 'FancyURLopener']
+                    for _m in _URLOPEN_DANGEROUS:
+                        if hasattr(_urllib_req, _m):
+                            setattr(_urllib_req, _m, _forbidden_os_method(f'urllib.request.{_m}'))
+                except Exception:
+                    pass
+                
+                def _forbidden_os_method(name):
+                    def _wrapper(*a, **k):
+                        raise OSError(f'os.{name} 被沙箱禁用')
+                    return _wrapper
+                
+                # pandas/numpy 需要 os 模块，但禁止危险操作
+                _OS_DANGEROUS = [
+                    'system', 'popen', 'spawnl', 'spawnle', 'spawnlp', 'spawnlpe',
+                    'spawnv', 'spawnve', 'spawnvp', 'spawnvpe', 'execv', 'execve',
+                    'execvp', 'execvpe', 'execl', 'execle', 'execlp', 'execlpe',
+                    'remove', 'unlink', 'rmdir', 'removedirs', 'rename', 'renames',
+                    'replace', 'mkdir', 'makedirs', 'chdir', 'fchdir', 'chroot',
+                    'chmod', 'chown', 'lchown', 'link', 'symlink', 'kill', 'killpg',
+                    'abort', 'fork', 'forkpty', 'wait', 'waitpid', 'wait3', 'wait4',
+                    'setegid', 'seteuid', 'setgid', 'setgroups',
+                    'setpgrp', 'setpgid', 'setpriority', 'setregid', 'setresgid',
+                    'setresuid', 'setreuid', 'setsid', 'setuid',
+                ]
+                for _m in _OS_DANGEROUS:
+                    if hasattr(os, _m):
+                        setattr(os, _m, _forbidden_os_method(_m))
+                
+                # 允许 import subprocess（pandas 内部依赖），但禁止启动子进程
+                _SUBPROCESS_DANGEROUS = ['Popen', 'run', 'call', 'check_call', 'check_output']
+                try:
+                    import subprocess as _subp
+                    for _m in _SUBPROCESS_DANGEROUS:
+                        if hasattr(_subp, _m):
+                            setattr(_subp, _m, _forbidden_os_method(f'subprocess.{_m}'))
+                except Exception:
+                    pass
                 
                 """);
 
