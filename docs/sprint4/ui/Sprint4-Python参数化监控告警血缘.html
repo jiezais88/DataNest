@@ -1252,6 +1252,7 @@
                     <div class="canvas-toolbar-right">
                         <button class="btn btn-ghost" onclick="showPage('params')">参数</button>
                         <button class="btn btn-ghost" onclick="showPage('versions')">版本</button>
+                        <button class="btn btn-ghost" onclick="showPage('alert')">告警</button>
                         <button class="btn">保存</button>
                         <button class="btn btn-primary" onclick="showPage('trigger')">执行</button>
                     </div>
@@ -1698,20 +1699,26 @@ log(f'处理完成：{len(result)} 行')</textarea>
         <div class="ni"><span>🔧</span> DAG 执行历史</div>
         <div class="ns-title">系统管理</div>
         <div class="ni"><span>👥</span> 用户管理</div>
-        <div class="ni ac"><span>🔔</span> DAG 告警配置</div>
     </aside>
 
     <main class="mc">
         <div class="ch">
             <div class="hr">
                 <div>
-                    <div class="pt">DAG 告警配置</div>
-                    <div class="pst">配置 DAG 失败/超时时的邮件通知（仅超级管理员）</div>
+                    <div class="pt">DAG 告警配置 — 订单数据流水线</div>
+                    <div class="pst">按 DAG 覆盖全局默认配置；未保存专属配置时继承全局默认值（入口：DAG
+                        编辑器工具栏「告警」）
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="cs">
+            <div class="card"
+                 style="padding: 14px; margin-bottom: 16px; max-width: 720px; background: var(--bg-hover); border: none; font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                <strong>实现说明：</strong>Sprint 4 前端仅提供「按 DAG 覆盖」入口，无系统管理侧独立全局配置页。
+                首次打开时若继承全局默认配置，保存后将创建该 DAG 的专属配置。
+            </div>
             <div class="card" style="padding: 24px; max-width: 720px;">
                 <div class="form-row">
                     <label class="lbl" style="min-width: 160px;">启用 DAG 邮件告警</label>

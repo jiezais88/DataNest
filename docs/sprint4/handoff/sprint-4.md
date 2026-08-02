@@ -44,9 +44,9 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - **血缘写入位置**：`engineering-service` 直接写入 `lineage_record`，`governance-service` 只提供查询接口，避免跨服务同步调用阻塞
   DAG 执行。
 - **版本快照**：Sprint 4 先全量保存节点/边/参数 JSON，后续 Sprint 再评估 diff 存储。
-- **文档/代码一致性**（Sprint 4 收尾）：技术文档 3.1 包结构、`MailService` 位置，PRD 6.3.2/6.3.3 Python 环境说明，
-  `DagController.rerunFailed`
-  注释已按实际实现更新。
+- **文档/代码/原型一致性**（Sprint 4 收尾）：技术文档 3.1 包结构、`MailService` 位置，PRD 6.3.2/6.3.3 Python 环境说明，
+  `DagController.rerunFailed` 注释已按实际实现更新；原型已移除「系统管理 → DAG 告警配置」独立入口，改为在 DAG
+  编辑器工具栏显示「告警」按钮，并标注按 DAG 覆盖实现口径。
 
 ## 跨会话状态看板
 
