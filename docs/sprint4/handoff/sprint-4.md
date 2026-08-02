@@ -210,6 +210,11 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - `data-nest-engineering/.../service/NodeExecutionLogService.java` → 重命名为 `NodeExecutionLogQueryService.java`，解决与
   task-core `NodeExecutionLogService` 的 Bean 名冲突导致 engineering 启动失败
 - `data-nest-engineering/.../controller/DagExecutionController.java` — 注入改为 `NodeExecutionLogQueryService`
+- `data-nest-task-core/.../service/AddaxJobService.java` — 修复多表同步只执行第一张表：Addax
+  `ConfigParser.upgradeJobConfig()` 会在 `job.content` 为数组时只取第一个元素，因此改为按 `sourceTables` 逐张生成独立 job
+  文件顺序执行， 并聚合日志与行数；同时修复增量模式下后续表取错目标表水位的问题
+- `data-nest-task-core/.../service/MetadataRegistrationService.java` — 多表同步成功后注册元数据时，优先使用
+  `sourceTablesDetail` 中每张表的 `targetTable`，避免全部注册到第一张目标表
 
 ### 前端新增文件（2026-08-02）
 
@@ -339,13 +344,17 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 | 3 | 元数据详情「数据来源」卡片不展示                            | `MetadataTableMapper.selectTableDetailById` SQL 未选来源字段                                                                                                                              | `data-nest-task-core/.../mapper/MetadataTableMapper.java`                                                                                                                                                                                | ✅ 已修复并验证 |
 | 4 | E2E 测试 7 antd Switch 在 headless 下不切换                 | Playwright 原生 click/Space/label click 无法触发 antd Switch onChange；需等弹窗加载后用 `evaluate((el) => el.click())`                                                                    | `data-nest-frontend/e2e/sprint4/sprint4.spec.ts`                                                                                                                                                                                         | ✅ 已修复并验证 |
 | 5 | E2E 测试 11 `waitSyncJobSuccess` 超时                       | ① `/sync-jobs/history/page` 要求 `LocalDateTime`，但 Jackson 无法解析前端/测试传来的 ISO 字符串；② 全局历史接口忽略 `syncJobId`；③  helper 使用 UTC 时间而与后端 Asia/Shanghai 时区不一致 | `data-nest-engineering/.../dto/SyncJobHistoryQueryRequest.java`、`data-nest-engineering/.../service/SyncJobService.java`、`data-nest-engineering/.../controller/SyncJobController.java`、`data-nest-frontend/e2e/sprint4/api-helpers.ts` | ✅ 已修复并验证 |
+| 6 | 多表同步实际只同步第一张表                                  | Addax `ConfigParser.upgradeJobConfig()` 在 `job.content` 为数组时只取第一个元素执行，导致多表任务仅第一张表被同步                                                                         | `data-nest-task-core/.../service/AddaxJobService.java`、`data-nest-task-core/.../service/MetadataRegistrationService.java`                                                                                                               | ✅ 已修复并验证 |
 
 ### 仍未修复 / 已标记缺失的问题
 
-| # | 问题                                     | 说明                                                                                                                                                                                                                                                                        | 建议处理方式                                                                    |
-|---|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
-| 1 | **元数据详情页「表级血缘」列表前端缺失** | 原型 `docs/sprint4/ui/Sprint4-Python参数化监控告警血缘.html:2250` 有「表级血缘」列表（source → target），但前端 `metadata/index.tsx` 仅实现「数据来源」卡片，未调用 `/governance/lineage/target/{tableName}` 展示表级血缘。PRD 未明确将其列为 Sprint 4 验收项，但原型包含。 | 已按用户指示标记缺失，交专门前端 AI 处理。                                      |
-| 2 | **多表同步实际只同步第一张表**           | 选择 `s4_orders` 与 `s4_logs` 两个源表时，生成的 Addax job JSON 包含两个 `content`，但 Addax 实际只执行第一个（`s4_orders`），`s4_logs` 目标表行数为 0。不满足 PRD AC-17「执行后所有表被同步」。                                                                            | 需进一步调查 Addax 6.0.11 多 content 执行行为或 worker 调用方式，建议单独跟进。 |
+无。
+
+### 本轮已修复 / 补齐的问题
+
+| # | 问题                                     | 说明                                                                                                                                                                                                                                                      | 验证方式                                                                                                                      |
+|---|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| 1 | **元数据详情页「表级血缘」列表前端缺失** | 原型 `docs/sprint4/ui/Sprint4-Python参数化监控告警血缘.html:2250` 有「表级血缘」列表（source → target）。前端已新增 `/governance/lineage/target/{tableName}` 调用，在元数据详情页以「数据来源 + 表级血缘」两栏卡片展示血缘链路，支持跳转 DAG / 执行历史。 | `pnpm build` + `npx eslint src` 通过；Docker 部署 healthy；Playwright 登录后访问元数据详情页，确认展示 source → target 记录。 |
 
 ### 本次变更文件清单
 
@@ -358,6 +367,12 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - `data-nest/data-nest-frontend/src/pages/engineering/dags/components/DagAlertConfigModal.tsx`
 - `data-nest/data-nest-frontend/e2e/sprint4/sprint4.spec.ts`
 - `data-nest/data-nest-frontend/e2e/sprint4/api-helpers.ts`
+- `data-nest/data-nest-task-core/src/main/java/com/datanest/task/core/service/AddaxJobService.java`
+- `data-nest/data-nest-task-core/src/main/java/com/datanest/task/core/service/MetadataRegistrationService.java`
+  （多表目标表解析修复）
+- `data-nest/data-nest-frontend/src/types/lineage.ts`（新增）
+- `data-nest/data-nest-frontend/src/api/lineage.ts`（新增）
+- `data-nest/data-nest-frontend/src/pages/governance/metadata/index.tsx`（接入血缘查询与两栏卡片 UI）
 
 ### 环境/脏数据状态
 
@@ -367,7 +382,7 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 
 ## Next Action
 
-1. **表级血缘列表前端缺失** 与 **多表同步仅同步首表** 两个问题已标记，等待用户/专门 Agent 跟进。
+1. Sprint 4 前端血缘功能已实现并部署，等待用户验收。
 2. 如需继续覆盖邮件告警实际发送、Python 节点真实执行、节点超时告警等，可补充专项测试（当前 E2E
    已覆盖配置与执行链路，但未断言邮件到达与超时扫描任务触发）。
     - 节点实时日志轮询（路径带 /dag-executions 前缀）。

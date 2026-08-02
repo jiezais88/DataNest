@@ -1,11 +1,13 @@
 package com.datanest.task.core.service;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.MetadataColumn;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.SyncJob;
@@ -84,10 +86,11 @@ public class MetadataRegistrationService {
         String sourceDb = StringUtils.hasText(job.getSourceDatabase()) ? job.getSourceDatabase()
                 : (StringUtils.hasText(job.getSourceSchema()) ? job.getSourceSchema() : "default");
         String targetDb = resolveTargetDatabase(job);
+        Map<String, SourceTableDetail> detailMap = parseSourceTablesDetail(job);
 
         try (Connection connection = dorisConn()) {
             for (String sourceTable : job.getSourceTables()) {
-                String targetTableName = resolveTargetTableName(job, sourceTable);
+                String targetTableName = resolveTargetTableName(job, sourceTable, detailMap);
                 registerTable(targetDb, targetTableName, connection, new SourceContext("SYNC", null, null, null, null));
             }
         } catch (BusinessException e) {
@@ -102,7 +105,12 @@ public class MetadataRegistrationService {
         return StringUtils.hasText(job.getTargetDatabase()) ? job.getTargetDatabase() : targetDatabase;
     }
 
-    private String resolveTargetTableName(SyncJob job, String sourceTable) {
+    private String resolveTargetTableName(SyncJob job, String sourceTable,
+                                          Map<String, SourceTableDetail> detailMap) {
+        SourceTableDetail detail = detailMap != null ? detailMap.get(sourceTable) : null;
+        if (detail != null && StringUtils.hasText(detail.getTargetTable())) {
+            return detail.getTargetTable();
+        }
         if (StringUtils.hasText(job.getTargetTable())) {
             return job.getTargetTable();
         }
@@ -111,6 +119,25 @@ public class MetadataRegistrationService {
         String db = sourceDb.replaceAll("[^a-zA-Z0-9_]", "_");
         String table = sourceTable.replaceAll("[^a-zA-Z0-9_]", "_");
         return "sync_" + db + "_" + table;
+    }
+
+    private Map<String, SourceTableDetail> parseSourceTablesDetail(SyncJob job) {
+        if (!StringUtils.hasText(job.getSourceTablesDetail())) {
+            return Map.of();
+        }
+        try {
+            List<SourceTableDetail> details = JSON.parseArray(job.getSourceTablesDetail(), SourceTableDetail.class);
+            Map<String, SourceTableDetail> map = new HashMap<>();
+            for (SourceTableDetail d : details) {
+                if (StringUtils.hasText(d.getSourceTable())) {
+                    map.put(d.getSourceTable(), d);
+                }
+            }
+            return map;
+        } catch (Exception e) {
+            logger.warn("解析 sourceTablesDetail 失败，将使用默认目标表映射: syncJobId={}", job.getId(), e);
+            return Map.of();
+        }
     }
 
     private void registerTable(String targetDb, String targetTableName, Connection connection,

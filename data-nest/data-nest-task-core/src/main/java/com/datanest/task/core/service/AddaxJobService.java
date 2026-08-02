@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
  * 构建并执行 Addax 同步任务。
  * <p>
  * 目标端固定为 DataNest 内置 Doris，配置从 Nacos / Spring 环境读取。
+ * <p>
+ * 注意：Addax {@code ConfigParser.upgradeJobConfig()} 在解析 job.json 时，若 {@code job.content} 为数组，
+ * 只会取第一个元素执行。因此多表同步必须按表拆分为独立的 Addax job 顺序执行，而不是在一个 job 文件里放多个 content。
  */
 @Service
 public class AddaxJobService {
@@ -83,7 +86,7 @@ public class AddaxJobService {
     @Value("${datanest.addax.writer.load-props.strip-outer-array:true}")
     private String loadPropsStripOuterArray;
 
-    @Value("${datanest.addax.writer.line-delimiter:\\n}")
+    @Value("${datanest.addax.writer.line-delimiter:\n}")
     private String lineDelimiter;
 
     @Value("${datanest.doris.fe-host:localhost}")
@@ -124,10 +127,13 @@ public class AddaxJobService {
 
     /**
      * 执行指定同步任务的 Addax 作业。
+     * <p>
+     * Addax 本身不支持一个 job.json 里配置多个 content，因此多表场景下按源表逐张生成独立 job 文件并顺序执行，
+     * 最后聚合读取/写入行数、错误行数与日志。
      *
      * @param syncJobId 同步任务 ID
      * @param historyId 执行历史 ID，用于手动停止轮询；为 null 时不启动 watcher
-     * @return 执行结果，包含原始日志行列表
+     * @return 执行结果，包含聚合后的日志行列表
      */
     public AddaxExecutionResult execute(Long syncJobId, Long historyId) {
         SyncJob job = syncJobMapper.selectById(syncJobId);
@@ -140,40 +146,93 @@ public class AddaxJobService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: " + job.getSourceDatasourceId());
         }
 
-        String jobJson = generateJobJson(job, source);
-        Path jobFilePath = Paths.get(jobPath, "job_sync_" + syncJobId + ".json");
-        Path logFilePath = Paths.get(logPath, "sync_" + syncJobId + ".log");
-
-        try {
-            Files.createDirectories(jobFilePath.getParent());
-            Files.createDirectories(logFilePath.getParent());
-            Files.writeString(jobFilePath, jobJson, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            logger.info("Addax job config written: syncJobId={}, path={}", syncJobId, jobFilePath);
-        } catch (IOException e) {
-            logger.error("写入 Addax 任务文件失败: syncJobId={}, path={}", syncJobId, jobFilePath, e);
-            throw new BusinessException(ErrorCode.ADDAX_EXECUTION_FAILED, "写入 Addax 任务文件失败: " + e.getMessage());
+        List<String> sourceTables = job.getSourceTables();
+        if (sourceTables == null || sourceTables.isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "同步任务源表为空: syncJobId=" + syncJobId);
         }
 
-        return runAddax(syncJobId, historyId, jobFilePath, logFilePath, job, source);
-    }
-
-    private String generateJobJson(SyncJob job, DataSourceConnection source) {
-        String sourceDb = StringUtils.hasText(job.getSourceDatabase()) ? job.getSourceDatabase()
-                : (StringUtils.hasText(job.getSourceSchema()) ? job.getSourceSchema() : "default");
-        List<Map<String, Object>> contentList = new ArrayList<>();
         Map<String, SourceTableDetail> detailMap = parseSourceTablesDetail(job);
 
-        for (String sourceTable : job.getSourceTables()) {
+        long totalReadRows = 0L;
+        long totalWriteRows = 0L;
+        long totalErrorRows = 0L;
+        List<String> aggregatedLogLines = new ArrayList<>();
+        String firstErrorMessage = null;
+        String lastLogPath = null;
+
+        logger.info("开始逐表执行 Addax 同步: syncJobId={}, sourceTables={}, historyId={}",
+                syncJobId, sourceTables, historyId);
+
+        for (int i = 0; i < sourceTables.size(); i++) {
+            String sourceTable = sourceTables.get(i);
             SourceTableDetail detail = detailMap.get(sourceTable);
-            String targetTableName = resolveTargetTableName(job, sourceTable, detail);
-            Map<String, Object> reader = buildReader(job, source, sourceDb, sourceTable, detail);
-            Map<String, Object> writer = buildWriter(job, targetTableName, detail);
-            Map<String, Object> content = new HashMap<>();
-            content.put("reader", reader);
-            content.put("writer", writer);
-            contentList.add(content);
+            String tableLabel = sourceTable + "(" + (i + 1) + "/" + sourceTables.size() + ")";
+            String safeTableName = safeFileName(sourceTable);
+            Path jobFilePath = Paths.get(jobPath, "job_sync_" + syncJobId + "_" + safeTableName + ".json");
+            Path logFilePath = Paths.get(logPath, "sync_" + syncJobId + "_" + safeTableName + ".log");
+            lastLogPath = logFilePath.toString();
+
+            String jobJson = generateJobJson(job, source, sourceTable, detail);
+            try {
+                Files.createDirectories(jobFilePath.getParent());
+                Files.createDirectories(logFilePath.getParent());
+                Files.writeString(jobFilePath, jobJson, StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                logger.info("Addax job config written: syncJobId={}, table={}, path={}", syncJobId, sourceTable, jobFilePath);
+            } catch (IOException e) {
+                logger.error("写入 Addax 任务文件失败: syncJobId={}, table={}, path={}", syncJobId, sourceTable, jobFilePath, e);
+                throw new BusinessException(ErrorCode.ADDAX_EXECUTION_FAILED,
+                        "写入 Addax 任务文件失败 [" + sourceTable + "]: " + e.getMessage());
+            }
+
+            AddaxExecutionResult tableResult = runAddax(syncJobId, historyId, jobFilePath, logFilePath, job, source, tableLabel);
+
+            aggregatedLogLines.add("===== Addax 执行: " + sourceTable + " =====");
+            aggregatedLogLines.addAll(tableResult.logLines());
+
+            totalReadRows += Math.max(0, tableResult.readRows());
+            totalWriteRows += Math.max(0, tableResult.writeRows());
+            totalErrorRows += Math.max(0, tableResult.errorRows());
+
+            if (!tableResult.success()) {
+                if (firstErrorMessage == null) {
+                    firstErrorMessage = StringUtils.hasText(tableResult.errorMessage())
+                            ? "[" + sourceTable + "] " + tableResult.errorMessage()
+                            : "[" + sourceTable + "] Addax 执行失败";
+                }
+                logger.error("单表同步失败，停止后续表: syncJobId={}, failedTable={}, message={}",
+                        syncJobId, sourceTable, tableResult.errorMessage());
+                break;
+            }
         }
+
+        boolean overallSuccess = firstErrorMessage == null;
+        // 将聚合日志写入最后一个 log 文件（或单独写一个聚合日志），便于历史日志查看
+        if (lastLogPath != null) {
+            Path aggregatedLogPath = Paths.get(lastLogPath).getParent().resolve("sync_" + syncJobId + "_aggregated.log");
+            try {
+                Files.writeString(aggregatedLogPath, String.join("\n", aggregatedLogLines), StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            } catch (IOException e) {
+                logger.warn("写入聚合日志文件失败: syncJobId={}, path={}", syncJobId, aggregatedLogPath, e);
+            }
+        }
+
+        return new AddaxExecutionResult(overallSuccess, totalReadRows, totalWriteRows, totalErrorRows,
+                overallSuccess ? null : firstErrorMessage, lastLogPath, aggregatedLogLines);
+    }
+
+    private String generateJobJson(SyncJob job, DataSourceConnection source,
+                                   String sourceTable, SourceTableDetail detail) {
+        String sourceDb = StringUtils.hasText(job.getSourceDatabase()) ? job.getSourceDatabase()
+                : (StringUtils.hasText(job.getSourceSchema()) ? job.getSourceSchema() : "default");
+        String targetTableName = resolveTargetTableName(job, sourceTable, detail);
+        Map<String, Object> reader = buildReader(job, source, sourceDb, sourceTable, detail);
+        Map<String, Object> writer = buildWriter(job, targetTableName, detail);
+
+        Map<String, Object> content = new HashMap<>();
+        content.put("reader", reader);
+        content.put("writer", writer);
 
         Map<String, Object> speed = new HashMap<>();
         speed.put("channel", DEFAULT_CHANNEL);
@@ -199,7 +258,7 @@ public class AddaxJobService {
 
         Map<String, Object> jobMap = new HashMap<>();
         jobMap.put("setting", setting);
-        jobMap.put("content", contentList);
+        jobMap.put("content", content);
 
         Map<String, Object> root = new HashMap<>();
         root.put("job", jobMap);
@@ -225,7 +284,7 @@ public class AddaxJobService {
         try {
             return objectMapper.writeValueAsString(root);
         } catch (Exception e) {
-            logger.error("序列化 Addax 任务配置失败: syncJobId={}", job.getId(), e);
+            logger.error("序列化 Addax 任务配置失败: syncJobId={}, table={}", job.getId(), sourceTable, e);
             throw new BusinessException(ErrorCode.ADDAX_EXECUTION_FAILED, "生成 Addax 配置失败: " + e.getMessage());
         }
     }
@@ -281,7 +340,7 @@ public class AddaxJobService {
         parameter.put("column", columns);
 
         if (incremental && StringUtils.hasText(job.getIncrementalField())) {
-            String maxValue = queryIncrementalMaxValue(job, source, sourceTable);
+            String maxValue = queryIncrementalMaxValue(job, source, sourceTable, detail);
             String columnList = columns.isEmpty() || columns.contains("*") ? "*" : String.join(", ", columns);
             String querySql;
             if (maxValue != null) {
@@ -314,7 +373,8 @@ public class AddaxJobService {
         };
     }
 
-    private String queryIncrementalMaxValue(SyncJob job, DataSourceConnection source, String sourceTable) {
+    private String queryIncrementalMaxValue(SyncJob job, DataSourceConnection source,
+                                            String sourceTable, SourceTableDetail detail) {
         // 首次成功同步之前，直接全量拉取
         boolean hasSuccessHistory = syncJobHistoryMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SyncJobHistory>()
@@ -327,14 +387,14 @@ public class AddaxJobService {
 
         IncrementalFieldTypeResolver.TypeCategory sourceCategory = incrementalFieldTypeResolver
                 .resolveSourceFieldType(source, job, sourceTable, job.getIncrementalField());
-        String targetTableName = resolveTargetTableName(job, sourceTable, null);
+        String targetTableName = resolveTargetTableName(job, sourceTable, detail);
         String targetDb = resolveTargetDatabase(job);
         IncrementalFieldTypeResolver.TypeCategory targetCategory = incrementalFieldTypeResolver
                 .resolveTargetFieldType(targetDb, targetTableName, job.getIncrementalField());
 
         if (!incrementalFieldTypeResolver.isComparable(sourceCategory, targetCategory)) {
-            logger.warn("增量字段源端与目标端类型不一致或不是可比较类型，将按全量同步处理: syncJobId={}, field={}, sourceCategory={}, targetCategory={}",
-                    job.getId(), job.getIncrementalField(), sourceCategory, targetCategory);
+            logger.warn("增量字段源端与目标端类型不一致或不是可比较类型，将按全量同步处理: syncJobId={}, table={}, field={}, sourceCategory={}, targetCategory={}",
+                    job.getId(), sourceTable, job.getIncrementalField(), sourceCategory, targetCategory);
             return null;
         }
 
@@ -352,8 +412,8 @@ public class AddaxJobService {
                 }
             }
         } catch (Exception e) {
-            logger.warn("查询目标表增量最大值失败，将按全量同步处理: syncJobId={}, table={}, field={}",
-                    job.getId(), targetTableName, job.getIncrementalField(), e);
+            logger.warn("查询目标表增量最大值失败，将按全量同步处理: syncJobId={}, table={}, targetTable={}, field={}",
+                    job.getId(), sourceTable, targetTableName, job.getIncrementalField(), e);
         }
         return null;
     }
@@ -439,10 +499,10 @@ public class AddaxJobService {
     }
 
     private AddaxExecutionResult runAddax(Long syncJobId, Long historyId, Path jobFilePath, Path logFilePath,
-                                          SyncJob job, DataSourceConnection source) {
+                                          SyncJob job, DataSourceConnection source, String tableLabel) {
         String addaxSh = Paths.get(addaxHome, "bin", "addax.sh").toString();
         List<String> command = List.of(addaxSh, jobFilePath.toString());
-        logger.info("启动 Addax: syncJobId={}, command={}, workDir={}", syncJobId, command, addaxHome);
+        logger.info("启动 Addax: syncJobId={}, table={}, command={}, workDir={}", syncJobId, tableLabel, command, addaxHome);
 
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.directory(new File(addaxHome));
@@ -469,7 +529,7 @@ public class AddaxJobService {
             if (!finished) {
                 process.destroyForcibly();
                 logLines.add("Addax 执行超时");
-                logger.error("Addax 执行超时: syncJobId={}", syncJobId);
+                logger.error("Addax 执行超时: syncJobId={}, table={}", syncJobId, tableLabel);
                 exitCode = -1;
             } else {
                 exitCode = process.exitValue();
@@ -477,7 +537,8 @@ public class AddaxJobService {
             String logContent = String.join("\n", logLines);
             Files.writeString(logFilePath, logContent, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            logger.info("Addax 日志已写入: syncJobId={}, path={}, exitCode={}", syncJobId, logFilePath, exitCode);
+            logger.info("Addax 日志已写入: syncJobId={}, table={}, path={}, exitCode={}",
+                    syncJobId, tableLabel, logFilePath, exitCode);
 
             AddaxLogParser.AddaxParseResult parseResult = addaxLogParser.parse(logLines);
             boolean success = exitCode == 0 && parseResult.errorRows() == 0 && parseResult.errorLines().isEmpty();
@@ -491,11 +552,11 @@ public class AddaxJobService {
             if (process != null) {
                 process.destroyForcibly();
             }
-            logger.error("Addax 执行被中断: syncJobId={}", syncJobId, e);
+            logger.error("Addax 执行被中断: syncJobId={}, table={}", syncJobId, tableLabel, e);
             return new AddaxExecutionResult(false, 0, 0, 0,
                     "Addax 执行被中断: " + e.getMessage(), logFilePath.toString(), logLines);
         } catch (Exception e) {
-            logger.error("Addax 执行异常: syncJobId={}", syncJobId, e);
+            logger.error("Addax 执行异常: syncJobId={}, table={}", syncJobId, tableLabel, e);
             return new AddaxExecutionResult(false, 0, 0, 0,
                     "Addax 执行异常: " + e.getMessage(), logFilePath.toString(), logLines);
         }
@@ -541,6 +602,13 @@ public class AddaxJobService {
             sb.append("；").append(String.join("；", parseResult.errorLines()));
         }
         return sb.toString();
+    }
+
+    private String safeFileName(String sourceTable) {
+        if (!StringUtils.hasText(sourceTable)) {
+            return "unknown";
+        }
+        return sourceTable.replaceAll("[^a-zA-Z0-9_-]", "_");
     }
 
     public record AddaxExecutionResult(boolean success, long readRows, long writeRows, long errorRows,
