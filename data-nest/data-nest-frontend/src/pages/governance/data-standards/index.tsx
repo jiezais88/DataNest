@@ -29,6 +29,7 @@ import {
     HiOutlineBookOpen,
     HiOutlineCalendar,
     HiOutlineDocumentText,
+    HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlus,
     HiOutlineShieldCheck,
@@ -75,6 +76,7 @@ export default function DataStandardsPage() {
     const [namingLoading, setNamingLoading] = useState(false);
     const [namingDrawerOpen, setNamingDrawerOpen] = useState(false);
     const [namingEditItem, setNamingEditItem] = useState<NamingStandard | null>(null);
+    const [namingDrawerMode, setNamingDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
 
     // Field type standards
     const [fieldTypeItems, setFieldTypeItems] = useState<FieldTypeStandard[]>([]);
@@ -85,6 +87,7 @@ export default function DataStandardsPage() {
     const [fieldTypeLoading, setFieldTypeLoading] = useState(false);
     const [fieldTypeDrawerOpen, setFieldTypeDrawerOpen] = useState(false);
     const [fieldTypeEditItem, setFieldTypeEditItem] = useState<FieldTypeStandard | null>(null);
+    const [fieldTypeDrawerMode, setFieldTypeDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
 
     const [deleteTarget, setDeleteTarget] = useState<{
         type: 'naming' | 'field-type';
@@ -284,23 +287,40 @@ export default function DataStandardsPage() {
 
     const openNamingCreate = () => {
         setNamingEditItem(null);
+        setNamingDrawerMode('create');
         loadFieldTypeStandards();
         setNamingDrawerOpen(true);
     };
 
     const openNamingEdit = useCallback((item: NamingStandard) => {
         setNamingEditItem(item);
+        setNamingDrawerMode('edit');
+        loadFieldTypeStandards();
+        setNamingDrawerOpen(true);
+    }, [loadFieldTypeStandards]);
+
+    const openNamingView = useCallback((item: NamingStandard) => {
+        setNamingEditItem(item);
+        setNamingDrawerMode('view');
         loadFieldTypeStandards();
         setNamingDrawerOpen(true);
     }, [loadFieldTypeStandards]);
 
     const openFieldTypeCreate = () => {
         setFieldTypeEditItem(null);
+        setFieldTypeDrawerMode('create');
         setFieldTypeDrawerOpen(true);
     };
 
     const openFieldTypeEdit = useCallback((item: FieldTypeStandard) => {
         setFieldTypeEditItem(item);
+        setFieldTypeDrawerMode('edit');
+        setFieldTypeDrawerOpen(true);
+    }, []);
+
+    const openFieldTypeView = useCallback((item: FieldTypeStandard) => {
+        setFieldTypeEditItem(item);
+        setFieldTypeDrawerMode('view');
         setFieldTypeDrawerOpen(true);
     }, []);
 
@@ -308,6 +328,7 @@ export default function DataStandardsPage() {
         {
             title: '规范名称',
             dataIndex: 'name',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -316,6 +337,7 @@ export default function DataStandardsPage() {
         {
             title: '适用对象',
             dataIndex: 'appliesTo',
+            width: 100,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{v === 'TABLE' ? '表名' : '字段名'}</span>
             ),
@@ -323,6 +345,7 @@ export default function DataStandardsPage() {
         {
             title: '匹配方式',
             dataIndex: 'ruleType',
+            width: 100,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{MATCH_TYPE_LABEL[v] || v}</span>
             ),
@@ -330,6 +353,7 @@ export default function DataStandardsPage() {
         {
             title: '规范值',
             dataIndex: 'ruleValue',
+            width: 160,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-secondary font-mono">{v}</span>
@@ -338,6 +362,7 @@ export default function DataStandardsPage() {
         {
             title: '关联字段类型标准',
             dataIndex: 'targetStandardName',
+            width: 180,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -346,6 +371,7 @@ export default function DataStandardsPage() {
         {
             title: '优先级',
             dataIndex: 'priority',
+            width: 80,
             render: (v: number) => (
                 <span className="text-ds-small text-ds-text-secondary">{v}</span>
             ),
@@ -353,6 +379,7 @@ export default function DataStandardsPage() {
         {
             title: '状态',
             dataIndex: 'enabled',
+            width: 100,
             render: (enabled: number) => (
                 enabled === 1 ? (
                     <DsStatusBadge label="启用" variant="success"/>
@@ -362,11 +389,56 @@ export default function DataStandardsPage() {
             ),
         },
         {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+            ),
+        },
+        {
+            title: '创建时间',
+            dataIndex: 'createdAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
-            width: 140,
+            fixed: 'right' as const,
+            width: 180,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="accent"
+                            onClick={() => openNamingView(item)}
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     {canWrite && (
                         <>
                             <Tooltip title={item.enabled === 1 ? '停用' : '启用'}>
@@ -407,12 +479,13 @@ export default function DataStandardsPage() {
                 </div>
             ),
         },
-    ], [canWrite, handleToggleNamingEnabled, openNamingEdit]);
+    ], [canWrite, handleToggleNamingEnabled, openNamingEdit, openNamingView]);
 
     const fieldTypeColumns = useMemo<ColumnsType<FieldTypeStandard>>(() => [
         {
             title: '标准名称',
             dataIndex: 'name',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -421,6 +494,7 @@ export default function DataStandardsPage() {
         {
             title: '分类',
             dataIndex: 'category',
+            width: 120,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -429,6 +503,7 @@ export default function DataStandardsPage() {
         {
             title: '允许类型',
             dataIndex: 'allowedTypes',
+            width: 200,
             render: (types: string[]) => (
                 <div className="flex flex-wrap gap-ds-1">
                     {types.map((t) => (
@@ -439,19 +514,56 @@ export default function DataStandardsPage() {
             ),
         },
         {
-            title: '描述',
-            dataIndex: 'description',
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
             ),
         },
         {
+            title: '创建时间',
+            dataIndex: 'createdAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
-            width: 120,
+            fixed: 'right' as const,
+            width: 150,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="accent"
+                            onClick={() => openFieldTypeView(item)}
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     {canWrite && (
                         <>
                             <Tooltip title="编辑">
@@ -482,7 +594,7 @@ export default function DataStandardsPage() {
                 </div>
             ),
         },
-    ], [canWrite, openFieldTypeEdit]);
+    ], [canWrite, openFieldTypeEdit, openFieldTypeView]);
 
     const tabs = [
         {key: 'naming', label: '命名规范', icon: HiOutlineDocumentText},
@@ -609,7 +721,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={namingLoading}
                                 pagination={false}
-                                scroll={{x: 1000}}
+                                scroll={{x: 1780}}
                                 columns={namingColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{
@@ -677,7 +789,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={fieldTypeLoading}
                                 pagination={false}
-                                scroll={{x: 900}}
+                                scroll={{x: 1350}}
                                 columns={fieldTypeColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{
@@ -713,6 +825,7 @@ export default function DataStandardsPage() {
 
             <NamingStandardDrawer
                 open={namingDrawerOpen}
+                mode={namingDrawerMode}
                 editItem={namingEditItem}
                 standards={fieldTypeItems}
                 onClose={() => {
@@ -724,6 +837,7 @@ export default function DataStandardsPage() {
 
             <FieldTypeStandardDrawer
                 open={fieldTypeDrawerOpen}
+                mode={fieldTypeDrawerMode}
                 editItem={fieldTypeEditItem}
                 onClose={() => {
                     setFieldTypeDrawerOpen(false);

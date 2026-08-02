@@ -88,6 +88,7 @@ export default function DataSourcesPage() {
     const [draftStatus, setDraftStatus] = useState<DataSourceStatus | ''>('');
 
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
     const [editItem, setEditItem] = useState<DataSource | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<DataSource | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
@@ -210,6 +211,7 @@ export default function DataSourcesPage() {
         {
             title: '数据源名称',
             dataIndex: 'name',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
@@ -218,10 +220,12 @@ export default function DataSourcesPage() {
         {
             title: '类型',
             dataIndex: 'type',
+            width: 100,
             render: (v: DataSourceType) => <TypeBadge type={v}/>,
         },
         {
             title: '主机地址',
+            width: 200,
             ellipsis: true,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary"
@@ -231,16 +235,9 @@ export default function DataSourcesPage() {
             ),
         },
         {
-            title: '描述',
-            dataIndex: 'description',
-            ellipsis: true,
-            render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
-            ),
-        },
-        {
             title: '状态',
             dataIndex: 'status',
+            width: 100,
             render: (v: DataSourceStatus, item) => {
                 const badge = STATUS_BADGE[v] ?? STATUS_BADGE[DataSourceStatusEnum.UNKNOWN];
                 return (
@@ -261,11 +258,60 @@ export default function DataSourcesPage() {
             ),
         },
         {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '创建时间',
+            dataIndex: 'createdAt',
+            width: 170,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: 170,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
-            width: 160,
+            fixed: 'right' as const,
+            width: 200,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="default"
+                            data-testid={`datasource-detail-btn-${item.name}`}
+                            onClick={() => {
+                                setEditItem(item);
+                                setDrawerMode('view');
+                                setDrawerOpen(true);
+                            }}
+                            aria-label="详情"
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     {canWrite && (
                         <>
                             <Tooltip title="编辑">
@@ -274,6 +320,7 @@ export default function DataSourcesPage() {
                                     data-testid={`datasource-edit-btn-${item.name}`}
                                     onClick={() => {
                                         setEditItem(item);
+                                        setDrawerMode('edit');
                                         setDrawerOpen(true);
                                     }}
                                     aria-label="编辑"
@@ -340,6 +387,7 @@ export default function DataSourcesPage() {
                         data-testid="datasource-create-btn"
                         onClick={() => {
                             setEditItem(null);
+                            setDrawerMode('create');
                             setDrawerOpen(true);
                         }}
                     >
@@ -403,7 +451,7 @@ export default function DataSourcesPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1000}}
+                            scroll={{x: 1650}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({'data-testid': `datasource-row-${item.name}`}) as HTMLAttributes<HTMLElement>}
@@ -427,11 +475,13 @@ export default function DataSourcesPage() {
             <DataSourceDrawer
                 open={drawerOpen}
                 editItem={editItem}
+                mode={drawerMode}
                 onClose={() => {
                     setDrawerOpen(false);
                     setEditItem(null);
+                    setDrawerMode('create');
                 }}
-                onSubmit={editItem ? handleUpdate : handleCreate}
+                onSubmit={drawerMode === 'view' ? undefined : (editItem ? handleUpdate : handleCreate)}
             />
 
             <ConfirmDialog

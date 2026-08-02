@@ -24,6 +24,7 @@ import com.datanest.task.core.mapper.CollectTaskMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -137,11 +138,16 @@ public class CollectHistoryService {
             return;
         }
         // 条件更新防止与执行器收尾并发互相覆盖：0 行说明已被并发置为终态，直接返回
+        LocalDateTime now = LocalDateTime.now();
+        Long durationMs = history.getStartedAt() != null
+                ? Duration.between(history.getStartedAt(), now).toMillis()
+                : null;
         int rows = collectHistoryMapper.update(null, new UpdateWrapper<CollectHistory>()
                 .eq("id", historyId)
                 .eq("status", ExecutionStatus.RUNNING.getCode())
                 .set("status", ExecutionStatus.TERMINATED.getCode())
-                .set("ended_at", LocalDateTime.now()));
+                .set("ended_at", now)
+                .set("duration_ms", durationMs));
         if (rows == 0) {
             return;
         }

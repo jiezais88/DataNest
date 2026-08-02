@@ -22,6 +22,12 @@
             <artifactId>data-nest-common</artifactId>
         </dependency>
 
+        <!-- DataNest Task Core -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-task-core</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

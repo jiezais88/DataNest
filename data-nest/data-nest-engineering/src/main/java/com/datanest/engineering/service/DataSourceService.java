@@ -23,6 +23,7 @@ import com.datanest.task.core.entity.SyncJob;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.ConnectionTester;
 import com.datanest.task.core.service.DataSourceRefreshService;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,9 +35,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class DataSourceService {
@@ -59,13 +58,15 @@ public class DataSourceService {
     private final ComplianceCleanupMapper complianceCleanupMapper;
     private final SchedulerClient schedulerClient;
     private final DataSourceRefreshService dataSourceRefreshService;
+    private final SysUserService sysUserService;
 
     public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
                              SyncJobMapper syncJobMapper,
                              MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
                              ComplianceCleanupMapper complianceCleanupMapper,
-                             SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService) {
+                             SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService,
+                             SysUserService sysUserService) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
@@ -76,6 +77,7 @@ public class DataSourceService {
         this.complianceCleanupMapper = complianceCleanupMapper;
         this.schedulerClient = schedulerClient;
         this.dataSourceRefreshService = dataSourceRefreshService;
+        this.sysUserService = sysUserService;
     }
 
     @Transactional
@@ -240,7 +242,9 @@ public class DataSourceService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
-        return toDTO(entity);
+        DataSourceDTO dto = toDTO(entity);
+        fillUsernameNames(List.of(dto));
+        return dto;
     }
 
     public PageResult<DataSourceDTO> list(DataSourceQueryRequest request) {
@@ -265,6 +269,7 @@ public class DataSourceService {
         List<DataSourceDTO> records = result.getRecords().stream()
                 .map(this::toDTO)
                 .toList();
+        fillUsernameNames(records);
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
@@ -382,7 +387,30 @@ public class DataSourceService {
         dto.setAutoCollectOnSave(entity.getAutoCollectOnSave());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
         return dto;
+    }
+
+    private void fillUsernameNames(List<DataSourceDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = dtos.stream()
+                .flatMap(d -> java.util.stream.Stream.of(d.getCreatedBy(), d.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        for (DataSourceDTO dto : dtos) {
+            if (dto.getCreatedBy() != null && dto.getCreatedBy() > 0) {
+                dto.setCreatedByName(usernameMap.getOrDefault(dto.getCreatedBy(), "-"));
+            }
+            if (dto.getUpdatedBy() != null && dto.getUpdatedBy() > 0) {
+                dto.setUpdatedByName(usernameMap.getOrDefault(dto.getUpdatedBy(), "-"));
+            }
+        }
     }
 
     private long countByName(String name) {

@@ -4,7 +4,7 @@
 # ============================================
 
 # Stage 1: Addax 二进制
-FROM wgzhao/addax:6.0.11 AS addax
+FROM quay.io/wgzhao/addax:6.0.11 AS addax
 
 # Stage 2: 构建应用运行镜像
 FROM eclipse-temurin:21-jre-alpine

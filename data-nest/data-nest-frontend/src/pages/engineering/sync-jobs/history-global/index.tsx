@@ -284,10 +284,11 @@ export default function SyncJobHistoryGlobalPage() {
         },
         {
             title: '操作',
-            width: 100,
+            width: 160,
             align: 'center',
+            fixed: 'right' as const,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {item.status === 'RUNNING' && (
                         <Tooltip title={canEdit ? '停止执行' : '只读模式：您没有编辑权限'}>
                             <DsIconButton
@@ -421,7 +422,7 @@ export default function SyncJobHistoryGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1160}}
+                            scroll={{x: 1460}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (

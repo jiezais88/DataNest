@@ -40,20 +40,23 @@ const EMPTY_FORM: TaskFormData = {
 
 interface TaskDrawerProps {
     open: boolean;
+    mode?: 'create' | 'edit' | 'view';
     editItem: CollectTask | null;
     dataSources: DataSource[];
     onClose: () => void;
     onSubmit: (payload: CollectTaskCreateRequest) => Promise<{ code: number; message?: string } | undefined>;
 }
 
-export default function TaskDrawer({open, editItem, dataSources, onClose, onSubmit}: TaskDrawerProps) {
+export default function TaskDrawer({open, mode = 'create', editItem, dataSources, onClose, onSubmit}: TaskDrawerProps) {
     const [form, setForm] = useState<TaskFormData>(EMPTY_FORM);
     const [errors, setErrors] = useState<Partial<Record<keyof TaskFormData, string>>>({});
     const [submitting, setSubmitting] = useState(false);
     const [schemas, setSchemas] = useState<string[]>([]);
     const [schemasLoading, setSchemasLoading] = useState(false);
 
-    const isEdit = !!editItem;
+    const isEdit = mode === 'edit';
+    const isView = mode === 'view';
+    const readOnly = isView;
 
     useEffect(() => {
         if (open) {
@@ -93,6 +96,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
     };
 
     const updateField = <K extends keyof TaskFormData>(field: K, value: TaskFormData[K]) => {
+        if (readOnly) return;
         setForm((prev) => ({...prev, [field]: value}));
         if (errors[field]) {
             setErrors((prev) => ({...prev, [field]: undefined}));
@@ -100,6 +104,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
     };
 
     const handleDatasourceChange = (datasourceId: string) => {
+        if (readOnly) return;
         updateField('datasourceId', datasourceId);
         updateField('scope', []);
         loadSchemas(datasourceId);
@@ -144,6 +149,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
     };
 
     const toggleSchema = (schema: string) => {
+        if (readOnly) return;
         setForm((prev) => {
             const exists = prev.scope.includes(schema);
             const next = exists ? prev.scope.filter((s) => s !== schema) : [...prev.scope, schema];
@@ -151,29 +157,33 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
         });
     };
 
+    const drawerTitle = isEdit ? '编辑采集任务' : isView ? '详情' : '创建采集任务';
+
     return (
         <Drawer
             open={open}
-            title={isEdit ? '编辑采集任务' : '创建采集任务'}
+            title={drawerTitle}
             onClose={onClose}
             footer={
-                <>
-                    <DsButton
-                        variant="secondary"
-                        data-testid="collect-task-cancel"
-                        onClick={onClose}
-                    >
-                        取消
-                    </DsButton>
-                    <DsButton
-                        variant="primary"
-                        data-testid="collect-task-submit"
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                    >
-                        {submitting ? '保存中...' : '保存'}
-                    </DsButton>
-                </>
+                readOnly ? undefined : (
+                    <>
+                        <DsButton
+                            variant="secondary"
+                            data-testid="collect-task-cancel"
+                            onClick={onClose}
+                        >
+                            取消
+                        </DsButton>
+                        <DsButton
+                            variant="primary"
+                            data-testid="collect-task-submit"
+                            onClick={handleSubmit}
+                            disabled={submitting}
+                        >
+                            {submitting ? '保存中...' : '保存'}
+                        </DsButton>
+                    </>
+                )
             }
         >
             <div className="space-y-ds-4">
@@ -187,7 +197,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         onChange={(e) => updateField('name', e.target.value)}
                         className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                         placeholder="例如：订单库元数据采集"
-                        disabled={isEdit}
+                        disabled={isEdit || readOnly}
                     />
                     {errors.name && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.name}</p>}
                 </div>
@@ -200,7 +210,8 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         data-testid="collect-task-datasource"
                         value={form.datasourceId}
                         onChange={(e) => handleDatasourceChange(e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <option value="">请选择</option>
                         {dataSources.map((ds) => (
@@ -241,8 +252,9 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                                             key={schema}
                                             type="button"
                                             data-testid={`collect-task-scope-${schema}`}
+                                            disabled={readOnly}
                                             onClick={() => toggleSchema(schema)}
-                                            className={`px-ds-2 py-ds-1 rounded-ds-sm text-ds-small transition-colors ${
+                                            className={`px-ds-2 py-ds-1 rounded-ds-sm text-ds-small transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                                 selected
                                                     ? 'bg-ds-accent text-white'
                                                     : 'bg-white text-ds-text-secondary hover:bg-ds-accent-light hover:text-ds-accent'
@@ -265,8 +277,9 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                             <button
                                 key={o.value}
                                 type="button"
+                                disabled={readOnly}
                                 onClick={() => updateField('collectMode', o.value)}
-                                className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors ${
+                                className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                     form.collectMode === o.value
                                         ? 'border-ds-accent bg-ds-accent-light text-ds-accent'
                                         : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent hover:text-ds-accent'
@@ -286,8 +299,9 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                             <button
                                 key={o.value}
                                 type="button"
+                                disabled={readOnly}
                                 onClick={() => updateField('triggerType', o.value)}
-                                className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors ${
+                                className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                     form.triggerType === o.value
                                         ? 'border-ds-accent bg-ds-accent-light text-ds-accent'
                                         : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent hover:text-ds-accent'
@@ -307,6 +321,7 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         <CronPicker
                             value={form.cronExpression}
                             onChange={(v) => updateField('cronExpression', v)}
+                            disabled={readOnly}
                         />
                         {errors.cronExpression &&
                             <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.cronExpression}</p>}
@@ -319,7 +334,8 @@ export default function TaskDrawer({open, editItem, dataSources, onClose, onSubm
                         value={form.description}
                         onChange={(e) => updateField('description', e.target.value)}
                         rows={3}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="可选：填写采集范围或业务说明"
                     />
                 </div>

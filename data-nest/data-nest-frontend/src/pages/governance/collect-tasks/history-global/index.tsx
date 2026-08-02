@@ -194,6 +194,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '任务名称',
             dataIndex: 'taskName',
+            width: 200,
             ellipsis: {showTitle: true},
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium">{v || '-'}</span>
@@ -202,11 +203,13 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
+            width: 100,
             render: (v: string) => triggerBadge(v),
         },
         {
             title: '状态',
             dataIndex: 'status',
+            width: 100,
             render: (v: ExecutionStatus) => (
                 <DsStatusBadge label={STATUS_LABELS[v]} variant={statusVariant(v)}/>
             ),
@@ -230,6 +233,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '耗时',
             dataIndex: 'durationMs',
+            width: 100,
             // 运行中（endedAt 为空）：用当前时间静态计算一次，不做定时刷新
             render: (v: number | undefined, item) => (
                 <span
@@ -238,6 +242,7 @@ export default function CollectHistoryGlobalPage() {
         },
         {
             title: '库/表/字段',
+            width: 120,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary">
                     {item.dbCount ?? 0}/{item.tableCount ?? 0}/{item.columnCount ?? 0}
@@ -247,6 +252,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '错误信息',
             dataIndex: 'errorMessage',
+            width: 200,
             ellipsis: {showTitle: true},
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-danger">{v || '—'}</span>
@@ -255,9 +261,10 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '操作',
             align: 'center',
-            width: 100,
+            width: 160,
+            fixed: 'right' as const,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {item.status === 'RUNNING' && (
                         <Tooltip title={canWrite ? '停止执行' : '只读模式：您没有编辑权限'}>
                             <DsIconButton
@@ -388,7 +395,7 @@ export default function CollectHistoryGlobalPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1100}}
+                            scroll={{x: 1420}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{

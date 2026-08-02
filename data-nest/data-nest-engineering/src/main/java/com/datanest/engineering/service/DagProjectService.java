@@ -14,6 +14,7 @@ import com.datanest.task.core.entity.DagExecution;
 import com.datanest.task.core.entity.DagProject;
 import com.datanest.task.core.entity.NodeExecution;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * DAG 项目服务
@@ -44,11 +46,12 @@ public class DagProjectService {
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
     private final DolphinSchedulerClient dolphinSchedulerClient;
+    private final SysUserService sysUserService;
 
     public DagProjectService(DagProjectMapper dagProjectMapper, DagMapper dagMapper,
                              DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                              DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
-                             DolphinSchedulerClient dolphinSchedulerClient) {
+                             DolphinSchedulerClient dolphinSchedulerClient, SysUserService sysUserService) {
         this.dagProjectMapper = dagProjectMapper;
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
@@ -56,6 +59,7 @@ public class DagProjectService {
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.dolphinSchedulerClient = dolphinSchedulerClient;
+        this.sysUserService = sysUserService;
     }
 
     /**
@@ -212,7 +216,9 @@ public class DagProjectService {
         if (project == null) {
             throw new BusinessException(ErrorCode.DAG_NOT_FOUND, "DAG 项目不存在: " + id);
         }
-        return toDTO(project);
+        DagProjectDTO dto = toDTO(project);
+        fillUsernameNames(List.of(dto));
+        return dto;
     }
 
     /**
@@ -247,6 +253,7 @@ public class DagProjectService {
                     return dto;
                 })
                 .toList();
+        fillUsernameNames(records);
         return PageResult.of(records, mpPage.getTotal(), page, pageSize);
     }
 
@@ -266,6 +273,29 @@ public class DagProjectService {
         dto.setDsProjectCode(entity.getDsProjectCode());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
         return dto;
+    }
+
+    private void fillUsernameNames(List<DagProjectDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = dtos.stream()
+                .flatMap(d -> java.util.stream.Stream.of(d.getCreatedBy(), d.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        for (DagProjectDTO dto : dtos) {
+            if (dto.getCreatedBy() != null && dto.getCreatedBy() > 0) {
+                dto.setCreatedByName(usernameMap.getOrDefault(dto.getCreatedBy(), "-"));
+            }
+            if (dto.getUpdatedBy() != null && dto.getUpdatedBy() > 0) {
+                dto.setUpdatedByName(usernameMap.getOrDefault(dto.getUpdatedBy(), "-"));
+            }
+        }
     }
 }

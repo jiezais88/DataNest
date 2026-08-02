@@ -23,6 +23,7 @@ import com.datanest.task.core.mapper.CollectChangeDetailMapper;
 import com.datanest.task.core.mapper.CollectExecutionLogMapper;
 import com.datanest.task.core.mapper.CollectHistoryMapper;
 import com.datanest.task.core.mapper.CollectTaskMapper;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -35,7 +36,10 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class CollectTaskService {
@@ -49,16 +53,19 @@ public class CollectTaskService {
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper collectExecutionLogMapper;
     private final CollectChangeDetailMapper changeDetailMapper;
+    private final SysUserService sysUserService;
 
     public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService,
                               CollectHistoryMapper collectHistoryMapper,
                               CollectExecutionLogMapper collectExecutionLogMapper,
-                              CollectChangeDetailMapper changeDetailMapper) {
+                              CollectChangeDetailMapper changeDetailMapper,
+                              SysUserService sysUserService) {
         this.collectTaskMapper = collectTaskMapper;
         this.schedulerService = schedulerService;
         this.collectHistoryMapper = collectHistoryMapper;
         this.collectExecutionLogMapper = collectExecutionLogMapper;
         this.changeDetailMapper = changeDetailMapper;
+        this.sysUserService = sysUserService;
     }
 
     @Transactional
@@ -248,7 +255,9 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
-        return toDTO(task);
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(
+                List.of(task.getCreatedBy(), task.getUpdatedBy()));
+        return toDTO(task, usernameMap);
     }
 
     @Transactional(readOnly = true)
@@ -270,8 +279,14 @@ public class CollectTaskService {
         wrapper.orderByDesc("created_at");
 
         IPage<CollectTask> result = collectTaskMapper.selectPage(page, wrapper);
+        List<Long> userIds = result.getRecords().stream()
+                .flatMap(t -> Stream.of(t.getCreatedBy(), t.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
         List<CollectTaskDTO> records = result.getRecords().stream()
-                .map(this::toDTO)
+                .map(t -> toDTO(t, usernameMap))
                 .toList();
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
@@ -323,6 +338,10 @@ public class CollectTaskService {
     }
 
     private CollectTaskDTO toDTO(CollectTask task) {
+        return toDTO(task, Map.of());
+    }
+
+    private CollectTaskDTO toDTO(CollectTask task, Map<Long, String> usernameMap) {
         CollectTaskDTO dto = new CollectTaskDTO();
         dto.setId(task.getId());
         dto.setName(task.getName());
@@ -341,6 +360,10 @@ public class CollectTaskService {
         dto.setNextExecutionTime(task.getNextExecutionTime());
         dto.setCreatedAt(task.getCreatedAt());
         dto.setUpdatedAt(task.getUpdatedAt());
+        dto.setCreatedBy(task.getCreatedBy());
+        dto.setUpdatedBy(task.getUpdatedBy());
+        dto.setCreatedByName(usernameMap.get(task.getCreatedBy()));
+        dto.setUpdatedByName(usernameMap.get(task.getUpdatedBy()));
         return dto;
     }
 

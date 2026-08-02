@@ -11,6 +11,10 @@ public record UserVO(
         Boolean enabled,
         List<String> roles,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        Long createdBy,
+        String createdByName,
+        Long updatedBy,
+        String updatedByName
 ) {
 }

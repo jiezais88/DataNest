@@ -16,6 +16,8 @@ export interface DataSource {
     errorMessage?: string;
     createdAt?: string;
     updatedAt?: string;
+    createdByName?: string;
+    updatedByName?: string;
 }
 
 export interface DataSourceCreateRequest {

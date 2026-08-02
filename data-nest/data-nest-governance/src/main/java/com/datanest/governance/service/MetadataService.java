@@ -17,6 +17,7 @@ import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataColumnMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class MetadataService {
@@ -41,6 +43,7 @@ public class MetadataService {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final DataSourceConnectionMapper dataSourceConnectionMapper;
+    private final SysUserService sysUserService;
 
     private final String builtInDorisHost;
     private final int builtInDorisQueryPort;
@@ -49,6 +52,7 @@ public class MetadataService {
 
     public MetadataService(MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
                            DataSourceConnectionMapper dataSourceConnectionMapper,
+                           SysUserService sysUserService,
                            @Value("${datanest.doris.fe-host:localhost}") String builtInDorisHost,
                            @Value("${datanest.doris.fe-query-port:9030}") int builtInDorisQueryPort,
                            @Value("${datanest.doris.user:root}") String builtInDorisUser,
@@ -56,6 +60,7 @@ public class MetadataService {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.dataSourceConnectionMapper = dataSourceConnectionMapper;
+        this.sysUserService = sysUserService;
         this.builtInDorisHost = builtInDorisHost;
         this.builtInDorisQueryPort = builtInDorisQueryPort;
         this.builtInDorisUser = builtInDorisUser;
@@ -143,7 +148,9 @@ public class MetadataService {
 
     @Transactional(readOnly = true)
     public List<MetadataTable> listTables(Long datasourceId, String databaseName, String schemaName) {
-        return metadataTableMapper.selectTablesByDatasourceDatabaseSchema(datasourceId, databaseName, schemaName);
+        List<MetadataTable> tables = metadataTableMapper.selectTablesByDatasourceDatabaseSchema(datasourceId, databaseName, schemaName);
+        applyUsernameNames(tables);
+        return tables;
     }
 
     @Transactional(readOnly = true)
@@ -306,6 +313,7 @@ public class MetadataService {
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
+        applyUsernameNames(List.of(table));
         return table;
     }
 
@@ -360,6 +368,22 @@ public class MetadataService {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
             return 0L;
+        }
+    }
+
+    private void applyUsernameNames(List<MetadataTable> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = tables.stream()
+                .flatMap(t -> Stream.of(t.getCreatedBy(), t.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        for (MetadataTable table : tables) {
+            table.setCreatedByName(usernameMap.get(table.getCreatedBy()));
+            table.setUpdatedByName(usernameMap.get(table.getUpdatedBy()));
         }
     }
 

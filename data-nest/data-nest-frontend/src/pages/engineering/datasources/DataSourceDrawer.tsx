@@ -43,15 +43,16 @@ const EMPTY_FORM: FormData = {
 
 interface DataSourceDrawerProps {
     open: boolean;
-    editItem: DataSource | null;
+    editItem?: DataSource | null;
+    mode?: 'create' | 'edit' | 'view';
     onClose: () => void;
-    onSubmit: (data: DataSourceCreateRequest | DataSourceUpdateRequest) => Promise<{
+    onSubmit?: (data: DataSourceCreateRequest | DataSourceUpdateRequest) => Promise<{
         code: number;
         message?: string
     } | undefined>;
 }
 
-export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: DataSourceDrawerProps) {
+export default function DataSourceDrawer({open, editItem, mode, onClose, onSubmit}: DataSourceDrawerProps) {
     const [form, setForm] = useState<FormData>(EMPTY_FORM);
     const [showPassword, setShowPassword] = useState(false);
     const [testing, setTesting] = useState(false);
@@ -61,7 +62,9 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
     const [submitting, setSubmitting] = useState(false);
     const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
 
-    const isEdit = !!editItem;
+    const effectiveMode = mode ?? (editItem ? 'edit' : 'create');
+    const isEdit = effectiveMode === 'edit';
+    const isView = effectiveMode === 'view';
 
     useEffect(() => {
         if (open) {
@@ -159,7 +162,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
     };
 
     const handleSubmit = async () => {
-        if (!validate()) return;
+        if (!validate() || !onSubmit) return;
         setSubmitting(true);
         const payload = isEdit
             ? {
@@ -198,33 +201,43 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
         <>
             <Drawer
                 open={open}
-                title={isEdit ? '编辑数据源' : '新增数据源'}
+                title={isView ? '详情' : (isEdit ? '编辑数据源' : '新增数据源')}
                 onClose={onClose}
                 footer={
-                    <>
+                    isView ? (
                         <DsButton
                             variant="secondary"
-                            data-testid="datasource-drawer-test-btn"
-                            onClick={handleTest}
-                            disabled={testing}
-                        >
-                            {testing ? '测试中...' : '测试连接'}
-                        </DsButton>
-                        <DsButton
-                            variant="secondary"
-                            data-testid="datasource-drawer-cancel-btn"
+                            data-testid="datasource-drawer-close-btn"
                             onClick={onClose}
                         >
-                            取消
+                            关闭
                         </DsButton>
-                        <DsButton
-                            data-testid="datasource-drawer-save-btn"
-                            onClick={handleSubmit}
-                            disabled={submitting}
-                        >
-                            {submitting ? '保存中...' : '保存'}
-                        </DsButton>
-                    </>
+                    ) : (
+                        <>
+                            <DsButton
+                                variant="secondary"
+                                data-testid="datasource-drawer-test-btn"
+                                onClick={handleTest}
+                                disabled={testing}
+                            >
+                                {testing ? '测试中...' : '测试连接'}
+                            </DsButton>
+                            <DsButton
+                                variant="secondary"
+                                data-testid="datasource-drawer-cancel-btn"
+                                onClick={onClose}
+                            >
+                                取消
+                            </DsButton>
+                            <DsButton
+                                data-testid="datasource-drawer-save-btn"
+                                onClick={handleSubmit}
+                                disabled={submitting}
+                            >
+                                {submitting ? '保存中...' : '保存'}
+                            </DsButton>
+                        </>
+                    )
                 }
             >
                 <div className="space-y-ds-4">
@@ -236,7 +249,7 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                 data-testid="datasource-name-input"
                                 value={form.name}
                                 onChange={(e) => updateField('name', e.target.value)}
-                                disabled={isEdit}
+                                disabled={isEdit || isView}
                                 className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                 placeholder="例如：订单业务库"
                             />
@@ -252,7 +265,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     data-testid="datasource-type-select"
                                     value={form.type}
                                     onChange={(e) => updateField('type', e.target.value as DataSourceType | '')}
-                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                    disabled={isView}
+                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                 >
                                     <option value="">请选择</option>
                                     {TYPE_OPTIONS.map((o) => (
@@ -270,7 +284,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     type="number"
                                     value={form.port}
                                     onChange={(e) => updateField('port', e.target.value === '' ? '' : Number(e.target.value))}
-                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                    disabled={isView}
+                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                     placeholder={form.type ? String(DEFAULT_PORTS[form.type]) : '3306'}
                                 />
                                 {errors.port && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.port}</p>}
@@ -285,7 +300,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                 data-testid="datasource-host-input"
                                 value={form.host}
                                 onChange={(e) => updateField('host', e.target.value)}
-                                className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                disabled={isView}
+                                className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                 placeholder="例如：192.168.1.10 或 mysql.example.com"
                             />
                             {errors.host && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.host}</p>}
@@ -301,7 +317,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     data-testid="datasource-database-input"
                                     value={form.databaseName}
                                     onChange={(e) => updateField('databaseName', e.target.value)}
-                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                    disabled={isView}
+                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                     placeholder="例如：orders"
                                 />
                                 {errors.databaseName &&
@@ -317,7 +334,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                         data-testid="datasource-schema-input"
                                         value={form.schemaName}
                                         onChange={(e) => updateField('schemaName', e.target.value)}
-                                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                        disabled={isView}
+                                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                         placeholder="例如：public"
                                     />
                                     {errors.schemaName &&
@@ -335,7 +353,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     data-testid="datasource-username-input"
                                     value={form.username}
                                     onChange={(e) => updateField('username', e.target.value)}
-                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                    disabled={isView}
+                                    className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                                     placeholder="例如：readonly"
                                 />
                                 {errors.username &&
@@ -356,8 +375,9 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                                 updateField('passwordChanged', true);
                                             }
                                         }}
-                                        className="w-full pl-ds-3 pr-9 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
-                                        placeholder={isEdit && !form.passwordChanged ? '********' : '请输入密码'}
+                                        disabled={isView}
+                                        className="w-full pl-ds-3 pr-9 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                        placeholder={(isEdit || isView) && !form.passwordChanged ? '********' : '请输入密码'}
                                     />
                                     <button
                                         type="button"
@@ -381,8 +401,9 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                 data-testid="datasource-description-input"
                                 value={form.description}
                                 onChange={(e) => updateField('description', e.target.value)}
+                                disabled={isView}
                                 rows={3}
-                                className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none"
+                                className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none"
                                 placeholder="可选：填写数据源用途或备注"
                             />
                         </div>
@@ -393,7 +414,8 @@ export default function DataSourceDrawer({open, editItem, onClose, onSubmit}: Da
                                     type="checkbox"
                                     checked={form.autoCollectOnSave}
                                     onChange={(e) => updateField('autoCollectOnSave', e.target.checked)}
-                                    className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent"
+                                    disabled={isView}
+                                    className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent disabled:opacity-60"
                                 />
                                 <span className="text-ds-small text-ds-text-secondary">保存后立即采集元数据</span>
                             </label>

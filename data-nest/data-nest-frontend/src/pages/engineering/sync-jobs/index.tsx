@@ -24,7 +24,6 @@ import type {
 import {formatDateTime, formatRelativeTime} from '../../../utils/format';
 import {executionStatusVariant} from '../../../utils/status';
 import {notify} from '../../../utils/notify';
-import {usePollingWhile} from '../../../hooks/usePollingWhile';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
 import usePagedList from '../../../hooks/usePagedList';
@@ -42,6 +41,7 @@ import {triggerBadge} from './history-common-utils';
 import {
     HiOutlineCalendar,
     HiOutlineClock,
+    HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlay,
     HiOutlinePlus,
@@ -54,6 +54,7 @@ const STATUS_OPTIONS: { value: SyncExecutionStatus | ''; label: string }[] = [
     {value: 'RUNNING', label: '运行中'},
     {value: 'SUCCESS', label: '成功'},
     {value: 'FAILED', label: '失败'},
+    {value: 'TERMINATED', label: '已终止'},
 ];
 
 const TRIGGER_OPTIONS: { value: SyncTriggerType | ''; label: string }[] = [
@@ -61,18 +62,6 @@ const TRIGGER_OPTIONS: { value: SyncTriggerType | ''; label: string }[] = [
     {value: 'MANUAL', label: '手动'},
     {value: 'CRON', label: 'Cron 定时'},
 ];
-
-function syncModeBadge(syncMode?: string, incrementalField?: string) {
-    if (syncMode === 'INCREMENTAL') {
-        return (
-            <DsStatusBadge
-                variant="accent"
-                label={`增量同步${incrementalField ? ` (${incrementalField})` : ''}`}
-            />
-        );
-    }
-    return <DsStatusBadge variant="success" label="全量同步"/>;
-}
 
 function scheduleStatusBadge(item: SyncJob) {
     if (item.triggerType === 'MANUAL') {
@@ -89,6 +78,7 @@ const EXECUTION_STATUS_LABELS: Record<string, string> = {
     RUNNING: '运行中',
     SUCCESS: '成功',
     FAILED: '失败',
+    TERMINATED: '已终止',
 };
 
 // 「已应用」的查询条件（页面里的草稿条件由下方 draft* state 持有）
@@ -99,19 +89,6 @@ interface SyncJobListQuery {
 }
 
 const INITIAL_QUERY: SyncJobListQuery = {keyword: '', triggerType: '', executionStatus: ''};
-
-function formatSourceToTarget(item: SyncJob, dataSources: DataSource[]) {
-    const ds = dataSources.find((d) => d.id === item.sourceDatasourceId);
-    const dsName = ds?.name || item.sourceDatasourceId || '-';
-    const db = item.sourceDatabase || item.sourceSchema || '';
-    const schema = item.sourceSchema && item.sourceSchema !== item.sourceDatabase ? item.sourceSchema : '';
-    const dbPath = schema ? `${db}/${schema}` : db;
-    const sourceTable = item.sourceTables?.[0] || '';
-    const sourcePath = dbPath ? `${dsName}.${dbPath}.${sourceTable}` : `${dsName}.${sourceTable}`;
-    const targetDb = item.targetDatabase || 'doris';
-    const targetTable = item.targetTable || sourceTable || '';
-    return `${sourcePath} → doris.${targetDb}.${targetTable}`;
-}
 
 function formatNextExecutionTime(item: SyncJob) {
     if (item.triggerType === 'MANUAL') return '—';
@@ -148,6 +125,7 @@ export default function SyncJobsPage() {
     });
 
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
     const [editItem, setEditItem] = useState<SyncJob | null>(null);
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [executingId, setExecutingId] = useState<string | null>(null);
@@ -168,9 +146,6 @@ export default function SyncJobsPage() {
         };
     }, []);
 
-    const hasRunning = list.some((i) => i.executionStatus === 'RUNNING') || executingId != null;
-    usePollingWhile(hasRunning, reload, {interval: 1000});
-
     const loadDataSources = useCallback(async () => {
         try {
             const result = await getDataSources({page: 1, pageSize: 1000});
@@ -183,12 +158,21 @@ export default function SyncJobsPage() {
     const openCreate = async () => {
         await loadDataSources();
         setEditItem(null);
+        setDrawerMode('create');
         setDrawerOpen(true);
     };
 
     const openEdit = useCallback(async (item: SyncJob) => {
         await loadDataSources();
         setEditItem(item);
+        setDrawerMode('edit');
+        setDrawerOpen(true);
+    }, [loadDataSources]);
+
+    const openView = useCallback(async (item: SyncJob) => {
+        await loadDataSources();
+        setEditItem(item);
+        setDrawerMode('view');
         setDrawerOpen(true);
     }, [loadDataSources]);
 
@@ -269,6 +253,7 @@ export default function SyncJobsPage() {
         {
             title: '任务名称',
             dataIndex: 'name',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
@@ -277,10 +262,12 @@ export default function SyncJobsPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
+            width: 100,
             render: (v: string) => triggerBadge(v),
         },
         {
             title: 'Cron 表达式',
+            width: 160,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary font-mono">
                     {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
@@ -289,6 +276,7 @@ export default function SyncJobsPage() {
         },
         {
             title: '调度状态',
+            width: 110,
             render: (_, item) => scheduleStatusBadge(item),
         },
         {
@@ -301,21 +289,8 @@ export default function SyncJobsPage() {
             ),
         },
         {
-            title: '源 → 目标',
-            ellipsis: true,
-            render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary font-mono"
-                      title={formatSourceToTarget(item, dataSources)}>
-                    {formatSourceToTarget(item, dataSources)}
-                </span>
-            ),
-        },
-        {
-            title: '同步模式',
-            render: (_, item) => syncModeBadge(item.syncMode, item.incrementalField),
-        },
-        {
-            title: '状态',
+            title: '最近执行状态',
+            width: 120,
             render: (_, item) => (
                 <DsStatusBadge
                     variant={executionStatusVariant(item.executionStatus)}
@@ -334,10 +309,56 @@ export default function SyncJobsPage() {
             ),
         },
         {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
+            ),
+        },
+        {
+            title: '创建时间',
+            width: 170,
+            render: (_, item) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                    {formatDateTime(item.createdAt)}
+                </span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            width: 170,
+            render: (_, item) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                    {formatDateTime(item.updatedAt)}
+                </span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
+            fixed: 'right' as const,
+            width: 220,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="accent"
+                            data-testid={`sync-job-view-${item.name}`}
+                            onClick={() => openView(item)}
+                            aria-label="详情"
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     <Tooltip title="历史记录">
                         <DsIconButton
                             tone="accent"
@@ -403,7 +424,7 @@ export default function SyncJobsPage() {
                 </div>
             ),
         },
-    ], [canWrite, dataSources, executingId, schedulingId, navigate, handleExecute, handleToggleSchedule, openEdit]);
+    ], [canWrite, executingId, schedulingId, navigate, handleExecute, handleToggleSchedule, openEdit, openView]);
 
     return (
         <div className="flex flex-col">
@@ -477,7 +498,7 @@ export default function SyncJobsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1200}}
+                            scroll={{x: 1930}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({
@@ -514,10 +535,12 @@ export default function SyncJobsPage() {
             <SyncJobDrawer
                 open={drawerOpen}
                 editItem={editItem}
+                mode={drawerMode}
                 sourceDataSources={dataSources}
                 onClose={() => {
                     setDrawerOpen(false);
                     setEditItem(null);
+                    setDrawerMode('create');
                 }}
                 onSubmit={handleSubmit}
                 onExecute={handleExecute}

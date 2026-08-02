@@ -14,6 +14,7 @@ import com.datanest.engineering.dto.*;
 import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -23,11 +24,9 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,12 +44,13 @@ public class SyncJobService {
     private final SchedulerServiceForEngineering schedulerService;
     private final RetryService retryService;
     private final SyncNodeMutexService syncNodeMutexService;
+    private final SysUserService sysUserService;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
                           SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                           DagNodeMapper dagNodeMapper, DagMapper dagMapper, DagExecutionMapper dagExecutionMapper,
                           SchedulerServiceForEngineering schedulerService, RetryService retryService,
-                          SyncNodeMutexService syncNodeMutexService) {
+                          SyncNodeMutexService syncNodeMutexService, SysUserService sysUserService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
@@ -61,6 +61,7 @@ public class SyncJobService {
         this.schedulerService = schedulerService;
         this.retryService = retryService;
         this.syncNodeMutexService = syncNodeMutexService;
+        this.sysUserService = sysUserService;
     }
 
     @Transactional
@@ -223,7 +224,9 @@ public class SyncJobService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
         }
-        return toDTO(entity);
+        SyncJobDTO dto = toDTO(entity);
+        fillUsernameNames(List.of(dto));
+        return dto;
     }
 
     public PageResult<SyncJobDTO> list(SyncJobQueryRequest request) {
@@ -244,6 +247,7 @@ public class SyncJobService {
 
         IPage<SyncJob> result = syncJobMapper.selectPage(page, wrapper);
         List<SyncJobDTO> records = result.getRecords().stream().map(this::toDTO).toList();
+        fillUsernameNames(records);
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
@@ -384,12 +388,17 @@ public class SyncJobService {
         }
         // 条件更新防并发：只有仍处于 RUNNING 才置 TERMINATED；
         // 更新 0 行说明已被 worker 收尾并发写掉，无需再改任务状态/放锁
+        LocalDateTime now = LocalDateTime.now();
+        Long durationMs = history.getStartTime() != null
+                ? Duration.between(history.getStartTime(), now).toMillis()
+                : null;
         int updated = syncJobHistoryMapper.update(null,
                 new UpdateWrapper<SyncJobHistory>()
                         .eq("id", historyId)
                         .eq("status", ExecutionStatus.RUNNING.getCode())
                         .set("status", ExecutionStatus.TERMINATED.getCode())
-                        .set("end_time", LocalDateTime.now()));
+                        .set("end_time", now)
+                        .set("duration_ms", durationMs));
         if (updated == 0) {
             return;
         }
@@ -633,7 +642,30 @@ public class SyncJobService {
         dto.setLastHistoryId(entity.getLastHistoryId());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
         return dto;
+    }
+
+    private void fillUsernameNames(List<SyncJobDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = dtos.stream()
+                .flatMap(d -> java.util.stream.Stream.of(d.getCreatedBy(), d.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        for (SyncJobDTO dto : dtos) {
+            if (dto.getCreatedBy() != null && dto.getCreatedBy() > 0) {
+                dto.setCreatedByName(usernameMap.getOrDefault(dto.getCreatedBy(), "-"));
+            }
+            if (dto.getUpdatedBy() != null && dto.getUpdatedBy() > 0) {
+                dto.setUpdatedByName(usernameMap.getOrDefault(dto.getUpdatedBy(), "-"));
+            }
+        }
     }
 
     private SyncJobHistoryDTO toHistoryDTO(SyncJobHistory entity, SyncJob job,

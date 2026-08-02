@@ -41,18 +41,27 @@ const COMMON_TYPES = [
 
 interface FieldTypeStandardDrawerProps {
     open: boolean;
+    mode?: 'create' | 'edit' | 'view';
     editItem: FieldTypeStandard | null;
     onClose: () => void;
     onSubmit: (payload: FieldTypeStandardFormData) => Promise<{ code: number; message?: string } | undefined>;
 }
 
-export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubmit}: FieldTypeStandardDrawerProps) {
+export default function FieldTypeStandardDrawer({
+                                                    open,
+                                                    mode = 'create',
+                                                    editItem,
+                                                    onClose,
+                                                    onSubmit
+                                                }: FieldTypeStandardDrawerProps) {
     const [form, setForm] = useState<FieldTypeStandardFormData>(EMPTY_FORM);
     const [errors, setErrors] = useState<Partial<Record<keyof FieldTypeStandardFormData, string>>>({});
     const [submitting, setSubmitting] = useState(false);
     const [typeInput, setTypeInput] = useState('');
 
-    const isEdit = !!editItem;
+    const isEdit = mode === 'edit';
+    const isView = mode === 'view';
+    const readOnly = isView;
 
     useEffect(() => {
         if (open) {
@@ -72,6 +81,7 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
     }, [open, editItem]);
 
     const updateField = <K extends keyof FieldTypeStandardFormData>(field: K, value: FieldTypeStandardFormData[K]) => {
+        if (readOnly) return;
         setForm((prev) => ({...prev, [field]: value}));
         if (errors[field]) {
             setErrors((prev) => ({...prev, [field]: undefined}));
@@ -98,6 +108,7 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
     };
 
     const addType = () => {
+        if (readOnly) return;
         const value = typeInput.trim().toUpperCase();
         if (!value) return;
         if (form.allowedTypes.includes(value)) {
@@ -109,6 +120,7 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
     };
 
     const removeType = (value: string) => {
+        if (readOnly) return;
         updateField('allowedTypes', form.allowedTypes.filter((t) => t !== value));
     };
 
@@ -119,20 +131,24 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
         }
     };
 
+    const drawerTitle = isEdit ? '编辑字段类型标准' : isView ? '详情' : '新建字段类型标准';
+
     return (
         <Drawer
             open={open}
-            title={isEdit ? '编辑字段类型标准' : '新建字段类型标准'}
+            title={drawerTitle}
             onClose={onClose}
             footer={
-                <>
-                    <DsButton variant="secondary" onClick={onClose}>
-                        取消
-                    </DsButton>
-                    <DsButton onClick={handleSubmit} disabled={submitting}>
-                        {submitting ? '保存中...' : '保存'}
-                    </DsButton>
-                </>
+                readOnly ? undefined : (
+                    <>
+                        <DsButton variant="secondary" onClick={onClose}>
+                            取消
+                        </DsButton>
+                        <DsButton onClick={handleSubmit} disabled={submitting}>
+                            {submitting ? '保存中...' : '保存'}
+                        </DsButton>
+                    </>
+                )
             }
         >
             <div className="space-y-ds-4">
@@ -143,7 +159,8 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
                     <input
                         value={form.name}
                         onChange={(e) => updateField('name', e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="例如：BIGINT 主键标准"
                     />
                     {errors.name && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.name}</p>}
@@ -154,7 +171,8 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
                     <select
                         value={form.category}
                         onChange={(e) => updateField('category', e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <option value="">请选择分类</option>
                         {CATEGORY_OPTIONS.map((o) => (
@@ -174,8 +192,9 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
                                 <button
                                     key={t}
                                     type="button"
+                                    disabled={readOnly}
                                     onClick={() => selected ? removeType(t) : updateField('allowedTypes', [...form.allowedTypes, t])}
-                                    className={`px-ds-2 py-ds-1 text-ds-small rounded-ds-sm border transition-colors ${
+                                    className={`px-ds-2 py-ds-1 text-ds-small rounded-ds-sm border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                         selected
                                             ? 'bg-ds-accent text-white border-ds-accent'
                                             : 'bg-white text-ds-text-secondary border-ds-border-subtle hover:border-ds-accent hover:text-ds-accent'
@@ -192,10 +211,11 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
                             onChange={(e) => setTypeInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             onBlur={addType}
-                            className="flex-1 px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                            disabled={readOnly}
+                            className="flex-1 px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             placeholder="输入自定义类型，例如 JSON"
                         />
-                        <DsButton variant="secondary" type="button" onClick={addType}>
+                        <DsButton variant="secondary" type="button" onClick={addType} disabled={readOnly}>
                             添加
                         </DsButton>
                     </div>
@@ -208,13 +228,15 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
                                 className="inline-flex items-center gap-ds-1 px-ds-2 py-ds-1 bg-ds-accent-light text-ds-accent text-ds-small rounded-ds-sm"
                             >
                                 {t}
-                                <button
-                                    type="button"
-                                    onClick={() => removeType(t)}
-                                    className="hover:text-ds-danger"
-                                >
-                                    ×
-                                </button>
+                                {!readOnly && (
+                                    <button
+                                        type="button"
+                                        onClick={() => removeType(t)}
+                                        className="hover:text-ds-danger"
+                                    >
+                                        ×
+                                    </button>
+                                )}
                             </span>
                         ))}
                     </div>
@@ -226,7 +248,8 @@ export default function FieldTypeStandardDrawer({open, editItem, onClose, onSubm
                         value={form.description}
                         onChange={(e) => updateField('description', e.target.value)}
                         rows={3}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="可选"
                     />
                 </div>

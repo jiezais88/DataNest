@@ -2,9 +2,9 @@
 // 跨 DAG 的运行实例列表，支持按名称/状态/触发方式/时间范围过滤
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
-import {Button, Modal, Space, Table, Tooltip,} from 'antd';
+import {Modal, Table, Tooltip,} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {HiOutlineArrowPath, HiOutlineDocumentText, HiOutlineStop} from 'react-icons/hi2';
+import {HiOutlineArrowPath, HiOutlineEye, HiOutlineStop} from 'react-icons/hi2';
 import {listAllDagExecutions, rerunFailed, stopDag} from '../dags/api';
 import type {DagExecution} from '../dags/types';
 import {formatDateTime, formatExecutionDuration, getDefaultTimeRange} from '../../../utils/format';
@@ -104,6 +104,7 @@ export default function DagExecutionsGlobalPage() {
     const [draftStartTimeFrom, setDraftStartTimeFrom] = useState(defaultRange.from);
     const [draftStartTimeTo, setDraftStartTimeTo] = useState(defaultRange.to);
 
+
     // 分页 + 已应用查询条件统一走 usePagedList；接口返回 records/total，适配成 {list, total}
     const fetcher = useCallback(async (q: AppliedFilters & { page: number; pageSize: number }) => {
         const result = await listAllDagExecutions({
@@ -188,15 +189,6 @@ export default function DagExecutionsGlobalPage() {
         });
     };
 
-    const handleDagNameClick = useCallback((record: DagExecution) => {
-        if (record.dagId != null && record.id != null) {
-            // 跳转到只读运行画布，展示该次 execution 的实际节点运行信息
-            navigate(`/engineering/dags/${record.dagId}/executions/${record.id}`, {
-                state: {from: '/engineering/dag-executions'},
-            });
-        }
-    }, [navigate]);
-
     // Sprint 3 P1-13：重跑失败节点（Mvp 简化版：复用 trigger 重新跑所有节点）
     const handleRerun = useCallback((record: DagExecution) => {
         if (record.dagId == null || record.id == null) {
@@ -254,19 +246,7 @@ export default function DagExecutionsGlobalPage() {
             title: '所属 DAG',
             dataIndex: 'dagName',
             width: 200,
-            render: (v, r) =>
-                r.dagId != null ? (
-                    <Button
-                        type="link"
-                        size="small"
-                        style={{padding: 0, height: 'auto'}}
-                        onClick={() => handleDagNameClick(r)}
-                    >
-                        {v || '-'}
-                    </Button>
-                ) : (
-                    <span style={{color: '#1e293b'}}>{v || '-'}</span>
-                ),
+            render: (v) => <span style={{color: '#1e293b'}}>{v || '-'}</span>,
         },
         {
             title: '执行方式',
@@ -325,11 +305,21 @@ export default function DagExecutionsGlobalPage() {
         },
         {
             title: '操作',
-            width: 110,
+            width: 140,
             align: 'center',
             fixed: 'right' as const,
             render: (_, r) => (
-                <Space size={4}>
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="accent"
+                            data-testid={`dag-execution-view-${r.id}`}
+                            onClick={() => navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`)}
+                            aria-label="详情"
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     {r.status === 'RUNNING' && (
                         <Tooltip title={canEdit ? '停止执行' : '只读模式：您没有编辑权限'}>
                             <DsIconButton
@@ -352,15 +342,10 @@ export default function DagExecutionsGlobalPage() {
                             </DsIconButton>
                         </Tooltip>
                     )}
-                    <Tooltip title="Sprint 5 支持">
-                        <DsIconButton tone="default" disabled>
-                            <HiOutlineDocumentText size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
-                </Space>
+                </div>
             ),
         },
-    ], [canEdit, handleDagNameClick, handleRerun, handleStop]);
+    ], [canEdit, handleRerun, handleStop]);
 
     return (
         <div className="flex flex-col">
@@ -459,7 +444,7 @@ export default function DagExecutionsGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1100}}
+                            scroll={{x: 1370}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (
@@ -480,6 +465,7 @@ export default function DagExecutionsGlobalPage() {
                     />
                 </div>
             </div>
+
         </div>
     );
 }

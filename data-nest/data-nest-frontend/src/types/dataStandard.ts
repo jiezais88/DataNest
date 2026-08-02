@@ -12,7 +12,9 @@ export interface NamingStandard {
     priority: number;
     enabled: number;
     description?: string;
+    createdByName?: string;
     createdAt?: string;
+    updatedByName?: string;
     updatedAt?: string;
 }
 
@@ -43,7 +45,9 @@ export interface FieldTypeStandard {
     category?: string;
     allowedTypes: string[];
     description?: string;
+    createdByName?: string;
     createdAt?: string;
+    updatedByName?: string;
     updatedAt?: string;
 }
 

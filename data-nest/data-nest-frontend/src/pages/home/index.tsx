@@ -147,10 +147,10 @@ function StatCard({item}: { item: typeof MOCK_STATS[number] }) {
     return (
         <Card
             className="border-ds-border-subtle shadow-ds-xs hover:shadow-ds-md transition-shadow duration-200"
-            bodyStyle={{padding: '20px'}}
+            bodyStyle={{padding: '12px'}}
         >
-            <div className="flex items-start justify-between mb-ds-2">
-                <div className={`w-10 h-10 rounded-ds-md flex items-center justify-center ${item.colorClass}`}>
+            <div className="flex items-start justify-between mb-ds-1">
+                <div className={`w-9 h-9 rounded-ds-md flex items-center justify-center ${item.colorClass}`}>
                     {item.icon}
                 </div>
                 <div className="flex items-center gap-ds-1 text-ds-small font-semibold">
@@ -166,8 +166,8 @@ function StatCard({item}: { item: typeof MOCK_STATS[number] }) {
                 {item.value}
                 {item.suffix && <span className="text-ds-body font-medium ml-ds-1">{item.suffix}</span>}
             </div>
-            <div className="text-ds-small text-ds-text-secondary font-medium mt-ds-1">{item.label}</div>
-            <div className="text-ds-nano text-ds-text-muted mt-ds-2">{item.subtext}</div>
+            <div className="text-ds-small text-ds-text-secondary font-medium mt-0.5">{item.label}</div>
+            <div className="text-ds-nano text-ds-text-muted mt-ds-1">{item.subtext}</div>
         </Card>
     );
 }
@@ -175,7 +175,7 @@ function StatCard({item}: { item: typeof MOCK_STATS[number] }) {
 function TrendBars() {
     const max = Math.max(...MOCK_WEEKLY_TREND.map((d) => d.success + d.failed));
     return (
-        <div className="flex items-end justify-between gap-ds-2 h-28 pt-ds-4">
+        <div className="flex items-end justify-between gap-ds-2 h-14 pt-ds-2">
             {MOCK_WEEKLY_TREND.map((d) => {
                 const total = d.success + d.failed;
                 const height = max === 0 ? 0 : (total / max) * 100;
@@ -207,9 +207,9 @@ export default function HomePage() {
     const dateText = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
 
     return (
-        <div className="h-full overflow-auto -m-ds-6 p-ds-6">
+        <div className="h-full flex flex-col overflow-hidden -m-ds-6 p-ds-6">
             {/* Welcome */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-ds-4 mb-ds-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-ds-3 mb-ds-4 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">
                         欢迎回来，{userInfo?.username || '管理员'}
@@ -248,14 +248,14 @@ export default function HomePage() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-ds-4 mb-ds-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-ds-4 mb-ds-4 flex-shrink-0">
                 {MOCK_STATS.map((item, idx) => (
                     <StatCard key={idx} item={item}/>
                 ))}
             </div>
 
             {/* Middle section */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-ds-5 mb-ds-5">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-ds-4 mb-ds-4 flex-shrink-0">
                 {/* Recent activity */}
                 <Card
                     title={
@@ -265,24 +265,25 @@ export default function HomePage() {
                         </div>
                     }
                     className="border-ds-border-subtle shadow-ds-xs xl:col-span-2"
+                    headStyle={{padding: '10px 16px'}}
                 >
                     <List
                         dataSource={MOCK_ACTIVITIES}
                         renderItem={(item) => (
                             <List.Item
-                                className="!px-0 hover:bg-ds-bg-hover/50 rounded-ds-sm transition-colors"
+                                className="!px-0 hover:bg-ds-bg-hover/50 rounded-ds-sm transition-colors !py-1"
                             >
-                                <div className="flex items-center justify-between w-full px-ds-2 py-ds-1">
-                                    <div className="flex items-center gap-ds-3">
+                                <div className="flex items-center justify-between w-full px-ds-2">
+                                    <div className="flex items-center gap-ds-2">
                                         <div
-                                            className={`w-9 h-9 rounded-ds-md flex items-center justify-center ${
+                                            className={`w-8 h-8 rounded-ds-md flex items-center justify-center ${
                                                 item.type === 'collect'
                                                     ? 'bg-ds-success-light text-ds-success'
                                                     : 'bg-ds-warning-light text-ds-warning'
                                             }`}
                                         >
-                                            {item.type === 'collect' ? <HiCloudArrowUp size={18}/> :
-                                                <HiBolt size={18}/>}
+                                            {item.type === 'collect' ? <HiCloudArrowUp size={16}/> :
+                                                <HiBolt size={16}/>}
                                         </div>
                                         <div>
                                             <div className="text-ds-body-strong text-ds-text-primary">{item.name}</div>
@@ -314,12 +315,13 @@ export default function HomePage() {
                         </div>
                     }
                     className="border-ds-border-subtle shadow-ds-xs"
+                    headStyle={{padding: '10px 16px'}}
                 >
-                    <div className="space-y-ds-4">
+                    <div className="space-y-ds-2">
                         <div>
-                            <div className="text-ds-small text-ds-text-secondary font-medium mb-ds-2">数据源类型分布
+                            <div className="text-ds-small text-ds-text-secondary font-medium mb-ds-1">数据源类型分布
                             </div>
-                            <div className="space-y-ds-2">
+                            <div className="space-y-ds-1">
                                 {MOCK_SOURCE_DISTRIBUTION.map((s) => (
                                     <div key={s.name} className="flex items-center gap-ds-3">
                                         <span className="w-14 text-ds-small text-ds-text-secondary">{s.name}</span>
@@ -340,7 +342,7 @@ export default function HomePage() {
                             </div>
                         </div>
 
-                        <div className="pt-ds-2 border-t border-ds-border-subtle">
+                        <div className="pt-ds-1 border-t border-ds-border-subtle">
                             <div className="flex items-center justify-between mb-ds-1">
                                 <span
                                     className="text-ds-small text-ds-text-secondary font-medium">近 7 天任务执行趋势</span>
@@ -360,7 +362,7 @@ export default function HomePage() {
             </div>
 
             {/* Bottom section */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-ds-5">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-ds-3 flex-shrink-0">
                 <Card
                     title={
                         <div className="flex items-center gap-ds-2">
@@ -369,16 +371,17 @@ export default function HomePage() {
                         </div>
                     }
                     className="border-ds-border-subtle shadow-ds-xs xl:col-span-2"
+                    headStyle={{padding: '10px 16px'}}
                 >
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-ds-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-ds-2">
                         {MOCK_QUICK_LINKS.map((link) => (
                             <button
                                 key={link.path}
                                 onClick={() => navigate(link.path)}
-                                className="flex flex-col items-center gap-ds-2 p-ds-4 rounded-ds-md border border-ds-border-subtle bg-ds-bg-surface hover:border-ds-accent hover:shadow-ds-sm transition-all group"
+                                className="flex flex-col items-center gap-ds-1 p-1.5 rounded-ds-md border border-ds-border-subtle bg-ds-bg-surface hover:border-ds-accent hover:shadow-ds-sm transition-all group"
                             >
                                 <div
-                                    className={`w-11 h-11 rounded-ds-md flex items-center justify-center ${link.color} group-hover:scale-105 transition-transform`}>
+                                    className={`w-9 h-9 rounded-ds-md flex items-center justify-center ${link.color} group-hover:scale-105 transition-transform`}>
                                     {link.icon}
                                 </div>
                                 <span className="text-ds-small text-ds-text-secondary font-medium">{link.label}</span>
@@ -395,10 +398,12 @@ export default function HomePage() {
                         </div>
                     }
                     className="border-ds-border-subtle shadow-ds-xs"
+                    headStyle={{padding: '10px 16px'}}
                 >
-                    <ul className="space-y-ds-3">
+                    <ul className="space-y-1">
                         {MOCK_NOTICES.map((notice, idx) => (
-                            <li key={idx} className="flex items-start gap-ds-2 text-ds-body text-ds-text-secondary">
+                            <li key={idx}
+                                className="flex items-start gap-ds-2 text-ds-nano text-ds-text-secondary leading-relaxed">
                                 <span className="w-1.5 h-1.5 rounded-full bg-ds-accent mt-2 flex-shrink-0"/>
                                 {notice}
                             </li>
@@ -407,10 +412,6 @@ export default function HomePage() {
                 </Card>
             </div>
 
-            {/* Footer */}
-            <div className="mt-ds-6 text-center text-ds-nano text-ds-text-muted">
-                DataNest 企业级数据中台 · 首页数据为演示用途
-            </div>
         </div>
     );
 }

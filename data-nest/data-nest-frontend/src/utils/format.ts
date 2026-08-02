@@ -34,10 +34,11 @@ export function formatDuration(ms: number | string | null | undefined): string {
 /**
  * 执行历史耗时展示（DAG / 同步 / 采集共用）：
  * - 已结束：优先用后端 durationMs 格式化；
+ * - 否则 endTime 与 startTime 都存在：以 endTime - startTime 格式化（覆盖 TERMINATED/SUCCESS/FAILED）；
  * - 运行中（endTime 为空）且 startTime 存在：以当前时间静态计算一次
  *   （仅渲染时取值，不做定时刷新，页面上的时间不会跳动）；
  * - 其余情况 -> "-"。
- * startTime 兼容 'YYYY-MM-DD HH:mm:ss' 与 ISO 8601 两种格式。
+ * startTime/endTime 兼容 'YYYY-MM-DD HH:mm:ss' 与 ISO 8601 两种格式。
  */
 export function formatExecutionDuration(
     durationMs: number | string | null | undefined,
@@ -45,12 +46,19 @@ export function formatExecutionDuration(
     endTime?: string,
 ): string {
     if (durationMs != null) return formatDuration(durationMs);
-    if (!endTime && startTime) {
-        // 'YYYY-MM-DD HH:mm:ss' 直接 new Date() 部分浏览器解析不了，补 'T' 转 ISO 本地时间
-        const start = new Date(startTime.includes('T') ? startTime : startTime.replace(' ', 'T')).getTime();
-        if (!Number.isNaN(start)) return formatDuration(Date.now() - start);
+    const start = parseTime(startTime);
+    if (start == null) return '-';
+    if (endTime) {
+        const end = parseTime(endTime);
+        if (end != null) return formatDuration(end - start);
     }
-    return '-';
+    return formatDuration(Date.now() - start);
+}
+
+function parseTime(value?: string): number | null {
+    if (!value) return null;
+    const ts = new Date(value.includes('T') ? value : value.replace(' ', 'T')).getTime();
+    return Number.isNaN(ts) ? null : ts;
 }
 
 /** 吞吐量：12345 -> "1.2 万行/秒"，0.5 -> "0.50 行/秒" */

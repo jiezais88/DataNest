@@ -1,10 +1,11 @@
 // 项目内的 DAG 列表页（PRD §6.3：8 列布局）
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {Modal, Space, Table, Tooltip} from 'antd';
+import {Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
     HiOutlineCalendar,
     HiOutlineClock,
+    HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlayCircle,
     HiOutlinePlus,
@@ -155,10 +156,6 @@ export default function ProjectDagsPage() {
             render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
         },
         {
-            title: '节点数 / 类型', width: 200,
-            render: (_, r: Dag) => r.nodeSummary || '—'
-        },
-        {
             title: '触发方式', width: 100,
             render: (_, r: Dag) => (
                 r.triggerType === 'CRON'
@@ -184,7 +181,47 @@ export default function ProjectDagsPage() {
             }
         },
         {
-            title: '状态', width: 100,
+            title: '创建人',
+            width: 120,
+            dataIndex: 'createdByName',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-text-muted whitespace-nowrap">{v || '—'}</span>
+                </Tooltip>
+            )
+        },
+        {
+            title: '创建时间',
+            width: 170,
+            dataIndex: 'createdAt',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                </Tooltip>
+            )
+        },
+        {
+            title: '修改人',
+            width: 120,
+            dataIndex: 'updatedByName',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-text-muted whitespace-nowrap">{v || '—'}</span>
+                </Tooltip>
+            )
+        },
+        {
+            title: '修改时间',
+            width: 170,
+            dataIndex: 'updatedAt',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                </Tooltip>
+            )
+        },
+        {
+            title: '最近执行状态', width: 120,
             render: (_, r: Dag) => {
                 const status = r.latestExecution?.status;
                 const label = status === 'SUCCESS' ? '成功'
@@ -208,7 +245,16 @@ export default function ProjectDagsPage() {
         {
             title: '操作', width: 220, align: 'center', fixed: 'right' as const,
             render: (_, r: Dag) => (
-                <Space size={4}>
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="accent"
+                            aria-label="详情"
+                            onClick={() => navigate(`/engineering/dags/${r.id}/edit`)}
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     {canEdit && r.triggerType === 'CRON' && (
                         <Tooltip title={r.scheduleEnabled ? '停用调度' : '启用调度'}>
                             <DsIconButton
@@ -252,7 +298,7 @@ export default function ProjectDagsPage() {
                             </DsIconButton>
                         </Tooltip>
                     )}
-                </Space>
+                </div>
             )
         }
     ], [canEdit, navigate, handleTrigger, handleToggleSchedule, schedulingId]);
@@ -324,7 +370,7 @@ export default function ProjectDagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1250}}
+                            scroll={{x: 1740}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description={loading ? '加载中...' : '暂无 DAG'}/>}}

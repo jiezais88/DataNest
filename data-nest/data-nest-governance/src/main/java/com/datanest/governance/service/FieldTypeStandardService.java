@@ -14,23 +14,30 @@ import com.datanest.governance.dto.FieldTypeStandardUpdateRequest;
 import com.datanest.governance.entity.FieldTypeStandard;
 import com.datanest.governance.mapper.FieldTypeStandardMapper;
 import com.datanest.governance.mapper.NamingStandardMapper;
+import com.datanest.task.core.service.SysUserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class FieldTypeStandardService {
 
     private final FieldTypeStandardMapper fieldTypeStandardMapper;
     private final NamingStandardMapper namingStandardMapper;
+    private final SysUserService sysUserService;
 
     public FieldTypeStandardService(FieldTypeStandardMapper fieldTypeStandardMapper,
-                                    NamingStandardMapper namingStandardMapper) {
+                                    NamingStandardMapper namingStandardMapper,
+                                    SysUserService sysUserService) {
         this.fieldTypeStandardMapper = fieldTypeStandardMapper;
         this.namingStandardMapper = namingStandardMapper;
+        this.sysUserService = sysUserService;
     }
 
     @Transactional
@@ -89,7 +96,9 @@ public class FieldTypeStandardService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.FIELD_TYPE_STANDARD_NOT_FOUND);
         }
-        return toDTO(entity);
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(
+                List.of(entity.getCreatedBy(), entity.getUpdatedBy()));
+        return toDTO(entity, usernameMap);
     }
 
     public PageResult<FieldTypeStandardDTO> list(FieldTypeStandardQueryRequest request) {
@@ -103,8 +112,14 @@ public class FieldTypeStandardService {
         }
         wrapper.orderByDesc("created_at");
         IPage<FieldTypeStandard> result = fieldTypeStandardMapper.selectPage(page, wrapper);
+        List<Long> userIds = result.getRecords().stream()
+                .flatMap(e -> Stream.of(e.getCreatedBy(), e.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
         List<FieldTypeStandardDTO> records = result.getRecords().stream()
-                .map(this::toDTO)
+                .map(e -> toDTO(e, usernameMap))
                 .collect(Collectors.toList());
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
@@ -114,6 +129,10 @@ public class FieldTypeStandardService {
     }
 
     private FieldTypeStandardDTO toDTO(FieldTypeStandard entity) {
+        return toDTO(entity, Map.of());
+    }
+
+    private FieldTypeStandardDTO toDTO(FieldTypeStandard entity, Map<Long, String> usernameMap) {
         FieldTypeStandardDTO dto = new FieldTypeStandardDTO();
         dto.setId(entity.getId());
         dto.setName(entity.getName());
@@ -122,6 +141,10 @@ public class FieldTypeStandardService {
         dto.setDescription(entity.getDescription());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
+        dto.setCreatedByName(usernameMap.get(entity.getCreatedBy()));
+        dto.setUpdatedByName(usernameMap.get(entity.getUpdatedBy()));
         return dto;
     }
 

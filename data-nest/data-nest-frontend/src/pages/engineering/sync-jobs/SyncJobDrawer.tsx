@@ -31,6 +31,7 @@ interface FormData {
 interface SyncJobDrawerProps {
     open: boolean;
     editItem: SyncJob | null;
+    mode?: 'create' | 'edit' | 'view';
     sourceDataSources: DataSource[];
     onClose: () => void;
     onSubmit: (payload: SyncJobCreateRequest) => Promise<{
@@ -94,6 +95,7 @@ function applyAutoMapping(columns: string[], existingMapping: SyncFieldMapping[]
 export default function SyncJobDrawer({
                                           open,
                                           editItem,
+                                          mode = editItem ? 'edit' : 'create',
                                           sourceDataSources,
                                           onClose,
                                           onSubmit,
@@ -115,7 +117,8 @@ export default function SyncJobDrawer({
     const [targetTables, setTargetTables] = useState<string[]>([]);
     const [targetTablesLoading, setTargetTablesLoading] = useState(false);
 
-    const isEdit = !!editItem;
+    const isEdit = mode === 'edit';
+    const isView = mode === 'view';
 
     const loadTargetDatabases = async () => {
         setTargetDbsLoading(true);
@@ -441,34 +444,44 @@ export default function SyncJobDrawer({
     return (
         <Drawer
             open={open}
-            title={isEdit ? '编辑同步任务' : '创建同步任务'}
+            title={isView ? '详情' : isEdit ? '编辑同步任务' : '创建同步任务'}
             width="max-w-[640px]"
             onClose={onClose}
             footer={
-                <>
+                isView ? (
                     <DsButton
                         variant="secondary"
-                        data-testid="sync-job-cancel"
+                        data-testid="sync-job-close"
                         onClick={onClose}
                     >
-                        取消
+                        关闭
                     </DsButton>
-                    <DsButton
-                        data-testid="sync-job-submit-run"
-                        onClick={() => handleSubmit(true)}
-                        disabled={submitting}
-                    >
-                        {submitting ? '保存中...' : '保存并立即执行'}
-                    </DsButton>
-                    <DsButton
-                        variant="secondary"
-                        data-testid="sync-job-submit"
-                        onClick={() => handleSubmit(false)}
-                        disabled={submitting}
-                    >
-                        {submitting ? '保存中...' : '保存'}
-                    </DsButton>
-                </>
+                ) : (
+                    <>
+                        <DsButton
+                            variant="secondary"
+                            data-testid="sync-job-cancel"
+                            onClick={onClose}
+                        >
+                            取消
+                        </DsButton>
+                        <DsButton
+                            data-testid="sync-job-submit-run"
+                            onClick={() => handleSubmit(true)}
+                            disabled={submitting}
+                        >
+                            {submitting ? '保存中...' : '保存并立即执行'}
+                        </DsButton>
+                        <DsButton
+                            variant="secondary"
+                            data-testid="sync-job-submit"
+                            onClick={() => handleSubmit(false)}
+                            disabled={submitting}
+                        >
+                            {submitting ? '保存中...' : '保存'}
+                        </DsButton>
+                    </>
+                )
             }
         >
             <div className="space-y-ds-4">
@@ -480,7 +493,7 @@ export default function SyncJobDrawer({
                         data-testid="sync-job-name"
                         value={form.name}
                         onChange={(e) => updateField('name', e.target.value)}
-                        disabled={isEdit}
+                        disabled={isEdit || isView}
                         className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
                         placeholder="例如：订单表同步到 Doris"
                     />
@@ -498,7 +511,8 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-source-datasource"
                                 value={form.sourceDatasourceId}
                                 onChange={(e) => handleSourceDatasourceChange(e.target.value)}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                disabled={isView}
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">请选择</option>
                                 {sourceDataSources.map((ds) => (
@@ -521,7 +535,7 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-schema"
                                 value={form.selectedSchema}
                                 onChange={(e) => handleSchemaChange(e.target.value)}
-                                disabled={!form.sourceDatasourceId || schemasLoading}
+                                disabled={!form.sourceDatasourceId || schemasLoading || isView}
                                 className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">{schemasLoading ? '加载中...' : '请选择'}</option>
@@ -545,7 +559,7 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-source-table"
                                 value={form.sourceTable}
                                 onChange={(e) => handleSourceTableChange(e.target.value)}
-                                disabled={!form.selectedSchema || tablesLoading}
+                                disabled={!form.selectedSchema || tablesLoading || isView}
                                 className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">{tablesLoading ? '加载中...' : '请选择'}</option>
@@ -576,7 +590,7 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-target-database"
                                 value={form.targetDatabase}
                                 onChange={(e) => handleTargetDatabaseChange(e.target.value)}
-                                disabled={targetDbsLoading}
+                                disabled={targetDbsLoading || isView}
                                 className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">{targetDbsLoading ? '加载中...' : '请选择'}</option>
@@ -601,7 +615,7 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-target-table"
                                 value={form.targetTable}
                                 onChange={(e) => updateField('targetTable', e.target.value)}
-                                disabled={!form.targetDatabase || targetTablesLoading}
+                                disabled={!form.targetDatabase || targetTablesLoading || isView}
                                 className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">{targetTablesLoading ? '加载中...' : '请选择'}</option>
@@ -634,21 +648,24 @@ export default function SyncJobDrawer({
                                         data-testid={`sync-job-mapping-source-${index}`}
                                         value={row.sourceColumn}
                                         onChange={(e) => updateMappingField(index, 'sourceColumn', e.target.value)}
+                                        disabled={isView}
                                         placeholder="源字段"
-                                        className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors"
+                                        className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     />
                                     <span className="text-ds-small text-ds-text-muted">→</span>
                                     <input
                                         data-testid={`sync-job-mapping-target-${index}`}
                                         value={row.targetColumn}
                                         onChange={(e) => updateMappingField(index, 'targetColumn', e.target.value)}
+                                        disabled={isView}
                                         placeholder="目标字段"
-                                        className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors"
+                                        className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     />
                                     <DsIconButton
                                         tone="danger"
                                         data-testid={`sync-job-mapping-remove-${index}`}
                                         onClick={() => removeMappingRow(index)}
+                                        disabled={isView}
                                         title="删除"
                                         aria-label="删除"
                                     >
@@ -661,7 +678,8 @@ export default function SyncJobDrawer({
                             type="button"
                             data-testid="sync-job-mapping-add"
                             onClick={addMappingRow}
-                            className="flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium transition-colors"
+                            disabled={isView}
+                            className="flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             <HiOutlinePlus size={16}/>
                             添加字段映射
@@ -686,7 +704,8 @@ export default function SyncJobDrawer({
                                         type="button"
                                         data-testid={`sync-job-mode-${o.value}`}
                                         onClick={() => updateField('syncMode', o.value)}
-                                        className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors ${
+                                        disabled={isView}
+                                        className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                             form.syncMode === o.value
                                                 ? 'border-ds-accent bg-ds-accent-light text-ds-accent'
                                                 : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent hover:text-ds-accent'
@@ -709,7 +728,7 @@ export default function SyncJobDrawer({
                                     data-testid="sync-job-incremental-field"
                                     value={form.incrementalField}
                                     onChange={(e) => updateField('incrementalField', e.target.value)}
-                                    disabled={columnOptions.length === 0 || columnsLoading}
+                                    disabled={columnOptions.length === 0 || columnsLoading || isView}
                                     className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <option value="">请选择</option>
@@ -743,7 +762,8 @@ export default function SyncJobDrawer({
                                         type="button"
                                         data-testid={`sync-job-trigger-${o.value}`}
                                         onClick={() => updateField('triggerType', o.value)}
-                                        className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors ${
+                                        disabled={isView}
+                                        className={`flex-1 px-ds-4 py-ds-3 rounded-ds-sm border text-left transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                             form.triggerType === o.value
                                                 ? 'border-ds-accent bg-ds-accent-light text-ds-accent'
                                                 : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent hover:text-ds-accent'
@@ -762,11 +782,18 @@ export default function SyncJobDrawer({
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     Cron 表达式 <span className="text-ds-danger">*</span>
                                 </label>
-                                <CronPicker
-                                    value={form.cronExpression}
-                                    onChange={(v) => updateField('cronExpression', v)}
-                                />
-                                {errors.cronExpression && (
+                                {isView ? (
+                                    <div
+                                        className="px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary">
+                                        {form.cronExpression || '-'}
+                                    </div>
+                                ) : (
+                                    <CronPicker
+                                        value={form.cronExpression}
+                                        onChange={(v) => updateField('cronExpression', v)}
+                                    />
+                                )}
+                                {errors.cronExpression && !isView && (
                                     <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.cronExpression}</p>
                                 )}
                             </div>
@@ -785,7 +812,8 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-retry-times"
                                 value={form.retryTimes}
                                 onChange={(e) => updateField('retryTimes', Number(e.target.value))}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                disabled={isView}
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 {[0, 1, 2, 3].map((n) => (
                                     <option key={n} value={n}>{n} 次</option>
@@ -803,7 +831,8 @@ export default function SyncJobDrawer({
                                 data-testid="sync-job-retry-interval"
                                 value={form.retryInterval}
                                 onChange={(e) => updateField('retryInterval', Number(e.target.value))}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                disabled={isView}
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 {Array.from({length: 30}, (_, i) => i + 1).map((n) => (
                                     <option key={n} value={n}>{n} 分钟</option>
@@ -823,7 +852,8 @@ export default function SyncJobDrawer({
                         value={form.description}
                         onChange={(e) => updateField('description', e.target.value)}
                         rows={3}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none"
+                        disabled={isView}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none disabled:bg-ds-bg-disabled disabled:text-ds-text-muted"
                         placeholder="可选：填写同步任务的业务说明"
                     />
                 </div>

@@ -21,7 +21,9 @@ export interface CollectTask {
     lastExecuteTime?: string;
     scheduleEnabled?: number;
     description?: string;
+    createdByName?: string;
     createdAt?: string;
+    updatedByName?: string;
     updatedAt?: string;
 }
 

@@ -602,6 +602,7 @@ public class DagAlertConfig {
     private String recipients;            // 分号分隔的邮箱
     private String triggerConditions;     // JSON: ["FAILURE", "TIMEOUT", "SUCCESS"]
     private Integer timeoutMinutes;       // 节点超时阈值
+    private Long dagId;                   // 所属 DAG ID；null 表示全局默认配置
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;
@@ -609,9 +610,24 @@ public class DagAlertConfig {
 }
 ```
 
+**配置策略**：
+
+- `dag_id IS NULL` 的记录为全局默认配置，最多一条。
+- `dag_id IS NOT NULL` 的记录为某 DAG 的专用配置，覆盖全局默认。
+- 告警触发时先查专用配置，不存在再回退全局配置。
+
+**数据库迁移**：
+
+```sql
+-- V3.3.10__dag_alert_config_dag_id.sql
+ALTER TABLE dag_alert_config
+    ADD COLUMN IF NOT EXISTS dag_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_dag_alert_config_dag_id ON dag_alert_config (dag_id);
+```
+
 ### 8.2 告警触发
 
-在 `DagExecutionService` 的节点状态更新流程中埋点：
+在 `DagExecutionService` 的节点状态更新流程中埋点。告警配置按 DAG 解析：优先取该 DAG 的专用配置，无则回退全局默认配置。
 
 ```java
 
@@ -620,31 +636,72 @@ public class DagAlertService {
 
     private final DagAlertConfigMapper dagAlertConfigMapper;
     private final DagAlertHistoryMapper dagAlertHistoryMapper;
+    private final DagMapper dagMapper;
+    private final DagExecutionMapper dagExecutionMapper;
     private final MailService mailService;
 
+    /**
+     * 按 DAG 解析告警配置：优先专用配置，无则回退全局默认。
+     */
+    public DagAlertConfig resolveConfig(Long dagId) {
+        if (dagId != null) {
+            DagAlertConfig dedicated = dagAlertConfigMapper.selectByDagId(dagId);
+            if (dedicated != null) {
+                return dedicated;
+            }
+        }
+        return dagAlertConfigMapper.selectGlobal();
+    }
+
     public void onDagFailed(DagExecution execution, List<NodeExecution> failedNodes) {
-        DagAlertConfig config = dagAlertConfigMapper.selectGlobal();
+        DagAlertConfig config = resolveConfig(execution.getDagId());
         if (config == null || config.getEnabled() != 1) return;
         if (!triggerConditions(config).contains("FAILURE")) return;
         if (dagAlertHistoryMapper.exists(execution.getId(), null, "FAILURE")) return;
 
-        String subject = String.format("[DataNest 告警] DAG「%s」执行失败", execution.getDagName());
-        String body = buildFailureBody(execution, failedNodes);
+        Dag dag = dagMapper.selectById(execution.getDagId());
+        String dagName = dag == null ? "未知 DAG" : dag.getName();
+        String subject = String.format("[DataNest 告警] DAG「%s」执行失败", dagName);
+        String body = buildFailureBody(execution, failedNodes, dagName);
         mailService.send(config.getRecipients(), subject, body);
         dagAlertHistoryMapper.insert(execution.getId(), null, "FAILURE", config.getRecipients());
     }
 
-    public void onNodeTimeout(NodeExecution node) {
-        DagAlertConfig config = dagAlertConfigMapper.selectGlobal();
+    public void onNodeTimeout(NodeExecution node, Long dagId) {
+        DagAlertConfig config = resolveConfig(dagId);
         if (config == null || config.getEnabled() != 1) return;
         if (!triggerConditions(config).contains("TIMEOUT")) return;
+        if (dagAlertHistoryMapper.exists(node.getExecutionId(), node.getNodeId(), "TIMEOUT")) return;
 
-        String subject = String.format("[DataNest 告警] DAG 节点超时");
-        String body = buildTimeoutBody(node);
+        Dag dag = dagMapper.selectById(dagId);
+        String dagName = dag == null ? "未知 DAG" : dag.getName();
+        DagExecution execution = dagExecutionMapper.selectById(node.getExecutionId());
+        String executionTime = format(execution != null ? execution.getStartTime() : null);
+
+        String subject = String.format("[DataNest 告警] DAG「%s」节点执行超时", dagName);
+        String body = String.join("\n",
+                "DAG：" + dagName,
+                "执行时间：" + executionTime,
+                "节点：" + node.getNodeName() + "（" + node.getNodeId() + "）",
+                "节点类型：" + node.getNodeType(),
+                "开始时间：" + format(node.getStartTime()),
+                "当前状态：RUNNING",
+                "查看详情：" + buildExecutionUrl(node.getExecutionId()));
+
         mailService.send(config.getRecipients(), subject, body);
+        dagAlertHistoryMapper.insert(node.getExecutionId(), node.getNodeId(), "TIMEOUT", config.getRecipients());
     }
 }
 ```
+
+**告警配置接口**：
+
+- 全局配置：
+    - `GET /dev/alert-config`
+    - `PUT /dev/alert-config`
+- 按 DAG 配置（覆盖全局）：
+    - `GET /dev/dags/{dagId}/alert-config`
+    - `PUT /dev/dags/{dagId}/alert-config`
 
 ### 8.3 邮件服务
 
@@ -737,7 +794,8 @@ public Result<List<NodeExecutionLogDTO>> logs(@PathVariable Long executionId,
 
 **失败告警**在节点状态变为 FAILED 时由 `DagAlertService.onDagFailed()` 实时触发，属于事件驱动，不需要定时任务。
 
-**超时告警**需要定时扫描 RUNNING 节点，因此新增 XXL-JOB 定时任务：
+**超时告警**需要定时扫描 RUNNING 节点，因此新增 XXL-JOB 定时任务。扫描时按节点所属 DAG 取告警配置，并应用该 DAG 的
+`timeout_minutes`：
 
 ```java
 
@@ -746,48 +804,55 @@ public class DagNodeTimeoutAlertHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagNodeTimeoutAlertHandler.class);
     private static final int BATCH_LIMIT = 100;
+    private static final int DEFAULT_TIMEOUT_MINUTES = 30;
 
     private final NodeExecutionMapper nodeExecutionMapper;
-    private final DagAlertConfigMapper dagAlertConfigMapper;
-    private final DagAlertHistoryMapper dagAlertHistoryMapper;
     private final DagAlertService dagAlertService;
 
     @XxlJob("dagNodeTimeoutAlertHandler")
     public void scan() {
-        DagAlertConfig config = dagAlertConfigMapper.selectGlobal();
-        if (config == null || config.getEnabled() != 1 ||
-                !triggerConditions(config).contains("TIMEOUT")) {
-            XxlJobHelper.handleSuccess("告警未启用或未开启超时告警");
+        // 查询 RUNNING 节点，并通过 JOIN dag_execution 附带 dag_id
+        List<NodeExecution> runningNodes = nodeExecutionMapper.selectRunningWithDagId(BATCH_LIMIT);
+        if (runningNodes.isEmpty()) {
+            XxlJobHelper.handleSuccess("无运行中节点");
             return;
         }
 
-        int thresholdMinutes = config.getTimeoutMinutes() == null ? 30 : config.getTimeoutMinutes();
-        LocalDateTime threshold = LocalDateTime.now().minusMinutes(thresholdMinutes);
-
-        // 查询 RUNNING 且已超时的节点，且未发送过超时告警
-        List<NodeExecution> timeoutNodes = nodeExecutionMapper.selectTimeoutRunning(
-                threshold, BATCH_LIMIT);
-
+        LocalDateTime now = LocalDateTime.now();
         int sent = 0;
-        for (NodeExecution node : timeoutNodes) {
+        for (NodeExecution node : runningNodes) {
             try {
-                if (dagAlertHistoryMapper.exists(node.getExecutionId(), node.getNodeId(), "TIMEOUT")) {
+                // 按 DAG 取告警配置（专用 > 全局）
+                DagAlertConfig config = dagAlertService.resolveConfig(node.getDagId());
+                if (config == null || config.getEnabled() != 1 ||
+                        !triggerConditions(config).contains("TIMEOUT")) {
                     continue;
                 }
-                dagAlertService.onNodeTimeout(node);
-                dagAlertHistoryMapper.insert(node.getExecutionId(), node.getNodeId(), "TIMEOUT",
-                        config.getRecipients());
-                sent++;
+
+                int thresholdMinutes = config.getTimeoutMinutes() == null
+                        ? DEFAULT_TIMEOUT_MINUTES : config.getTimeoutMinutes();
+                LocalDateTime threshold = now.minusMinutes(thresholdMinutes);
+
+                if (node.getStartTime() != null && node.getStartTime().isBefore(threshold)) {
+                    dagAlertService.onNodeTimeout(node, node.getDagId());
+                    sent++;
+                }
             } catch (Exception e) {
                 logger.error("发送节点超时告警失败: executionId={}, nodeId={}",
                         node.getExecutionId(), node.getNodeId(), e);
             }
         }
 
-        XxlJobHelper.handleSuccess("扫描完成: timeoutNodes=" + timeoutNodes.size() + ", sent=" + sent);
+        XxlJobHelper.handleSuccess("扫描完成: runningNodes=" + runningNodes.size() + ", sent=" + sent);
     }
 }
 ```
+
+**关键说明**：
+
+- `NodeExecution` 增加 transient 字段 `dagId`，由 `selectRunningWithDagId` 通过 `node_execution JOIN dag_execution` 映射。
+- 每个节点独立按 DAG 配置判断：不同 DAG 可设置不同超时阈值和收件人。
+- 防重发由 `DagAlertService.onNodeTimeout` 内部通过 `dag_alert_history` 保证。
 
 **调度周期**：默认每 1 分钟执行一次，在 `data-nest-job` 的 `application.yml` 配置：
 
@@ -797,8 +862,6 @@ datanest:
     dag-timeout-alert:
       cron: ${DAG_TIMEOUT_ALERT_CRON:0 * * * * ?}
 ```
-
-**防重发**：通过 `dag_alert_history` 表记录已发送的告警，避免同一节点重复发送。
 
 ---
 

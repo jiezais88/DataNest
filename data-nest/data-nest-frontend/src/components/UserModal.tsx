@@ -8,14 +8,15 @@ import {ROLE_OPTIONS} from '../constants/roles';
 interface Props {
     open: boolean;
     editUser?: UserVO | null;
+    mode?: 'create' | 'edit' | 'view';
     submitting?: boolean;
     onClose: () => void;
-    onSubmit: (data: CreateUserParams | UpdateUserParams) => void;
+    onSubmit?: (data: CreateUserParams | UpdateUserParams) => void;
 }
 
 const ALL_ROLES = ROLE_OPTIONS.map((o) => ({code: o.value, name: o.label}));
 
-export default function UserModal({open, editUser, submitting = false, onClose, onSubmit}: Props) {
+export default function UserModal({open, editUser, mode, submitting = false, onClose, onSubmit}: Props) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -38,9 +39,12 @@ export default function UserModal({open, editUser, submitting = false, onClose, 
         }
     }, [editUser, open]);
 
-    const isEdit = !!editUser;
+    const effectiveMode = mode ?? (editUser ? 'edit' : 'create');
+    const isEdit = effectiveMode === 'edit';
+    const isView = effectiveMode === 'view';
 
     const handleSubmit = () => {
+        if (isView || !onSubmit) return;
         if (!isEdit && (!username || !password)) return;
         onSubmit({
             username,
@@ -65,25 +69,31 @@ export default function UserModal({open, editUser, submitting = false, onClose, 
         <DsModal
             open={open}
             onClose={onClose}
-            title={isEdit ? '编辑用户' : '创建用户'}
+            title={isView ? '详情' : (isEdit ? '编辑用户' : '创建用户')}
             width="w-[520px]"
             footer={
-                <>
-                    <DsButton variant="ghost" onClick={onClose} disabled={submitting}>
-                        取消
+                isView ? (
+                    <DsButton variant="ghost" onClick={onClose}>
+                        关闭
                     </DsButton>
-                    <DsButton type="button" onClick={handleSubmit} disabled={!canSubmit || submitting}>
-                        {submitting && <DsSpinner/>}
-                        {submitting ? '处理中...' : (isEdit ? '保存修改' : '创建用户')}
-                    </DsButton>
-                </>
+                ) : (
+                    <>
+                        <DsButton variant="ghost" onClick={onClose} disabled={submitting}>
+                            取消
+                        </DsButton>
+                        <DsButton type="button" onClick={handleSubmit} disabled={!canSubmit || submitting}>
+                            {submitting && <DsSpinner/>}
+                            {submitting ? '处理中...' : (isEdit ? '保存修改' : '创建用户')}
+                        </DsButton>
+                    </>
+                )
             }
         >
             <div className="space-y-ds-4">
                     <div>
                         <label className="block text-ds-small text-ds-text-secondary mb-1">用户名</label>
                         <input name="username" value={username} onChange={(e) => setUsername(e.target.value)}
-                               disabled={isEdit}
+                               disabled={isEdit || isView}
                                className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast disabled:bg-ds-bg-hover disabled:text-ds-text-muted"
                                placeholder="请输入用户名"/>
                     </div>
@@ -94,8 +104,9 @@ export default function UserModal({open, editUser, submitting = false, onClose, 
                         </label>
                         <input name="password" type="password" value={password}
                                onChange={(e) => setPassword(e.target.value)}
-                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast"
-                               placeholder={isEdit ? '不修改则留空' : '请输入密码（6-20位）'}/>
+                               disabled={isView}
+                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast disabled:bg-ds-bg-hover disabled:text-ds-text-muted"
+                               placeholder={isEdit ? '不修改则留空' : (isView ? '-' : '请输入密码（6-20位）')}/>
                     </div>
 
                     <div>
@@ -103,13 +114,16 @@ export default function UserModal({open, editUser, submitting = false, onClose, 
                         <div className="flex flex-wrap gap-ds-1">
                             {ALL_ROLES.map((role) => {
                                 const selected = selectedRoles.includes(role.code);
-                                return (
+                                const baseClass = `px-ds-2 py-ds-1 rounded-ds-full text-ds-small border ${selected
+                                    ? 'bg-ds-accent-light border-ds-accent text-ds-accent font-semibold'
+                                    : 'bg-white border-ds-border-subtle text-ds-text-secondary'}`;
+                                return isView ? (
+                                    <span key={role.code} className={baseClass}>
+                                        {role.name}
+                                    </span>
+                                ) : (
                                     <button key={role.code} onClick={() => toggleRole(role.code)}
-                                            className={`px-ds-2 py-ds-1 rounded-ds-full text-ds-small transition-colors duration-ds-fast border
-                      ${selected
-                                                ? 'bg-ds-accent-light border-ds-accent text-ds-accent font-semibold'
-                                                : 'bg-white border-ds-border-subtle text-ds-text-secondary hover:border-ds-accent'
-                                            }`}>
+                                            className={`${baseClass} transition-colors duration-ds-fast hover:border-ds-accent`}>
                                         {role.name}
                                     </button>
                                 );
@@ -120,14 +134,16 @@ export default function UserModal({open, editUser, submitting = false, onClose, 
                     <div>
                         <label className="block text-ds-small text-ds-text-secondary mb-1">邮箱</label>
                         <input name="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast"
+                               disabled={isView}
+                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast disabled:bg-ds-bg-hover disabled:text-ds-text-muted"
                                placeholder="请输入邮箱"/>
                     </div>
 
                     <div>
                         <label className="block text-ds-small text-ds-text-secondary mb-1">手机号</label>
                         <input name="phone" value={phone} onChange={(e) => setPhone(e.target.value)}
-                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast"
+                               disabled={isView}
+                               className="w-full px-ds-3 py-ds-2 border border-ds-border-subtle rounded-ds-sm text-ds-body focus:outline-none focus:border-ds-accent focus:ring-1 focus:ring-ds-accent transition-colors duration-ds-fast disabled:bg-ds-bg-hover disabled:text-ds-text-muted"
                                placeholder="请输入手机号"/>
                     </div>
             </div>

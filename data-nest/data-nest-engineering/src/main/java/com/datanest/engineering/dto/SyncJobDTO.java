@@ -37,6 +37,10 @@ public class SyncJobDTO {
     private Long lastHistoryId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Long createdBy;
+    private Long updatedBy;
+    private String createdByName;
+    private String updatedByName;
 
     public Long getId() {
         return id;
@@ -268,5 +272,37 @@ public class SyncJobDTO {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(Long createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public Long getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedBy(Long updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public String getCreatedByName() {
+        return createdByName;
+    }
+
+    public void setCreatedByName(String createdByName) {
+        this.createdByName = createdByName;
+    }
+
+    public String getUpdatedByName() {
+        return updatedByName;
+    }
+
+    public void setUpdatedByName(String updatedByName) {
+        this.updatedByName = updatedByName;
     }
 }

@@ -4,7 +4,7 @@ export type {SyncMode, TaskTriggerType as SyncTriggerType};
 
 export type SyncScheduleStatus = 'NORMAL' | 'PAUSED';
 // 状态字符串统一在 constants/task.ts 的 ExecutionStatusEnum 声明，这里只收窄出业务域子集
-export type SyncExecutionStatus = Extract<AnyExecutionStatus, 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'>;
+export type SyncExecutionStatus = Extract<AnyExecutionStatus, 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'TERMINATED'>;
 export type SyncHistoryStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED' | 'TERMINATED'>;
 export type SyncLogLevel = 'INFO' | 'WARN' | 'ERROR';
 
@@ -41,6 +41,8 @@ export interface SyncJob {
     lastHistoryId?: string;
     createdAt?: string;
     updatedAt?: string;
+    createdByName?: string;
+    updatedByName?: string;
 }
 
 export interface SyncJobCreateRequest {

@@ -16,6 +16,8 @@ export interface UserVO {
     roles: string[];
     createdAt: string;
     updatedAt: string;
+    createdByName?: string;
+    updatedByName?: string;
 }
 
 export interface CreateUserParams {

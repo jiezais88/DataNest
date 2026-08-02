@@ -67,6 +67,12 @@ public class MetadataTable {
 
     private Long updatedBy;
 
+    @TableField(exist = false)
+    private String createdByName;
+
+    @TableField(exist = false)
+    private String updatedByName;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

@@ -432,24 +432,16 @@ export default function MetadataPage() {
         {
             title: '表名',
             dataIndex: 'tableName',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-accent font-medium" title={v}>{v}</span>
             ),
         },
         {
-            title: '注释',
-            ellipsis: true,
-            render: (_, table) => {
-                const comment = table.manualComment || table.tableComment || '-';
-                return (
-                    <span className="text-ds-small text-ds-text-secondary" title={comment}>{comment}</span>
-                );
-            },
-        },
-        {
             title: '字段数',
             dataIndex: 'columnCount',
+            width: 100,
             render: (v?: number) => (
                 <span className="text-ds-small text-ds-text-secondary">{v ?? '-'}</span>
             ),
@@ -457,9 +449,46 @@ export default function MetadataPage() {
         {
             title: '采集来源',
             dataIndex: 'sourceTaskName',
+            width: 150,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '创建时间',
+            dataIndex: 'createdAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '-'}</span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '-'}</span>
             ),
         },
     ], []);
@@ -472,7 +501,7 @@ export default function MetadataPage() {
                     rowKey="id"
                     loading={tablesLoading}
                     pagination={false}
-                    scroll={{x: 700}}
+                    scroll={{x: 1130}}
                     columns={tableColumns}
                     className="prototype-table prototype-table-flush"
                     onRow={(table) => ({

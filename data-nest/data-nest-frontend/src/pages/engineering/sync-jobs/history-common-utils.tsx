@@ -1,4 +1,5 @@
-import type {SyncHistoryStatus, SyncJobHistory, SyncTriggerType} from '../../../types/sync';
+import type {DataSource} from '../../../types/datasource';
+import type {SyncHistoryStatus, SyncJob, SyncJobHistory, SyncMode, SyncTriggerType} from '../../../types/sync';
 
 export const STATUS_OPTIONS: { value: SyncHistoryStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
@@ -14,6 +15,17 @@ export function statusLabel(value: SyncHistoryStatus | string) {
     if (value === 'RUNNING') return '执行中';
     if (value === 'TERMINATED') return '已终止';
     return '失败';
+}
+
+export function syncModeBadge(syncMode: SyncMode | string, incrementalField?: string) {
+    if (syncMode === 'INCREMENTAL') {
+        return (
+            <span className="text-ds-small text-ds-text-secondary">
+                增量同步{incrementalField ? ` (${incrementalField})` : ''}
+            </span>
+        );
+    }
+    return <span className="text-ds-small text-ds-text-secondary">全量同步</span>;
 }
 
 export function triggerBadge(triggerType: SyncTriggerType | string) {
@@ -39,6 +51,17 @@ export function triggerBadge(triggerType: SyncTriggerType | string) {
             定时触发
         </span>
     );
+}
+
+export function formatSourceToTarget(item: SyncJob, dataSources: DataSource[]) {
+    const sourceDs = dataSources.find((ds) => String(ds.id) === String(item.sourceDatasourceId));
+    const sourceDb = item.sourceDatabase || sourceDs?.databaseName || '';
+    const sourceSchema = item.sourceSchema || sourceDs?.schemaName || '';
+    const sourceTable = item.sourceTables?.[0] || '';
+    const sourceParts = [sourceDb, sourceSchema, sourceTable].filter(Boolean);
+    const source = sourceParts.length ? sourceParts.join('.') : '-';
+    const target = item.targetTable ? `${item.targetDatabase || 'doris'}.${item.targetTable}` : '-';
+    return `${source} → ${target}`;
 }
 
 export function formatSourceTable(item: SyncJobHistory) {

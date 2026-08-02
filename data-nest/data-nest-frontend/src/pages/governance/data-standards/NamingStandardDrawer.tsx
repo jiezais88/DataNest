@@ -38,6 +38,7 @@ const RULE_TYPE_OPTIONS: { value: RuleType; label: string }[] = [
 
 interface NamingStandardDrawerProps {
     open: boolean;
+    mode?: 'create' | 'edit' | 'view';
     editItem: NamingStandard | null;
     standards: FieldTypeStandard[];
     onClose: () => void;
@@ -46,6 +47,7 @@ interface NamingStandardDrawerProps {
 
 export default function NamingStandardDrawer({
                                                  open,
+                                                 mode = 'create',
                                                  editItem,
                                                  standards,
                                                  onClose,
@@ -55,7 +57,9 @@ export default function NamingStandardDrawer({
     const [errors, setErrors] = useState<Partial<Record<keyof NamingStandardFormData, string>>>({});
     const [submitting, setSubmitting] = useState(false);
 
-    const isEdit = !!editItem;
+    const isEdit = mode === 'edit';
+    const isView = mode === 'view';
+    const readOnly = isView;
 
     useEffect(() => {
         if (open) {
@@ -78,6 +82,7 @@ export default function NamingStandardDrawer({
     }, [open, editItem]);
 
     const updateField = <K extends keyof NamingStandardFormData>(field: K, value: NamingStandardFormData[K]) => {
+        if (readOnly) return;
         setForm((prev) => {
             const next = {...prev, [field]: value} as NamingStandardFormData;
             if (field === 'appliesTo' && value === 'TABLE') {
@@ -119,20 +124,24 @@ export default function NamingStandardDrawer({
         }
     };
 
+    const drawerTitle = isEdit ? '编辑命名规范' : isView ? '详情' : '新建命名规范';
+
     return (
         <Drawer
             open={open}
-            title={isEdit ? '编辑命名规范' : '新建命名规范'}
+            title={drawerTitle}
             onClose={onClose}
             footer={
-                <>
-                    <DsButton variant="secondary" onClick={onClose}>
-                        取消
-                    </DsButton>
-                    <DsButton onClick={handleSubmit} disabled={submitting}>
-                        {submitting ? '保存中...' : '保存'}
-                    </DsButton>
-                </>
+                readOnly ? undefined : (
+                    <>
+                        <DsButton variant="secondary" onClick={onClose}>
+                            取消
+                        </DsButton>
+                        <DsButton onClick={handleSubmit} disabled={submitting}>
+                            {submitting ? '保存中...' : '保存'}
+                        </DsButton>
+                    </>
+                )
             }
         >
             <div className="space-y-ds-4">
@@ -143,7 +152,8 @@ export default function NamingStandardDrawer({
                     <input
                         value={form.name}
                         onChange={(e) => updateField('name', e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="例如：ID 字段命名规范"
                     />
                     {errors.name && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.name}</p>}
@@ -158,8 +168,9 @@ export default function NamingStandardDrawer({
                                 <button
                                     key={o.value}
                                     type="button"
+                                    disabled={readOnly}
                                     onClick={() => updateField('appliesTo', o.value)}
-                                    className={`flex-1 px-ds-3 py-ds-2 rounded-ds-sm border text-ds-small transition-colors ${
+                                    className={`flex-1 px-ds-3 py-ds-2 rounded-ds-sm border text-ds-small transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                         form.appliesTo === o.value
                                             ? 'border-ds-accent bg-ds-accent-light text-ds-accent font-semibold'
                                             : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent'
@@ -178,8 +189,9 @@ export default function NamingStandardDrawer({
                                 <button
                                     key={o.value}
                                     type="button"
+                                    disabled={readOnly}
                                     onClick={() => updateField('ruleType', o.value)}
-                                    className={`flex-1 px-ds-3 py-ds-2 rounded-ds-sm border text-ds-small transition-colors ${
+                                    className={`flex-1 px-ds-3 py-ds-2 rounded-ds-sm border text-ds-small transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                         form.ruleType === o.value
                                             ? 'border-ds-accent bg-ds-accent-light text-ds-accent font-semibold'
                                             : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent'
@@ -199,7 +211,8 @@ export default function NamingStandardDrawer({
                     <input
                         value={form.ruleValue}
                         onChange={(e) => updateField('ruleValue', e.target.value)}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder={form.ruleType === 'REGEX' ? '例如：^[a-z][a-z0-9_]*$' : '例如：_id'}
                     />
                     {errors.ruleValue && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.ruleValue}</p>}
@@ -218,7 +231,8 @@ export default function NamingStandardDrawer({
                         <select
                             value={form.targetStandardId}
                             onChange={(e) => updateField('targetStandardId', e.target.value)}
-                            className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                            disabled={readOnly}
+                            className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             <option value="">请选择</option>
                             {standards.map((s) => (
@@ -238,7 +252,8 @@ export default function NamingStandardDrawer({
                         type="number"
                         value={form.priority}
                         onChange={(e) => updateField('priority', Number(e.target.value))}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                     <p className="mt-ds-1 text-ds-nano text-ds-text-muted">数字越大越优先，命中后不再继续匹配其他规范</p>
                 </div>
@@ -249,7 +264,8 @@ export default function NamingStandardDrawer({
                             type="checkbox"
                             checked={form.enabled === 1}
                             onChange={(e) => updateField('enabled', e.target.checked ? 1 : 0)}
-                            className="rounded border-ds-border-subtle text-ds-accent focus:ring-ds-accent"
+                            disabled={readOnly}
+                            className="rounded border-ds-border-subtle text-ds-accent focus:ring-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
                         />
                         启用规范
                     </label>
@@ -261,7 +277,8 @@ export default function NamingStandardDrawer({
                         value={form.description}
                         onChange={(e) => updateField('description', e.target.value)}
                         rows={3}
-                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none"
+                        disabled={readOnly}
+                        className="w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="可选"
                     />
                 </div>

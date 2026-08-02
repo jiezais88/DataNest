@@ -10,6 +10,7 @@ import com.datanest.engineering.dto.*;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.DagTopologyService;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -47,12 +49,13 @@ public class DagService {
     private final DagDsConverter dagDsConverter;
     private final DagProjectService dagProjectService;   // 用于校验项目存在（暂不直接调，留接口）
     private final DagVersionService dagVersionService;
+    private final SysUserService sysUserService;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                       DagTopologyService topologyService, DolphinSchedulerClient dolphinSchedulerClient,
                       DagDsConverter dagDsConverter, DagProjectService dagProjectService,
-                      DagVersionService dagVersionService) {
+                      DagVersionService dagVersionService, SysUserService sysUserService) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -63,6 +66,7 @@ public class DagService {
         this.dagDsConverter = dagDsConverter;
         this.dagProjectService = dagProjectService;
         this.dagVersionService = dagVersionService;
+        this.sysUserService = sysUserService;
     }
 
     @Transactional
@@ -251,7 +255,9 @@ public class DagService {
         if (dag == null) {
             throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
         }
-        return toPayload(dag, true);
+        DagPayload dto = toPayload(dag, true);
+        fillUsernameNames(List.of(dto));
+        return dto;
     }
 
     public List<DagPayload> list(Long projectId) {
@@ -270,7 +276,7 @@ public class DagService {
         Map<Long, DagExecution> latestByDag = dagExecutionMapper.selectLatestByDagIds(dagIds).stream()
                 .collect(Collectors.toMap(DagExecution::getDagId, e -> e));
 
-        return dags.stream().map(d -> {
+        List<DagPayload> records = dags.stream().map(d -> {
             DagPayload dto = toPayload(d, false);
             List<DagNode> nodes = nodesByDag.getOrDefault(d.getId(), List.of());
             dto.setNodeSummary(buildNodeSummary(nodes));
@@ -284,6 +290,8 @@ public class DagService {
             }
             return dto;
         }).toList();
+        fillUsernameNames(records);
+        return records;
     }
 
     private String buildNodeSummary(List<DagNode> nodes) {
@@ -619,6 +627,8 @@ public class DagService {
         dto.setReleaseState(dag.getReleaseState());
         dto.setCreatedAt(dag.getCreatedAt());
         dto.setUpdatedAt(dag.getUpdatedAt());
+        dto.setCreatedBy(dag.getCreatedBy());
+        dto.setUpdatedBy(dag.getUpdatedBy());
         if (withGraph) {
             List<DagNode> nodes = dagNodeMapper.selectByDagId(dag.getId());
             List<DagEdge> edges = dagEdgeMapper.selectByDagId(dag.getId());
@@ -626,6 +636,27 @@ public class DagService {
             dto.setEdges(edges.stream().map(this::toEdgePayload).toList());
         }
         return dto;
+    }
+
+    private void fillUsernameNames(List<DagPayload> dtos) {
+        if (dtos == null || dtos.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = dtos.stream()
+                .flatMap(d -> java.util.stream.Stream.of(d.getCreatedBy(), d.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        for (DagPayload dto : dtos) {
+            if (dto.getCreatedBy() != null && dto.getCreatedBy() > 0) {
+                dto.setCreatedByName(usernameMap.getOrDefault(dto.getCreatedBy(), "-"));
+            }
+            if (dto.getUpdatedBy() != null && dto.getUpdatedBy() > 0) {
+                dto.setUpdatedByName(usernameMap.getOrDefault(dto.getUpdatedBy(), "-"));
+            }
+        }
     }
 
     private DagNodePayload toNodePayload(DagNode n) {

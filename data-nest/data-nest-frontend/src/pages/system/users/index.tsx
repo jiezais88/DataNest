@@ -19,7 +19,14 @@ import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsSpinner from '../../../components/DsSpinner';
 import DsStatusBadge from '../../../components/DsStatusBadge';
-import {HiOutlineCheck, HiOutlineKey, HiOutlineNoSymbol, HiOutlinePencilSquare, HiOutlinePlus,} from 'react-icons/hi2';
+import {
+    HiOutlineCheck,
+    HiOutlineEye,
+    HiOutlineKey,
+    HiOutlineNoSymbol,
+    HiOutlinePencilSquare,
+    HiOutlinePlus,
+} from 'react-icons/hi2';
 
 const ROLE_OPTIONS = [
     {value: '', label: '全部角色'},
@@ -42,6 +49,7 @@ export default function UsersPage() {
     const [draftStatus, setDraftStatus] = useState('');
 
     const [modalOpen, setModalOpen] = useState(false);
+    const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('create');
     const [editUser, setEditUser] = useState<UserVO | null>(null);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [confirmTarget, setConfirmTarget] = useState<UserVO | null>(null);
@@ -155,6 +163,7 @@ export default function UsersPage() {
         {
             title: '用户名',
             dataIndex: 'username',
+            width: 150,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -163,6 +172,7 @@ export default function UsersPage() {
         {
             title: '角色',
             dataIndex: 'roles',
+            width: 150,
             render: (roles: string[]) => (
                 <div className="flex flex-wrap gap-1">
                     {roles.map((role) => (
@@ -179,6 +189,7 @@ export default function UsersPage() {
         {
             title: '邮箱',
             dataIndex: 'email',
+            width: 200,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
@@ -187,10 +198,20 @@ export default function UsersPage() {
         {
             title: '状态',
             dataIndex: 'enabled',
+            width: 100,
             render: (enabled: boolean) => (
                 enabled
                     ? <DsStatusBadge variant="success" label="正常"/>
                     : <DsStatusBadge variant="danger" label="已禁用"/>
+            ),
+        },
+        {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
             ),
         },
         {
@@ -202,16 +223,48 @@ export default function UsersPage() {
             ),
         },
         {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: 170,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
-            width: 140,
+            fixed: 'right' as const,
+            width: 160,
             render: (_, user) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="default"
+                            onClick={() => {
+                                setEditUser(user);
+                                setModalMode('view');
+                                setModalOpen(true);
+                            }}
+                            aria-label="详情"
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     <Tooltip title="编辑">
                         <DsIconButton
                             tone="accent"
                             onClick={() => {
                                 setEditUser(user);
+                                setModalMode('edit');
                                 setModalOpen(true);
                             }}
                             aria-label="编辑"
@@ -260,6 +313,7 @@ export default function UsersPage() {
                 <DsButton
                     onClick={() => {
                         setEditUser(null);
+                        setModalMode('create');
                         setModalOpen(true);
                     }}
                 >
@@ -323,7 +377,7 @@ export default function UsersPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1000}}
+                            scroll={{x: 1440}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{
@@ -345,12 +399,14 @@ export default function UsersPage() {
             <UserModal
                 open={modalOpen}
                 editUser={editUser}
+                mode={modalMode}
                 submitting={userSubmitting}
                 onClose={() => {
                     setModalOpen(false);
                     setEditUser(null);
+                    setModalMode('create');
                 }}
-                onSubmit={editUser ? handleUpdate : handleCreate}
+                onSubmit={modalMode === 'view' ? undefined : (editUser ? handleUpdate : handleCreate)}
             />
 
             <ConfirmDialog

@@ -1,5 +1,6 @@
 package com.datanest.system.service;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -15,11 +16,16 @@ import com.datanest.system.entity.Role;
 import com.datanest.system.entity.User;
 import com.datanest.system.mapper.RoleMapper;
 import com.datanest.system.mapper.UserMapper;
+import com.datanest.task.core.service.SysUserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -28,13 +34,16 @@ public class UserService {
     private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
     private final IdentifierGenerator idGenerator;
+    private final SysUserService sysUserService;
 
     public UserService(UserMapper userMapper, RoleMapper roleMapper,
-                       PasswordEncoder passwordEncoder, IdentifierGenerator idGenerator) {
+                       PasswordEncoder passwordEncoder, IdentifierGenerator idGenerator,
+                       SysUserService sysUserService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.passwordEncoder = passwordEncoder;
         this.idGenerator = idGenerator;
+        this.sysUserService = sysUserService;
     }
 
     public UserLoginDTO verify(String username, String password) {
@@ -63,13 +72,22 @@ public class UserService {
         Page<User> mpPage = new Page<>(page, pageSize);
         IPage<User> result = userMapper.selectUserPage(mpPage, keyword, roleCode, enabled);
 
-        List<UserVO> records = result.getRecords().stream().map(u -> {
+        List<User> records = result.getRecords();
+        Set<Long> userIds = records.stream()
+                .flatMap(u -> java.util.stream.Stream.of(u.getCreatedBy(), u.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+
+        List<UserVO> vos = records.stream().map(u -> {
             List<String> roles = userMapper.selectRoleCodesByUserId(u.getId());
             return new UserVO(u.getId(), u.getUsername(), u.getEmail(),
-                    u.getPhone(), u.getEnabled(), roles, u.getCreatedAt(), u.getUpdatedAt());
+                    u.getPhone(), u.getEnabled(), roles, u.getCreatedAt(), u.getUpdatedAt(),
+                    u.getCreatedBy(), usernameMap.getOrDefault(u.getCreatedBy(), "-"),
+                    u.getUpdatedBy(), usernameMap.getOrDefault(u.getUpdatedBy(), "-"));
         }).toList();
 
-        return PageResult.of(records, result.getTotal(), page, pageSize);
+        return PageResult.of(vos, result.getTotal(), page, pageSize);
     }
 
     @Transactional
@@ -86,13 +104,15 @@ public class UserService {
         user.setEmail(req.email());
         user.setPhone(req.phone());
         user.setEnabled(true);
+        Long operatorId = currentUserId();
+        user.setCreatedBy(operatorId);
+        user.setUpdatedBy(operatorId);
         userMapper.insert(user);
 
         assignRoles(user.getId(), req.roles());
 
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
-        return new UserVO(user.getId(), user.getUsername(), user.getEmail(),
-                user.getPhone(), true, roles, user.getCreatedAt(), user.getUpdatedAt());
+        return toUserVO(user, roles);
     }
 
     @Transactional
@@ -106,6 +126,7 @@ public class UserService {
         if (req.password() != null && !req.password().isEmpty()) {
             user.setPassword(passwordEncoder.encode(req.password()));
         }
+        user.setUpdatedBy(currentUserId());
         userMapper.updateById(user);
 
         if (req.roles() != null) {
@@ -113,8 +134,21 @@ public class UserService {
         }
 
         List<String> roles = userMapper.selectRoleCodesByUserId(userId);
+        return toUserVO(user, roles);
+    }
+
+    private UserVO toUserVO(User user, List<String> roles) {
         return new UserVO(user.getId(), user.getUsername(), user.getEmail(),
-                user.getPhone(), user.getEnabled(), roles, user.getCreatedAt(), user.getUpdatedAt());
+                user.getPhone(), user.getEnabled(), roles, user.getCreatedAt(), user.getUpdatedAt(),
+                user.getCreatedBy(), "-", user.getUpdatedBy(), "-");
+    }
+
+    private Long currentUserId() {
+        try {
+            return StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void toggleStatus(Long userId) {

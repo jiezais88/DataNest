@@ -15,15 +15,18 @@ import com.datanest.governance.entity.NamingStandard;
 import com.datanest.governance.mapper.ComplianceCheckResultMapper;
 import com.datanest.governance.mapper.FieldTypeStandardMapper;
 import com.datanest.governance.mapper.NamingStandardMapper;
+import com.datanest.task.core.service.SysUserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class NamingStandardService {
@@ -31,13 +34,16 @@ public class NamingStandardService {
     private final NamingStandardMapper namingStandardMapper;
     private final FieldTypeStandardMapper fieldTypeStandardMapper;
     private final ComplianceCheckResultMapper complianceCheckResultMapper;
+    private final SysUserService sysUserService;
 
     public NamingStandardService(NamingStandardMapper namingStandardMapper,
                                  FieldTypeStandardMapper fieldTypeStandardMapper,
-                                 ComplianceCheckResultMapper complianceCheckResultMapper) {
+                                 ComplianceCheckResultMapper complianceCheckResultMapper,
+                                 SysUserService sysUserService) {
         this.namingStandardMapper = namingStandardMapper;
         this.fieldTypeStandardMapper = fieldTypeStandardMapper;
         this.complianceCheckResultMapper = complianceCheckResultMapper;
+        this.sysUserService = sysUserService;
     }
 
     @Transactional
@@ -108,7 +114,9 @@ public class NamingStandardService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.NAMING_STANDARD_NOT_FOUND);
         }
-        return toDTO(entity);
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(
+                List.of(entity.getCreatedBy(), entity.getUpdatedBy()));
+        return toDTO(entity, usernameMap);
     }
 
     public PageResult<NamingStandardDTO> list(NamingStandardQueryRequest request) {
@@ -138,9 +146,16 @@ public class NamingStandardService {
                 com.datanest.governance.entity.FieldTypeStandard::getName
         ));
 
+        List<Long> userIds = result.getRecords().stream()
+                .flatMap(e -> Stream.of(e.getCreatedBy(), e.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+
         List<NamingStandardDTO> records = result.getRecords().stream()
                 .map(e -> {
-                    NamingStandardDTO dto = toDTO(e);
+                    NamingStandardDTO dto = toDTO(e, usernameMap);
                     Long targetStandardId = e.getTargetStandardId();
                     dto.setTargetStandardName(targetStandardId != null ? standardNameMap.get(targetStandardId) : null);
                     return dto;
@@ -186,6 +201,10 @@ public class NamingStandardService {
     }
 
     private NamingStandardDTO toDTO(NamingStandard entity) {
+        return toDTO(entity, Map.of());
+    }
+
+    private NamingStandardDTO toDTO(NamingStandard entity, Map<Long, String> usernameMap) {
         NamingStandardDTO dto = new NamingStandardDTO();
         dto.setId(entity.getId());
         dto.setName(entity.getName());
@@ -198,6 +217,10 @@ public class NamingStandardService {
         dto.setDescription(entity.getDescription());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
+        dto.setCreatedByName(usernameMap.get(entity.getCreatedBy()));
+        dto.setUpdatedByName(usernameMap.get(entity.getUpdatedBy()));
         return dto;
     }
 

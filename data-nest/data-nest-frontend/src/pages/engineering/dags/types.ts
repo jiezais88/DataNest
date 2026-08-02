@@ -42,6 +42,8 @@ export interface Dag {
     releaseState?: string;
     createdAt?: string;
     updatedAt?: string;
+    createdByName?: string;
+    updatedByName?: string;
     nodes?: DagNode[];
     edges?: DagEdge[];
     /** Sprint 3 性能优化：后端聚合的节点摘要，列表页直接用 */
@@ -60,6 +62,8 @@ export interface DagProject {
     description?: string;
     createdAt?: string;
     updatedAt?: string;
+    createdByName?: string;
+    updatedByName?: string;
     dagCount?: number;
 }
 

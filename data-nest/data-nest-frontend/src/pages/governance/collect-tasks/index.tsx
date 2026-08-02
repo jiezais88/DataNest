@@ -35,6 +35,7 @@ import TaskDrawer from './TaskDrawer';
 import {
     HiOutlineCalendar,
     HiOutlineClock,
+    HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlay,
     HiOutlinePlus,
@@ -53,18 +54,6 @@ function computeNextExecutionTime(item: CollectTask): string {
     if (item.triggerType !== 'CRON' || !item.cronExpression || item.scheduleEnabled !== 1) return '-';
     const next = nextRunTime(item.cronExpression);
     return next ? formatDateTime(next.toISOString()) : '-';
-}
-
-function collectModeBadge(collectMode?: string) {
-    if (collectMode === 'FULL_INCREMENT') {
-        return (
-            <span
-                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-purple-50 text-purple-700">
-                {'全量+增量'}
-            </span>
-        );
-    }
-    return <DsStatusBadge label="全量采集" variant="success"/>;
 }
 
 function formatScope(items?: string[]) {
@@ -105,6 +94,7 @@ export default function CollectTasksPage() {
 
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editItem, setEditItem] = useState<CollectTask | null>(null);
+    const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [executingId, setExecutingId] = useState<string | null>(null);
     const [schedulingId, setSchedulingId] = useState<string | null>(null);
@@ -124,12 +114,21 @@ export default function CollectTasksPage() {
 
     const openCreate = () => {
         setEditItem(null);
+        setDrawerMode('create');
         loadDataSources();
         setDrawerOpen(true);
     };
 
     const openEdit = useCallback((item: CollectTask) => {
         setEditItem(item);
+        setDrawerMode('edit');
+        loadDataSources();
+        setDrawerOpen(true);
+    }, [loadDataSources]);
+
+    const openView = useCallback((item: CollectTask) => {
+        setEditItem(item);
+        setDrawerMode('view');
         loadDataSources();
         setDrawerOpen(true);
     }, [loadDataSources]);
@@ -250,6 +249,7 @@ export default function CollectTasksPage() {
         {
             title: '任务名称',
             dataIndex: 'name',
+            width: 200,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -258,6 +258,7 @@ export default function CollectTasksPage() {
         {
             title: '数据源',
             dataIndex: 'datasourceName',
+            width: 150,
             ellipsis: true,
             render: (v: string | undefined, item) => (
                 <span title={item.datasourceName || '-'}
@@ -267,6 +268,7 @@ export default function CollectTasksPage() {
         {
             title: '采集范围',
             dataIndex: 'scope',
+            width: 150,
             ellipsis: true,
             render: (_, item) => (
                 <span title={formatScope(item.scope)}
@@ -276,22 +278,20 @@ export default function CollectTasksPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
+            width: 100,
             render: (_, item) => triggerBadge(item.triggerType),
         },
         {
             title: 'Cron 表达式',
             dataIndex: 'cronExpression',
+            width: 160,
             className: 'text-ds-small text-ds-text-secondary font-mono',
             render: (_, item) => (item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'),
         },
         {
             title: '调度状态',
+            width: 110,
             render: (_, item) => scheduleStatusBadge(item),
-        },
-        {
-            title: '采集模式',
-            dataIndex: 'collectMode',
-            render: (_, item) => collectModeBadge(item.collectMode),
         },
         {
             title: '下次执行时间',
@@ -300,8 +300,9 @@ export default function CollectTasksPage() {
             render: (_, item) => computeNextExecutionTime(item),
         },
         {
-            title: '状态',
+            title: '最近执行状态',
             dataIndex: 'status',
+            width: 120,
             render: (_, item) => (
                 <DsStatusBadge label={statusLabel(item.status)} variant={executionStatusVariant(item.status)}/>
             ),
@@ -320,11 +321,58 @@ export default function CollectTasksPage() {
             ),
         },
         {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+            ),
+        },
+        {
+            title: '创建时间',
+            dataIndex: 'createdAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: 120,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: 170,
+            render: (v?: string) => (
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
-            width: 170,
+            fixed: 'right' as const,
+            width: 220,
             render: (_, item) => (
-                <div className="flex items-center justify-center w-full gap-1 whitespace-nowrap">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="accent"
+                            data-testid={`collect-task-view-${item.name}`}
+                            onClick={() => openView(item)}
+                            aria-label="详情"
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     <Tooltip title="历史记录">
                         <DsIconButton
                             tone="accent"
@@ -392,7 +440,7 @@ export default function CollectTasksPage() {
                 </div>
             ),
         },
-    ], [canWrite, executingId, schedulingId, navigate, handleExecute, handleToggleSchedule, openEdit]);
+    ], [canWrite, executingId, schedulingId, navigate, handleExecute, handleToggleSchedule, openEdit, openView]);
 
     return (
         <div className="flex flex-col">
@@ -459,7 +507,7 @@ export default function CollectTasksPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1200}}
+                            scroll={{x: 2230}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) =>
@@ -498,6 +546,7 @@ export default function CollectTasksPage() {
 
             <TaskDrawer
                 open={drawerOpen}
+                mode={drawerMode}
                 editItem={editItem}
                 dataSources={dataSources}
                 onClose={() => {

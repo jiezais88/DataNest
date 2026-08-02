@@ -21,4 +21,12 @@ public class FieldTypeStandardDTO {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    private Long createdBy;
+
+    private Long updatedBy;
+
+    private String createdByName;
+
+    private String updatedByName;
 }

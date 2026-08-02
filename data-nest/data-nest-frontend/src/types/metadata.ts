@@ -12,7 +12,9 @@ export interface MetadataTable {
     datasourceName?: string;
     datasourceType?: string;
     lastCollectHistoryId?: string;
+    createdByName?: string;
     createdAt?: string;
+    updatedByName?: string;
     updatedAt?: string;
 }
 

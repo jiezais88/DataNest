@@ -16,8 +16,27 @@ public class User {
     private String email;
     private String phone;
     private Boolean enabled;
+    private Long createdBy;
+    private Long updatedBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public Long getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(Long createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public Long getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedBy(Long updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
 
     public Long getId() {
         return id;

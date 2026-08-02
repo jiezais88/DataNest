@@ -5,6 +5,7 @@ import {formatDateTime} from '../utils/format';
 interface CronPickerProps {
     value: string;
     onChange: (cron: string) => void;
+    disabled?: boolean;
 }
 
 const PRESETS: { label: string; cron: string }[] = [
@@ -45,7 +46,7 @@ function buildMinute(mode: MinuteMode, number: string): string {
     return number;
 }
 
-export default function CronPicker({value, onChange}: CronPickerProps) {
+export default function CronPicker({value, onChange, disabled}: CronPickerProps) {
     const [minute, setMinute] = useState('*');
     const [minuteMode, setMinuteMode] = useState<MinuteMode>('every');
     const [minuteNumber, setMinuteNumber] = useState('0');
@@ -86,10 +87,12 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
     );
 
     const handlePreset = (cronStr: string) => {
+        if (disabled) return;
         onChange(cronStr);
     };
 
     const updateMinute = (mode: MinuteMode, number: string) => {
+        if (disabled) return;
         const clamped = Math.max(0, Math.min(59, Number(number) || 0));
         const validNumber = String(clamped);
         const newMinute = buildMinute(mode, validNumber);
@@ -103,8 +106,8 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
         onChange(buildCron(newMinute, newHour, newDay, newMonth, newWeek));
     };
 
-    const selectClass = "px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer min-w-[80px]";
-    const numberInputClass = "px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent w-[72px]";
+    const selectClass = "px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer min-w-[80px] disabled:opacity-60 disabled:cursor-not-allowed";
+    const numberInputClass = "px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent w-[72px] disabled:opacity-60 disabled:cursor-not-allowed";
 
     return (
         <div className="space-y-ds-3">
@@ -118,8 +121,9 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                         <button
                             key={p.cron}
                             type="button"
+                            disabled={disabled}
                             onClick={() => handlePreset(p.cron)}
-                            className={`px-ds-3 py-ds-1 rounded-ds-sm text-ds-small border transition-colors ${
+                            className={`px-ds-3 py-ds-1 rounded-ds-sm text-ds-small border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                                 value === p.cron
                                     ? 'border-ds-accent bg-ds-accent-light text-ds-accent font-medium'
                                     : 'border-ds-border-subtle text-ds-text-secondary hover:border-ds-accent hover:text-ds-accent'
@@ -141,6 +145,7 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                         <select
                             value={minuteMode}
                             onChange={(e) => updateMinute(e.target.value as MinuteMode, minuteNumber)}
+                            disabled={disabled}
                             className={selectClass}
                         >
                             <option value="every">每分钟</option>
@@ -155,6 +160,7 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                                     max={59}
                                     value={minuteNumber}
                                     onChange={(e) => updateMinute(minuteMode, e.target.value)}
+                                    disabled={disabled}
                                     className={numberInputClass}
                                 />
                                 <span className="text-ds-small text-ds-text-secondary">分钟</span>
@@ -164,10 +170,12 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                     <select
                         value={hour}
                         onChange={(e) => {
+                            if (disabled) return;
                             const v = e.target.value;
                             setHour(v);
                             handleFieldChange(minute, v, day, month, week);
                         }}
+                        disabled={disabled}
                         className={selectClass}
                     >
                         <option value="*">每小时</option>
@@ -178,10 +186,12 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                     <select
                         value={day}
                         onChange={(e) => {
+                            if (disabled) return;
                             const v = e.target.value;
                             setDay(v);
                             handleFieldChange(minute, hour, v, month, week);
                         }}
+                        disabled={disabled}
                         className={selectClass}
                     >
                         <option value="*">每天</option>
@@ -192,10 +202,12 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                     <select
                         value={month}
                         onChange={(e) => {
+                            if (disabled) return;
                             const v = e.target.value;
                             setMonth(v);
                             handleFieldChange(minute, hour, day, v, week);
                         }}
+                        disabled={disabled}
                         className={selectClass}
                     >
                         <option value="*">每月</option>
@@ -206,10 +218,12 @@ export default function CronPicker({value, onChange}: CronPickerProps) {
                     <select
                         value={week}
                         onChange={(e) => {
+                            if (disabled) return;
                             const v = e.target.value;
                             setWeek(v);
                             handleFieldChange(minute, hour, day, month, v);
                         }}
+                        disabled={disabled}
                         className={selectClass}
                     >
                         <option value="?">不限星期</option>
