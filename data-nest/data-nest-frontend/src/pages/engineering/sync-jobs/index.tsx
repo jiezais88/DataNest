@@ -26,6 +26,7 @@ import {executionStatusVariant} from '../../../utils/status';
 import {notify} from '../../../utils/notify';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
+import {COL} from '../../../constants/table';
 import usePagedList from '../../../hooks/usePagedList';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
@@ -253,7 +254,7 @@ export default function SyncJobsPage() {
         {
             title: '任务名称',
             dataIndex: 'name',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
@@ -262,26 +263,26 @@ export default function SyncJobsPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
-            width: 100,
+            width: COL.TRIGGER_TYPE,
             render: (v: string) => triggerBadge(v),
         },
         {
             title: 'Cron 表达式',
-            width: 160,
+            width: COL.CRON,
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary font-mono">
+                <span className="text-ds-small text-ds-text-secondary font-mono whitespace-nowrap">
                     {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
                 </span>
             ),
         },
         {
             title: '调度状态',
-            width: 110,
+            width: COL.STATUS,
             render: (_, item) => scheduleStatusBadge(item),
         },
         {
             title: '下次执行时间',
-            width: 170,
+            width: COL.DATETIME,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                     {formatNextExecutionTime(item)}
@@ -290,7 +291,7 @@ export default function SyncJobsPage() {
         },
         {
             title: '最近执行状态',
-            width: 120,
+            width: COL.STATUS,
             render: (_, item) => (
                 <DsStatusBadge
                     variant={executionStatusVariant(item.executionStatus)}
@@ -300,7 +301,7 @@ export default function SyncJobsPage() {
         },
         {
             title: '最近执行',
-            width: 170,
+            width: COL.DATETIME,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap"
                       title={item.lastExecuteTime ? formatDateTime(item.lastExecuteTime) : ''}>
@@ -311,14 +312,15 @@ export default function SyncJobsPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
+            ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
             ),
         },
         {
             title: '创建时间',
-            width: 170,
+            width: COL.DATETIME,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                     {formatDateTime(item.createdAt)}
@@ -328,14 +330,15 @@ export default function SyncJobsPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
+            ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
             ),
         },
         {
             title: '修改时间',
-            width: 170,
+            width: COL.DATETIME,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                     {formatDateTime(item.updatedAt)}
@@ -346,7 +349,7 @@ export default function SyncJobsPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 220,
+            width: COL.OPERATION_5,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -498,7 +501,7 @@ export default function SyncJobsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1930}}
+                            scroll={{x: 1790}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({

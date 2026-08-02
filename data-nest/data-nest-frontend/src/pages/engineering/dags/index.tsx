@@ -23,6 +23,7 @@ import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import {formatDateTime} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
+import {COL} from '../../../constants/table';
 
 export default function DagsPage() {
     const navigate = useNavigate();
@@ -108,7 +109,7 @@ export default function DagsPage() {
         {
             title: '项目名称',
             dataIndex: 'name',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
         },
@@ -123,13 +124,13 @@ export default function DagsPage() {
         },
         {
             title: 'DAG 数',
-            width: 100,
+            width: COL.COUNT_NORMAL,
             align: 'center',
             render: (_, r: DagProject) => r.dagCount ?? 0
         },
         {
             title: '创建时间',
-            width: 170,
+            width: COL.DATETIME,
             dataIndex: 'createdAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -139,7 +140,7 @@ export default function DagsPage() {
         },
         {
             title: '创建人',
-            width: 120,
+            width: COL.USERNAME,
             dataIndex: 'createdByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -149,7 +150,7 @@ export default function DagsPage() {
         },
         {
             title: '修改时间',
-            width: 170,
+            width: COL.DATETIME,
             dataIndex: 'updatedAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -159,7 +160,7 @@ export default function DagsPage() {
         },
         {
             title: '修改人',
-            width: 120,
+            width: COL.USERNAME,
             dataIndex: 'updatedByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -169,7 +170,7 @@ export default function DagsPage() {
         },
         {
             title: '操作',
-            width: 200,
+            width: COL.OPERATION_4,
             align: 'center',
             fixed: 'right' as const,
             render: (_, r: DagProject) => (
@@ -282,7 +283,7 @@ export default function DagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1500}}
+                            scroll={{x: 1370}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description="暂无项目"/>}}

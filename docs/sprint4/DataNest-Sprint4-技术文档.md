@@ -104,35 +104,48 @@ Sprint 4 不新增独立微服务，核心逻辑继续下沉到 `task-core`，AP
 
 ```
 data-nest/
-├── data-nest-task-core/              # Python 执行 + 血缘解析
+├── data-nest-task-core/              # Python 执行 + 血缘解析 + 告警触发
 │   └── src/main/java/com/datanest/task/core/
-│       ├── dag/
-│       │   ├── entity/               # 新增 PythonNodeConfig、DagVersion、LineageRecord 等
-│       │   ├── service/
-│       │   │   ├── PythonExecutor.java          # Python 脚本执行器
-│       │   │   ├── SqlLineageExtractor.java     # SQL 血缘提取
-│       │   │   └── LineageReporter.java         # 血缘上报
-│       │   └── dto/
-│       └── sync/                     # Sprint 3 已就绪，Sprint 4 前端补齐
+│       ├── config/                   # MyBatis-Plus、Doris 数据源等配置
+│       ├── collect/                  # 元数据采集 extractor（Sprint 1/2 已有）
+│       ├── dto/                      # Python 相关 DTO、SourceTableDetail 等
+│       │   ├── PythonNodeConfig.java
+│       │   ├── PythonExecuteResult.java
+│       │   ├── PythonContext.java
+│       │   └── SourceTableDetail.java
+│       ├── entity/                   # 新增 DagVersion / DagParameter / DagAlertConfig /
+│       │   ├── DagAlertHistory.java  #   LineageRecord / NodeExecutionLog 等
+│       │   └── ...
+│       ├── job/                      # XXL-JOB 执行器（Sprint 2 已有）
+│       ├── mapper/                   # MyBatis Mapper
+│       ├── service/
+│       │   ├── PythonExecutor.java          # Python 脚本执行器
+│       │   ├── SqlLineageExtractor.java     # SQL 血缘提取
+│       │   ├── DagAlertService.java         # 告警触发
+│       │   ├── MailService.java             # 邮件发送
+│       │   └── ...
+│       └── sync/                     # 同步相关实体/Mapper（Sprint 2 已有）
 │
 ├── data-nest-engineering/            # 数据开发 API + DS 集成扩展
 │   └── src/main/java/com/datanest/engineering/
-│       ├── dev/
-│       │   ├── controller/
-│       │   │   ├── DagController.java
-│       │   │   ├── DagVersionController.java    # 🆕 版本管理
-│       │   │   ├── DagAlertConfigController.java # 🆕 告警配置
-│       │   │   └── PythonCallbackController.java # 🆕 Python 节点回调
-│       │   ├── service/
-│       │   │   ├── DagService.java
-│       │   │   ├── DagDsConverter.java          # 扩展 PYTHON 节点映射
-│       │   │   ├── DagParameterService.java     # 🆕 DAG 参数 CRUD + 替换
-│       │   │   ├── DagVersionService.java       # 🆕 版本快照/对比/回滚
-│       │   │   ├── DagExecutionService.java     # 扩展真正重跑失败节点
-│       │   │   ├── DagAlertService.java         # 🆕 告警触发
-│       │   │   └── MailService.java             # 🆕 邮件发送
-│       │   └── dto/
-│       └── sync/                     # Sprint 2 已有
+│       ├── config/                   # DS 配置、MyBatis-Plus 配置
+│       ├── controller/
+│       │   ├── DagController.java
+│       │   ├── DagVersionController.java    # 🆕 版本管理
+│       │   ├── DagAlertConfigController.java # 🆕 告警配置
+│       │   ├── DagExecutionController.java
+│       │   ├── PythonCallbackController.java # 🆕 Python 节点回调
+│       │   └── ...
+│       ├── dto/
+│       ├── service/
+│       │   ├── DagService.java
+│       │   ├── DagDsConverter.java          # 扩展 PYTHON 节点映射
+│       │   ├── DagParameterService.java     # 🆕 DAG 参数 CRUD + 替换
+│       │   ├── DagVersionService.java       # 🆕 版本快照/对比/回滚
+│       │   ├── DagExecutionService.java     # 扩展真正重跑失败节点
+│       │   ├── DagAlertExecutionListener.java # 🆕 DAG 执行事件监听
+│       │   └── ...
+│       └── EngineeringApplication.java
 │
 ├── data-nest-governance/             # 血缘消费 + 元数据详情展示
 │   └── src/main/java/com/datanest/governance/
@@ -142,8 +155,9 @@ data-nest/
 │           └── LineageService.java
 │
 ├── data-nest-job/                    # 🆕 新增超时告警扫描任务
-│   └── src/main/java/com/datanest/job/handler/
-│       └── DagNodeTimeoutAlertHandler.java
+│   └── src/main/java/com/datanest/job/
+│       └── handler/
+│           └── DagNodeTimeoutAlertHandler.java
 │
 └── data-nest-frontend/               # 前端数据开发模块扩展
     └── src/pages/engineering/dags/
@@ -152,7 +166,7 @@ data-nest/
         │   ├── PythonEditorModal.tsx  # 🆕
         │   ├── DagParameterDrawer.tsx # 🆕
         │   ├── DagVersionModal.tsx    # 🆕
-        │   └── MiniDagGraph.tsx       # 执行历史微缩图（Sprint 3 已有）
+        │   └── ...
         └── ...
 ```
 
@@ -174,18 +188,23 @@ Python 任务依赖 DataNest 服务所在容器内的 Python 3 解释器。基�
 
 ```dockerfile
 # data-nest-engineering/Dockerfile 调整
-FROM eclipse-temurin:17-jdk
+FROM eclipse-temurin:21-jre-alpine
 
-# 安装 Python 3 + pip + pandas 最新稳定版
-RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --no-cache-dir pandas
+# 安装 Python 3 + pip + pandas + pymysql
+RUN apk add --no-cache netcat-openbsd python3 py3-pip && \
+    pip3 install --no-cache-dir pandas pymysql --break-system-packages
 
-COPY target/*.jar app.jar
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+COPY target/data-nest-engineering-1.0.0-SNAPSHOT.jar app.jar
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+EXPOSE 8082
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
 ```
 
-> 注：Sprint 4 仅支持 Python 标准库 + pandas。Docker 镜像通过 pip 安装 pandas 最新稳定版，`read_doris_table` 返回 pandas
-> DataFrame。
+> 注：Sprint 4 支持 Python 标准库 + pandas + pymysql。镜像通过 pip 安装 pandas 与 pymysql，`read_doris_table` 返回 pandas
+> DataFrame，`write_doris_table` 接受 DataFrame 或 list[dict]。Java 基础镜像与项目一致使用 21-jre-alpine。
 
 ### 4.2 沙箱目录
 
@@ -353,7 +372,7 @@ public class PythonExecutor {
      * @param script      脚本内容
      * @param context     注入的内置 helper 与参数上下文
      * @param timeoutMin  超时分钟
-     * @param memoryMb    内存限制（用于容器/ulimit 场景）
+     * @param memoryMb    内存限制（MB），通过 `ulimit -v` 限制虚拟内存
      * @return 执行结果
      */
     public PythonExecuteResult execute(String script, PythonContext context,
@@ -366,16 +385,18 @@ public class PythonExecutor {
         String wrappedScript = wrapScript(script, context, outputFile);
         Files.writeString(scriptFile, wrappedScript);
 
-        // 2. 执行
-        List<String> command = List.of("python3", scriptFile.toString());
+        // 2. 执行：通过 /bin/sh 设置 ulimit -v 限制虚拟内存（KB），再 exec python3
+        int timeout = Optional.ofNullable(timeoutMin).orElse(DEFAULT_TIMEOUT_MINUTES);
+        int memory = Optional.ofNullable(memoryMb).orElse(DEFAULT_MEMORY_MB);
+        List<String> command = List.of(
+                "/bin/sh", "-c",
+                "ulimit -v " + (memory * 1024) + "; exec python3 " + scriptFile);
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(sandbox.toFile());
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
-        boolean finished = process.waitFor(
-                Optional.ofNullable(timeoutMin).orElse(DEFAULT_TIMEOUT_MINUTES),
-                TimeUnit.MINUTES);
+        boolean finished = process.waitFor(timeout, TimeUnit.MINUTES);
 
         if (!finished) {
             process.destroyForcibly();
@@ -418,12 +439,12 @@ public class PythonExecutor {
 
 Sprint 4 提供以下内置函数，通过脚本包裹注入：
 
-| 函数                           | 说明          | 实现要点                                                                   |
-|--------------------------------|---------------|----------------------------------------------------------------------------|
-| `get_param(name)`              | 获取 DAG 参数 | 从上下文 `_PARAMS` 字典读取                                                |
-| `log(message)`                 | 输出日志      | 打印 `[LOG] message`，engineering-service 捕获后写入 `node_execution_log`  |
-| `read_doris_table(table)`      | 读取 Doris 表 | 通过 JDBC 查询后返回 pandas DataFrame                                      |
-| `write_doris_table(df, table)` | 写入 Doris 表 | 将 pandas DataFrame 通过 JDBC/Stream Load 写入，并记录目标表用于元数据注册 |
+| 函数                           | 说明          | 实现要点                                                                        |
+|--------------------------------|---------------|---------------------------------------------------------------------------------|
+| `get_param(name)`              | 获取 DAG 参数 | 从上下文 `_PARAMS` 字典读取                                                     |
+| `log(message)`                 | 输出日志      | 打印 `[LOG] message`，engineering-service 捕获后写入 `node_execution_log`       |
+| `read_doris_table(table)`      | 读取 Doris 表 | 通过 pymysql 查询后返回 pandas DataFrame                                        |
+| `write_doris_table(df, table)` | 写入 Doris 表 | 将 pandas DataFrame 或 list[dict] 通过 pymysql 写入，并记录目标表用于元数据注册 |
 
 ### 6.5 回调接口
 
@@ -777,16 +798,20 @@ case"dagNodeTimeoutAlertHandler"->"DAG 节点超时告警扫描";
 
 ```java
 
-@GetMapping("/engineering/dev/executions/{executionId}/nodes/{nodeId}/logs")
-public Result<List<NodeExecutionLogDTO>> logs(@PathVariable Long executionId,
-                                              @PathVariable String nodeId) {
+@GetMapping("/engineering/dag-executions/dev/executions/{executionId}/nodes/{nodeId}/logs")
+public Result<List<NodeExecutionLogDTO>> nodeLogs(@PathVariable Long executionId,
+                                                  @PathVariable String nodeId) {
     return Result.ok(nodeExecutionLogService.query(executionId, nodeId));
 }
 ```
 
+> 路径说明：实时日志放在 `DagExecutionController`（类级映射 `/dag-executions`），因此外部 URL 为
+> `/api/engineering/dag-executions/dev/executions/{executionId}/nodes/{nodeId}/logs`，与技术文档早期草稿的
+> `/engineering/dev/executions/...` 不同。
+
 日志来源：
 
-- SQL 节点：`node_execution` 的 `error_message` + `output_info`。
+- SQL 节点：执行摘要写入 `node_execution.output_info`，关键日志（执行成功/失败信息）同时写入 `node_execution_log`。
 - Python 节点：`node_execution_log` 表（stdout/stderr 逐行写入）。
 - SYNC 节点：`sync_job_log` 表，通过 `node_execution.sync_job_history_id` 关联。
 
@@ -1074,16 +1099,16 @@ Sprint 3 MVP 中 `DagExecutionService.rerunFailed()` 直接 `trigger(dagId)` 全
 
 ### 11.3 实现方案
 
-**采用方案 A：动态生成临时 ProcessDefinition**。
+**采用方案：通过 DS `startNodeList` 指定重跑节点**。
 
-由于 DS 调度以 ProcessDefinition 为准，Sprint 4 的实现步骤：
+Sprint 4 实现步骤：
 
 1. 查询原 execution 的所有 `node_execution`，标记 FAILED/SKIPPED 节点。
-2. 基于原 DAG 的节点/边快照，构建一个临时 ProcessDefinition：
-    - 保留所有节点和边，确保依赖关系不变。
-    - 对上游已成功节点，通过 DS 的 `startNodeIdList` 或前置任务状态标记为已完成，使其不再执行。
-3. 触发新的 DS ProcessInstance，只执行 FAILED/SKIPPED 节点及其必要下游。
-4. engineering-service 回调时，按正常流程执行节点；已成功节点不会收到回调。
+2. 创建新的 `dag_execution` 记录，复制所有 `node_execution`：FAILED/SKIPPED 重置为 WAITING，SUCCESS 保持
+   SUCCESS（保留起止时间、耗时、输出信息）。
+3. 把需要重跑的节点对应的 DS task code 收集为 `startNodeList`，调用 DS `startWorkflowInstance`。
+4. DS 只调度 `startNodeList` 中的节点及其下游；上游 SUCCESS 节点在 DataNest 侧已存在终态记录，不会重新执行。
+5. engineering-service 回调时，按正常流程执行节点；已成功节点不会收到回调。
 
 核心实现：
 
@@ -1128,8 +1153,9 @@ public class DagExecutionService {
 }
 ```
 
-> 注：DS 3.4.2 对“只重跑失败节点”原生支持有限，可能需要通过动态生成临时 ProcessDefinition 实现。上述代码为逻辑示意，具体实现需根据
-> DS API 调整。
+> 注：实际落地未采用“动态生成临时 ProcessDefinition”，而是直接复用 DS `startWorkflowInstance` 的 `startNodeList` 参数：
+> 把 FAILED/SKIPPED 节点对应的 DS task code 传入，DS 只调度这些节点及其下游。该方案更轻量，具体实现见代码
+> `DagExecutionService.rerunFailed`。
 
 ---
 
@@ -1178,19 +1204,19 @@ export interface SourceTableDetail {
 
 ### 13.1 新增/变更表总览
 
-| 表名                 | 变更类型       | 说明                                                    |
-|----------------------|----------------|---------------------------------------------------------|
-| `dag_node`           | 扩展           | `node_type` 扩展为 SQL/SYNC/PYTHON                      |
-| `node_execution`     | 扩展           | `node_type` 扩展为 SQL/SYNC/PYTHON                      |
-| `dag_execution`      | 扩展           | 新增 `resolved_params` JSONB 存储本次执行解析后的参数值 |
-| `dag_parameter`      | 新增           | DAG 自定义参数                                          |
-| `dag_version`        | 新增           | DAG 版本快照                                            |
-| `dag_alert_config`   | 新增           | 全局 DAG 告警配置                                       |
-| `dag_alert_history`  | 新增           | 已发送告警记录（防重发）                                |
-| `node_execution_log` | 新增           | Python/SQL 节点日志行                                   |
-| `lineage_record`     | 新增           | 表级血缘记录                                            |
-| `metadata_table`     | 扩展           | 新增来源字段                                            |
-| `sync_job`           | 不变（已就绪） | 前端使用现有 `source_tables_detail`、限流字段           |
+| 表名                 | 变更类型       | 说明                                                                  |
+|----------------------|----------------|-----------------------------------------------------------------------|
+| `dag_node`           | 扩展           | `node_type` 扩展为 SQL/SYNC/PYTHON                                    |
+| `node_execution`     | 扩展           | `node_type` 扩展为 SQL/SYNC/PYTHON                                    |
+| `dag_execution`      | 扩展           | 新增 `resolved_params` TEXT 存储本次执行解析后的参数值（JSON 字符串） |
+| `dag_parameter`      | 新增           | DAG 自定义参数                                                        |
+| `dag_version`        | 新增           | DAG 版本快照                                                          |
+| `dag_alert_config`   | 新增           | 全局 DAG 告警配置                                                     |
+| `dag_alert_history`  | 新增           | 已发送告警记录（防重发）                                              |
+| `node_execution_log` | 新增           | Python/SQL 节点日志行                                                 |
+| `lineage_record`     | 新增           | 表级血缘记录                                                          |
+| `metadata_table`     | 扩展           | 新增来源字段                                                          |
+| `sync_job`           | 不变（已就绪） | 前端使用现有 `source_tables_detail`、限流字段                         |
 
 ### 13.2 Flyway 迁移脚本
 
@@ -1355,6 +1381,57 @@ COMMENT
 ON COLUMN dag_execution.resolved_params IS '本次执行解析后的参数值（手动覆盖 + 默认值 + 系统变量）';
 ```
 
+**V3.3.9__sync_job_history_dag_execution_id.sql**
+
+```sql
+-- 同步任务历史关联 DAG 执行实例
+ALTER TABLE sync_job_history
+    ADD COLUMN dag_execution_id BIGINT;
+
+COMMENT
+ON COLUMN sync_job_history.dag_execution_id IS '关联的 DAG 执行实例 ID（DAG 内同步节点触发时填充）';
+```
+
+**V3.3.10__dag_alert_config_dag_id.sql**
+
+```sql
+-- Sprint 4 review：告警配置支持按 DAG 级别覆盖
+ALTER TABLE dag_alert_config
+    ADD COLUMN IF NOT EXISTS dag_id BIGINT;
+
+COMMENT
+ON COLUMN dag_alert_config.dag_id IS '所属 DAG ID；为空表示全局默认配置';
+
+CREATE INDEX IF NOT EXISTS idx_dag_alert_config_dag_id
+    ON dag_alert_config (dag_id);
+```
+
+**V3.4.0__alter_dag_execution_resolved_params_to_text.sql**
+
+```sql
+-- 修复 MyBatis-Plus 写 dag_execution.resolved_params 时
+-- "column is of type jsonb but expression is of type character varying" 错误
+ALTER TABLE dag_execution
+ALTER COLUMN resolved_params TYPE TEXT USING resolved_params::TEXT;
+
+COMMENT
+ON COLUMN dag_execution.resolved_params IS '本次执行解析后的参数值（手动覆盖 + 默认值 + 系统变量），JSON 字符串存储';
+```
+
+**V3.4.1__add_sys_user_audit_columns.sql**
+
+```sql
+-- 用户表增加创建人/修改人，用于用户管理及跨模块列表展示
+ALTER TABLE sys_user
+    ADD COLUMN IF NOT EXISTS created_by BIGINT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS updated_by BIGINT DEFAULT NULL;
+
+COMMENT
+ON COLUMN sys_user.created_by IS '创建人 (sys_user.id)';
+COMMENT
+ON COLUMN sys_user.updated_by IS '修改人 (sys_user.id)';
+```
+
 ---
 
 ## 14. API 接口设计
@@ -1394,8 +1471,11 @@ PUT  /engineering/dev/alert-config
 ### 14.5 节点实时日志
 
 ```
-GET /engineering/dev/executions/{executionId}/nodes/{nodeId}/logs
+GET /engineering/dag-executions/dev/executions/{executionId}/nodes/{nodeId}/logs
 ```
+
+> 路径说明：该接口位于 `DagExecutionController`（类级映射 `/dag-executions`），因此外部完整 URL 为
+> `/api/engineering/dag-executions/dev/executions/{executionId}/nodes/{nodeId}/logs`。
 
 ### 14.6 血缘查询
 
@@ -1433,14 +1513,19 @@ Body: { "dagId": 1, "executionId": 10, "nodeId": "n1", "nodeType": "PYTHON" }
 
 ### 15.1 页面/组件清单
 
-| 组件                      | 路径                                                    | 说明                   |
-|---------------------------|---------------------------------------------------------|------------------------|
-| `PythonEditorModal.tsx`   | `pages/engineering/dags/components/`                    | Python 编辑器弹窗      |
-| `DagParameterDrawer.tsx`  | `pages/engineering/dags/components/`                    | DAG 参数定义抽屉       |
-| `DagVersionModal.tsx`     | `pages/engineering/dags/components/`                    | 版本列表/对比/回滚弹窗 |
-| `DagAlertConfigModal.tsx` | `pages/engineering/dags/components/` 或 `pages/system/` | 告警配置弹窗           |
-| `SyncJobDrawer.tsx`       | `pages/engineering/sync-jobs/components/`               | 扩展多表/限流          |
-| `SqlEditorModal.tsx`      | `pages/engineering/dags/components/`                    | 扩展参数占位符提示     |
+| 组件                      | 路径                                 | 说明                                  |
+|---------------------------|--------------------------------------|---------------------------------------|
+| `PythonEditorModal.tsx`   | `pages/engineering/dags/components/` | Python 编辑器弹窗                     |
+| `DagParameterDrawer.tsx`  | `pages/engineering/dags/components/` | DAG 参数定义抽屉                      |
+| `DagVersionModal.tsx`     | `pages/engineering/dags/components/` | 版本列表/对比/回滚弹窗                |
+| `DagAlertConfigModal.tsx` | `pages/engineering/dags/components/` | 告警配置弹窗（仅按 DAG 入口，见下注） |
+| `SyncJobDrawer.tsx`       | `pages/engineering/sync-jobs/`       | 扩展多表/限流                         |
+| `SqlEditorModal.tsx`      | `pages/engineering/dags/components/` | 扩展参数占位符提示                    |
+
+> **注（2026-08-02 用户确认）**：告警配置前端 **只实现按 DAG 覆盖入口**（DAG 画布工具栏「告警」弹窗），
+> 不实现 `pages/system/` 下的全局配置页面；全局配置（`dag_id` 为 NULL）作为兜底由后端解析逻辑生效，
+> DAG 无专属配置时弹窗显示"继承全局配置"。另外本期新增 `TriggerParamsModal.tsx`（手动触发参数覆盖）
+> 与 `NodeRuntimeLogPanel.tsx`（节点实时日志面板），均在 `pages/engineering/dags/components/`。
 
 ### 15.2 Python 编辑器弹窗
 
@@ -1453,7 +1538,7 @@ Body: { "dagId": 1, "executionId": 10, "nodeId": "n1", "nodeType": "PYTHON" }
 
 - 右侧滑出抽屉。
 - 表格：参数名、类型、默认值、必填、描述、操作。
-- 系统变量提示区：$biz_date、$current_time、$dag_id。
+- 系统变量提示区：${biz_date}、${current_time}、${dag_id}（与节点内 `${paramName}` 引用记法一致）。
 
 ### 15.4 DAG 版本弹窗
 

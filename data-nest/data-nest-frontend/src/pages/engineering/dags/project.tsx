@@ -25,6 +25,7 @@ import DsStatusBadge, {type DsStatusVariant} from '../../../components/DsStatusB
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import {executionStatusVariant} from '../../../utils/status';
 import {formatDateTime} from '../../../utils/format';
+import {COL} from '../../../constants/table';
 import {notify} from '../../../utils/notify';
 
 const STATUS_OPTIONS: { label: string; value: DsStatusVariant | '' }[] = [
@@ -33,6 +34,7 @@ const STATUS_OPTIONS: { label: string; value: DsStatusVariant | '' }[] = [
     {label: '未执行', value: 'pending'},
     {label: '失败', value: 'danger'},
     {label: '运行中', value: 'running'},
+    {label: '已终止', value: 'danger'},
 ];
 
 export default function ProjectDagsPage() {
@@ -152,11 +154,12 @@ export default function ProjectDagsPage() {
         {
             title: 'DAG 名称',
             dataIndex: 'name',
-            width: 180,
+            width: COL.NAME,
+            ellipsis: true,
             render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
         },
         {
-            title: '触发方式', width: 100,
+            title: '触发方式', width: COL.TRIGGER_TYPE,
             render: (_, r: Dag) => (
                 r.triggerType === 'CRON'
                     ? <DsStatusBadge label="定时" variant="accent"/>
@@ -164,13 +167,13 @@ export default function ProjectDagsPage() {
             )
         },
         {
-            title: 'Cron 表达式', dataIndex: 'cronExpression', width: 160,
+            title: 'Cron 表达式', dataIndex: 'cronExpression', width: COL.CRON,
             render: (v?: string) => v
-                ? <span className="font-mono text-ds-caption text-ds-text-secondary">{v}</span>
+                ? <span className="font-mono text-ds-caption text-ds-text-secondary whitespace-nowrap">{v}</span>
                 : <span className="text-ds-text-muted">—</span>
         },
         {
-            title: '调度状态', width: 110,
+            title: '调度状态', width: COL.STATUS,
             render: (_, r: Dag) => {
                 if (r.triggerType !== 'CRON') {
                     return <span className="text-ds-text-muted">—</span>;
@@ -182,7 +185,7 @@ export default function ProjectDagsPage() {
         },
         {
             title: '创建人',
-            width: 120,
+            width: COL.USERNAME,
             dataIndex: 'createdByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -192,7 +195,7 @@ export default function ProjectDagsPage() {
         },
         {
             title: '创建时间',
-            width: 170,
+            width: COL.DATETIME,
             dataIndex: 'createdAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -202,7 +205,7 @@ export default function ProjectDagsPage() {
         },
         {
             title: '修改人',
-            width: 120,
+            width: COL.USERNAME,
             dataIndex: 'updatedByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -212,7 +215,7 @@ export default function ProjectDagsPage() {
         },
         {
             title: '修改时间',
-            width: 170,
+            width: COL.DATETIME,
             dataIndex: 'updatedAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
@@ -221,18 +224,19 @@ export default function ProjectDagsPage() {
             )
         },
         {
-            title: '最近执行状态', width: 120,
+            title: '最近执行状态', width: COL.STATUS,
             render: (_, r: Dag) => {
                 const status = r.latestExecution?.status;
                 const label = status === 'SUCCESS' ? '成功'
                     : status === 'FAILED' ? '失败'
                         : status === 'RUNNING' ? '运行中'
-                            : '未执行';
+                            : status === 'TERMINATED' ? '已终止'
+                                : '未执行';
                 return <DsStatusBadge label={label} variant={executionStatusVariant(status)}/>;
             }
         },
         {
-            title: '最近执行', width: 170,
+            title: '最近执行', width: COL.DATETIME,
             render: (_, r: Dag) => {
                 const t = r.latestExecution?.startTime;
                 return (
@@ -243,7 +247,7 @@ export default function ProjectDagsPage() {
             }
         },
         {
-            title: '操作', width: 220, align: 'center', fixed: 'right' as const,
+            title: '操作', width: COL.OPERATION_5, align: 'center', fixed: 'right' as const,
             render: (_, r: Dag) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -370,7 +374,7 @@ export default function ProjectDagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1740}}
+                            scroll={{x: 1630}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description={loading ? '加载中...' : '暂无 DAG'}/>}}

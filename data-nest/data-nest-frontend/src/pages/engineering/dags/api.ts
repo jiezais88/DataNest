@@ -4,7 +4,18 @@
 import request from '../../../api/request';
 import type {PageResult, Result} from '../../../types/common';
 import type {SyncJobLog} from '../../../types/sync';
-import type {Dag, DagExecution, DagProject, SqlPreviewResult} from './types';
+import type {
+    Dag,
+    DagAlertConfig,
+    DagExecution,
+    DagParameter,
+    DagProject,
+    DagVersion,
+    DagVersionDiff,
+    NodeExecutionLog,
+    PythonExecuteResult,
+    SqlPreviewResult,
+} from './types';
 
 // 执行类操作（trigger/rerun/sql-preview）可能超过全局 10s 默认超时
 const LONG_TIMEOUT = 30000;
@@ -40,8 +51,8 @@ export const updateDag = (id: string | number, data: Dag) =>
 export const deleteDag = (id: string | number) =>
     request.delete<Result<null>>(`/engineering/dev/dags/${id}`).then(r => r.data);
 
-export const triggerDag = (id: string | number) =>
-    request.post<Result<DagExecution>>(`/engineering/dev/dags/${id}/trigger`, undefined, {timeout: LONG_TIMEOUT}).then(r => r.data);
+export const triggerDag = (id: string | number, params?: Record<string, unknown>) =>
+    request.post<Result<DagExecution>>(`/engineering/dev/dags/${id}/trigger`, params, {timeout: LONG_TIMEOUT}).then(r => r.data);
 export const startDagSchedule = (id: string | number) =>
     request.post<Result<null>>(`/engineering/dev/dags/${id}/schedule/start`).then(r => r.data);
 export const stopDagSchedule = (id: string | number) =>
@@ -62,8 +73,7 @@ export const getDagExecution = async (dagId: string | number, executionId: strin
     return found;
 };
 
-// Sprint 3 P1-13（差距分析 §1.13）：重跑失败节点
-// 复用 trigger：Mvp 简化版会重新跑所有节点，真正的"只重跑失败节点"留 P2
+// Sprint 4：真正的重跑失败节点 —— 后端仅重跑 FAILED/SKIPPED 节点，成功节点结果复用
 export const rerunFailed = (dagId: string | number, executionId: string | number) =>
     request.post<Result<DagExecution>>(`/engineering/dev/dags/${dagId}/executions/${executionId}/rerun-failed`, undefined, {timeout: LONG_TIMEOUT}).then(r => r.data);
 
@@ -101,3 +111,54 @@ export const listAllDagExecutions = (params: {
     page?: number;
     pageSize?: number;
 }) => request.get<Result<PageResult<DagExecution>>>('/engineering/dag-executions', {params}).then(r => r.data);
+
+// =================== DAG 参数（Sprint 4） ===================
+
+export const listDagParameters = (dagId: string | number) =>
+    request.get<Result<DagParameter[]>>(`/engineering/dev/dags/${dagId}/parameters`).then(r => r.data);
+export const createDagParameter = (dagId: string | number, data: DagParameter) =>
+    request.post<Result<DagParameter>>(`/engineering/dev/dags/${dagId}/parameters`, data).then(r => r.data);
+export const updateDagParameter = (dagId: string | number, id: string | number, data: DagParameter) =>
+    request.put<Result<DagParameter>>(`/engineering/dev/dags/${dagId}/parameters/${id}`, data).then(r => r.data);
+export const deleteDagParameter = (dagId: string | number, id: string | number) =>
+    request.delete<Result<null>>(`/engineering/dev/dags/${dagId}/parameters/${id}`).then(r => r.data);
+
+// =================== Python 节点运行测试（Sprint 4） ===================
+// 测试执行不注册元数据、不影响 DAG 执行状态；skipErrorMessage 由调用方在结果区行内展示错误
+
+export const testPythonNode = (dagId: string | number, nodeId: string, pythonScript: string, params?: Record<string, unknown>, timeoutMinutes?: number) =>
+    request.post<Result<PythonExecuteResult>>(
+        `/engineering/dev/dags/${dagId}/nodes/${nodeId}/python/test`,
+        {pythonScript, params},
+        // axios 超时跟随脚本的超时配置（+30s 余量），避免用户设置 >10 分钟时前端先 abort 误报失败
+        {timeout: (timeoutMinutes ?? 10) * 60000 + 30000, skipErrorMessage: true},
+    ).then(r => r.data);
+
+// =================== DAG 版本（Sprint 4） ===================
+
+export const listDagVersions = (dagId: string | number) =>
+    request.get<Result<DagVersion[]>>(`/engineering/dev/dags/${dagId}/versions`).then(r => r.data);
+export const compareDagVersions = (dagId: string | number, left: number, right: number) =>
+    request.get<Result<DagVersionDiff>>(`/engineering/dev/dags/${dagId}/versions/compare`, {
+        params: {
+            left,
+            right
+        }
+    }).then(r => r.data);
+export const rollbackDagVersion = (dagId: string | number, versionNo: number) =>
+    request.post<Result<DagVersion>>(`/engineering/dev/dags/${dagId}/versions/${versionNo}/rollback`).then(r => r.data);
+
+// =================== 按 DAG 告警配置（Sprint 4） ===================
+// 按 DAG 读取时后端会回退全局默认配置：响应 dagId 为 null 即表示当前继承全局配置
+
+export const getDagAlertConfig = (dagId: string | number) =>
+    request.get<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`).then(r => r.data);
+export const putDagAlertConfig = (dagId: string | number, data: DagAlertConfig) =>
+    request.put<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`, data).then(r => r.data);
+
+// =================== 节点实时日志（Sprint 4） ===================
+// 注意：实际路径带 /dag-executions 前缀（后端 DagExecutionController 类级映射），与文档 /dev/executions/... 不一致
+
+// RUNNING 轮询期间后端可能持续报错，禁用全局错误弹窗（面板内自行静默处理）
+export const getNodeRuntimeLogs = (executionId: string | number, nodeId: string) =>
+    request.get<Result<NodeExecutionLog[]>>(`/engineering/dag-executions/dev/executions/${executionId}/nodes/${nodeId}/logs`, {skipErrorMessage: true}).then(r => r.data);

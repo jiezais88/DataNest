@@ -14,6 +14,17 @@ export interface SyncFieldMapping {
     targetType?: string;
 }
 
+/**
+ * 多表同步的源表 → 目标表映射明细（Sprint 4）。
+ * 注意：写入时 SyncJobCreateRequest.sourceTablesDetail 是 JSON 字符串；
+ * 读取时 SyncJob.sourceTablesDetail 是对象数组（后端 DTO 已反序列化）。
+ */
+export interface SourceTableDetail {
+    sourceTable: string;
+    targetTable: string;
+    fieldMapping?: SyncFieldMapping[];
+}
+
 export interface SyncJob {
     id: string;
     name: string;
@@ -31,6 +42,12 @@ export interface SyncJob {
     fieldMapping?: SyncFieldMapping[];
     targetDatabase?: string;
     targetTable?: string;
+    /** 多表同步明细（响应为对象数组；单表任务为 [] 或 undefined） */
+    sourceTablesDetail?: SourceTableDetail[];
+    /** Sprint 4 限流配置 */
+    rateLimitEnabled?: boolean;
+    readRateLimitMbps?: number;
+    writeRateLimitRowsPerSecond?: number;
     status: SyncScheduleStatus;
     executionStatus: SyncExecutionStatus;
     scheduleEnabled: boolean;
@@ -60,6 +77,12 @@ export interface SyncJobCreateRequest {
     fieldMapping?: SyncFieldMapping[];
     targetDatabase?: string;
     targetTable?: string;
+    /** 多表同步明细：后端要求 JSON 字符串（与响应的对象数组形态不同，提交前 JSON.stringify） */
+    sourceTablesDetail?: string;
+    /** Sprint 4 限流配置 */
+    rateLimitEnabled?: boolean;
+    readRateLimitMbps?: number;
+    writeRateLimitRowsPerSecond?: number;
     description?: string;
     status?: SyncScheduleStatus;
     scheduleEnabled?: boolean;

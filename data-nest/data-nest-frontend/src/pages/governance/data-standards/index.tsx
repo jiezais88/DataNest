@@ -46,6 +46,7 @@ import type {
 } from '../../../types/dataStandard';
 import type {MetadataDatasource} from '../../../types/metadata';
 import {formatDateTime} from '../../../utils/format';
+import {COL} from '../../../constants/table';
 import NamingStandardDrawer from './NamingStandardDrawer';
 import FieldTypeStandardDrawer from './FieldTypeStandardDrawer';
 import ComplianceCheckPanel from './ComplianceCheckPanel';
@@ -328,7 +329,7 @@ export default function DataStandardsPage() {
         {
             title: '规范名称',
             dataIndex: 'name',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -337,7 +338,7 @@ export default function DataStandardsPage() {
         {
             title: '适用对象',
             dataIndex: 'appliesTo',
-            width: 100,
+            width: COL.STATUS,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{v === 'TABLE' ? '表名' : '字段名'}</span>
             ),
@@ -345,7 +346,7 @@ export default function DataStandardsPage() {
         {
             title: '匹配方式',
             dataIndex: 'ruleType',
-            width: 100,
+            width: COL.STATUS,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary">{MATCH_TYPE_LABEL[v] || v}</span>
             ),
@@ -362,7 +363,7 @@ export default function DataStandardsPage() {
         {
             title: '关联字段类型标准',
             dataIndex: 'targetStandardName',
-            width: 180,
+            width: COL.NAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -371,7 +372,7 @@ export default function DataStandardsPage() {
         {
             title: '优先级',
             dataIndex: 'priority',
-            width: 80,
+            width: COL.COUNT,
             render: (v: number) => (
                 <span className="text-ds-small text-ds-text-secondary">{v}</span>
             ),
@@ -379,7 +380,7 @@ export default function DataStandardsPage() {
         {
             title: '状态',
             dataIndex: 'enabled',
-            width: 100,
+            width: COL.STATUS,
             render: (enabled: number) => (
                 enabled === 1 ? (
                     <DsStatusBadge label="启用" variant="success"/>
@@ -391,7 +392,7 @@ export default function DataStandardsPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -400,7 +401,7 @@ export default function DataStandardsPage() {
         {
             title: '创建时间',
             dataIndex: 'createdAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
@@ -409,7 +410,7 @@ export default function DataStandardsPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -418,7 +419,7 @@ export default function DataStandardsPage() {
         {
             title: '修改时间',
             dataIndex: 'updatedAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
@@ -428,7 +429,7 @@ export default function DataStandardsPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 180,
+            width: COL.OPERATION_4,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -485,7 +486,7 @@ export default function DataStandardsPage() {
         {
             title: '标准名称',
             dataIndex: 'name',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -516,7 +517,7 @@ export default function DataStandardsPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -525,7 +526,7 @@ export default function DataStandardsPage() {
         {
             title: '创建时间',
             dataIndex: 'createdAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
@@ -534,7 +535,7 @@ export default function DataStandardsPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -543,7 +544,7 @@ export default function DataStandardsPage() {
         {
             title: '修改时间',
             dataIndex: 'updatedAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
@@ -553,7 +554,7 @@ export default function DataStandardsPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 150,
+            width: COL.OPERATION_3,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -721,7 +722,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={namingLoading}
                                 pagination={false}
-                                scroll={{x: 1780}}
+                                scroll={{x: 1690}}
                                 columns={namingColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{
@@ -789,7 +790,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={fieldTypeLoading}
                                 pagination={false}
-                                scroll={{x: 1350}}
+                                scroll={{x: 1250}}
                                 columns={fieldTypeColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{

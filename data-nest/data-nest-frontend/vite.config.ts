@@ -46,11 +46,27 @@ export default defineConfig(({mode}) => {
             chunkSizeWarningLimit: 500,
             rollupOptions: {
                 output: {
-                    manualChunks: {
-                        'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-                        'vendor-antd': ['antd'],
-                        'vendor-icons': ['react-icons'],
-                        'vendor-utils': ['axios', 'zustand', 'cron-parser', 'cronstrue', 'tailwind-merge'],
+                    manualChunks(id) {
+                        if (id.includes('node_modules')) {
+                            if (['/react/', '/react-dom/', '/react-router-dom/'].some(p => id.includes(p))) {
+                                return 'vendor-react';
+                            }
+                            if (id.includes('/antd/')) {
+                                return 'vendor-antd';
+                            }
+                            if (id.includes('/react-icons/')) {
+                                return 'vendor-icons';
+                            }
+                            if (['/axios/', '/zustand/', '/cron-parser/', '/cronstrue/', '/tailwind-merge/'].some(p => id.includes(p))) {
+                                return 'vendor-utils';
+                            }
+                            if (id.includes('/monaco-editor/') || id.includes('/@monaco-editor/react/')) {
+                                return 'vendor-monaco';
+                            }
+                            if (id.includes('/reactflow/')) {
+                                return 'vendor-reactflow';
+                            }
+                        }
                     },
                 },
             },

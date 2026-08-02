@@ -15,6 +15,7 @@ import Pagination from '../../../components/Pagination';
 import SearchInput from '../../../components/SearchInput';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import {ROLE_OPTIONS as ROLE_OPTION_ITEMS} from '../../../constants/roles';
+import {COL} from '../../../constants/table';
 import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsSpinner from '../../../components/DsSpinner';
@@ -163,7 +164,7 @@ export default function UsersPage() {
         {
             title: '用户名',
             dataIndex: 'username',
-            width: 150,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -198,7 +199,7 @@ export default function UsersPage() {
         {
             title: '状态',
             dataIndex: 'enabled',
-            width: 100,
+            width: COL.STATUS,
             render: (enabled: boolean) => (
                 enabled
                     ? <DsStatusBadge variant="success" label="正常"/>
@@ -208,7 +209,7 @@ export default function UsersPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
@@ -217,7 +218,7 @@ export default function UsersPage() {
         {
             title: '创建时间',
             dataIndex: 'createdAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -225,7 +226,7 @@ export default function UsersPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
@@ -234,7 +235,7 @@ export default function UsersPage() {
         {
             title: '修改时间',
             dataIndex: 'updatedAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -243,7 +244,7 @@ export default function UsersPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 160,
+            width: COL.OPERATION_4,
             render: (_, user) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -377,7 +378,7 @@ export default function UsersPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1440}}
+                            scroll={{x: 1340}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{

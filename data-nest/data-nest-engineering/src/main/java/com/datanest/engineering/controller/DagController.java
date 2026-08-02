@@ -112,13 +112,13 @@ public class DagController {
     }
 
     /**
-     * Sprint 3 P1-13（差距分析 §1.13 + HTML 原型 v-history 展开行）：重跑失败节点。
+     * Sprint 4：真正的重跑失败节点。
      * <p>
      * 路由：POST /api/engineering/dev/dags/{id}/executions/{executionId}/rerun-failed
      * <p>
-     * 当前为 MVP 简化版：直接复用 trigger 创建一个新的执行实例，
-     * DagExecutionSyncService 5s 轮询会重新跑所有节点。
-     * 真正的"只重跑失败节点"留 P2：需要改写 trigger 流程为「只触发 FAILED 节点子图」+ 上游节点复用。
+     * 仅重新执行原实例中 FAILED / SKIPPED 的节点，上游 SUCCESS 节点结果复用。
+     * 实现方式：创建新执行记录 → 复制 node_execution（失败/跳过重置为 WAITING，成功节点保持 SUCCESS）→
+     * 通过 DolphinScheduler 的 startNodeList 仅触发需要重跑的节点。
      *
      * @param id          DAG id
      * @param executionId 要重跑的旧执行实例 id

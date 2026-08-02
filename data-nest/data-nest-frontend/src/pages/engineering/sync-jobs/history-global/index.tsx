@@ -15,6 +15,7 @@ import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye, HiOutlineStop,} fro
 import {formatDateTime, formatExecutionDuration, getDefaultTimeRange} from '../../../../utils/format';
 import {HistoryDetailModal, HistoryLogModal,} from '../history-common';
 import {STATUS_OPTIONS, statusLabel, triggerBadge,} from '../history-common-utils';
+import {COL} from '../../../../constants/table';
 import DsStatusBadge from '../../../../components/DsStatusBadge';
 import {executionStatusVariant} from '../../../../utils/status';
 import {useCanEdit} from '../../../../hooks/useCanEdit';
@@ -190,7 +191,7 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '任务名称',
             dataIndex: 'taskName',
-            width: 200,
+            width: COL.NAME_COMPACT,
             ellipsis: true,
             render: (v: string) => (
                 <Tooltip title={v || '-'}>
@@ -202,7 +203,7 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
-            width: 120,
+            width: 90,
             render: (_, item) => {
                 // DAG 编排触发：点击直接跳到对应 DAG 执行实例画布
                 if (item.triggerType === 'DAG' && item.dagId != null && item.dagExecutionId != null) {
@@ -223,7 +224,7 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '状态',
             dataIndex: 'status',
-            width: 100,
+            width: 90,
             render: (v: SyncJobHistory['status']) => (
                 <DsStatusBadge label={statusLabel(v)} variant={executionStatusVariant(v)}/>
             ),
@@ -231,7 +232,7 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '开始时间',
             dataIndex: 'startTime',
-            width: 170,
+            width: COL.DATETIME_COMPACT,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -239,42 +240,44 @@ export default function SyncJobHistoryGlobalPage() {
         {
             title: '结束时间',
             dataIndex: 'endTime',
-            width: 170,
+            width: COL.DATETIME_COMPACT,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
         },
         {
             title: '耗时',
-            width: 100,
+            width: 90,
+            ellipsis: true,
             // 运行中（endTime 为空）：用当前时间静态计算一次，不做定时刷新
-            render: (_, item) => (
-                <span
-                    className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime)}</span>
-            ),
+            // 超宽截断 + title 悬浮提示
+            render: (_, item) => {
+                const text = formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime);
+                return <span title={text} className="text-ds-small text-ds-text-secondary">{text}</span>;
+            },
         },
         {
             title: '源行数',
             dataIndex: 'sourceRows',
-            width: 100,
+            width: COL.COUNT,
             align: 'right',
             render: (v?: number) => (
-                <span className="text-ds-small text-ds-text-secondary">{v ?? '—'}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ?? '—'}</span>
             ),
         },
         {
             title: '目标行数',
             dataIndex: 'targetRows',
-            width: 100,
+            width: COL.COUNT,
             align: 'right',
             render: (v?: number) => (
-                <span className="text-ds-small text-ds-text-secondary">{v ?? '—'}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ?? '—'}</span>
             ),
         },
         {
             title: '错误信息',
             dataIndex: 'errorMessage',
-            width: 200,
+            width: COL.ERROR_MESSAGE,
             ellipsis: true,
             render: (v?: string) => (
                 <Tooltip title={v || ''}>
@@ -284,9 +287,8 @@ export default function SyncJobHistoryGlobalPage() {
         },
         {
             title: '操作',
-            width: 160,
+            width: COL.OPERATION_3,
             align: 'center',
-            fixed: 'right' as const,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {item.status === 'RUNNING' && (
@@ -422,7 +424,7 @@ export default function SyncJobHistoryGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1460}}
+                            scroll={{x: 1200}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (

@@ -7,6 +7,7 @@ import {nextRunTime} from '../../../utils/cron';
 import {notify} from '../../../utils/notify';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
+import {COL} from '../../../constants/table';
 import {getDataSources} from '../../../api/datasource';
 import {
     createCollectTask,
@@ -249,7 +250,7 @@ export default function CollectTasksPage() {
         {
             title: '任务名称',
             dataIndex: 'name',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
                 <span title={v} className="text-ds-small text-ds-text-primary font-medium">{v}</span>
@@ -258,7 +259,7 @@ export default function CollectTasksPage() {
         {
             title: '数据源',
             dataIndex: 'datasourceName',
-            width: 150,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string | undefined, item) => (
                 <span title={item.datasourceName || '-'}
@@ -278,31 +279,31 @@ export default function CollectTasksPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
-            width: 100,
+            width: COL.TRIGGER_TYPE,
             render: (_, item) => triggerBadge(item.triggerType),
         },
         {
             title: 'Cron 表达式',
             dataIndex: 'cronExpression',
-            width: 160,
-            className: 'text-ds-small text-ds-text-secondary font-mono',
+            width: COL.CRON,
+            className: 'text-ds-small text-ds-text-secondary font-mono whitespace-nowrap',
             render: (_, item) => (item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'),
         },
         {
             title: '调度状态',
-            width: 110,
+            width: COL.STATUS,
             render: (_, item) => scheduleStatusBadge(item),
         },
         {
             title: '下次执行时间',
-            width: 170,
+            width: COL.DATETIME,
             className: 'text-ds-small text-ds-text-secondary whitespace-nowrap',
             render: (_, item) => computeNextExecutionTime(item),
         },
         {
             title: '最近执行状态',
             dataIndex: 'status',
-            width: 120,
+            width: COL.STATUS,
             render: (_, item) => (
                 <DsStatusBadge label={statusLabel(item.status)} variant={executionStatusVariant(item.status)}/>
             ),
@@ -310,7 +311,7 @@ export default function CollectTasksPage() {
         {
             title: '最近执行',
             dataIndex: 'lastExecuteTime',
-            width: 170,
+            width: COL.DATETIME,
             className: 'text-ds-small text-ds-text-secondary',
             render: (_, item) => (
                 <span
@@ -323,7 +324,7 @@ export default function CollectTasksPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -332,7 +333,7 @@ export default function CollectTasksPage() {
         {
             title: '创建时间',
             dataIndex: 'createdAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
@@ -341,7 +342,7 @@ export default function CollectTasksPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
@@ -350,7 +351,7 @@ export default function CollectTasksPage() {
         {
             title: '修改时间',
             dataIndex: 'updatedAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '—'}</span>
@@ -360,7 +361,7 @@ export default function CollectTasksPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 220,
+            width: COL.OPERATION_5,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -507,7 +508,7 @@ export default function CollectTasksPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 2230}}
+                            scroll={{x: 2200}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) =>

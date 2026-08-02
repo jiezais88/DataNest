@@ -1,6 +1,6 @@
 // DAG 编辑器（ReactFlow 画布 + 节点配置 + 右侧属性面板）
 // Sprint 3: 节点状态边框/端口/状态图标 + design token + 三栏布局 + 同步任务摘要
-import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation, useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import ReactFlow, {
     addEdge,
@@ -23,20 +23,35 @@ import {Form, Input, Modal, Popover, Select, Spin, Tag} from 'antd';
 import {HiOutlineDocumentText, HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
 import DsButton from '../../../components/DsButton';
 import Drawer from '../../../components/Drawer';
-import {createDag, getDag, getDagExecution, getNodeExecutionLogs, triggerDag, updateDag} from './api';
+import {
+    createDag,
+    getDag,
+    getDagExecution,
+    getNodeExecutionLogs,
+    listDagParameters,
+    triggerDag,
+    updateDag
+} from './api';
 import {getSyncJob, querySyncJobs} from '../../../api/sync';
 import {formatDateTime, formatDuration} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
 import {layoutWithDagre} from '../../../utils/dagLayout';
 import CronPicker from '../../../components/CronPicker';
-import SqlEditorModal from './components/SqlEditorModal';
+import DagParameterDrawer from './components/DagParameterDrawer';
+import TriggerParamsModal from './components/TriggerParamsModal';
+import DagVersionModal from './components/DagVersionModal';
+import DagAlertConfigModal from './components/DagAlertConfigModal';
+import NodeRuntimeLogPanel from './components/NodeRuntimeLogPanel';
 import {HistoryLogModal} from '../sync-jobs/history-common';
 import {describeCron} from '../../../utils/cron';
-import type {Dag, DagExecution, NodeExecution, NodeType} from './types';
+import type {Dag, DagExecution, DagParameter, NodeExecution, NodeType} from './types';
 import type {SyncJob, SyncJobLog} from '../../../types/sync';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import {usePollingWhile} from '../../../hooks/usePollingWhile';
 import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '../../../constants/statusColors';
+
+const SqlEditorModal = lazy(() => import('./components/SqlEditorModal'));
+const PythonEditorModal = lazy(() => import('./components/PythonEditorModal'));
 
 // 后端 Result<T> 包裹的同步任务详情（取 data 字段）
 type SyncJobDetail = SyncJob;
@@ -56,6 +71,10 @@ type RFNodeData = {
     sqlContent?: string;
     syncJobId?: number | string;
     syncJobName?: string;
+    /** PYTHON 节点脚本与执行限制（Sprint 4） */
+    pythonScript?: string;
+    timeoutMinutes?: number;
+    memoryLimitMb?: number;
     status?: NodeStatus;
     /** 执行视图：节点运行信息 */
     durationMs?: number;
@@ -84,9 +103,12 @@ function extractOutputTable(sql?: string): string | null {
     return null;
 }
 
-// ─────────── 自定义 DAG 节点组件（统一 SQL/SYNC；运行视图带状态色/耗时） ───────────
+// ─────────── 自定义 DAG 节点组件（统一 SQL/SYNC/PYTHON；运行视图带状态色/耗时） ───────────
+const NODE_TYPE_ICON: Record<NodeType, string> = {SQL: '📝', SYNC: '🔄', PYTHON: '🐍'};
+const NODE_TYPE_LABEL: Record<NodeType, string> = {SQL: 'SQL 任务', SYNC: '同步任务', PYTHON: 'Python 任务'};
+
 function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
-    const icon = data.nodeType === 'SQL' ? '📝' : '🔄';
+    const icon = NODE_TYPE_ICON[data.nodeType] || '📝';
     const outputTable = data.nodeType === 'SQL' ? extractOutputTable(data.sqlContent) : null;
     const statusColor = data.status ? NODE_STATUS_COLOR[data.status] : undefined;
 
@@ -130,10 +152,15 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                 <span className="font-semibold text-ds-text-primary truncate flex-1">{data.nodeName}</span>
             </div>
             <div className="text-ds-text-secondary text-ds-caption leading-relaxed space-y-1">
-                <div>类型：{data.nodeType === 'SQL' ? 'SQL 任务' : '同步任务'}</div>
+                <div>类型：{NODE_TYPE_LABEL[data.nodeType] || data.nodeType}</div>
                 {data.nodeType === 'SQL' ? (
                     <div className="truncate" title={outputTable || '（未配置输出表）'}>
                         输出：{outputTable || '—'}
+                    </div>
+                ) : data.nodeType === 'PYTHON' ? (
+                    <div className="truncate"
+                         title={data.pythonScript ? data.pythonScript.split('\n')[0] : '（未配置脚本）'}>
+                        脚本：{data.pythonScript ? data.pythonScript.split('\n')[0] : '—'}
                     </div>
                 ) : (
                     <div className="truncate" title={data.syncJobName || String(data.syncJobId) || '（未选择）'}>
@@ -167,7 +194,7 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
     );
 }
 
-const nodeTypes = {SQL: DagNode, SYNC: DagNode};
+const nodeTypes = {SQL: DagNode, SYNC: DagNode, PYTHON: DagNode};
 
 // 画布点阵背景（与 DESIGN §4.24 canvas-area 对齐）
 const dotBackgroundStyle: React.CSSProperties = {
@@ -205,6 +232,18 @@ function NodeSummary({node, watchedSyncJobId}: { node: Node<RFNodeData>; watched
                 <pre
                     className="text-ds-caption text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-32 overflow-auto">
                     {node.data.sqlContent || '（未配置 SQL）'}
+                </pre>
+            </div>
+        );
+    }
+
+    if (node.data.nodeType === 'PYTHON') {
+        return (
+            <div className="bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-ds-3">
+                <div className="text-ds-caption text-ds-text-muted uppercase mb-ds-1">Python 脚本摘要</div>
+                <pre
+                    className="text-ds-caption text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-32 overflow-auto">
+                    {node.data.pythonScript || '（未配置脚本）'}
                 </pre>
             </div>
         );
@@ -442,18 +481,21 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
     );
 }
 
-// ─────────── 右侧属性面板（编辑模式：只读摘要 + 编辑按钮；运行模式：运行信息） ───────────
+// ─────────── 右侧属性面板（编辑模式：只读摘要 + 编辑按钮；运行模式：运行信息 + 实时日志） ───────────
 function PropertyPanel({
                            node,
                            onEdit,
                            readOnly,
                            onViewLogs,
+                           executionId,
                        }: {
     node: Node<RFNodeData> | null;
     onEdit: () => void;
     readOnly?: boolean;
     /** 运行视图 SYNC 节点「查看日志」（仅 nodeExecutionId 存在时可点） */
     onViewLogs?: () => void;
+    /** 运行视图执行实例 id：SQL/PYTHON 节点实时日志（Sprint 4） */
+    executionId?: string;
 }) {
     if (!node) {
         return (
@@ -476,9 +518,14 @@ function PropertyPanel({
                 className="text-ds-subhead text-ds-text-primary mb-ds-4">{readOnly ? '节点运行信息' : '节点属性'}</div>
             <div className="space-y-ds-3 mb-ds-5 text-ds-small">
                 <PropertyRow label="名称" value={node.data.nodeName}/>
-                <PropertyRow label="类型" value={node.data.nodeType === 'SQL' ? 'SQL 任务' : '同步任务'}/>
+                <PropertyRow label="类型" value={NODE_TYPE_LABEL[node.data.nodeType] || node.data.nodeType}/>
                 {node.data.nodeType === 'SQL' ? (
                     <PropertyRow label="输出表" value={outputTable || '—'}/>
+                ) : node.data.nodeType === 'PYTHON' ? (
+                    <>
+                        <PropertyRow label="超时" value={`${node.data.timeoutMinutes ?? 30} 分钟`}/>
+                        <PropertyRow label="内存限制" value={`${node.data.memoryLimitMb ?? 2048} MB`}/>
+                    </>
                 ) : (
                     <PropertyRow label="同步任务" value={node.data.syncJobName || node.data.syncJobId || '—'}/>
                 )}
@@ -518,6 +565,14 @@ function PropertyPanel({
                             <DsButton variant="secondary" onClick={onViewLogs} className="w-full">
                                 <HiOutlineDocumentText size={14}/> 查看日志
                             </DsButton>
+                        )}
+                        {/* SQL/PYTHON 节点实时日志（Sprint 4：RUNNING 时每 3 秒轮询） */}
+                        {(node.data.nodeType === 'SQL' || node.data.nodeType === 'PYTHON') && executionId && (
+                            <NodeRuntimeLogPanel
+                                executionId={executionId}
+                                nodeId={node.id}
+                                status={node.data.status}
+                            />
                         )}
                     </>
                 )}
@@ -576,6 +631,16 @@ function DagEditorInner() {
     const [drawerOpen, setDrawerOpen] = useState(false);
     // SQL 节点编辑 modal(Sprint 3 §6.5：900x600 dark Monaco modal,替代 Drawer)
     const [sqlModalOpen, setSqlModalOpen] = useState(false);
+    // PYTHON 节点编辑 modal（Sprint 4：与 SQL 同一交互范式）
+    const [pythonModalOpen, setPythonModalOpen] = useState(false);
+    // Sprint 4：DAG 参数抽屉 / 触发参数覆盖弹窗
+    const [paramDrawerOpen, setParamDrawerOpen] = useState(false);
+    const [triggerModalOpen, setTriggerModalOpen] = useState(false);
+    const [dagParams, setDagParams] = useState<DagParameter[]>([]);
+    const [triggering, setTriggering] = useState(false);
+    // Sprint 4：版本管理 / 按 DAG 告警配置弹窗
+    const [versionModalOpen, setVersionModalOpen] = useState(false);
+    const [alertModalOpen, setAlertModalOpen] = useState(false);
     const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
     // 运行视图 SYNC 节点「查看日志」弹窗（复用同步任务的 HistoryLogModal）
     const [nodeLogOpen, setNodeLogOpen] = useState(false);
@@ -585,8 +650,6 @@ function DagEditorInner() {
     const watchedSyncJobId = Form.useWatch('syncJobId', form);
     const nodeIdRef = useRef(0);
     const edgeIdRef = useRef(0);
-    // 运行视图自动布局位置缓存（nodeId → position）：轮询重建节点时避免已布局节点位置抖动
-    const runViewPosCacheRef = useRef(new Map<string, { x: number; y: number }>());
     // 最新 dag 的 ref：refreshExecution 轮询用它取坐标/边，
     // 避免把 dag 加进 useCallback 依赖导致加载 effect 在 setDag 后反复触发
     const dagRef = useRef(dag);
@@ -603,12 +666,17 @@ function DagEditorInner() {
 
     // 统一节点编辑入口（铅笔图标 / 双击 / 属性面板「编辑节点」共用）：
     // - SQL 节点：打开 900x600 dark Monaco modal
+    // - PYTHON 节点：打开 PythonEditorModal（Sprint 4）
     // - SYNC 节点：打开节点配置 Drawer
     // data 直接来自节点 props，不查 rfNodes，避免闭包拿到过期节点数据
     const handleEditRequest = useCallback((nodeId: string, nodeData: RFNodeData) => {
         setSelectedNodeId(nodeId);
         if (nodeData.nodeType === 'SQL') {
             setSqlModalOpen(true);
+            return;
+        }
+        if (nodeData.nodeType === 'PYTHON') {
+            setPythonModalOpen(true);
             return;
         }
         form.setFieldsValue({
@@ -626,7 +694,7 @@ function DagEditorInner() {
         // 不转 Number()：19 位 Snowflake id 保持 string 比较，防止精度丢失
         return getDagExecution(id, executionId).then(ex => {
             setExecution(ex);
-            const {nodes, edges} = buildRunViewGraph(ex, dagRef.current, runViewPosCacheRef.current);
+            const {nodes, edges} = buildRunViewGraph(ex, dagRef.current);
             // 轮询重建会丢 selected 标志：按 id 保留选中态，避免选中高亮/属性面板闪断
             setRfNodes(prev => {
                 const selectedIds = new Set(prev.filter(n => n.selected).map(n => n.id));
@@ -636,13 +704,11 @@ function DagEditorInner() {
         });
     }, [id, executionId, setRfNodes, setRfEdges]);
 
-    // 加载已有 DAG（编辑模式）或 DAG + execution（执行详情模式）
-    useEffect(() => {
-        if (isNew || !id) return;
-        // 切换 DAG/执行实例时清空运行视图布局缓存，避免旧快照的自动布局位置串到新实例
-        runViewPosCacheRef.current.clear();
-        // 不转 Number()：19 位 Snowflake id 会被截断精度，reactflow 拿不到 nodes
-        getDag(id).then(d => {
+    // 加载已有 DAG 并重建画布（编辑模式初始加载 / 版本回滚后刷新共用）
+    // 不转 Number()：19 位 Snowflake id 会被截断精度，reactflow 拿不到 nodes
+    const loadDag = useCallback(() => {
+        if (isNew || !id) return Promise.resolve();
+        return getDag(id).then(d => {
             setDag(d);
             const rfnodes: Node<RFNodeData>[] = (d.nodes || []).map(n => {
                 const cfg = parseConfig(n.config);
@@ -656,6 +722,9 @@ function DagEditorInner() {
                         sqlContent: cfg.sqlContent,
                         syncJobId: cfg.syncJobId,
                         syncJobName: cfg.syncJobName,
+                        pythonScript: cfg.pythonScript,
+                        timeoutMinutes: cfg.timeoutMinutes,
+                        memoryLimitMb: cfg.memoryLimitMb,
                         lastTestStatus: cfg.lastTestStatus,
                         onEditRequest: canEdit ? handleEditRequest : undefined,
                     },
@@ -671,7 +740,13 @@ function DagEditorInner() {
             setRfEdges(rfedges);
             nodeIdRef.current = rfnodes.length;
             edgeIdRef.current = rfedges.length;
+        });
+    }, [id, isNew, canEdit, handleEditRequest, setRfNodes, setRfEdges]);
 
+    // 加载已有 DAG（编辑模式）或 DAG + execution（执行详情模式）
+    useEffect(() => {
+        if (isNew || !id) return;
+        loadDag().then(() => {
             if (isRunView && executionId) {
                 return refreshExecution();
             }
@@ -679,7 +754,7 @@ function DagEditorInner() {
             // 加载完成的初始状态不算 dirty（避免首次进入就被拦截）
             setIsDirty(false);
         }).catch(e => notify.error('加载 DAG 失败: ' + (e?.message || '')));
-    }, [id, executionId, isRunView, handleEditRequest, refreshExecution, canEdit, isNew, setRfNodes, setRfEdges]);
+    }, [id, executionId, isRunView, refreshExecution, loadDag, isNew]);
 
     // 执行详情模式：RUNNING 时轮询刷新节点状态（与列表页统一的 usePollingWhile，1s 间隔）
     usePollingWhile(isRunView && execution?.status === 'RUNNING', refreshExecution, {interval: 1000});
@@ -737,7 +812,7 @@ function DagEditorInner() {
 
     /**
      * 在指定画布坐标添加一个节点（拖拽 / 自动布局复用）
-     * @param type SQL | SYNC
+     * @param type SQL | SYNC | PYTHON
      * @param position 画布坐标（来自 screenToFlowPosition）
      */
     const addNodeAt = useCallback((type: NodeType, position: { x: number; y: number }) => {
@@ -747,12 +822,13 @@ function DagEditorInner() {
             type,
             position,
             data: {
-                nodeName: type === 'SQL' ? 'SQL 任务' : '同步任务',
+                nodeName: NODE_TYPE_LABEL[type] || 'SQL 任务',
                 nodeType: type,
                 sqlContent: undefined,
                 // SYNC 节点不默认选中任务：静默绑定错任务的风险太大，让用户显式选择（Drawer 有 required 校验）
                 syncJobId: undefined,
                 syncJobName: undefined,
+                pythonScript: undefined,
                 onEditRequest: handleEditRequest,
             },
         };
@@ -784,7 +860,7 @@ function DagEditorInner() {
         event.preventDefault();
         if (!canEdit) return;
         const type = event.dataTransfer.getData('application/reactflow') as NodeType;
-        if (type !== 'SQL' && type !== 'SYNC') return;
+        if (type !== 'SQL' && type !== 'SYNC' && type !== 'PYTHON') return;
         const position = reactFlowInstance.screenToFlowPosition({
             x: event.clientX,
             y: event.clientY,
@@ -831,7 +907,7 @@ function DagEditorInner() {
         }
     }, [selectedNode]);
 
-    // SQL 节点「运行测试」结果回写节点 data：驱动卡片右上角状态点，随 serializeConfig 持久化
+    // SQL/PYTHON 节点「运行测试」结果回写节点 data：驱动卡片右上角状态点，随 serializeConfig 持久化
     const handleSqlTested = useCallback((status: 'PASSED' | 'FAILED') => {
         if (!selectedNodeId) return;
         setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
@@ -1019,14 +1095,14 @@ function DagEditorInner() {
         return () => window.removeEventListener('keydown', handler);
     }, [selectedNodeId, handleSave, canEdit, handleDeleteNode]);
 
-    const handleTrigger = async () => {
-        if (!id) {
-            notify.warning('请先保存');
-            return;
-        }
+    // 实际触发执行（参数覆盖可选；Sprint 4 参数化）
+    const doTrigger = useCallback(async (overrides?: Record<string, unknown>) => {
+        if (!id) return;
+        setTriggering(true);
         try {
             // 不转 Number()：保持 string id 避免精度丢失
-            await triggerDag(id);
+            await triggerDag(id, overrides);
+            setTriggerModalOpen(false);
             // 触发成功给出可点击的跳转，补上「执行 → 看结果」的反馈闭环
             notify.success(
                 <span>
@@ -1042,7 +1118,29 @@ function DagEditorInner() {
             );
         } catch {
             // 错误提示由 request 拦截器统一弹出
+        } finally {
+            setTriggering(false);
         }
+    }, [id, dag.name, navigate]);
+
+    const handleTrigger = async () => {
+        if (!id) {
+            notify.warning('请先保存');
+            return;
+        }
+        // Sprint 4：DAG 存在参数时先弹参数覆盖弹窗（PRD §6.4.4）；无参数直接触发
+        try {
+            const params = await listDagParameters(id);
+            if (params && params.length > 0) {
+                setDagParams(params);
+                setTriggerModalOpen(true);
+                return;
+            }
+        } catch {
+            // 参数加载失败：拦截器已提示，不再继续触发（避免按错误参数集执行）
+            return;
+        }
+        doTrigger();
     };
 
     const executionStatusColor = execution?.status
@@ -1150,6 +1248,21 @@ function DagEditorInner() {
                 <div className="flex-1"/>
                 {!isRunView && (
                     <>
+                        <DsButton variant="secondary" onClick={() => setParamDrawerOpen(true)}
+                                  disabled={isNew}
+                                  title={isNew ? '请先保存 DAG 后再配置参数' : undefined}>
+                            参数
+                        </DsButton>
+                        <DsButton variant="secondary" onClick={() => setVersionModalOpen(true)}
+                                  disabled={isNew}
+                                  title={isNew ? '请先保存 DAG 后再查看版本' : undefined}>
+                            版本
+                        </DsButton>
+                        <DsButton variant="secondary" onClick={() => setAlertModalOpen(true)}
+                                  disabled={!canEdit || isNew}
+                                  title={!canEdit ? '只读模式：您没有编辑权限' : isNew ? '请先保存 DAG 后再配置告警' : undefined}>
+                            告警
+                        </DsButton>
                         <DsButton variant="secondary" onClick={handleAutoLayout}
                                   disabled={!canEdit || rfNodes.length === 0}
                                   title={!canEdit ? '只读模式：您没有编辑权限' : undefined}>
@@ -1197,6 +1310,25 @@ function DagEditorInner() {
                             >
                                 <span className="text-ds-heading">📝</span>
                                 <span className="text-ds-small font-semibold text-ds-text-secondary">SQL 任务</span>
+                            </div>
+                            {/* 拖拽源：Python 节点（Sprint 4） */}
+                            <div
+                                draggable={canEdit}
+                                onDragStart={e => {
+                                    if (!canEdit) {
+                                        e.preventDefault();
+                                        return;
+                                    }
+                                    e.dataTransfer.setData('application/reactflow', 'PYTHON');
+                                    e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-ds-border-subtle bg-ds-bg-surface ${
+                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-ds-accent hover:bg-ds-accent-light' : 'cursor-not-allowed opacity-50'
+                                } transition-colors`}
+                                title={!canEdit ? '只读模式：您没有编辑权限' : '标准库 + pandas'}
+                            >
+                                <span className="text-ds-heading">🐍</span>
+                                <span className="text-ds-small font-semibold text-ds-text-secondary">Python 任务</span>
                             </div>
                             {/* 拖拽源：同步节点 */}
                             <div
@@ -1258,7 +1390,7 @@ function DagEditorInner() {
 
                 {/* 右侧：属性面板（260px） */}
                 <PropertyPanel node={selectedNode} onEdit={handleEditFromPanel} readOnly={isRunView}
-                               onViewLogs={handleViewNodeLogs}/>
+                               onViewLogs={handleViewNodeLogs} executionId={executionId}/>
             </div>
 
             {/* 节点配置抽屉 */}
@@ -1295,25 +1427,55 @@ function DagEditorInner() {
             </Drawer>
 
             {/* SQL 任务编辑器 Modal(900x600 dark Monaco,替代 SQL 节点的 Drawer) */}
-            <SqlEditorModal
-                open={sqlModalOpen}
-                onClose={() => setSqlModalOpen(false)}
-                initialSql={rfNodes.find(n => n.id === selectedNodeId)?.data.sqlContent}
-                initialNodeName={rfNodes.find(n => n.id === selectedNodeId)?.data.nodeName}
-                title={`编辑 SQL 任务 — ${rfNodes.find(n => n.id === selectedNodeId)?.data.nodeName || ''}`}
-                readOnly={!canEdit}
-                onSave={(sql, nodeName) => {
-                    if (!selectedNodeId) return;
-                    setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
-                        ...n,
-                        data: {...n.data, nodeName, sqlContent: sql},
-                    } : n));
-                    setSqlModalOpen(false);
-                    setIsDirty(true);
-                    notify.success('SQL 节点已更新');
-                }}
-                onTested={handleSqlTested}
-            />
+            <Suspense fallback={<Spin/>}>
+                <SqlEditorModal
+                    open={sqlModalOpen}
+                    onClose={() => setSqlModalOpen(false)}
+                    initialSql={rfNodes.find(n => n.id === selectedNodeId)?.data.sqlContent}
+                    initialNodeName={rfNodes.find(n => n.id === selectedNodeId)?.data.nodeName}
+                    title={`编辑 SQL 任务 — ${rfNodes.find(n => n.id === selectedNodeId)?.data.nodeName || ''}`}
+                    readOnly={!canEdit}
+                    onSave={(sql, nodeName) => {
+                        if (!selectedNodeId) return;
+                        setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
+                            ...n,
+                            data: {...n.data, nodeName, sqlContent: sql},
+                        } : n));
+                        setSqlModalOpen(false);
+                        setIsDirty(true);
+                        notify.success('SQL 节点已更新');
+                    }}
+                    onTested={handleSqlTested}
+                />
+            </Suspense>
+
+            {/* Python 任务编辑器 Modal（Sprint 4，与 SQL 编辑器同一交互范式） */}
+            <Suspense fallback={<Spin/>}>
+                <PythonEditorModal
+                    open={pythonModalOpen}
+                    onClose={() => setPythonModalOpen(false)}
+                    dagId={id}
+                    nodeId={selectedNodeId || undefined}
+                    hasUnsavedChanges={isDirty}
+                    initialScript={selectedNode?.data.pythonScript}
+                    initialNodeName={selectedNode?.data.nodeName}
+                    initialTimeoutMinutes={selectedNode?.data.timeoutMinutes}
+                    initialMemoryLimitMb={selectedNode?.data.memoryLimitMb}
+                    title={`编辑 Python 任务 — ${selectedNode?.data.nodeName || ''}`}
+                    readOnly={!canEdit}
+                    onSave={(script, nodeName, timeoutMinutes, memoryLimitMb) => {
+                        if (!selectedNodeId) return;
+                        setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
+                            ...n,
+                            data: {...n.data, nodeName, pythonScript: script, timeoutMinutes, memoryLimitMb},
+                        } : n));
+                        setPythonModalOpen(false);
+                        setIsDirty(true);
+                        notify.success('Python 节点已更新');
+                    }}
+                    onTested={handleSqlTested}
+                />
+            </Suspense>
 
             {/* 运行视图 SYNC 节点执行日志（复用同步任务日志弹窗） */}
             <HistoryLogModal
@@ -1322,6 +1484,48 @@ function DagEditorInner() {
                 logs={nodeLogs}
                 loading={nodeLogsLoading}
                 onClose={() => setNodeLogOpen(false)}
+            />
+
+            {/* Sprint 4：DAG 参数抽屉（删除参数时做 ${param} 引用校验） */}
+            <DagParameterDrawer
+                open={paramDrawerOpen}
+                dagId={id}
+                referenceTexts={rfNodes.map(n => ({
+                    nodeName: n.data.nodeName,
+                    text: n.data.nodeType === 'SQL' ? n.data.sqlContent : n.data.pythonScript,
+                }))}
+                readOnly={!canEdit}
+                onClose={() => setParamDrawerOpen(false)}
+            />
+
+            {/* Sprint 4：手动触发参数覆盖弹窗 */}
+            <TriggerParamsModal
+                open={triggerModalOpen}
+                params={dagParams}
+                executing={triggering}
+                onCancel={() => setTriggerModalOpen(false)}
+                onExecute={overrides => doTrigger(overrides)}
+            />
+
+            {/* Sprint 4：DAG 版本管理（回滚成功后刷新画布） */}
+            <DagVersionModal
+                open={versionModalOpen}
+                dagId={id}
+                canEdit={canEdit}
+                onClose={() => setVersionModalOpen(false)}
+                onRolledBack={() => {
+                    loadDag().then(() => setIsDirty(false)).catch(() => {
+                    });
+                }}
+            />
+
+            {/* Sprint 4：按 DAG 告警配置 */}
+            <DagAlertConfigModal
+                open={alertModalOpen}
+                dagId={id}
+                dagName={dag.name}
+                readOnly={!canEdit}
+                onClose={() => setAlertModalOpen(false)}
             />
         </div>
     );
@@ -1335,7 +1539,6 @@ function DagEditorInner() {
 function buildRunViewGraph(
     ex: DagExecution,
     dag: Dag,
-    _positionCache: Map<string, { x: number; y: number }>,
 ): { nodes: Node<RFNodeData>[]; edges: Edge[] } {
     const snapshot = (ex.nodeExecutions || []).filter(
         (ne): ne is NodeExecution & { nodeId: string } => !!ne.nodeId,
@@ -1367,7 +1570,8 @@ function buildRunViewGraph(
     const defConfigByNodeId = new Map((dag.nodes || []).map(n => [n.nodeId, parseConfig(n.config)]));
 
     const nodes: Node<RFNodeData>[] = snapshot.map(ne => {
-        const nodeType: NodeType = ne.nodeType === 'SYNC' ? 'SYNC' : 'SQL';
+        // nodeType 直通：PYTHON 节点在运行视图中保持原类型（Sprint 4），未知类型回退 SQL 展示
+        const nodeType: NodeType = ne.nodeType === 'SYNC' || ne.nodeType === 'PYTHON' ? ne.nodeType : 'SQL';
         const cfg = defConfigByNodeId.get(ne.nodeId);
         return {
             id: ne.nodeId,
@@ -1388,6 +1592,7 @@ function buildRunViewGraph(
                 syncJobId: nodeType === 'SYNC' ? (cfg?.syncJobId ?? ne.syncJobId) : undefined,
                 syncJobName: nodeType === 'SYNC' ? cfg?.syncJobName : undefined,
                 sqlContent: nodeType === 'SQL' ? cfg?.sqlContent : undefined,
+                pythonScript: nodeType === 'PYTHON' ? cfg?.pythonScript : undefined,
             },
         };
     });
@@ -1421,6 +1626,9 @@ function parseConfig(config?: string): {
     sqlContent?: string;
     syncJobId?: number;
     syncJobName?: string;
+    pythonScript?: string;
+    timeoutMinutes?: number;
+    memoryLimitMb?: number;
     lastTestStatus?: 'PASSED' | 'FAILED';
 } {
     if (!config) return {};
@@ -1457,6 +1665,16 @@ function serializeConfig(data: RFNodeData): string {
             type: 'SQL',
             sqlContent: data.sqlContent || '',
             // SQL 节点最近运行测试结果（有值才写入，避免污染历史 config）
+            ...(data.lastTestStatus ? {lastTestStatus: data.lastTestStatus} : {}),
+        });
+    }
+    if (data.nodeType === 'PYTHON') {
+        return JSON.stringify({
+            type: 'PYTHON',
+            pythonScript: data.pythonScript || '',
+            // 未显式设置时不写入，由后端 PythonNodeConfig 默认值兜底（30 分钟 / 2048MB）
+            ...(data.timeoutMinutes != null ? {timeoutMinutes: data.timeoutMinutes} : {}),
+            ...(data.memoryLimitMb != null ? {memoryLimitMb: data.memoryLimitMb} : {}),
             ...(data.lastTestStatus ? {lastTestStatus: data.lastTestStatus} : {}),
         });
     }

@@ -4,7 +4,8 @@
 // 现在全部收敛到这里，任何页面不得再定义本地格式化函数。
 
 /**
- * 将毫秒格式化为人类可读耗时，保留毫秒精度。
+ * 将毫秒格式化为人类可读耗时。秒级以下保留毫秒精度；分钟级不再显示毫秒
+ * （"72m 37s 737ms" 这种过宽文本会撑破耗时列/被迫截断，分钟尺度上毫秒也无意义）。
  * - 123 -> "123ms"
  * - 1234 -> "1.234s"
  * - 65000 -> "1m 5s"
@@ -27,7 +28,6 @@ export function formatDuration(ms: number | string | null | undefined): string {
     const rs = s % 60;
     const parts = [`${m}m`];
     if (rs > 0) parts.push(`${rs}s`);
-    if (remMs > 0) parts.push(`${remMs}ms`);
     return parts.join(' ');
 }
 

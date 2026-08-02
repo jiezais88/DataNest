@@ -162,11 +162,341 @@ docker compose up -d --no-deps app-engineering app-worker
 ## 7. 代码与提交约定
 
 - 做 **最小改动**，不要顺手重构无关代码。
-- 改配置/改接口后，同步检查 yaml、Nacos 配置、注释、测试。
+- 改配置/改接口后，同步检查 yaml、Nacos 配置、注释、测试、前端调用点。
 - 新增依赖时检查作用域：`provided` 依赖需要在消费方显式声明。
 - 保持代码和周围风格一致，注释用中文。
+- 不要主动运行 `git commit` / `git push`，除非用户明确要求。
 
-### 安全与敏感信息
+## 8. 后端开发规范
+
+### 8.1 技术栈与版本
+
+| 层/组件              | 选型/版本                                                | 说明                                                          |
+|----------------------|----------------------------------------------------------|---------------------------------------------------------------|
+| JDK                  | 21                                                       | LTS，使用 Record、Pattern 等新特性                            |
+| Spring Boot          | 4.0.7                                                    | 配套 Spring Framework 7                                       |
+| Spring Cloud         | 2025.1.2                                                 | Gateway + Nacos 服务发现                                      |
+| Spring Cloud Alibaba | 2025.1.0.0                                               | Nacos Config / Discovery                                      |
+| ORM                  | MyBatis-Plus 3.5.17                                      | PostgreSQL 分页插件已配置                                     |
+| 安全/登录            | Sa-Token 1.45.0                                          | Redis 集中式 Token                                            |
+| JSON                 | Fastjson2 2.0.52（业务序列化）+ Jackson 3（Spring 默认） | Sprint 3 起 Fastjson2 替代 Jackson ObjectMapper               |
+| 数据库迁移           | Flyway 10.22.0                                           | 脚本统一在 `data-nest-system/src/main/resources/db/migration` |
+| 密码加密             | Spring Security `PasswordEncoder`（BCrypt）              | `data-nest-system` 已配置                                     |
+
+### 8.2 模块与包结构
+
+每个业务模块（`engineering`/`governance`/`system`/`job`）统一按以下结构组织：
+
+```
+com.datanest.<模块>
+├── <模块>Application.java        # @SpringBootApplication + @MapperScan
+├── config/                      # MybatisPlusConfig 等模块级配置
+├── controller/                  # REST API 入口
+├── dto/                         # Request / Response / Query DTO
+├── service/                     # 业务逻辑
+├── entity/                      # MyBatis-Plus 实体（共享实体放在 task-core）
+└── mapper/                      # Mapper 接口（共享 Mapper 放在 task-core）
+```
+
+实际代码中包结构保持 **扁平按层划分**：`controller`/`service`/`dto`/`config` 直接挂在 `com.datanest.<模块>` 下， 不要引入
+`dag/`、`dev/`、`sync/` 等子包，否则会影响 MyBatis Mapper 扫描和依赖方引用。 共享的 `entity`、`mapper`、`service` 集中在
+`data-nest-task-core` 的同名包中。
+
+`data-nest-common` 只放跨服务共享内容：
+
+```
+com.datanest.common
+├── config/GlobalExceptionHandler.java   # 统一异常处理
+├── dto/                                 # 少量公共 DTO
+├── exception/                           # BusinessException、ErrorCode
+├── jackson/JacksonConfig.java           # Long 转 String 序列化
+├── model/                               # Result、PageResult、LoginRequest
+├── satoken/                             # Sa-Token 公共自动配置
+└── util/                                # 公共工具类
+```
+
+### 8.3 统一响应协议
+
+所有 Controller 返回统一信封 `com.datanest.common.model.Result<T>`：
+
+```java
+public record Result<T>(int code, String message, T data) {
+    public static <T> Result<T> ok(T data) { ...}
+
+    public static <T> Result<T> fail(int code, String message) { ...}
+}
+```
+
+分页返回 `PageResult<T>`：
+
+```java
+public record PageResult<T>(List<T> records, long total, long page, long pageSize) {
+}
+```
+
+约定：
+
+- `code == 200` 表示业务成功；其余为业务错误。
+- Controller 直接 `return Result.ok(service.xxx(...))`，不要在 Controller 里 catch 业务异常。
+- 无返回值时返回 `Result.ok(null)` 或 `Result.<Void>ok(null)`。
+
+### 8.4 异常与错误码
+
+统一使用 `BusinessException(ErrorCode, [detail], [data])`：
+
+```java
+throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: "+id);
+```
+
+`ErrorCode` 按模块分区，新增错误码必须落在对应区间：
+
+| 区间 | 模块                   |
+|------|------------------------|
+| 1xxx | 认证/登录              |
+| 2xxx | 用户管理               |
+| 3xxx | 数据源                 |
+| 4xxx | 数据治理（采集任务等） |
+| 5xxx | 数据标准               |
+| 6xxx | 批量同步               |
+| 7xxx | DAG / 数据开发         |
+| 9xxx | 系统内部错误           |
+
+全局异常处理 `GlobalExceptionHandler` 已覆盖：
+
+- `BusinessException` → 返回对应 code/message/data。
+- `NotLoginException` → 401。
+- `NotRoleException` / `NotPermissionException` → 403。
+- `MethodArgumentNotValidException` / `BindException` / `ConstraintViolationException` → 400，取第一条校验错误。
+- `Exception` → 500，日志打印堆栈。
+
+### 8.5 参数校验
+
+Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size`、`@Pattern`、`@Min`、`@Max`、`@AssertTrue`。
+
+Controller 方法签名：
+
+```java
+
+@PostMapping
+public Result<SyncJobDTO> create(@Valid @RequestBody SyncJobCreateRequest request) { ...}
+```
+
+复杂跨字段校验（如 "Cron 触发必须填 Cron 表达式"）用 `@AssertTrue` 方法，不要散落在 Service 里。
+
+### 8.6 实体与数据库
+
+- 主键统一用 `Long`，MyBatis-Plus `@TableId(type = IdType.ASSIGN_ID)` 生成 Snowflake ID。
+- 所有 `Long` / `long` 类型通过 `JacksonConfig` 序列化为 **字符串**，防止前端 JS 精度丢失。
+- 实体字段驼峰命名，自动映射数据库 `snake_case`。
+- 时间字段统一用 `java.time.LocalDateTime`。
+- 布尔字段在实体中用 `Boolean`，数据库中用 `SMALLINT` 或 `BOOLEAN` 按 Flyway 脚本约定。
+- 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层用 Fastjson2 解析/组装。
+
+### 8.7 Mapper 与 SQL
+
+- Mapper 继承 `BaseMapper<T>`，简单 CRUD 不写 SQL。
+- 简单自定义 SQL 优先用注解（`@Select`、`@Insert`、`@Delete`），复杂 SQL 用 `resources/mapper/*.xml`。
+- 动态 SQL 用 MyBatis `<script>`，注意 PostgreSQL 关键字转义。
+- 分页统一用 MyBatis-Plus `Page<T>` + `IPage<T>`，已在 `MybatisPlusConfig` 配置 PostgreSQL 方言。
+
+### 8.8 Service 层约定
+
+- 使用构造器注入（Lombok  `@RequiredArgsConstructor` 也可用，但项目当前以显式构造器为主）。
+- 写操作加 `@Transactional`；涉及 XXL-JOB 注册/更新/注销等外部调用，用
+  `TransactionSynchronizationManager.registerSynchronization` 在 `afterCommit` 执行。
+- 查询结果需要脱敏或补充创建人/更新人名称时，批量查询后一次性回填，避免 N+1。
+- DTO 与 Entity 转换写私有 `toDTO` / `toEntity` 方法，不要直接返回 Entity。
+
+### 8.9 Controller 与 URL 规范
+
+- Controller 加 `@RestController`，类级 `@RequestMapping("/<资源>")`。
+- 路径使用 RESTful 风格，动作通过 HTTP 方法 + 路径表达：
+
+```
+GET    /datasources/{id}              # 详情
+POST   /datasources                   # 创建
+PUT    /datasources/{id}              # 更新
+DELETE /datasources/{id}              # 删除
+POST   /datasources/page              # 分页列表
+POST   /datasources/{id}/test         # 动作类接口
+```
+
+- 权限注解 `@SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)`，角色代码与前端
+  `src/constants/roles.ts` 保持一致。
+- 网关路由：`/api/system/**` → `data-nest-system`，`/api/engineering/**` → `data-nest-engineering`，`/api/governance/**` →
+  `data-nest-governance`。
+- 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`，Controller 路径不要重复写前缀。
+
+### 8.10 配置与 Nacos
+
+- `application.yml` 只保留端口、`spring.application.name`、`context-path`、`spring.config.import` 和模块级简单配置。
+- 数据库、Redis、Doris、XXL-JOB、Addax、安全等配置走 Nacos `shared-configs`。
+- 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
+- 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。
+
+### 8.11 task-core 共享模块
+
+- `data-nest-task-core` 是 `data-nest-engineering` 和 `data-nest-worker` 的共享模块。
+- **只要改到 task-core，必须同时重新编译并部署 engineering 和 worker**。
+- task-core 中的 `entity`、`mapper`、`service` 会被两个服务共同扫描，注意 Bean 冲突和事务边界。
+
+## 9. 前端开发规范
+
+### 9.1 技术栈与版本
+
+| 层/组件   | 选型/版本               | 说明                            |
+|-----------|-------------------------|---------------------------------|
+| 框架      | React 18.3              | 函数组件 + Hooks                |
+| 语言      | TypeScript ~5.6         | `strict: true`                  |
+| 构建工具  | Vite 5.4                | 开发服务器端口 3000             |
+| UI 组件库 | Ant Design 6            | 主题/样式通过 `tokens.css` 覆盖 |
+| 样式      | Tailwind CSS 3.4        | 自定义 `ds-*` 设计 token        |
+| 路由      | React Router 6          | `createBrowserRouter`           |
+| 状态管理  | Zustand 5               | 当前仅 `useAuthStore`           |
+| HTTP      | Axios 1.18              | 统一封装在 `src/api/request.ts` |
+| 图标      | react-icons (Heroicons) | 统一用 `HiOutline*` 系列        |
+| 代码规范  | ESLint 9 flat config    | `eslint.config.js`              |
+
+### 9.2 目录结构
+
+```
+src
+├── api/               # 按模块封装的 API（auth.ts、sync.ts、engineering.ts...）
+│   └── request.ts     # axios 统一实例 + 拦截器
+├── components/        # 全局通用组件（DsButton、DsModal、Pagination...）
+├── constants/         # 常量：roles.ts、datasource.ts、table.ts、statusColors.ts...
+├── hooks/             # 通用 Hooks：usePagedList、useHasRole、useCanEdit、usePollingWhile
+├── lib/               # 第三方封装或工具库
+├── pages/             # 页面组件，按模块分 engineering/governance/system/home/login
+├── router/            # 路由配置 + 路由组件（ProtectedRoute、LazyDagEditor）
+├── store/             # Zustand store
+├── styles/            # tokens.css（颜色唯一来源）
+├── types/             # TypeScript 类型：common.ts、sync.ts、datasource.ts...
+└── utils/             # 工具函数：notify.ts、error.ts、format.ts、cn.ts...
+```
+
+### 9.3 API 请求规范
+
+统一使用 `src/api/request.ts` 导出的 `request`：
+
+```ts
+import request from './request';
+
+export function getSyncJob(id: string) {
+    return request.get<Result<SyncJob>>(`/engineering/sync-jobs/${id}`);
+}
+```
+
+约定：
+
+- `baseURL = '/api'`，gateway 自动路由到对应服务。
+- 响应拦截器校验 `code !== 200` 时统一弹错误提示并 `reject`； **不拆信封**，返回的是 `{code, message, data}` 本身。
+- API 层通过 `.then(r => r.data)` 拆信封，与 `request.get<Result<T>>` / `request.post<Result<T>>` 的泛型配合。
+- 需要自行处理错误时传 `{skipErrorMessage: true}`（如 SQL 预览行内展示错误、DAG 运行日志轮询）。
+- 19 位 Snowflake ID 全程用 `string` 类型， **不要** `Number(id)`，避免精度丢失。
+
+### 9.4 错误处理
+
+- 普通接口错误由 `request.ts` 统一弹出 `notify.error`，页面无需重复提示。
+- 需要取错误文案时用 `getErrorMessage(e)`：
+
+```ts
+import {getErrorMessage} from '../utils/error';
+
+catch
+(err)
+{
+    notify.error(getErrorMessage(err));
+}
+```
+
+- 401 时拦截器自动清除 token 并跳 `/login`。
+
+### 9.5 状态管理
+
+- 全局状态统一用 Zustand，当前只有 `useAuthStore`。
+- 列表页状态不走全局 store，页面内用 `useState` + `usePagedList`。
+- token / userInfo 持久化到 `localStorage`，key 名统一在 store 中定义。
+
+### 9.6 路由与权限
+
+- 路由定义在 `src/router/index.tsx`，使用 `createBrowserRouter`。
+- 需要登录的页面用 `<ProtectedRoute>` 包裹。
+- 角色判断用 `useHasRole(...roles)` 或 `useCanEdit()`，角色代码从 `src/constants/roles.ts` 引入，不要硬编码字符串。
+
+### 9.7 UI 与样式规范
+
+- **颜色唯一来源**：`src/styles/tokens.css` `:root` 变量。新增颜色先加变量，再在 `tailwind.config.js` 桥接，不要写死 hex。
+- Tailwind 使用项目自定义 token：`ds-bg-root`、`ds-text-primary`、`ds-accent`、`ds-danger` 等。
+- 字体、字号、间距、圆角、阴影、z-index 等均使用 `ds-*` token。
+- antd Table 统一用 `className="prototype-table prototype-table-flush"` + `pagination={false}`，分页用手写
+  `components/Pagination`。
+- 弹窗统一用 `components/DsModal`，按钮用 `components/DsButton`，状态徽章用 `components/DsStatusBadge`。
+- 表格列宽参考 `src/constants/table.ts` 中的 `COL`，同类列在不同页面保持相近宽度。
+
+### 9.8 列表页与分页
+
+统一使用 `src/hooks/usePagedList.ts`：
+
+```ts
+const {list, total, page, pageSize, loading, setPage, setPageSize, applyQuery, reload} =
+    usePagedList<DataSourceQuery, DataSource>({
+        fetcher: async ({keyword, page, pageSize}) => {
+            const result = await getDataSources({keyword, page, pageSize});
+            return {list: result.data.records, total: result.data.total};
+        },
+        initialQuery: INITIAL_QUERY,
+        defaultPageSize: 10,
+    });
+```
+
+- 查询按钮调用 `applyQuery(draftQuery)`。
+- 重置按钮调用 `applyQuery(INITIAL_QUERY)`。
+- 增删改成功后调用 `reload()`。
+
+### 9.9 消息提示
+
+统一使用 `src/utils/notify.ts`：
+
+```ts
+import {notify} from '../utils/notify';
+
+notify.success('操作成功');
+notify.error('操作失败');
+```
+
+不要直接 `import {message} from 'antd'`，避免静态 message 无法消费动态主题上下文。
+
+### 9.10 类型定义
+
+- 后端协议类型统一放在 `src/types/common.ts`：`Result<T>`、`PageResult<T>`、`PagedQuery`。
+- 各业务类型按模块分文件：`sync.ts`、`datasource.ts`、`metadata.ts` 等。
+- API 函数签名使用泛型：`request.get<Result<SyncJob>>(...)`。
+
+### 9.11 构建与部署
+
+- 本地开发：`pnpm dev` / `npm run dev`（Vite dev server 端口 3000，代理 `/api` 到 `http://localhost:8080`）。
+- 类型检查：`pnpm typecheck` / `npm run typecheck`。
+- 构建：`pnpm build` / `npm run build`（会执行 `tsc -b && vite build`）。
+- 生产部署：Docker 镜像基于 `nginx:alpine`，`dist/` 产物挂载到 `/usr/share/nginx/html/`。
+- 生产构建会 `drop_console` 和 `drop_debugger`。
+
+## 10. 前后端联调约定
+
+- 所有请求统一走 Gateway：`http://localhost:8080/api/<服务>/<路径>`。
+- 后端 `Long` 类型主键会序列化为字符串，前端类型声明用 `string`，URL 拼接不要转 Number。
+- 修改 DTO、返回结构、URL 路径、字段含义时，必须同步检查：
+    1. 后端 Controller / Service / DTO
+    2. 前端 `src/api/*` 调用点
+    3. 前端 `src/types/*` 类型
+    4. 相关页面组件
+    5. 接口文档 / Sprint 文档
+- 新增接口先在 Postman/curl 自测通过再联调前端。
+- 分页字段：`page` 从 1 开始，`pageSize` 默认 10。
+
+## 11. 安全与敏感信息
 
 - 密码、token、密钥等敏感信息 **禁止硬编码**到代码或配置文件中；应走 Nacos 配置或环境变量注入。
 - 日志中禁止打印密码、完整 token、数据库连接串密码部分；打印 DTO 时先脱敏敏感字段。
+- 前端构建产物中不要包含 `.env.development` 等本地配置。
+- 后端接口必须加 `@SaCheckRole` 等权限控制，匿名接口需经评审。

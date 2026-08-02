@@ -22,6 +22,7 @@ import {formatDateTime, formatDuration, formatExecutionDuration, getDefaultTimeR
 import {executionStatusVariant} from '../../../../utils/status';
 import {useHasRole} from '../../../../hooks/useHasRole';
 import {GOVERNANCE_WRITE_ROLES} from '../../../../constants/roles';
+import {COL} from '../../../../constants/table';
 import {notify} from '../../../../utils/notify';
 import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye, HiOutlineStop,} from 'react-icons/hi2';
 
@@ -194,7 +195,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '任务名称',
             dataIndex: 'taskName',
-            width: 200,
+            width: COL.NAME_COMPACT,
             ellipsis: {showTitle: true},
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium">{v || '-'}</span>
@@ -203,13 +204,13 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '触发方式',
             dataIndex: 'triggerType',
-            width: 100,
+            width: 90,
             render: (v: string) => triggerBadge(v),
         },
         {
             title: '状态',
             dataIndex: 'status',
-            width: 100,
+            width: 90,
             render: (v: ExecutionStatus) => (
                 <DsStatusBadge label={STATUS_LABELS[v]} variant={statusVariant(v)}/>
             ),
@@ -217,7 +218,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '开始时间',
             dataIndex: 'startedAt',
-            width: 170,
+            width: COL.DATETIME_COMPACT,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -225,7 +226,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '结束时间',
             dataIndex: 'endedAt',
-            width: 170,
+            width: COL.DATETIME_COMPACT,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -233,18 +234,20 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '耗时',
             dataIndex: 'durationMs',
-            width: 100,
+            width: 90,
+            ellipsis: true,
             // 运行中（endedAt 为空）：用当前时间静态计算一次，不做定时刷新
-            render: (v: number | undefined, item) => (
-                <span
-                    className="text-ds-small text-ds-text-secondary">{formatExecutionDuration(v, item.startedAt, item.endedAt)}</span>
-            ),
+            // 超宽截断 + title 悬浮提示
+            render: (v: number | undefined, item) => {
+                const text = formatExecutionDuration(v, item.startedAt, item.endedAt);
+                return <span title={text} className="text-ds-small text-ds-text-secondary">{text}</span>;
+            },
         },
         {
             title: '库/表/字段',
-            width: 120,
+            width: COL.COUNT,
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary">
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                     {item.dbCount ?? 0}/{item.tableCount ?? 0}/{item.columnCount ?? 0}
                 </span>
             ),
@@ -252,7 +255,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '错误信息',
             dataIndex: 'errorMessage',
-            width: 200,
+            width: COL.ERROR_MESSAGE,
             ellipsis: {showTitle: true},
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-danger">{v || '—'}</span>
@@ -261,8 +264,7 @@ export default function CollectHistoryGlobalPage() {
         {
             title: '操作',
             align: 'center',
-            width: 160,
-            fixed: 'right' as const,
+            width: COL.OPERATION_3,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {item.status === 'RUNNING' && (
@@ -395,7 +397,7 @@ export default function CollectHistoryGlobalPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1420}}
+                            scroll={{x: 1120}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{

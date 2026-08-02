@@ -12,6 +12,13 @@ export interface MetadataTable {
     datasourceName?: string;
     datasourceType?: string;
     lastCollectHistoryId?: string;
+    /** Sprint 4 来源字段：SYNC / SQL / PYTHON 任务自动注册的表会带回来源 DAG/节点 */
+    sourceType?: string;
+    taskSourceType?: string;
+    sourceDagId?: string | number;
+    sourceDagName?: string;
+    sourceNodeId?: string;
+    sourceNodeName?: string;
     createdByName?: string;
     createdAt?: string;
     updatedByName?: string;

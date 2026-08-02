@@ -21,6 +21,7 @@ import DsTableEmpty from '../../../components/DsTableEmpty';
 import {executionStatusVariant} from '../../../utils/status';
 import {notify} from '../../../utils/notify';
 import {NODE_STATUS_LABEL} from '../../../constants/statusColors';
+import {COL} from '../../../constants/table';
 
 // =================== 常量映射 ===================
 const TRIGGER_LABEL: Record<string, string> = {
@@ -189,18 +190,41 @@ export default function DagExecutionsGlobalPage() {
         });
     };
 
-    // Sprint 3 P1-13：重跑失败节点（Mvp 简化版：复用 trigger 重新跑所有节点）
+    // Sprint 4：真正的重跑失败节点 —— 仅重跑 FAILED/SKIPPED 节点，成功节点结果复用（PRD §6.8.3）
     const handleRerun = useCallback((record: DagExecution) => {
         if (record.dagId == null || record.id == null) {
             notify.warning('记录缺少 dagId/executionId，无法重跑');
             return;
         }
+        const nodes = record.nodeExecutions || [];
+        const rerunNodes = nodes.filter(n => n.status === 'FAILED' || n.status === 'SKIPPED');
+        if (rerunNodes.length === 0) {
+            notify.warning('该执行没有失败或被跳过的节点，无需重跑');
+            return;
+        }
+        const successNodes = nodes.filter(n => n.status === 'SUCCESS');
         Modal.confirm({
             centered: true,
             wrapClassName: 'prototype-modal',
             title: '重跑失败节点',
-            content: `将基于 DAG「${record.dagName || record.dagId}」重新触发一次执行（当前实现会重跑所有节点，真正的"只重跑失败节点"将在 P2 实现）。是否继续？`,
-            okText: '重跑',
+            content: (
+                <div>
+                    <div>将基于 DAG「{record.dagName || record.dagId}」重新执行以下失败/被跳过的节点：</div>
+                    <ul className="list-disc pl-5 my-2">
+                        {rerunNodes.map((n, idx) => (
+                            <li key={n.nodeId || String(n.id ?? idx)}>
+                                {n.nodeName || n.nodeId}（{n.status === 'FAILED' ? '失败' : '被跳过'}）
+                            </li>
+                        ))}
+                    </ul>
+                    {successNodes.length > 0 && (
+                        <div className="text-ds-text-muted">
+                            已成功节点「{successNodes.map(n => n.nodeName || n.nodeId).join('、')}」结果将复用。
+                        </div>
+                    )}
+                </div>
+            ),
+            okText: '确认重跑',
             cancelText: '取消',
             onOk: async () => {
                 try {
@@ -245,13 +269,14 @@ export default function DagExecutionsGlobalPage() {
         {
             title: '所属 DAG',
             dataIndex: 'dagName',
-            width: 200,
+            width: COL.NAME_COMPACT,
+            ellipsis: true,
             render: (v) => <span style={{color: '#1e293b'}}>{v || '-'}</span>,
         },
         {
             title: '执行方式',
             dataIndex: 'triggerType',
-            width: 110,
+            width: 90,
             render: (v?: string) => (
                 <DsStatusBadge label={TRIGGER_LABEL[v || ''] || v || '-'} variant="accent"/>
             ),
@@ -259,7 +284,7 @@ export default function DagExecutionsGlobalPage() {
         {
             title: '状态',
             dataIndex: 'status',
-            width: 100,
+            width: 90,
             render: (v: string) => (
                 <DsStatusBadge
                     label={NODE_STATUS_LABEL[v] || v || '-'}
@@ -270,32 +295,41 @@ export default function DagExecutionsGlobalPage() {
         {
             title: '开始时间',
             dataIndex: 'startTime',
-            width: 170,
-            render: (v?: string) => formatDateTime(v),
+            width: COL.DATETIME_COMPACT,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
+            ),
         },
         {
             title: '结束时间',
             dataIndex: 'endTime',
-            width: 170,
-            render: (v?: string) => formatDateTime(v),
+            width: COL.DATETIME_COMPACT,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
+            ),
         },
         {
             title: '耗时',
             dataIndex: 'durationMs',
-            width: 100,
+            width: 90,
+            ellipsis: true,
             // 运行中（endTime 为空）：用当前时间静态计算一次，不做定时刷新
-            render: (v: number | undefined, r) => formatExecutionDuration(v, r.startTime, r.endTime),
+            // 超宽截断 + title 悬浮提示（长耗时如 "72m 37s 737ms" 单行放不下）
+            render: (v: number | undefined, r) => {
+                const text = formatExecutionDuration(v, r.startTime, r.endTime);
+                return <span title={text} className="text-ds-small text-ds-text-secondary">{text}</span>;
+            },
         },
         {
             title: '节点执行情况',
             dataIndex: 'nodeExecutions',
-            width: 280,
+            width: COL.NODE_SUMMARY,
             render: (_, r) => (
                 <div style={{color: '#475569', fontSize: 13}}>
                     <div>{nodeSummary(r)}</div>
                     {r.status === 'FAILED' && r.errorMessage && (
                         <Tooltip title={r.errorMessage}>
-                            <div className="text-ds-danger text-[12px] truncate max-w-[260px]">
+                            <div className="text-ds-danger text-[12px] truncate max-w-[200px]">
                                 {r.errorMessage}
                             </div>
                         </Tooltip>
@@ -305,9 +339,8 @@ export default function DagExecutionsGlobalPage() {
         },
         {
             title: '操作',
-            width: 140,
+            width: COL.OPERATION_3,
             align: 'center',
-            fixed: 'right' as const,
             render: (_, r) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -444,7 +477,7 @@ export default function DagExecutionsGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1370}}
+                            scroll={{x: 1160}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (

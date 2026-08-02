@@ -44,14 +44,22 @@ body {
 }
 
 @layer components {
-    /* antd Table 长文本列截断：挂到 column.className 上，单元格需自行加 title */
+    /* antd Table 长文本列截断：挂到 column.className 上，单元格需自行加 title。
+       注意必须带齐 nowrap + overflow + text-overflow 三件套——只设 max-width 在 td 上不会截断，
+       长文本会折行撑高整行（行高不一致的历史 bug 来源） */
     .ds-table-cell-truncate {
         max-width: 180px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* 较宽列截断 */
     .ds-table-cell-wide {
         max-width: 280px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* 取消截断，用于操作列或需要完整展示的数字列（默认居中，让图标按钮在单元格内稳定居中） */

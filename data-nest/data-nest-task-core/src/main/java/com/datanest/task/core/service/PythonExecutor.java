@@ -47,7 +47,7 @@ public class PythonExecutor {
      * @param userScript    用户脚本（在 helper 之后执行）
      * @param context       上下文：参数、日志回调等
      * @param timeoutMinutes 超时分钟数，null 则默认 30
-     * @param memoryLimitMb 内存限制（当前仅作为参考写入 cgroup/ulimit 预留，未强制启用）
+     * @param memoryLimitMb 内存限制（MB），通过 ulimit -v 限制虚拟内存，默认 2048MB
      */
     public PythonExecuteResult execute(String userScript, PythonContext context,
                                        Integer timeoutMinutes, Integer memoryLimitMb) {
@@ -239,13 +239,18 @@ public class PythonExecutor {
                     return cfg['database'], parts[0]
                 
                 def read_doris_table(table):
+                    import pandas as pd
                     cfg = _read_doris_config()
                     db, tbl = _split_table_name(table)
                     conn = _connect_doris(cfg)
                     try:
                         with conn.cursor() as cur:
                             cur.execute(f"SELECT * FROM `{db}`.`{tbl}`")
-                            return cur.fetchall()
+                            rows = cur.fetchall()
+                            # Sprint 4：对齐 PRD，返回 pandas DataFrame，便于用户做 DataFrame 操作
+                            if rows:
+                                return pd.DataFrame(rows)
+                            return pd.DataFrame()
                     finally:
                         conn.close()
                 
@@ -307,9 +312,11 @@ public class PythonExecutor {
 
     private PythonExecuteResult runPython(Path workDir, int timeoutMinutes, int memoryLimitMb,
                                           PythonContext context, LocalDateTime startTime) {
+        // 通过 /bin/sh 设置 ulimit -v 限制虚拟内存（KB），再 exec python3 避免额外 shell 进程
         List<String> command = new ArrayList<>();
-        command.add("python3");
-        command.add("task.py");
+        command.add("/bin/sh");
+        command.add("-c");
+        command.add("ulimit -v " + (memoryLimitMb * 1024) + "; exec python3 task.py");
 
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(workDir.toFile());

@@ -6,13 +6,14 @@
 // self-contained.
 //
 // 按需加载：editor.api 是完整编辑器本体（含查找/折叠等全部 contrib，
-// 不含任何语言），语言只注册 SQL（其定义 sql.js 由 loader 动态 import，
+// 不含任何语言），语言只注册 SQL + Python（其定义由 loader 动态 import，
 // 单独切 chunk）。不要改回裸 'monaco-editor'（= editor.main，会打进
 // 全部语言，主包体积翻倍）。
 // NOTE: monaco-editor 0.56 exports map rewrites "./*" -> "./esm/vs/*.js",
 // so the bare specifier must NOT include the "esm/vs" prefix.
 import * as monaco from 'monaco-editor/editor/editor.api';
 import 'monaco-editor/languages/definitions/sql/register';
+import 'monaco-editor/languages/definitions/python/register';
 import editorWorker from 'monaco-editor/editor/editor.worker?worker';
 import {loader} from '@monaco-editor/react';
 

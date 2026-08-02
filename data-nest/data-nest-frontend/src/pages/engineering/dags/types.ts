@@ -1,5 +1,5 @@
 // DAG 节点/边/请求类型
-export type NodeType = 'SQL' | 'SYNC';
+export type NodeType = 'SQL' | 'SYNC' | 'PYTHON';
 
 export interface DagNodeConfig {
     type: NodeType;
@@ -8,6 +8,10 @@ export interface DagNodeConfig {
     // SYNC
     syncJobId?: number;
     syncJobName?: string;
+    // PYTHON
+    pythonScript?: string;
+    timeoutMinutes?: number;
+    memoryLimitMb?: number;
 }
 
 export interface DagNode {
@@ -126,4 +130,82 @@ export interface SqlStatementResult {
 
 export interface SqlPreviewResult {
     statements: SqlStatementResult[];
+}
+
+// =================== Sprint 4：DAG 参数 / 版本 / 告警 / Python / 实时日志 ===================
+
+/** DAG 自定义参数（对齐后端 DagParameterPayload） */
+export interface DagParameter {
+    id?: string | number;
+    dagId?: string | number;
+    paramName: string;
+    /** STRING / NUMBER / DATE / BOOLEAN */
+    paramType: string;
+    defaultValue?: string;
+    required: boolean;
+    description?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+/** Python 节点「运行测试」结果（对齐 task-core PythonExecuteResult） */
+export interface PythonExecuteResult {
+    success: boolean;
+    timeout?: boolean;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+    output?: unknown;
+    outputTables?: string[];
+    durationMs?: number;
+}
+
+/** DAG 版本快照（对齐后端 DagVersionPayload；保存人只有 createdBy 数字 id） */
+export interface DagVersion {
+    id?: string | number;
+    dagId?: string | number;
+    versionNo: number;
+    /** 快照 JSON 字符串：{"nodes":[...],"edges":[...],"params":[...]} */
+    snapshot?: string;
+    changeSummary?: string;
+    createdBy?: string | number;
+    createdAt?: string;
+}
+
+/** 版本对比结果：diff 项为字符串（nodeId / "a->b" / paramName） */
+export interface DagVersionDiff {
+    addedNodes?: string[];
+    removedNodes?: string[];
+    modifiedNodes?: string[];
+    addedEdges?: string[];
+    removedEdges?: string[];
+    addedParams?: string[];
+    removedParams?: string[];
+    modifiedParams?: string[];
+}
+
+/** 按 DAG 告警配置（对齐后端 DagAlertConfigPayload；dagId 为 null 表示返回的是全局默认配置） */
+export interface DagAlertConfig {
+    id?: string | number;
+    /** null 表示当前继承全局默认配置 */
+    dagId?: string | number | null;
+    enabled: boolean;
+    /** 多个邮箱用分号分隔 */
+    recipients?: string;
+    /** ["FAILURE","TIMEOUT","SUCCESS"] 子集 */
+    triggerConditions?: string[];
+    timeoutMinutes?: number;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+/** 节点实时日志行（对齐后端 NodeExecutionLogDTO） */
+export interface NodeExecutionLog {
+    id?: string | number;
+    executionId?: string | number;
+    nodeId?: string;
+    level?: string;
+    message?: string;
+    lineNum?: number;
+    createdAt?: string;
 }

@@ -35,6 +35,7 @@ import DatasourcePreviewSelector from './DatasourcePreviewSelector';
 import usePagedList from '../../../hooks/usePagedList';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {ENGINEERING_WRITE_ROLES, ROLE} from '../../../constants/roles';
+import {COL} from '../../../constants/table';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
 import {HiOutlineBolt, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
@@ -211,7 +212,7 @@ export default function DataSourcesPage() {
         {
             title: '数据源名称',
             dataIndex: 'name',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
@@ -220,7 +221,7 @@ export default function DataSourcesPage() {
         {
             title: '类型',
             dataIndex: 'type',
-            width: 100,
+            width: COL.STATUS,
             render: (v: DataSourceType) => <TypeBadge type={v}/>,
         },
         {
@@ -237,7 +238,7 @@ export default function DataSourcesPage() {
         {
             title: '状态',
             dataIndex: 'status',
-            width: 100,
+            width: COL.STATUS,
             render: (v: DataSourceStatus, item) => {
                 const badge = STATUS_BADGE[v] ?? STATUS_BADGE[DataSourceStatusEnum.UNKNOWN];
                 return (
@@ -250,7 +251,7 @@ export default function DataSourcesPage() {
         {
             title: '最近连接时间',
             dataIndex: 'lastTestTime',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap" title={formatDateTime(v)}>
                     {formatRelativeTime(v)}
@@ -260,7 +261,7 @@ export default function DataSourcesPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
@@ -269,7 +270,7 @@ export default function DataSourcesPage() {
         {
             title: '创建时间',
             dataIndex: 'createdAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -277,7 +278,7 @@ export default function DataSourcesPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || ''}>{v || '-'}</span>
@@ -286,7 +287,7 @@ export default function DataSourcesPage() {
         {
             title: '修改时间',
             dataIndex: 'updatedAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
             ),
@@ -295,7 +296,7 @@ export default function DataSourcesPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 200,
+            width: COL.OPERATION_5,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -451,7 +452,7 @@ export default function DataSourcesPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1650}}
+                            scroll={{x: 1570}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({'data-testid': `datasource-row-${item.name}`}) as HTMLAttributes<HTMLElement>}

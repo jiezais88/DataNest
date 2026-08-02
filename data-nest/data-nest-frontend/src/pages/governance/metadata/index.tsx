@@ -22,6 +22,7 @@ import {previewMetadataTable, type PreviewResult} from '../../../api/preview';
 import PreviewModal from '../../../components/PreviewModal';
 import {HiOutlineBookOpen, HiOutlineCircleStack, HiOutlineEye, HiOutlineTableCells} from 'react-icons/hi2';
 import {formatDateTime} from '../../../utils/format';
+import {COL} from '../../../constants/table';
 import {isWithoutSchema} from '../../../constants/datasource';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
 import DsButton from '../../../components/DsButton';
@@ -432,7 +433,7 @@ export default function MetadataPage() {
         {
             title: '表名',
             dataIndex: 'tableName',
-            width: 200,
+            width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
                 <span className="text-ds-small text-ds-accent font-medium" title={v}>{v}</span>
@@ -441,7 +442,7 @@ export default function MetadataPage() {
         {
             title: '字段数',
             dataIndex: 'columnCount',
-            width: 100,
+            width: COL.COUNT_NORMAL,
             render: (v?: number) => (
                 <span className="text-ds-small text-ds-text-secondary">{v ?? '-'}</span>
             ),
@@ -449,7 +450,7 @@ export default function MetadataPage() {
         {
             title: '采集来源',
             dataIndex: 'sourceTaskName',
-            width: 150,
+            width: COL.NAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
@@ -458,7 +459,7 @@ export default function MetadataPage() {
         {
             title: '创建人',
             dataIndex: 'createdByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
@@ -467,7 +468,7 @@ export default function MetadataPage() {
         {
             title: '创建时间',
             dataIndex: 'createdAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '-'}</span>
@@ -476,7 +477,7 @@ export default function MetadataPage() {
         {
             title: '修改人',
             dataIndex: 'updatedByName',
-            width: 120,
+            width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
                 <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
@@ -485,7 +486,7 @@ export default function MetadataPage() {
         {
             title: '修改时间',
             dataIndex: 'updatedAt',
-            width: 170,
+            width: COL.DATETIME,
             render: (v?: string) => (
                 <span
                     className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ? formatDateTime(v) : '-'}</span>
@@ -501,7 +502,7 @@ export default function MetadataPage() {
                     rowKey="id"
                     loading={tablesLoading}
                     pagination={false}
-                    scroll={{x: 1130}}
+                    scroll={{x: 1090}}
                     columns={tableColumns}
                     className="prototype-table prototype-table-flush"
                     onRow={(table) => ({
@@ -531,7 +532,7 @@ export default function MetadataPage() {
             title: '数据类型',
             dataIndex: 'dataType',
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v || '-'}</span>
             ),
         },
         {
@@ -569,6 +570,14 @@ export default function MetadataPage() {
 
     const renderTableDetail = () => {
         if (!selectedTable) return null;
+        // Sprint 4：由 SQL/Python/同步任务自动注册的表展示来源信息（PRD §6.6.3）
+        const sourceType = selectedTable.taskSourceType || selectedTable.sourceType;
+        const isTaskRegistered = ['SYNC', 'SQL', 'PYTHON'].includes(sourceType || '') || selectedTable.sourceDagId != null;
+        const SOURCE_TYPE_LABEL: Record<string, string> = {
+            SYNC: '同步任务',
+            SQL: 'DAG 任务（SQL 节点）',
+            PYTHON: 'DAG 任务（Python 节点）',
+        };
         return (
             <div>
                 <div className="text-ds-small text-ds-text-muted mb-ds-4">
@@ -622,6 +631,55 @@ export default function MetadataPage() {
                         </span>
                     </div>
                 </div>
+
+                {/* Sprint 4：数据来源卡片（SQL/Python/同步任务自动注册的表） */}
+                {isTaskRegistered && (
+                    <div className="mb-ds-6 border border-ds-accent/30 bg-ds-accent-light rounded-ds-sm p-ds-4">
+                        <h3 className="text-ds-small font-semibold text-ds-accent uppercase tracking-wider mb-ds-3">
+                            数据来源
+                        </h3>
+                        <div className="grid grid-cols-[100px_1fr] gap-y-ds-2 text-ds-small">
+                            <span className="text-ds-text-muted">来源类型</span>
+                            <span className="text-ds-text-primary">
+                                {SOURCE_TYPE_LABEL[sourceType || ''] || sourceType || '—'}
+                            </span>
+                            {selectedTable.sourceDagName && (
+                                <>
+                                    <span className="text-ds-text-muted">来源 DAG</span>
+                                    <span className="text-ds-text-primary">{selectedTable.sourceDagName}</span>
+                                </>
+                            )}
+                            {selectedTable.sourceNodeName && (
+                                <>
+                                    <span className="text-ds-text-muted">来源节点</span>
+                                    <span className="text-ds-text-primary">{selectedTable.sourceNodeName}</span>
+                                </>
+                            )}
+                            {!selectedTable.sourceDagName && selectedTable.sourceTaskName && (
+                                <>
+                                    <span className="text-ds-text-muted">来源任务</span>
+                                    <span className="text-ds-text-primary">{selectedTable.sourceTaskName}</span>
+                                </>
+                            )}
+                        </div>
+                        {selectedTable.sourceDagId != null && (
+                            <div className="flex items-center gap-ds-3 mt-ds-3">
+                                <DsButton
+                                    variant="secondary"
+                                    onClick={() => navigate(`/engineering/dags/${selectedTable.sourceDagId}/edit`)}
+                                >
+                                    查看 DAG
+                                </DsButton>
+                                <DsButton
+                                    variant="secondary"
+                                    onClick={() => navigate(`/engineering/dag-executions?dagId=${selectedTable.sourceDagId}&dagName=${encodeURIComponent(selectedTable.sourceDagName || '')}`)}
+                                >
+                                    查看执行历史
+                                </DsButton>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div>
                     <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-3">

@@ -1,7 +1,24 @@
+// 批量数据同步任务抽屉（Sprint 4 重构：多表同步 + 速率限流）
+// 关键模型：
+// - selectedTables：勾选的源表列表（创建/多表任务可多选；Sprint 3 的单表任务编辑时锁定单选，PRD §6.9.5）
+// - tableMappings：源表 → 目标表名（默认同名，可逐个修改）
+// - fieldMappings：源表 → 字段映射（按源表逐个配置，技术文档 §12.2；列信息按表缓存避免重复拉取）
+// 提交口径：
+// - sourceTables = 勾选列表；targetTable / 顶层 fieldMapping 取第一张表（兼容后端必填与单表旧行为）
+// - 多表（>1）时 sourceTablesDetail = JSON.stringify([{sourceTable,targetTable,fieldMapping}])
+//   （注意：后端要求请求体为 JSON 字符串，响应里是对象数组）
+// - 限流：rateLimitEnabled + readRateLimitMbps(MB/s) + writeRateLimitRowsPerSecond(行/s)，不启用/不填 = 不限
 import {useCallback, useEffect, useState} from 'react';
 import type {DataSource} from '../../../types/datasource';
 import {DataSourceTypeEnum} from '../../../constants/datasource';
-import type {SyncFieldMapping, SyncJob, SyncJobCreateRequest, SyncMode, SyncTriggerType,} from '../../../types/sync';
+import type {
+    SourceTableDetail,
+    SyncFieldMapping,
+    SyncJob,
+    SyncJobCreateRequest,
+    SyncMode,
+    SyncTriggerType,
+} from '../../../types/sync';
 import {SyncModeEnum, TaskTriggerTypeEnum} from '../../../constants/task';
 import {getDataSourceSchemas, getDataSourceTables} from '../../../api/engineering';
 import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '../../../api/metadata';
@@ -16,9 +33,7 @@ interface FormData {
     name: string;
     sourceDatasourceId: string;
     selectedSchema: string;
-    sourceTable: string;
     targetDatabase: string;
-    targetTable: string;
     syncMode: SyncMode;
     incrementalField: string;
     triggerType: SyncTriggerType;
@@ -56,9 +71,7 @@ const EMPTY_FORM: FormData = {
     name: '',
     sourceDatasourceId: '',
     selectedSchema: '',
-    sourceTable: '',
     targetDatabase: '',
-    targetTable: '',
     syncMode: SyncModeEnum.FULL,
     incrementalField: '',
     triggerType: TaskTriggerTypeEnum.MANUAL,
@@ -67,6 +80,8 @@ const EMPTY_FORM: FormData = {
     retryInterval: 5,
     description: '',
 };
+
+type ErrorKey = keyof FormData | 'sourceTable' | 'targetTable' | 'fieldMapping' | 'rateLimit';
 
 function datasourceLabel(ds: DataSource) {
     return `${ds.name} (${ds.host}:${ds.port}/${ds.databaseName})`;
@@ -79,17 +94,14 @@ function buildSchemaLabel(ds: DataSource, schema: string) {
     return schema;
 }
 
-// 字段自动映射：源列按名列出，已存在的同名映射保留目标列名，否则目标列默认同名
+// 字段自动映射：源列按名列出，已存在的同名映射保留目标列名/类型，否则目标列默认同名
 function applyAutoMapping(columns: string[], existingMapping: SyncFieldMapping[]): SyncFieldMapping[] {
     const existingMap = new Map(
         existingMapping
             .filter((m) => columns.includes(m.sourceColumn))
-            .map((m) => [m.sourceColumn, m.targetColumn]),
+            .map((m) => [m.sourceColumn, m]),
     );
-    return columns.map((col) => ({
-        sourceColumn: col,
-        targetColumn: existingMap.get(col) || col,
-    }));
+    return columns.map((col) => existingMap.get(col) || {sourceColumn: col, targetColumn: col});
 }
 
 export default function SyncJobDrawer({
@@ -102,23 +114,45 @@ export default function SyncJobDrawer({
                                           onExecute,
                                       }: SyncJobDrawerProps) {
     const [form, setForm] = useState<FormData>(EMPTY_FORM);
-    const [errors, setErrors] = useState<Partial<Record<keyof FormData | 'fieldMapping', string>>>({});
+    const [errors, setErrors] = useState<Partial<Record<ErrorKey, string>>>({});
     const [submitting, setSubmitting] = useState(false);
     const [schemas, setSchemas] = useState<string[]>([]);
     const [schemasLoading, setSchemasLoading] = useState(false);
     const [tables, setTables] = useState<string[]>([]);
     const [tablesLoading, setTablesLoading] = useState(false);
-    const [columnOptions, setColumnOptions] = useState<string[]>([]);
-    const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+    // 多表状态：勾选源表 / 目标表名映射 / 按表字段映射 / 字段映射区当前表
+    const [selectedTables, setSelectedTables] = useState<string[]>([]);
+    const [tableSearch, setTableSearch] = useState('');
+    const [tableMappings, setTableMappings] = useState<Record<string, string>>({});
+    const [fieldMappings, setFieldMappings] = useState<Record<string, SyncFieldMapping[]>>({});
+    const [activeMappingTable, setActiveMappingTable] = useState('');
+    // 列信息按表缓存：切换字段映射源表时避免重复拉取预览接口
+    const [columnsCache, setColumnsCache] = useState<Record<string, {
+        columns: string[];
+        types: Record<string, string>
+    }>>({});
     const [columnsLoading, setColumnsLoading] = useState(false);
-    const [fieldMapping, setFieldMapping] = useState<SyncFieldMapping[]>([]);
     const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
     const [targetDbsLoading, setTargetDbsLoading] = useState(false);
     const [targetTables, setTargetTables] = useState<string[]>([]);
     const [targetTablesLoading, setTargetTablesLoading] = useState(false);
+    // 限流配置（输入框用 string 暂存，提交时转 number）
+    const [rateLimitEnabled, setRateLimitEnabled] = useState(false);
+    const [readRateLimitMbps, setReadRateLimitMbps] = useState('');
+    const [writeRateLimitRowsPerSecond, setWriteRateLimitRowsPerSecond] = useState('');
 
     const isEdit = mode === 'edit';
     const isView = mode === 'view';
+    // 已有多表任务：编辑时保持多表；Sprint 3 单表任务编辑时锁定单选（PRD §6.9.5）
+    const editIsMulti = (editItem?.sourceTablesDetail?.length ?? 0) > 1;
+    const multiSelectable = !isEdit || editIsMulti;
+    const isMultiTable = selectedTables.length > 1;
+    // 字段映射区当前生效的源表：多表用切换器选中的表，单表就是唯一勾选表
+    const boundMappingTable = isMultiTable ? activeMappingTable : selectedTables[0];
+    const currentFieldMapping = fieldMappings[boundMappingTable] || [];
+    // 增量字段选项取第一张勾选表的列（后端 incrementalField 为任务级单值）
+    const firstTableColumns = columnsCache[selectedTables[0]]?.columns || [];
+    const firstTableColumnTypes = columnsCache[selectedTables[0]]?.types || {};
 
     const loadTargetDatabases = async () => {
         setTargetDbsLoading(true);
@@ -132,7 +166,7 @@ export default function SyncJobDrawer({
         }
     };
 
-    const loadTargetTables = useCallback(async (database: string, preselectTable?: string) => {
+    const loadTargetTables = useCallback(async (database: string) => {
         if (!database) {
             setTargetTables([]);
             return;
@@ -140,11 +174,7 @@ export default function SyncJobDrawer({
         setTargetTablesLoading(true);
         try {
             const result = await listBuiltinDorisTables(database);
-            const names = result.data || [];
-            setTargetTables(names);
-            if (preselectTable && names.includes(preselectTable)) {
-                setForm((prev) => ({...prev, targetTable: preselectTable}));
-            }
+            setTargetTables(result.data || []);
         } catch {
             setTargetTables([]);
         } finally {
@@ -161,7 +191,7 @@ export default function SyncJobDrawer({
         return {sourceDatabase: selectedSchema, sourceSchema: selectedSchema};
     }, [sourceDataSources]);
 
-    const loadTables = useCallback(async (datasourceId: string, selectedSchema: string, preselectTable?: string) => {
+    const loadTables = useCallback(async (datasourceId: string, selectedSchema: string) => {
         if (!datasourceId || !selectedSchema) {
             setTables([]);
             return;
@@ -178,17 +208,13 @@ export default function SyncJobDrawer({
                 resolved.sourceDatabase,
                 resolved.sourceSchema,
             );
-            const names = result.data || [];
-            setTables(names);
-            if (preselectTable && names.includes(preselectTable)) {
-                setForm((prev) => ({...prev, sourceTable: preselectTable}));
-            }
+            setTables(result.data || []);
         } finally {
             setTablesLoading(false);
         }
     }, [resolveDatabaseSchema]);
 
-    const loadSchemas = useCallback(async (datasourceId: string, preselectSchema?: string, preselectTable?: string) => {
+    const loadSchemas = useCallback(async (datasourceId: string, preselectSchema?: string) => {
         if (!datasourceId) {
             setSchemas([]);
             return;
@@ -199,31 +225,31 @@ export default function SyncJobDrawer({
             const list = result.data || [];
             setSchemas(list);
             if (preselectSchema && list.includes(preselectSchema)) {
-                loadTables(datasourceId, preselectSchema, preselectTable);
+                loadTables(datasourceId, preselectSchema);
             }
         } finally {
             setSchemasLoading(false);
         }
     }, [loadTables]);
 
-    const loadTableColumns = useCallback(async (datasourceId: string, selectedSchema: string, tableName: string) => {
-        const resolved = resolveDatabaseSchema(datasourceId, selectedSchema);
-        if (!resolved) return;
+    // 拉取某张源表的列信息（预览接口）：写缓存 + 自动生成该表字段映射（保留已有同名映射）
+    const loadTableColumns = useCallback(async (tableName: string) => {
+        const resolved = resolveDatabaseSchema(form.sourceDatasourceId, form.selectedSchema);
+        if (!resolved || !tableName) return;
         setColumnsLoading(true);
         try {
             const result = await previewDataSource(
-                datasourceId,
+                form.sourceDatasourceId,
                 resolved.sourceDatabase,
                 resolved.sourceSchema || resolved.sourceDatabase,
                 tableName,
             );
             const columns = result.data.columns || [];
             const types = result.data.columnTypes || {};
-            setColumnOptions(columns);
-            setColumnTypes(types);
-            // 函数式更新：自动映射基于最新 fieldMapping 计算，避免把 fieldMapping 变成 effect 依赖导致循环加载
-            setFieldMapping((prev) => applyAutoMapping(columns, prev));
-            setForm((prev) =>
+            setColumnsCache(prev => ({...prev, [tableName]: {columns, types}}));
+            setFieldMappings(prev => ({...prev, [tableName]: applyAutoMapping(columns, prev[tableName] || [])}));
+            // 第一表的列变化后，清理失效的增量字段
+            setForm(prev =>
                 prev.incrementalField && !columns.includes(prev.incrementalField)
                     ? {...prev, incrementalField: ''}
                     : prev
@@ -231,19 +257,22 @@ export default function SyncJobDrawer({
         } finally {
             setColumnsLoading(false);
         }
-    }, [resolveDatabaseSchema]);
+    }, [form.sourceDatasourceId, form.selectedSchema, resolveDatabaseSchema]);
 
+    // 初始化：创建重置 / 编辑回显（含多表明细与限流）
     useEffect(() => {
         if (!open) return;
+        setErrors({});
+        setTableSearch('');
+        setActiveMappingTable('');
+        setColumnsCache({});
         if (editItem) {
             const selectedSchema = editItem.sourceSchema || editItem.sourceDatabase || '';
             setForm({
                 name: editItem.name,
                 sourceDatasourceId: editItem.sourceDatasourceId,
                 selectedSchema,
-                sourceTable: editItem.sourceTables?.[0] || '',
                 targetDatabase: editItem.targetDatabase || '',
-                targetTable: editItem.targetTable || '',
                 syncMode: editItem.syncMode,
                 incrementalField: editItem.incrementalField || '',
                 triggerType: editItem.triggerType,
@@ -252,39 +281,61 @@ export default function SyncJobDrawer({
                 retryInterval: editItem.retryInterval ?? 5,
                 description: editItem.description || '',
             });
-            setFieldMapping(editItem.fieldMapping?.length ? editItem.fieldMapping : []);
-            loadSchemas(editItem.sourceDatasourceId, selectedSchema, editItem.sourceTables?.[0] || '');
+            // 多表明细优先（响应里 sourceTablesDetail 是对象数组）；单表任务走旧字段回显
+            const details = editItem.sourceTablesDetail || [];
+            if (details.length > 0) {
+                setSelectedTables(details.map(d => d.sourceTable));
+                setTableMappings(Object.fromEntries(details.map(d => [d.sourceTable, d.targetTable || d.sourceTable])));
+                setFieldMappings(Object.fromEntries(details.map(d => [d.sourceTable, d.fieldMapping || []])));
+                setActiveMappingTable(details[0].sourceTable);
+            } else {
+                const table = editItem.sourceTables?.[0] || '';
+                setSelectedTables(table ? [table] : []);
+                setTableMappings(table ? {[table]: editItem.targetTable || table} : {});
+                setFieldMappings(table ? {[table]: editItem.fieldMapping || []} : {});
+            }
+            setRateLimitEnabled(!!editItem.rateLimitEnabled);
+            setReadRateLimitMbps(editItem.readRateLimitMbps ? String(editItem.readRateLimitMbps) : '');
+            setWriteRateLimitRowsPerSecond(editItem.writeRateLimitRowsPerSecond ? String(editItem.writeRateLimitRowsPerSecond) : '');
+            loadSchemas(editItem.sourceDatasourceId, selectedSchema);
         } else {
             setForm(EMPTY_FORM);
             setSchemas([]);
             setTables([]);
-            setColumnOptions([]);
-            setColumnTypes({});
-            setFieldMapping([]);
+            setSelectedTables([]);
+            setTableMappings({});
+            setFieldMappings({});
+            setRateLimitEnabled(false);
+            setReadRateLimitMbps('');
+            setWriteRateLimitRowsPerSecond('');
         }
         loadTargetDatabases();
-        setErrors({});
     }, [open, editItem, loadSchemas]);
 
+    // 按需加载列信息：字段映射区当前表（多表）或唯一勾选表（单表）+ 第一张勾选表（增量字段选项来源）。
+    // 合并在一个 effect 里用 Set 去重，避免单表模式（boundMappingTable === selectedTables[0]）重复拉取
     useEffect(() => {
-        if (form.sourceTable && form.selectedSchema && form.sourceDatasourceId) {
-            loadTableColumns(form.sourceDatasourceId, form.selectedSchema, form.sourceTable);
-        } else {
-            setColumnOptions([]);
-            setColumnTypes({});
+        if (!form.sourceDatasourceId || !form.selectedSchema) {
+            return;
         }
-    }, [form.sourceDatasourceId, form.selectedSchema, form.sourceTable, loadTableColumns]);
+        const needed = new Set([boundMappingTable, selectedTables[0]].filter(Boolean) as string[]);
+        needed.forEach(table => {
+            if (!columnsCache[table]) {
+                loadTableColumns(table);
+            }
+        });
+    }, [boundMappingTable, selectedTables, columnsCache, form.sourceDatasourceId, form.selectedSchema, loadTableColumns]);
 
     useEffect(() => {
         if (form.targetDatabase) {
-            loadTargetTables(form.targetDatabase, editItem?.targetTable);
+            loadTargetTables(form.targetDatabase);
         } else {
             setTargetTables([]);
         }
-    }, [form.targetDatabase, editItem?.targetTable, loadTargetTables]);
+    }, [form.targetDatabase, loadTargetTables]);
 
     const isIncrementalRecommended = (column: string): boolean => {
-        const type = (columnTypes[column] || '').toLowerCase();
+        const type = (firstTableColumnTypes[column] || '').toLowerCase();
         if (!type) {
             return true;
         }
@@ -301,24 +352,24 @@ export default function SyncJobDrawer({
     const handleSourceDatasourceChange = (datasourceId: string) => {
         updateField('sourceDatasourceId', datasourceId);
         updateField('selectedSchema', '');
-        updateField('sourceTable', '');
-        updateField('targetTable', '');
         updateField('incrementalField', '');
         setTables([]);
-        setColumnOptions([]);
-        setColumnTypes({});
-        setFieldMapping([]);
+        setSelectedTables([]);
+        setTableMappings({});
+        setFieldMappings({});
+        setActiveMappingTable('');
+        setColumnsCache({});
         loadSchemas(datasourceId);
     };
 
     const handleSchemaChange = (selectedSchema: string) => {
         updateField('selectedSchema', selectedSchema);
-        updateField('sourceTable', '');
-        updateField('targetTable', '');
         updateField('incrementalField', '');
-        setColumnOptions([]);
-        setColumnTypes({});
-        setFieldMapping([]);
+        setSelectedTables([]);
+        setTableMappings({});
+        setFieldMappings({});
+        setActiveMappingTable('');
+        setColumnsCache({});
         if (form.sourceDatasourceId && selectedSchema) {
             loadTables(form.sourceDatasourceId, selectedSchema);
         } else {
@@ -326,49 +377,105 @@ export default function SyncJobDrawer({
         }
     };
 
-    const handleSourceTableChange = (sourceTable: string) => {
-        setForm((prev) => ({
-            ...prev,
-            sourceTable,
-            targetTable: !prev.targetTable || prev.targetTable === prev.sourceTable ? sourceTable : prev.targetTable,
-            incrementalField: '',
-        }));
-        setFieldMapping([]);
+    /** 勾选/取消勾选源表：联动目标表映射行、字段映射切换器、hint 计数 */
+    const toggleSourceTable = (table: string, checked: boolean) => {
+        if (checked) {
+            setSelectedTables(prev => [...prev, table]);
+            setTableMappings(prev => ({...prev, [table]: prev[table] ?? table}));
+            setActiveMappingTable(prev => prev || table);
+        } else {
+            setSelectedTables(prev => prev.filter(t => t !== table));
+            setTableMappings(prev => {
+                const next = {...prev};
+                delete next[table];
+                return next;
+            });
+            setFieldMappings(prev => {
+                const next = {...prev};
+                delete next[table];
+                return next;
+            });
+            setActiveMappingTable(prev => {
+                if (prev !== table) return prev;
+                // 当前表被取消勾选：切到剩余第一张
+                const remaining = selectedTables.filter(t => t !== table);
+                return remaining[0] || '';
+            });
+        }
+        if (errors.sourceTable) {
+            setErrors(prev => ({...prev, sourceTable: undefined}));
+        }
+    };
+
+    // 单表（锁定）模式切换源表：重置映射，目标表名跟随源表名
+    const handleSingleSourceTableChange = (sourceTable: string) => {
+        setSelectedTables(sourceTable ? [sourceTable] : []);
+        setTableMappings(sourceTable ? {[sourceTable]: sourceTable} : {});
+        setFieldMappings({});
+        setColumnsCache({});
+        updateField('incrementalField', '');
+        if (errors.sourceTable) {
+            setErrors(prev => ({...prev, sourceTable: undefined}));
+        }
+    };
+
+    const updateTableMapping = (table: string, targetTable: string) => {
+        setTableMappings(prev => ({...prev, [table]: targetTable}));
+        if (errors.targetTable) {
+            setErrors(prev => ({...prev, targetTable: undefined}));
+        }
     };
 
     const handleTargetDatabaseChange = (targetDatabase: string) => {
         updateField('targetDatabase', targetDatabase);
-        updateField('targetTable', '');
         setTargetTables([]);
     };
 
+    // 字段映射行操作（作用于 boundMappingTable 的映射）
     const updateMappingField = (index: number, key: keyof SyncFieldMapping, value: string) => {
-        setFieldMapping((prev) => {
-            const next = [...prev];
-            next[index] = {...next[index], [key]: value};
-            return next;
+        if (!boundMappingTable) return;
+        setFieldMappings(prev => {
+            const rows = [...(prev[boundMappingTable] || [])];
+            rows[index] = {...rows[index], [key]: value};
+            return {...prev, [boundMappingTable]: rows};
         });
         if (errors.fieldMapping) {
-            setErrors((prev) => ({...prev, fieldMapping: undefined}));
+            setErrors(prev => ({...prev, fieldMapping: undefined}));
         }
     };
 
     const addMappingRow = () => {
-        setFieldMapping((prev) => [...prev, {sourceColumn: '', targetColumn: ''}]);
+        if (!boundMappingTable) return;
+        setFieldMappings(prev => ({
+            ...prev,
+            [boundMappingTable]: [...(prev[boundMappingTable] || []), {sourceColumn: '', targetColumn: ''}],
+        }));
     };
 
     const removeMappingRow = (index: number) => {
-        setFieldMapping((prev) => prev.filter((_, i) => i !== index));
+        if (!boundMappingTable) return;
+        setFieldMappings(prev => ({
+            ...prev,
+            [boundMappingTable]: (prev[boundMappingTable] || []).filter((_, i) => i !== index),
+        }));
     };
 
     const validate = (): boolean => {
-        const nextErrors: Partial<Record<keyof FormData | 'fieldMapping', string>> = {};
+        const nextErrors: Partial<Record<ErrorKey, string>> = {};
         if (!form.name.trim()) nextErrors.name = '请输入任务名称';
         if (!form.sourceDatasourceId) nextErrors.sourceDatasourceId = '请选择源数据源';
         if (!form.selectedSchema) nextErrors.selectedSchema = '请选择源库 / Schema';
-        if (!form.sourceTable.trim()) nextErrors.sourceTable = '请选择源表';
+        if (selectedTables.length === 0) nextErrors.sourceTable = '请至少选择一个源表';
         if (!form.targetDatabase.trim()) nextErrors.targetDatabase = '请选择目标 Doris 库';
-        if (!form.targetTable.trim()) nextErrors.targetTable = '请选择目标表名';
+        // 每张勾选源表都必须有目标表名（多表批量映射，PRD §6.9.2）
+        if (selectedTables.some(t => !(tableMappings[t] || '').trim())) {
+            nextErrors.targetTable = '每个源表都必须填写目标表名';
+        }
+        // 多表模式：每张表的字段映射不能为空（技术文档 §12.2 保存前校验）
+        if (isMultiTable && selectedTables.some(t =>
+            !(fieldMappings[t] || []).some(row => row.sourceColumn.trim() || row.targetColumn.trim()))) {
+            nextErrors.fieldMapping = '多表模式下每个源表的字段映射不能为空';
+        }
         if (!form.syncMode) nextErrors.syncMode = '请选择同步模式';
         if (form.syncMode === SyncModeEnum.INCREMENTAL && !form.incrementalField) {
             nextErrors.incrementalField = '请选择增量字段';
@@ -383,37 +490,58 @@ export default function SyncJobDrawer({
         if (form.retryInterval < 1 || form.retryInterval > 30) {
             nextErrors.retryInterval = '重试间隔需在 1-30 分钟之间';
         }
+        if (rateLimitEnabled) {
+            if (readRateLimitMbps && (Number.isNaN(Number(readRateLimitMbps)) || Number(readRateLimitMbps) <= 0)) {
+                nextErrors.rateLimit = '读取速率上限必须是大于 0 的数字';
+            }
+            if (writeRateLimitRowsPerSecond && (Number.isNaN(Number(writeRateLimitRowsPerSecond)) || Number(writeRateLimitRowsPerSecond) <= 0)) {
+                nextErrors.rateLimit = '写入速率上限必须是大于 0 的数字';
+            }
+        }
         setErrors(nextErrors);
         return Object.keys(nextErrors).length === 0;
     };
 
-    const buildFieldMapping = (): SyncFieldMapping[] | undefined => {
-        const valid = fieldMapping.filter((row) => row.sourceColumn.trim() || row.targetColumn.trim());
+    const buildValidMapping = (table: string): SyncFieldMapping[] | undefined => {
+        const valid = (fieldMappings[table] || []).filter((row) => row.sourceColumn.trim() || row.targetColumn.trim());
         if (valid.length === 0) return undefined;
         return valid.map((row) => ({
             sourceColumn: row.sourceColumn.trim(),
             targetColumn: row.targetColumn.trim(),
-            targetType: undefined,
+            targetType: row.targetType?.trim() || undefined,
         }));
     };
 
     const buildPayload = (): SyncJobCreateRequest => {
         const resolved = resolveDatabaseSchema(form.sourceDatasourceId, form.selectedSchema);
+        const details: SourceTableDetail[] = selectedTables.map(t => ({
+            sourceTable: t,
+            targetTable: (tableMappings[t] || '').trim(),
+            fieldMapping: buildValidMapping(t),
+        }));
+        const first = details[0];
         const base: SyncJobCreateRequest = {
             name: form.name.trim(),
             sourceDatasourceId: form.sourceDatasourceId,
             sourceDatabase: resolved?.sourceDatabase,
             sourceSchema: resolved?.sourceSchema,
-            sourceTables: [form.sourceTable.trim()],
+            sourceTables: selectedTables,
             syncMode: form.syncMode,
             incrementalField: form.syncMode === SyncModeEnum.INCREMENTAL ? form.incrementalField : undefined,
             targetDatabase: form.targetDatabase.trim(),
-            targetTable: form.targetTable.trim(),
+            // 顶层 targetTable / fieldMapping 取第一张表：兼容后端必填校验与单表旧行为
+            targetTable: first?.targetTable || '',
+            fieldMapping: first?.fieldMapping,
+            // 多表提交明细（JSON 字符串；后端按 sourceTables 多表生成 Addax content）。
+            // editIsMulti 兜底：已有多表任务即使被减到只剩 1 张表也保持多表口径，避免静默降级为单表（PRD §6.9.5）
+            sourceTablesDetail: (isMultiTable || editIsMulti) ? JSON.stringify(details) : undefined,
             triggerType: form.triggerType,
             cronExpression: form.triggerType === TaskTriggerTypeEnum.CRON ? form.cronExpression.trim() : undefined,
             retryTimes: Number(form.retryTimes),
             retryInterval: Number(form.retryInterval),
-            fieldMapping: buildFieldMapping(),
+            rateLimitEnabled,
+            readRateLimitMbps: rateLimitEnabled && readRateLimitMbps ? Number(readRateLimitMbps) : undefined,
+            writeRateLimitRowsPerSecond: rateLimitEnabled && writeRateLimitRowsPerSecond ? Number(writeRateLimitRowsPerSecond) : undefined,
             description: form.description.trim() || undefined,
         };
         if (editItem) {
@@ -440,6 +568,10 @@ export default function SyncJobDrawer({
 
     const selectedSource = sourceDataSources.find((d) => d.id === form.sourceDatasourceId);
     const schemaLabel = selectedSource?.type && selectedSource.type !== DataSourceTypeEnum.MYSQL && selectedSource.type !== DataSourceTypeEnum.DORIS ? 'Schema' : '数据库';
+    // 多表 checkbox 列表：搜索过滤后的可选源表
+    const filteredTables = tableSearch.trim()
+        ? tables.filter(t => t.toLowerCase().includes(tableSearch.trim().toLowerCase()))
+        : tables;
 
     return (
         <Drawer
@@ -555,22 +687,64 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 源表 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
-                                data-testid="sync-job-source-table"
-                                value={form.sourceTable}
-                                onChange={(e) => handleSourceTableChange(e.target.value)}
-                                disabled={!form.selectedSchema || tablesLoading || isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                                <option value="">{tablesLoading ? '加载中...' : '请选择'}</option>
-                                {form.sourceTable && !tables.includes(form.sourceTable) && (
-                                    <option value={form.sourceTable}>{form.sourceTable}</option>
-                                )}
-                                {tables.map((t) => (
-                                    <option key={t} value={t}
-                                            data-testid={`sync-job-source-table-option-${t}`}>{t}</option>
-                                ))}
-                            </select>
+                            {multiSelectable ? (
+                                // 多选模式（创建 / 已有多表任务编辑）：搜索 + checkbox 列表
+                                <>
+                                    <input
+                                        data-testid="sync-job-source-table-search"
+                                        value={tableSearch}
+                                        onChange={(e) => setTableSearch(e.target.value)}
+                                        disabled={!form.selectedSchema || tablesLoading || isView}
+                                        placeholder="搜索表名"
+                                        className="w-full mb-ds-2 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    />
+                                    <div
+                                        className="border border-ds-border-subtle rounded-ds-sm max-h-40 overflow-auto divide-y divide-ds-border-subtle">
+                                        {tablesLoading ? (
+                                            <p className="px-ds-3 py-ds-2 text-ds-small text-ds-text-muted">加载中...</p>
+                                        ) : filteredTables.length === 0 ? (
+                                            <p className="px-ds-3 py-ds-2 text-ds-small text-ds-text-muted">
+                                                {form.selectedSchema ? '无可选源表' : '请先选择源库 / Schema'}
+                                            </p>
+                                        ) : (
+                                            filteredTables.map(t => (
+                                                <label key={t}
+                                                       data-testid={`sync-job-source-table-option-${t}`}
+                                                       className="flex items-center gap-ds-2 px-ds-3 py-ds-2 text-ds-small text-ds-text-primary hover:bg-ds-bg-hover cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedTables.includes(t)}
+                                                        onChange={(e) => toggleSourceTable(t, e.target.checked)}
+                                                        disabled={isView}
+                                                    />
+                                                    {t}
+                                                </label>
+                                            ))
+                                        )}
+                                    </div>
+                                    <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                        已选 {selectedTables.length} 个源表
+                                    </p>
+                                </>
+                            ) : (
+                                // 单表锁定模式（Sprint 3 单表任务编辑，PRD §6.9.5：不可切换为多表）
+                                <select
+                                    data-testid="sync-job-source-table"
+                                    value={selectedTables[0] || ''}
+                                    onChange={(e) => handleSingleSourceTableChange(e.target.value)}
+                                    disabled={!form.selectedSchema || tablesLoading || isView}
+                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    <option value="">{tablesLoading ? '加载中...' : '请选择'}</option>
+                                    {selectedTables[0] && !tables.includes(selectedTables[0]) && (
+                                        <option value={selectedTables[0]}>{selectedTables[0]}</option>
+                                    )}
+                                    {tables.map((t) => (
+                                        <option key={t} value={t}
+                                                data-testid={`sync-job-source-table-option-${t}`}>{t}</option>
+                                    ))}
+                                </select>
+                            )}
                             {errors.sourceTable && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.sourceTable}</p>
                             )}
@@ -607,42 +781,101 @@ export default function SyncJobDrawer({
                             )}
                         </div>
 
-                        <div>
-                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                                目标表名 <span className="text-ds-danger">*</span>
-                            </label>
-                            <select
-                                data-testid="sync-job-target-table"
-                                value={form.targetTable}
-                                onChange={(e) => updateField('targetTable', e.target.value)}
-                                disabled={!form.targetDatabase || targetTablesLoading || isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                                <option value="">{targetTablesLoading ? '加载中...' : '请选择'}</option>
-                                {form.targetTable && !targetTables.includes(form.targetTable) && (
-                                    <option value={form.targetTable}>{form.targetTable}</option>
-                                )}
-                                {targetTables.map((t) => (
-                                    <option key={t} value={t}
-                                            data-testid={`sync-job-target-table-option-${t}`}>{t}</option>
-                                ))}
-                            </select>
-                            {errors.targetTable && (
-                                <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetTable}</p>
-                            )}
-                        </div>
+                        {!isMultiTable ? (
+                            <div>
+                                <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                    目标表名 <span className="text-ds-danger">*</span>
+                                </label>
+                                <select
+                                    data-testid="sync-job-target-table"
+                                    value={tableMappings[selectedTables[0]] || ''}
+                                    onChange={(e) => selectedTables[0] && updateTableMapping(selectedTables[0], e.target.value)}
+                                    disabled={!form.targetDatabase || targetTablesLoading || isView || !selectedTables[0]}
+                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    <option value="">{targetTablesLoading ? '加载中...' : '请选择'}</option>
+                                    {selectedTables[0] && tableMappings[selectedTables[0]] && !targetTables.includes(tableMappings[selectedTables[0]]) && (
+                                        <option value={tableMappings[selectedTables[0]]}>
+                                            {tableMappings[selectedTables[0]]}
+                                        </option>
+                                    )}
+                                    {targetTables.map((t) => (
+                                        <option key={t} value={t}
+                                                data-testid={`sync-job-target-table-option-${t}`}>{t}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : (
+                            // 多表批量映射：源表 → 目标表名，默认同名可逐个修改（PRD §6.9.2）
+                            <div>
+                                <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                    源表 → 目标表映射 <span className="text-ds-danger">*</span>
+                                </label>
+                                <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-ds-bg-hover">
+                                        <tr>
+                                            <th className="px-ds-3 py-ds-1.5 text-ds-caption text-ds-text-primary font-semibold w-1/2">源表</th>
+                                            <th className="px-ds-3 py-ds-1.5 text-ds-caption text-ds-text-primary font-semibold">目标表名</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {selectedTables.map(t => (
+                                            <tr key={t} className="border-t border-ds-border-subtle">
+                                                <td className="px-ds-3 py-ds-1.5 text-ds-small text-ds-text-secondary font-mono">
+                                                    {t}
+                                                </td>
+                                                <td className="px-ds-3 py-ds-1.5">
+                                                    <input
+                                                        data-testid={`sync-job-target-table-input-${t}`}
+                                                        value={tableMappings[t] || ''}
+                                                        onChange={(e) => updateTableMapping(t, e.target.value)}
+                                                        disabled={isView}
+                                                        placeholder={t}
+                                                        className="w-full px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                    默认：目标表名 = 源表名，可逐个修改
+                                </p>
+                            </div>
+                        )}
+                        {errors.targetTable && (
+                            <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetTable}</p>
+                        )}
                     </div>
                 </div>
 
                 <div className="border-t border-ds-border-subtle pt-ds-4">
                     <h3 className="text-ds-small font-semibold text-ds-text-secondary mb-ds-2">字段映射</h3>
+                    {isMultiTable && (
+                        // 多表模式：按源表逐个配置（技术文档 §12.2），切换器选择当前配置的源表
+                        <select
+                            data-testid="sync-job-mapping-table-switcher"
+                            value={activeMappingTable}
+                            onChange={(e) => setActiveMappingTable(e.target.value)}
+                            disabled={isView}
+                            className="w-full mb-ds-2 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            {selectedTables.map(t => (
+                                <option key={t} value={t}>配置源表：{t}</option>
+                            ))}
+                        </select>
+                    )}
                     <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 bg-ds-bg-hover space-y-ds-2">
-                        {columnsLoading ? (
+                        {!boundMappingTable ? (
+                            <p className="text-ds-small text-ds-text-muted">选择源表后将自动匹配字段</p>
+                        ) : columnsLoading && currentFieldMapping.length === 0 ? (
                             <p className="text-ds-small text-ds-text-muted">加载字段中...</p>
-                        ) : fieldMapping.length === 0 ? (
+                        ) : currentFieldMapping.length === 0 ? (
                             <p className="text-ds-small text-ds-text-muted">选择源表后将自动匹配字段</p>
                         ) : (
-                            fieldMapping.map((row, index) => (
+                            currentFieldMapping.map((row, index) => (
                                 <div key={index} className="flex items-center gap-ds-2">
                                     <input
                                         data-testid={`sync-job-mapping-source-${index}`}
@@ -661,6 +894,14 @@ export default function SyncJobDrawer({
                                         placeholder="目标字段"
                                         className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     />
+                                    <input
+                                        data-testid={`sync-job-mapping-type-${index}`}
+                                        value={row.targetType || ''}
+                                        onChange={(e) => updateMappingField(index, 'targetType', e.target.value)}
+                                        disabled={isView}
+                                        placeholder="目标类型(可选)"
+                                        className="w-[110px] px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    />
                                     <DsIconButton
                                         tone="danger"
                                         data-testid={`sync-job-mapping-remove-${index}`}
@@ -678,7 +919,7 @@ export default function SyncJobDrawer({
                             type="button"
                             data-testid="sync-job-mapping-add"
                             onClick={addMappingRow}
-                            disabled={isView}
+                            disabled={isView || !boundMappingTable}
                             className="flex items-center gap-ds-1 text-ds-small text-ds-accent hover:text-ds-accent-hover font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             <HiOutlinePlus size={16}/>
@@ -728,12 +969,12 @@ export default function SyncJobDrawer({
                                     data-testid="sync-job-incremental-field"
                                     value={form.incrementalField}
                                     onChange={(e) => updateField('incrementalField', e.target.value)}
-                                    disabled={columnOptions.length === 0 || columnsLoading || isView}
+                                    disabled={firstTableColumns.length === 0 || columnsLoading || isView}
                                     className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <option value="">请选择</option>
-                                    {columnOptions.map((col) => {
-                                        const type = columnTypes[col];
+                                    {firstTableColumns.map((col) => {
+                                        const type = firstTableColumnTypes[col];
                                         const recommended = isIncrementalRecommended(col);
                                         return (
                                             <option key={col} value={col} disabled={!recommended}>
@@ -843,6 +1084,56 @@ export default function SyncJobDrawer({
                             )}
                         </div>
                     </div>
+                </div>
+
+                {/* Sprint 4：限流配置（可选）。读取按 MB/s（源库网络/IO），写入按 行/s（Doris 写入行数） */}
+                <div className="border-t border-ds-border-subtle pt-ds-4">
+                    <h3 className="text-ds-small font-semibold text-ds-text-secondary mb-ds-2">限流配置（可选）</h3>
+                    <label className="flex items-center gap-ds-2 text-ds-body text-ds-text-primary mb-ds-3">
+                        <input
+                            type="checkbox"
+                            data-testid="sync-job-rate-limit-enabled"
+                            checked={rateLimitEnabled}
+                            onChange={(e) => setRateLimitEnabled(e.target.checked)}
+                            disabled={isView}
+                        />
+                        启用速率限制
+                    </label>
+                    <div className="grid grid-cols-2 gap-ds-4">
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                读取速率上限（MB/s）
+                            </label>
+                            <input
+                                type="number"
+                                min={0}
+                                data-testid="sync-job-read-rate-limit"
+                                value={readRateLimitMbps}
+                                onChange={(e) => setReadRateLimitMbps(e.target.value)}
+                                disabled={!rateLimitEnabled || isView}
+                                placeholder="不填表示不限制"
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                写入速率上限（行/s）
+                            </label>
+                            <input
+                                type="number"
+                                min={0}
+                                data-testid="sync-job-write-rate-limit"
+                                value={writeRateLimitRowsPerSecond}
+                                onChange={(e) => setWriteRateLimitRowsPerSecond(e.target.value)}
+                                disabled={!rateLimitEnabled || isView}
+                                placeholder="不填表示不限制"
+                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                    </div>
+                    {errors.rateLimit && (
+                        <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.rateLimit}</p>
+                    )}
                 </div>
 
                 <div>
