@@ -34,18 +34,19 @@ public class DolphinSchedulerConfig {
     /** 业务租户编码 */
     private String tenantCode;
 
-    /** 节点回调工程服务的超时（秒） */
+    /** 节点回调 worker 服务的超时（秒） */
     private Integer callbackTimeoutSeconds = 1800;
 
     /**
      * 节点回调地址前缀（DS worker → DataNest 接收端）。
      * 决策 ADR-S3-012：回调走 gateway，不直连 engineering。
-     *   - Docker 内网：默认 {@code http://app-gateway:8080/api/engineering}
-     *   - Gateway 路由 {@code /api/engineering/**} + StripPrefix=1 → engineering
+     * Sprint 4 架构调整：节点执行从 engineering 迁移到 worker，回调地址切到 /api/worker。
+     *   - Docker 内网：默认 {@code http://app-gateway:8080/api/worker}
+     *   - Gateway 路由 {@code /api/worker/**} + StripPrefix=1 → worker
      *   - DS worker 与 gateway 在同一 datanest-net 网络中
      * 运维可按需覆盖（生产可改为 LB/内网域名）
      */
-    private String callbackBaseUrl = "http://app-gateway:8080/api/engineering";
+    private String callbackBaseUrl = "http://app-gateway:8080/api/worker";
 
     @Bean(name = "dolphinSchedulerRestTemplate")
     public RestTemplate dolphinSchedulerRestTemplate() {

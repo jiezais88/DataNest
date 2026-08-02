@@ -2,8 +2,13 @@
 
 > 本文件用于 Sprint 4 内多个 Agent 会话之间的状态同步。每次会话结束时更新状态；新会话进入时先读此文件。
 >
-> **最后更新**：2026-08-02 — 前端实现完成：全部 Sprint 4 功能已开发并通过 `tsc -b` + `vite build` 构建验证（0 lint
-> error），代码 review 后 2 项 major、10 项 minor 修复已落地。未联调、未跑测试。
+> **最后更新**：2026-08-02 — 后端架构调整：DS 节点回调从 `data-nest-engineering` 迁移到 `data-nest-worker`，
+> `MybatisPlusInterceptor`、`DagAlertExecutionListener`、`DagEdgeSnapshot`、`GenericSqlExecutor`、`DataPreviewService`
+> 等公共能力统一下沉到 `data-nest-task-core`；删除 engineering 侧多余/死代码 `RetryService`、`SqlStatementSplitter`。
+> 已重新打包部署 app-engineering/app-worker/app-job/app-governance，
+> 迁移回归测试（DAG `regression-migration` 1 SQL + 1 SYNC，执行记录 2083822336429502465）通过，节点回调正常落到 worker。
+> 前端实现完成：全部 Sprint 4 功能已开发并通过 `tsc -b` + `vite build` 构建验证（0 lint error），
+> 代码 review 后 2 项 major、10 项 minor 修复已落地。未联调、未跑测试。
 
 ## Sprint 目标
 
@@ -27,7 +32,7 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 |------|--------|----------------------------------------------------------------------------------------------------|
 | 文档 | 进行中 | PRD/技术文档已存在；按 DAG 告警配置已回写到技术文档 8.1/8.2/8.5 节。其他文档由对应负责人继续维护。 |
 | 前端 | 已完成 | Sprint 4 全部功能已开发，构建验证通过；review 修复已落地。未联调。                                 |
-| 后端 | 已完成 | Phase 1~4 实现 + review 4 项优化均已落地。                                                         |
+| 后端 | 已完成 | Phase 1~4 实现 + review 4 项优化均已落地；节点执行迁移到 worker 已部署并回归通过。                 |
 | 测试 | 未开始 | 用户明确安排后再执行，当前仅保证编译通过。                                                         |
 
 ## 关键决策
@@ -40,9 +45,15 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - **版本 diff 性能优化**（review 优化）：`DagVersionService.generateChangeSummary` 不再 `selectByDagId` 全量加载历史版本，改用已有的
   `selectMaxVersionNo` 直接取上一条快照做 diff。
 - **告警邮件内容增强**（review 优化）：节点超时邮件补充 DAG 名、DAG 执行时间、查看链接，与失败/成功告警保持一致。
-- **Python 执行位置**：与 SQL/SYNC 一致，通过 DolphinScheduler HTTP 回调到 `data-nest-engineering` 本地执行 `python3`。
-- **血缘写入位置**：`engineering-service` 直接写入 `lineage_record`，`governance-service` 只提供查询接口，避免跨服务同步调用阻塞
+- **Python 执行位置**：与 SQL/SYNC 一致，通过 DolphinScheduler HTTP 回调到 `data-nest-worker` 本地执行 `python3`。
+  `data-nest-engineering` 不再执行节点，只负责 DAG 管理、参数 CRUD、版本、告警配置等非执行类 API。
+- **节点执行收敛到 worker**：SQL/SYNC/PYTHON 三种节点回调均由 `data-nest-worker` 接收，`data-nest-worker` 直接操作业务库 写
+  `node_execution`、`node_execution_log`、`lineage_record`、`sync_job_history` 等。
+- **血缘写入位置**：节点执行侧（worker）直接写入 `lineage_record`，`governance-service` 只提供查询接口，避免跨服务同步调用阻塞
   DAG 执行。
+- **公共能力下沉到 task-core**：为支持 worker 执行节点，将 `DagParameterResolver`（参数解析/占位符替换）、
+  `SyncJobTriggerService`（同步任务触发）、`SyncNodeMutexService`（SYNC 互斥锁）、`NodeExecutionLogService`（节点日志写入） 下沉到
+  `data-nest-task-core`；worker 与 engineering 共用。
 - **版本快照**：Sprint 4 先全量保存节点/边/参数 JSON，后续 Sprint 再评估 diff 存储。
 - **文档/代码/原型一致性**（Sprint 4 收尾）：技术文档 3.1 包结构、`MailService` 位置，PRD 6.3.2/6.3.3 Python 环境说明，
   `DagController.rerunFailed` 注释已按实际实现更新；原型已移除「系统管理 → DAG 告警配置」独立入口，改为在 DAG
@@ -50,12 +61,12 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 
 ## 跨会话状态看板
 
-| 会话 | 负责人（Agent/人） | 状态   | 已完成                                    | 待办                 | 备注             |
-|------|--------------------|--------|-------------------------------------------|----------------------|------------------|
-| 文档 | -                  | 进行中 | PRD/技术文档已创建；按 DAG 告警配置已回写 | 其他模块文档继续维护 | 非阻塞           |
-| 前端 | 当前 Agent         | 已完成 | Sprint 4 全部功能 + review 修复           | 前后端联调           | 构建验证通过     |
-| 后端 | 后端 Agent         | 已完成 | Phase 1~4 实现 + review 4 项优化          | 等待用户安排测试     | -                |
-| 测试 | -                  | 未开始 | -                                         | 接口/集成/回归测试   | 用户安排后再执行 |
+| 会话 | 负责人（Agent/人） | 状态   | 已完成                                                   | 待办                   | 备注             |
+|------|--------------------|--------|----------------------------------------------------------|------------------------|------------------|
+| 文档 | -                  | 进行中 | PRD/技术文档已创建；按 DAG 告警配置已回写                | 其他模块文档继续维护   | 非阻塞           |
+| 前端 | 当前 Agent         | 已完成 | Sprint 4 全部功能 + review 修复                          | 前后端联调             | 构建验证通过     |
+| 后端 | 后端 Agent         | 已完成 | Phase 1~4 实现 + review 4 项优化；迁移部署与回归测试通过 | 等待用户安排新功能测试 | -                |
+| 测试 | -                  | 未开始 | -                                                        | 接口/集成/回归测试     | 用户安排后再执行 |
 
 ## 前端关键决策（2026-08-02，用户确认）
 
@@ -65,7 +76,7 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 
 ## 当前 Blocker
 
-- **测试待用户安排**：前后端代码均已编译/构建通过，但用户明确要求先不做测试，等待后续安排。不要自行启动测试。
+- **Sprint 4 新功能测试待用户安排**：迁移回归测试已通过；Python/血缘/告警/版本等新功能仍待用户安排测试。不要自行启动测试。
 - **前端未联调**：前端按已核实的后端契约开发（见下「前端核实口径」），仅构建验证，需安排前后端联调确认。
 
 ## 前端核实口径（与后端契约逐项比对通过）
@@ -87,9 +98,13 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 ### 后端新增文件
 
 - `data-nest-system/src/main/resources/db/migration/V3.3.10__dag_alert_config_dag_id.sql` — 按 DAG 告警配置字段
-- `data-nest-task-core/.../entity/PythonNodeConfig.java`（如存在）
-- `data-nest-task-core/.../service/PythonExecutor.java`（如存在）
+- `data-nest-task-core/.../dto/PythonNodeConfig.java`
+- `data-nest-task-core/.../service/PythonExecutor.java`
 - `data-nest-task-core/.../service/SqlLineageExtractor.java`
+- `data-nest-task-core/.../service/DagParameterResolver.java` — DAG 参数解析/占位符替换
+- `data-nest-task-core/.../service/SyncJobTriggerService.java` — 同步任务触发
+- `data-nest-task-core/.../service/SyncNodeMutexService.java` — SYNC 节点互斥锁
+- `data-nest-task-core/.../service/NodeExecutionLogService.java` — 节点执行日志
 - `data-nest-task-core/.../entity/DagVersion.java`
 - `data-nest-task-core/.../mapper/DagVersionMapper.java`
 - `data-nest-task-core/.../entity/DagParameter.java`
@@ -100,18 +115,24 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - `data-nest-task-core/.../mapper/DagAlertHistoryMapper.java`
 - `data-nest-task-core/.../entity/LineageRecord.java`
 - `data-nest-task-core/.../mapper/LineageRecordMapper.java`
-- `data-nest-engineering/.../controller/PythonCallbackController.java`（如存在）
 - `data-nest-engineering/.../controller/DagVersionController.java`
 - `data-nest-engineering/.../controller/DagAlertConfigController.java`
 - `data-nest-engineering/.../service/DagVersionService.java`
 - `data-nest-engineering/.../service/DagParameterService.java`
 - `data-nest-engineering/.../service/DagAlertService.java`
-- `data-nest-engineering/.../service/DagAlertExecutionListener.java`
+- `data-nest-task-core/.../service/DagAlertExecutionListener.java` — DAG 终态/节点失败事件监听，下沉后
+  worker/job/engineering 共用
+- `data-nest-task-core/.../service/DagEdgeSnapshot.java` — 边快照采集，下沉后 worker/engineering 共用
+- `data-nest-task-core/.../service/GenericSqlExecutor.java` — SQL 预览公共执行器
+- `data-nest-task-core/.../service/DataPreviewService.java` — 表预览公共查询
+- `data-nest-task-core/.../dto/DataPreviewResult.java` — 表预览结果 DTO
 - `data-nest-task-core/.../service/MailService.java`
 - `data-nest-engineering/.../dto/DagVersionPayload.java`
 - `data-nest-engineering/.../dto/DagAlertConfigPayload.java`
 - `data-nest-job/.../handler/DagNodeTimeoutAlertHandler.java`
-- `data-nest-governance/.../controller/LineageController.java`（如存在）
+- `data-nest-worker/.../controller/DagNodeCallbackController.java` — 接收 DS 节点回调
+- `data-nest-worker/.../service/DagNodeExecuteService.java` — 节点执行（SQL/SYNC/PYTHON）
+- `data-nest-governance/.../controller/LineageController.java`
 - `data-nest-governance/.../service/LineageService.java`
 
 ### 后端修改文件（重点）
@@ -130,6 +151,65 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - `data-nest-task-core/.../service/PythonExecutor.java` — `read_doris_table` 返回 pandas DataFrame；`runPython` 通过
   `ulimit -v` 强制虚拟内存限制
 - `data-nest-engineering/.../controller/DagController.java` — 重跑失败节点注释改为 Sprint 4 真实实现说明
+
+#### Sprint 4 架构调整（节点执行从 engineering 迁移到 worker）
+
+- `data-nest-engineering/.../config/DolphinSchedulerConfig.java` — `callbackBaseUrl` 默认值改为
+  `http://app-gateway:8080/api/worker`
+- `data-nest-engineering/.../service/DagDsConverter.java` — 回调 URL 注释更新为 `/api/worker`，DS HTTP 任务仍路由到
+  gateway
+- `data-nest-engineering/.../service/DagParameterService.java` — 参数解析/占位符替换委托 `data-nest-task-core` 的
+  `DagParameterResolver`
+- `data-nest-engineering/.../service/SyncJobService.java` — 同步任务触发委托 `data-nest-task-core` 的
+  `SyncJobTriggerService`；互斥锁改用 task-core `SyncNodeMutexService`
+- `data-nest-engineering/.../service/NodeExecutionLogQueryService.java`（由 `NodeExecutionLogService` 重命名）— 改为
+  task-core `NodeExecutionLogService` 的薄封装，仅保留 DTO 转换
+- `data-nest-engineering/.../service/SyncNodeMutexService.java` — 删除，迁移到 `data-nest-task-core`
+- `data-nest-engineering/.../controller/DagNodeCallbackController.java` — 删除，SQL/SYNC 回调由 worker 承接
+- `data-nest-engineering/.../controller/PythonCallbackController.java` — 删除，Python 回调由 worker 承接
+- `data-nest-task-core/.../dto/PythonNodeConfig.java` — 下沉到 task-core，字段与注释调整，供 engineering/worker 共用
+- `data-nest-worker/pom.xml` — 增加 fastjson2 依赖
+- `data-nest-worker/Dockerfile` — 安装 `python3`、`py3-pip`、`pandas`、`pymysql`
+- `data-nest-engineering/Dockerfile` — 移除 Python 环境安装
+- `data-nest/docker-compose.yml` — `python-sandbox` volume 从 `app-engineering` 移到 `app-worker`
+- `data-nest-gateway/src/main/resources/application.yml` — 新增 `/api/worker/**` 路由到 `data-nest-worker`
+- `data-nest-gateway/src/main/java/com/datanest/gateway/config/SaTokenConfig.java` — `/api/worker/dev/internal/**`
+  加入匿名白名单
+- `shared-configs/shared-dolphinscheduler.yaml` — `callback-base-url` 改为 `/api/worker`
+- `data-nest-task-core/.../config/MybatisPlusInterceptorAutoConfiguration.java` — 统一下沉分页 + 乐观锁拦截器；删除
+  engineering/worker/job/governance 各自的 `MybatisPlusConfig`
+- `data-nest-task-core/.../service/DagAlertExecutionListener.java` — 从 engineering 下沉到
+  task-core，worker/job/engineering 均注册该 Bean
+- `data-nest-task-core/.../service/DagEdgeSnapshot.java` — 从 engineering 下沉到 task-core；提供公共 `capture` 方法供
+  worker 执行节点时采集边快照
+- `data-nest-task-core/.../service/GenericSqlExecutor.java` / `DataPreviewService.java` / `dto/DataPreviewResult.java` —
+  从 engineering 下沉到 task-core，SQL 预览/表预览能力供多模块共用
+- `data-nest-engineering/.../service/DagExecutionService.java` — 改用 task-core `DagEdgeSnapshot` 采集边快照
+- `data-nest-engineering/.../service/SqlPreviewService.java` — `GenericSqlExecutor` 改从 task-core import
+- `data-nest-engineering/.../controller/DataPreviewController.java` — `DataPreviewService` 改从 task-core import
+- `data-nest-engineering/.../service/SyncJobService.java` — 移除 `RetryService` 注入；engineering `RetryService` 为死代码，已删除
+- `data-nest-engineering/.../util/SqlStatementSplitter.java` — 删除 engineering 侧与 task-core 重复的多余实现
+- `data-nest-worker/.../service/DagNodeExecuteService.java` — 删除内联 `captureEdgeSnapshot`，改用 task-core
+  `DagEdgeSnapshot.capture`
+
+> 部署注意：
+> 1. 已保存/上线的 DAG 需要重新保存并上线，DS 任务回调地址才会切到 `/api/worker`；否则 DS 仍会回调旧 engineering 路径。
+> 2. 修改 `shared-configs/shared-dolphinscheduler.yaml` 后需重新执行 Nacos 初始化（
+     `docker compose --profile init up middleware-nacos-init`）并重启 `app-engineering`，否则 engineering 仍使用 Nacos 中旧的
+     `callback-base-url`。
+> 3. `app-engineering` 镜像已移除 Python 环境；Python 节点测试执行由 `data-nest-worker` 承担。
+
+#### 回归测试中发现并修复的问题
+
+- `data-nest-gateway/.../config/SaTokenConfig.java` — `/api/worker/dev/internal/**` 加入匿名白名单，避免 DS 回调被
+  Gateway 鉴权拦截
+- `data-nest-task-core/.../config/MybatisPlusInterceptorAutoConfiguration.java` — 统一提供分页 + 乐观锁拦截器，删除
+  engineering/worker/job/governance 各自的 `MybatisPlusConfig`，避免部分模块缺插件
+- `data-nest-task-core/.../service/SyncNodeMutexService.java` — 移除 `tryLock` 中基于“无 RUNNING
+  记录”的残留锁清理逻辑，避免与正在启动但尚未写入 RUNNING 记录的线程产生竞态，导致同一 `syncJobId` 并发执行
+- `data-nest-engineering/.../service/NodeExecutionLogService.java` → 重命名为 `NodeExecutionLogQueryService.java`，解决与
+  task-core `NodeExecutionLogService` 的 Bean 名冲突导致 engineering 启动失败
+- `data-nest-engineering/.../controller/DagExecutionController.java` — 注入改为 `NodeExecutionLogQueryService`
 
 ### 前端新增文件（2026-08-02）
 
@@ -182,12 +262,19 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
   npx tsc -b && npx vite build
   ```
 - 结果： **成功**；eslint 0 error（dag-executions 有 1 个 Sprint 4 之前就存在的 useMemo 依赖 warning，未动）。
-- 未执行单元测试、接口测试与集成测试。
+- 后端迁移回归测试（2026-08-02，重新部署后）：
+    - 触发 DAG `regression-migration`（1 SQL + 1 SYNC）→ SQL 节点与 SYNC 节点均回调到 `data-nest-worker`，执行记录 ID
+      `2083822336429502465` 最终 status SUCCESS，两个节点均 SUCCESS。
+    - DS `t_ds_task_definition` 中回调 URL 已切到 `http://app-gateway:8080/api/worker/dev/internal/...`。
+    - 全量编译 `mvn -q -DskipTests compile` 通过；
+      `mvn -q -pl data-nest-engineering,data-nest-worker,data-nest-job,data-nest-governance -am package -DskipTests`
+      通过；app-engineering/app-worker/app-job/app-governance/app-gateway 镜像已重建并启动健康。
+- 未执行 Sprint 4 新功能（Python/血缘/告警/版本等）的端到端测试。
 
 ## Next Action
 
-1. 等待用户安排测试计划与前后端联调。
-2. 测试阶段建议优先覆盖：
+1. 本次迁移回归测试已完成；Sprint 4 新功能（Python/血缘/告警/版本等）仍待用户安排联调/测试。
+2. 后续测试阶段建议优先覆盖：
     - DAG 版本保存/对比/回滚（验证 diff 性能优化后逻辑正确）。
     - 按 DAG 告警配置：专用配置覆盖全局、未配置时回退全局、超时阈值按 DAG 生效。
     - 告警邮件内容：失败/超时/成功邮件均包含 DAG 名、时间、查看链接。

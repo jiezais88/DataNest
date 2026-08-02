@@ -18,6 +18,10 @@ public class ComplianceCheckRequest {
 
     private Long tableId;
 
+    private Boolean checkNaming;
+
+    private Boolean checkFieldType;
+
     private LocalDateTime startTime;
 
     private LocalDateTime endTime;

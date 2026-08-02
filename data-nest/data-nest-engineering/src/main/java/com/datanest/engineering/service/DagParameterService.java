@@ -6,20 +6,14 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.engineering.dto.DagParameterPayload;
 import com.datanest.task.core.entity.DagParameter;
 import com.datanest.task.core.mapper.DagParameterMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.datanest.task.core.service.DagParameterResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * DAG 参数服务：CRUD、参数解析、占位符替换
@@ -27,16 +21,13 @@ import java.util.regex.Pattern;
 @Service
 public class DagParameterService {
 
-    private static final Logger logger = LoggerFactory.getLogger(DagParameterService.class);
-
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)\\}");
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
     private final DagParameterMapper dagParameterMapper;
+    private final DagParameterResolver dagParameterResolver;
 
-    public DagParameterService(DagParameterMapper dagParameterMapper) {
+    public DagParameterService(DagParameterMapper dagParameterMapper,
+                               DagParameterResolver dagParameterResolver) {
         this.dagParameterMapper = dagParameterMapper;
+        this.dagParameterResolver = dagParameterResolver;
     }
 
     public List<DagParameterPayload> listByDagId(Long dagId) {
@@ -106,35 +97,7 @@ public class DagParameterService {
      * @return 合并后的参数 Map
      */
     public Map<String, Object> resolveParams(Long dagId, Map<String, Object> manualOverrides) {
-        Map<String, Object> resolved = new LinkedHashMap<>();
-
-        // 系统变量：biz_date 默认昨天（业务日期）
-        LocalDateTime now = LocalDateTime.now();
-        resolved.put("biz_date", now.minusDays(1).format(DATE_FMT));
-        resolved.put("current_time", now.format(TIME_FMT));
-        if (dagId != null) {
-            resolved.put("dag_id", dagId.toString());
-        }
-
-        // 默认值
-        List<DagParameter> params = dagParameterMapper.selectByDagId(dagId);
-        for (DagParameter param : params) {
-            String name = param.getParamName();
-            if (!resolved.containsKey(name) && StringUtils.hasText(param.getDefaultValue())) {
-                resolved.put(name, param.getDefaultValue());
-            }
-        }
-
-        // 手动覆盖
-        if (manualOverrides != null) {
-            for (Map.Entry<String, Object> entry : manualOverrides.entrySet()) {
-                if (entry.getKey() != null) {
-                    resolved.put(entry.getKey(), entry.getValue());
-                }
-            }
-        }
-
-        return resolved;
+        return dagParameterResolver.resolveParams(dagId, manualOverrides);
     }
 
     /**
@@ -143,46 +106,14 @@ public class DagParameterService {
      * 未定义的占位符保留原样并记录 warn。
      */
     public String replacePlaceholders(String raw, Map<String, Object> params) {
-        if (!StringUtils.hasText(raw)) {
-            return raw;
-        }
-        Matcher m = PLACEHOLDER_PATTERN.matcher(raw);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            String key = m.group(1);
-            Object value = params == null ? null : params.get(key);
-            if (value == null) {
-                logger.warn("DAG 参数未定义，保留占位符: key={}", key);
-                m.appendReplacement(sb, Matcher.quoteReplacement(m.group(0)));
-            } else {
-                String replacement = escapeSqlString(value.toString());
-                m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
-            }
-        }
-        m.appendTail(sb);
-        return sb.toString();
+        return dagParameterResolver.replacePlaceholders(raw, params);
     }
 
     /**
      * 批量替换 Map 中所有字符串值里的占位符。
      */
     public Map<String, Object> replacePlaceholders(Map<String, Object> rawMap, Map<String, Object> params) {
-        if (rawMap == null) return new HashMap<>();
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : rawMap.entrySet()) {
-            Object value = entry.getValue();
-            if (value instanceof String s) {
-                result.put(entry.getKey(), replacePlaceholders(s, params));
-            } else {
-                result.put(entry.getKey(), value);
-            }
-        }
-        return result;
-    }
-
-    private String escapeSqlString(String value) {
-        if (value == null) return "";
-        return value.replace("'", "''");
+        return dagParameterResolver.replacePlaceholders(rawMap, params);
     }
 
     private void validateParam(DagParameterPayload payload) {

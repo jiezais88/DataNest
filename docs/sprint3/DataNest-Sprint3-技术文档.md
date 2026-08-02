@@ -14,7 +14,7 @@
 4. [Docker Compose 变更](#4-docker-compose-变更)
 5. [架构关系图](#5-架构关系图)
 6. [task-core：DAG 领域模型与执行映射](#6-task-coredag-领域模型与执行映射)
-7. [engineering-service：数据开发模块](#7-engineering-service数据开发模块)
+7. [engineering-service：项目管理模块](#7-engineering-service项目管理模块)
 8. [DolphinScheduler 集成](#8-dolphinscheduler-集成)
 9. [数据库设计](#9-数据库设计)
 10. [API 接口设计](#10-api-接口设计)
@@ -54,22 +54,25 @@ Sprint 2 完成了批量数据同步，但同步任务之间、同步与 SQL 加
 | 6 | **执行历史与节点状态**          | engineering-service + DS API         | 查询 DS 流程实例状态；新增全局执行历史页面（按时间/状态/触发方式过滤） |
 | 7 | **多表批量同步**                | task-core                            | SyncJob 源表从单表扩展为多表                                           |
 | 8 | **同步速率限流**                | task-core + Addax                    | 读取 MB/s、写入 行/s 限流                                              |
-| 9 | **前端数据开发模块**            | data-nest-frontend                   | ReactFlow 画布 + Monaco SQL 编辑器                                     |
+| 9 | **前端项目管理模块**            | data-nest-frontend                   | ReactFlow 画布 + Monaco SQL 编辑器 + Python 节点                       |
 
 > **XXL-JOB 保留说明**：Sprint 1-2 的同步任务、采集任务独立调度仍由 XXL-JOB 负责；Sprint 3 的 DAG 编排由 DolphinScheduler
 > 负责，DAG 中的同步任务节点通过 HTTP 回调触发 XXL-JOB 任务。
 
 ### 1.3 不在本 Sprint
 
-| 暂缓项               | 后续 Sprint | 理由                      |
-|----------------------|:-----------:|---------------------------|
-| Python 任务节点      |  Sprint 4   | 需要沙箱执行环境          |
-| 任务参数化           |  Sprint 4   | 参数传递与替换机制        |
-| 条件分支 / 子 DAG    |  Sprint 5   | 控制流节点                |
-| DAG 实时日志流       |  Sprint 5   | 需要 WebSocket / 日志采集 |
-| DAG 失败告警         |  Sprint 5   | 告警通道配置              |
-| SQL 血缘自动解析     |  Sprint 5   | 需要 SQL Parser + Neo4j   |
-| 任务资源队列与优先级 |  Sprint 5   | 调度增强                  |
+| 暂缓项               | 后续 Sprint | 理由                      | 实际状态                               |
+|----------------------|:-----------:|---------------------------|----------------------------------------|
+| Python 任务节点      |  Sprint 4   | 需要沙箱执行环境          | **已提前实现**：Sprint 3 已落地        |
+| 任务参数化           |  Sprint 4   | 参数传递与替换机制        | **已提前实现**：Sprint 3 已落地        |
+| 条件分支 / 子 DAG    |  Sprint 5   | 控制流节点                | 仍按 Sprint 5 规划                     |
+| DAG 实时日志流       |  Sprint 5   | 需要 WebSocket / 日志采集 | **已提前实现**：运行视图已支持日志轮询 |
+| DAG 失败告警         |  Sprint 5   | 告警通道配置              | **已提前实现**：Sprint 3 已落地        |
+| SQL 血缘自动解析     |  Sprint 5   | 需要 SQL Parser + Neo4j   | **已提前实现**：Sprint 3 已落地        |
+| DAG 版本管理         |  Sprint 5   | 版本与回滚                | **已提前实现**：Sprint 3 已落地        |
+| 任务资源队列与优先级 |  Sprint 5   | 调度增强                  | 仍按 Sprint 5 规划                     |
+
+> 说明：根据当前代码实现，Python 节点、参数化、版本、告警、SQL 血缘等能力已在 Sprint 3 提前落地，文档按代码实际更新。
 
 ### 1.4 技术栈
 
@@ -87,16 +90,16 @@ Sprint 2 完成了批量数据同步，但同步任务之间、同步与 SQL 加
 
 ## 2. 交付物清单
 
-| #  | 交付物                                                                       | 类型 | 验收方式                       |
-|----|------------------------------------------------------------------------------|------|--------------------------------|
-| D1 | `data-nest-task-core` 新增 DAG 实体与 SQL 执行服务                           | 代码 | 编译通过                       |
-| D2 | `data-nest-engineering` 新增 `dev` 包（Project / DAG / SQL API）             | 代码 | API 可用                       |
-| D3 | DolphinScheduler 集成客户端（Java/HTTP）                                     | 代码 | 可创建/更新/触发/查询 DS 流程  |
-| D4 | Flyway 迁移脚本 `V3.2.0__dag_tables.sql` + `V3.2.1__sync_job_multitable.sql` | 代码 | 启动自动建表                   |
-| D5 | `docker-compose.yml` 新增 DolphinScheduler 服务                              | 配置 | `docker compose up -d` DS 健康 |
-| D6 | `shared-configs` 新增 `shared-dolphinscheduler.yaml`                         | 配置 | Nacos 可见                     |
-| D7 | 前端新增 `dev` 模块（ReactFlow + Monaco）                                    | 代码 | 页面可用                       |
-| D8 | Gateway 路由新增 `/api/dev/**`（或复用 `/api/engineering/dev/**`）           | 配置 | 路由正确                       |
+| #  | 交付物                                                                                                                                | 类型 | 验收方式                       |
+|----|---------------------------------------------------------------------------------------------------------------------------------------|------|--------------------------------|
+| D1 | `data-nest-task-core` 新增 DAG 实体与 SQL 执行服务                                                                                    | 代码 | 编译通过                       |
+| D2 | `data-nest-engineering` 新增 `dev` 包（Project / DAG / SQL API）                                                                      | 代码 | API 可用                       |
+| D3 | DolphinScheduler 集成客户端（Java/HTTP）                                                                                              | 代码 | 可创建/更新/触发/查询 DS 流程  |
+| D4 | Flyway 迁移脚本 `V3.2.0__dag_tables.sql` + `V3.2.1__sync_job_multitable.sql`                                                          | 代码 | 启动自动建表                   |
+| D5 | `docker-compose.yml` 新增 DolphinScheduler 服务                                                                                       | 配置 | `docker compose up -d` DS 健康 |
+| D6 | `shared-configs` 新增 `shared-dolphinscheduler.yaml`                                                                                  | 配置 | Nacos 可见                     |
+| D7 | 前端新增 `dev` 模块（ReactFlow + Monaco）                                                                                             | 代码 | 页面可用                       |
+| D8 | Gateway 复用 `/api/engineering/**` 路由；Controller 映射为 `/dev/dag-projects`、`/dev/dags`、`/dev/sql-preview`、`/dag-executions` 等 | 配置 | 路由正确                       |
 
 ---
 
@@ -119,9 +122,9 @@ data-nest/
 │       │   └── dto/
 │       └── sync/                     # Sprint 2 已有，扩展多表/限流
 │
-├── data-nest-engineering/            # 🆕 数据开发 API + DS 集成
+├── data-nest-engineering/            # 🆕 项目管理 API + DS 集成
 │   └── src/main/java/com/datanest/engineering/
-│       ├── dev/                      # 🆕 数据开发模块
+│       ├── dev/                      # 🆕 项目管理模块（Controller 映射 /dev/...）
 │       │   ├── controller/
 │       │   │   ├── ProjectController.java
 │       │   │   ├── DagController.java
@@ -140,11 +143,12 @@ data-nest/
 ├── data-nest-worker/                 # 同步/采集任务执行器（不变）
 │   └── WorkerJobHandler.java
 │
-└── data-nest-frontend/               # 🆕 数据开发页面
-    └── src/pages/dev/
+└── data-nest-frontend/               # 🆕 项目管理页面（路由 /engineering/dags/*、/engineering/dag-executions）
+    └── src/pages/engineering/dags/
         ├── projects/
         ├── dags/
-        └── canvas/
+        ├── canvas/
+        └── dag-executions/
 ```
 
 ### 3.2 设计原则
@@ -282,12 +286,16 @@ system → engineering → governance → worker → job → gateway → fronten
 
 ### 4.4 Gateway 路由
 
-Sprint 3 数据开发 API 统一挂在 `engineering-service` 下，前端通过 `/api/engineering/dev/**` 访问。
+Sprint 3 项目管理 API 统一挂在 `engineering-service` 下。Gateway 已有 `/api/engineering/** → data-nest-engineering` 路由，
+**无需新增路由**；前端通过以下路径访问：
 
-```yaml
-# gateway application.yml 无需新增路由
-# /api/engineering/** → data-nest-engineering（已存在）
-```
+- `/api/engineering/dev/dag-projects/**` → `engineering-service` `/engineering/dev/dag-projects/**`
+- `/api/engineering/dev/dags/**` → `engineering-service` `/engineering/dev/dags/**`
+- `/api/engineering/dev/sql-preview` → `engineering-service` `/engineering/dev/sql-preview`
+- `/api/engineering/dag-executions` → `engineering-service` `/engineering/dag-executions`
+
+> Controller 映射前缀为 `/dev/...`（项目、DAG、SQL 编辑器）与 `/dag-executions`（全局执行历史）；`engineering-service` 的
+> context-path `/engineering` 由 Spring Boot 自动拼接。
 
 ---
 
@@ -301,6 +309,7 @@ Sprint 3 数据开发 API 统一挂在 `engineering-service` 下，前端通过 
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────────────────┐│
 │  │ 项目列表      │  │ DAG 列表      │  │ ReactFlow 画布                       ││
 │  └──────────────┘  └──────────────┘  │ • SQL 任务节点                        ││
+│                                       │ • Python 任务节点                     ││
 │                                       │ • 同步任务节点                        ││
 │                                       │ • 依赖连线                            ││
 │                                       └─────────────────────────────────────┘│
@@ -333,15 +342,17 @@ Sprint 3 数据开发 API 统一挂在 `engineering-service` 下，前端通过 
 └─────────┼────────────────┼────────────────┼──────────────────────────────────┘
           │                │                │
           │                │                ▼
-          │                │   ┌─────────────────────────────┐
-          │                │   │  SQL Task → POST /engineering/dev/sql/execute  │
-          │                │   │  Sync Task → POST /engineering/dev/sync/trigger│
-          │                │   └─────────────────────────────┘
+          │                │   ┌─────────────────────────────────────────────┐
+          │                │   │  SQL Task → POST /engineering/dev/internal/sql/callback    │
+          │                │   │  Sync Task → POST /engineering/dev/internal/sync/callback  │
+          │                │   │  Python Task → POST /engineering/dev/internal/python/callback│
+          │                │   └─────────────────────────────────────────────┘
           │                │                │
           │                │                ▼
           │                │   ┌─────────────────────────────┐
           │                └──▶│  data-nest-engineering       │
           │                    │  • DorisSqlExecutor          │
+          │                    │  • PythonExecutor             │
           │                    │  • SyncJob trigger & poll    │
           │                    │  • Metadata registration     │
           │                    └─────────────────────────────┘
@@ -351,12 +362,14 @@ Sprint 3 数据开发 API 统一挂在 `engineering-service` 下，前端通过 
 
 ### 5.2 节点执行模型
 
-| DataNest 节点类型 | DS 任务类型 | DS 任务内容                                   | 回调接口                     |
-|-------------------|-------------|-----------------------------------------------|------------------------------|
-| SQL 任务          | HTTP 任务   | POST `/engineering/dev/internal/sql/execute`  | engineering-service 内部接口 |
-| 同步任务          | HTTP 任务   | POST `/engineering/dev/internal/sync/trigger` | 触发同步任务并轮询完成       |
+| DataNest 节点类型 | DS 任务类型 | DS 任务内容                                      | 回调接口                                                                                |
+|-------------------|-------------|--------------------------------------------------|-----------------------------------------------------------------------------------------|
+| SQL 任务          | HTTP 任务   | POST `/engineering/dev/internal/sql/callback`    | engineering-service 内部接口，执行 SQL 并注册元数据                                     |
+| Python 任务       | HTTP 任务   | POST `/engineering/dev/internal/python/callback` | engineering-service 内部接口，执行 Python 脚本                                          |
+| 同步任务          | HTTP 任务   | POST `/engineering/dev/internal/sync/callback`   | engineering-service 内部接口，触发同步任务；状态由 `DagExecutionSyncService` 反查历史表 |
 
-> DS 任务以 HTTP 回调方式调用 engineering-service，engineering-service 负责任务实际执行、超时控制、错误处理和元数据注册。
+> DS 任务以 HTTP 回调方式调用 engineering-service，engineering-service 负责任务实际执行、超时控制、错误处理和元数据注册。SYNC
+> 节点不再提供单独的轮询接口，状态由 `DagExecutionSyncService` 通过查询同步历史表获得。
 
 ---
 
@@ -407,18 +420,17 @@ public class Dag {
 
 // DagNode.java
 @Data
-@TableName(value = "dag_node", autoResultMap = true)
+@TableName(value = "dag_node")
 public class DagNode {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
     private Long dagId;
     private String nodeId;               // DAG 内唯一（前端生成 UUID）
-    private String nodeName;
-    private String nodeType;             // SQL / SYNC
+    private String nodeName;             // DAG 内唯一，数据库 VARCHAR(100)
+    private String nodeType;             // SQL / PYTHON / SYNC
     private Double positionX;
     private Double positionY;
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private NodeConfig config;           // SQL 内容 / 同步任务 ID
+    private String config;               // JSON 字符串，业务层用 fastjson2 / ObjectMapper 解析
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;
@@ -637,7 +649,7 @@ public class MetadataRegistrationService {
 
 ---
 
-## 7. engineering-service：数据开发模块
+## 7. engineering-service：项目管理模块
 
 ### 7.1 包结构
 
@@ -647,13 +659,21 @@ data-nest-engineering/src/main/java/com/datanest/engineering/
     ├── controller/
     │   ├── ProjectController.java
     │   ├── DagController.java
-    │   └── SqlEditorController.java
+    │   ├── DagExecutionController.java
+    │   ├── SqlEditorController.java
+    │   └── internal/
+    │       ├── SqlExecutionCallbackController.java
+    │       ├── PythonExecutionCallbackController.java
+    │       └── SyncExecutionCallbackController.java
     ├── service/
     │   ├── ProjectService.java
     │   ├── DagService.java
     │   ├── DagDsSyncService.java
     │   ├── DagExecutionService.java
-    │   └── SqlEditorService.java
+    │   ├── SqlEditorService.java
+    │   ├── PythonExecutorService.java
+    │   ├── DagExecutionSyncService.java
+    │   └── DagSyncRefService.java
     ├── client/
     │   └── DolphinSchedulerClient.java
     ├── dto/
@@ -666,43 +686,54 @@ data-nest-engineering/src/main/java/com/datanest/engineering/
     │   ├── DagNodeDTO.java
     │   ├── DagEdgeDTO.java
     │   ├── SqlExecuteRequest.java
-    │   └── SqlExecuteResultDTO.java
+    │   ├── SqlExecuteResultDTO.java
+    │   └── PythonExecuteRequest.java
     └── converter/
         └── DagDsConverter.java
 ```
 
 ### 7.2 权限矩阵
 
-| 接口                                              | SUPER_ADMIN | DATA_ENGINEER | GOVERNANCE_ADMIN | DATA_ANALYST |
-|---------------------------------------------------|:-----------:|:-------------:|:----------------:|:------------:|
-| `GET /engineering/dev/projects/**`                |     ✅      |      ✅       |        ✅        |      ✅      |
-| `POST/PUT/DELETE /engineering/dev/projects/**`    |     ✅      |      ✅       |        ❌        |      ❌      |
-| `GET /engineering/dev/dags/**`                    |     ✅      |      ✅       |        ✅        |      ✅      |
-| `POST/PUT/DELETE /engineering/dev/dags/**`        |     ✅      |      ✅       |        ❌        |      ❌      |
-| `POST /engineering/dev/dags/{id}/execute`         |     ✅      |      ✅       |        ❌        |      ❌      |
-| `POST /engineering/dev/dags/{id}/terminate`       |     ✅      |      ✅       |        ❌        |      ❌      |
-| `POST /engineering/dev/dags/{id}/executions/page` |     ✅      |      ✅       |        ✅        |      ✅      |
-| `POST /engineering/dev/executions/page`           |     ✅      |      ✅       |        ✅        |      ✅      |
-| `GET /engineering/dev/executions/{id}/nodes`      |     ✅      |      ✅       |        ✅        |      ✅      |
-| `POST /engineering/dev/sql/execute`               |     ✅      |      ✅       |        ❌        |      ❌      |
-| `POST /engineering/dev/sql/test`                  |     ✅      |      ✅       |        ❌        |      ❌      |
+| 接口                                                        | SUPER_ADMIN | DATA_ENGINEER | GOVERNANCE_ADMIN | DATA_ANALYST |
+|-------------------------------------------------------------|:-----------:|:-------------:|:----------------:|:------------:|
+| `GET /dev/dag-projects/**`                                  |     ✅      |      ✅       |        ✅        |      ✅      |
+| `POST/PUT/DELETE /dev/dag-projects/**`                      |     ✅      |      ✅       |        ❌        |      ❌      |
+| `GET /dev/dags/**`                                          |     ✅      |      ✅       |        ✅        |      ✅      |
+| `POST/PUT/DELETE /dev/dags/**`                              |     ✅      |      ✅       |        ❌        |      ❌      |
+| `POST /dev/dags/{id}/trigger`                               |     ✅      |      ✅       |        ❌        |      ❌      |
+| `POST /dev/dags/{id}/executions/{executionId}/stop`         |     ✅      |      ✅       |        ❌        |      ❌      |
+| `POST /dev/dags/{id}/executions/{executionId}/rerun-failed` |     ✅      |      ✅       |        ❌        |      ❌      |
+| `POST /dev/dags/{id}/executions/page`                       |     ✅      |      ✅       |        ✅        |      ✅      |
+| `GET /dag-executions`                                       |     ✅      |      ✅       |        ✅        |      ✅      |
+| `GET /dag-executions/{id}/nodes`                            |     ✅      |      ✅       |        ✅        |      ✅      |
+| `POST /dev/sql-preview`                                     |     ✅      |      ✅       |        ❌        |      ❌      |
 
-> 所有接口通过 `@SaCheckRole` 控制，治理员和分析师仅只读。
+> 所有接口通过 `@SaCheckRole` 控制，治理员和分析师仅只读。表中路径为 Controller 映射路径；经 Gateway 后前端访问路径需加
+> `/api/engineering` 前缀。
 
 ### 7.3 ProjectController
 
 ```java
 
 @RestController
-@RequestMapping("/engineering/dev/projects")
+@RequestMapping("/dev/dag-projects")
 public class ProjectController {
 
     private final ProjectService projectService;
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
-    @PostMapping("/page")
-    public Result<PageResult<ProjectDTO>> page(@RequestBody ProjectQueryRequest request) {
-        return Result.ok(projectService.page(request));
+    @GetMapping
+    public Result<PageResult<ProjectDTO>> list(
+            @RequestParam(required = false) String name,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long pageSize) {
+        return Result.ok(projectService.page(name, page, pageSize));
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @GetMapping("/{id}")
+    public Result<ProjectDTO> get(@PathVariable Long id) {
+        return Result.ok(projectService.getById(id));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
@@ -732,28 +763,36 @@ public class ProjectController {
 ```java
 
 @RestController
-@RequestMapping("/engineering/dev/dags")
+@RequestMapping("/dev/dags")
 public class DagController {
 
     private final DagService dagService;
+    private final DagExecutionService dagExecutionService;
+    private final PythonExecutor pythonExecutor;
+    private final DagParameterService dagParameterService;
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
-    @PostMapping("/page")
-    public Result<PageResult<DagDTO>> page(@RequestBody DagQueryRequest request) {
-        return Result.ok(dagService.page(request));
+    @GetMapping
+    public Result<List<DagPayload>> list(@RequestParam(required = false) Long projectId) {
+        return Result.ok(dagService.list(projectId));
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @GetMapping("/{id}")
+    public Result<DagPayload> get(@PathVariable Long id) {
+        return Result.ok(dagService.getDetail(id));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping
-    public Result<DagDTO> create(@Valid @RequestBody DagCreateRequest request) {
-        return Result.ok(dagService.create(request));
+    public Result<DagPayload> create(@RequestBody DagPayload payload) {
+        return Result.ok(dagService.create(payload));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PutMapping("/{id}")
-    public Result<DagDTO> update(@PathVariable Long id,
-                                 @Valid @RequestBody DagUpdateRequest request) {
-        return Result.ok(dagService.update(id, request));
+    public Result<DagPayload> update(@PathVariable Long id, @RequestBody DagPayload payload) {
+        return Result.ok(dagService.update(id, payload));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
@@ -764,28 +803,69 @@ public class DagController {
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
-    @PostMapping("/{id}/execute")
-    public Result<DagExecutionDTO> execute(@PathVariable Long id) {
-        return Result.ok(dagService.execute(id));
+    @PostMapping("/{id}/trigger")
+    public Result<DagExecutionDTO> trigger(@PathVariable Long id,
+                                           @RequestBody(required = false) Map<String, Object> params) {
+        return Result.ok(dagExecutionService.trigger(id, params));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
-    @PostMapping("/{id}/terminate")
-    public Result<Void> terminate(@PathVariable Long id) {
-        dagService.terminate(id);
+    @PostMapping("/{id}/schedule/start")
+    public Result<Void> startSchedule(@PathVariable Long id) {
+        dagService.startSchedule(id);
+        return Result.ok((Void) null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/schedule/stop")
+    public Result<Void> stopSchedule(@PathVariable Long id) {
+        dagService.stopSchedule(id);
+        return Result.ok((Void) null);
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/executions/{executionId}/stop")
+    public Result<Void> stop(@PathVariable Long id,
+                             @PathVariable Long executionId) {
+        dagExecutionService.stop(id, executionId);
         return Result.ok(null);
     }
 
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/executions/{executionId}/rerun-failed")
+    public Result<DagExecutionDTO> rerunFailed(@PathVariable Long id,
+                                               @PathVariable Long executionId) {
+        return Result.ok(dagExecutionService.rerunFailed(id, executionId));
+    }
+
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
-    @PostMapping("/{id}/executions/page")
-    public Result<PageResult<DagExecutionDTO>> executions(@PathVariable Long id,
-                                                          @RequestBody DagExecutionQueryParams request) {
-        return Result.ok(dagService.executionPage(id, request));
+    @GetMapping("/{id}/executions")
+    public Result<List<DagExecutionDTO>> executions(@PathVariable Long id) {
+        return Result.ok(dagExecutionService.listByDag(id));
+    }
+
+    /**
+     * PYTHON 节点脚本测试：执行脚本并返回结果，不注册元数据、不写 node_execution。
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/{id}/nodes/{nodeId}/python/test")
+    public Result<PythonExecuteResult> testPythonNode(@PathVariable Long id,
+                                                      @PathVariable String nodeId,
+                                                      @RequestBody PythonTestRequest request) { ... }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @GetMapping("/node-executions/{nodeExecutionId}/logs")
+    public Result<List<SyncJobLogDTO>> nodeExecutionLogs(@PathVariable Long nodeExecutionId) {
+        return Result.ok(dagExecutionService.getNodeExecutionLogs(nodeExecutionId));
     }
 }
 ```
 
 ### 7.5 DagService 核心逻辑
+
+> **与代码对齐**：实际实现中统一使用 `DagPayload` 作为创建/更新/详情的请求与响应对象；`syncToDs(...)` 是 `DagService`
+> 内的私有方法，由 `DagDsConverter` 生成 DS JSON；触发/停止/重跑等执行语义下沉到 `DagExecutionService`；启用/停用调度由
+> `startSchedule` / `stopSchedule` 单独暴露。
 
 ```java
 
@@ -795,67 +875,79 @@ public class DagService {
     private final DagMapper dagMapper;
     private final DagNodeMapper dagNodeMapper;
     private final DagEdgeMapper dagEdgeMapper;
-    private final DagTopologyService dagTopologyService;
-    private final DagDsSyncService dagDsSyncService;
-    private final DagExecutionService dagExecutionService;
+    private final DagExecutionMapper dagExecutionMapper;
+    private final NodeExecutionMapper nodeExecutionMapper;
+    private final DagTopologyService topologyService;
+    private final DolphinSchedulerClient dolphinSchedulerClient;
+    private final DagDsConverter dagDsConverter;
+    private final DagProjectService dagProjectService;
+    private final DagVersionService dagVersionService;
+    private final SysUserService sysUserService;
 
     @Transactional
-    public DagDTO create(DagCreateRequest request) {
-        // 1. 保存 DAG 基本定义
-        Dag dag = convert(request);
+    public DagPayload create(DagPayload payload) {
+        validateRequest(payload);
+        // 名称在项目内唯一
+        if (dagMapper.countByProjectIdAndName(payload.getProjectId(), payload.getName()) > 0) {
+            throw new BusinessException(ErrorCode.DAG_NAME_EXISTS);
+        }
+        // 拓扑校验
+        List<DagNode> nodes = toNodeEntities(payload.getNodes(), null);
+        List<DagEdge> edges = toEdgeEntities(payload.getEdges(), null);
+        topologyService.validateAndSort(nodes, edges);
+
+        // 入库
+        Dag dag = new Dag();
+        copyFromPayload(dag, payload);
+        dag.setStatus(payload.getStatus() == null ? "ENABLED" : payload.getStatus());
+        dag.setMaxParallelism(payload.getMaxParallelism() == null ? 3 : payload.getMaxParallelism());
+        dag.setScheduleEnabled(Boolean.TRUE.equals(payload.getScheduleEnabled()) ? 1 : 0);
+        dag.setReleaseState("OFFLINE");
         dagMapper.insert(dag);
-        saveNodesAndEdges(dag.getId(), request.getNodes(), request.getEdges());
 
-        // 2. 拓扑校验
-        List<DagNode> nodes = dagNodeMapper.selectByDagId(dag.getId());
-        List<DagEdge> edges = dagEdgeMapper.selectByDagId(dag.getId());
-        dagTopologyService.validateAndSort(dag, nodes, edges);
+        // 保存节点 + 边，生成 DS task code
+        Map<String, Long> codeMap = saveNodesAndEdges(dag.getId(), payload, Map.of());
 
-        // 3. 同步到 DolphinScheduler
-        dagDsSyncService.syncToDs(dag, nodes, edges);
+        // 事务提交后异步同步到 DS
+        Long dagId = dag.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try { syncToDs(dagId, payload, codeMap); }
+                catch (Exception e) { logger.error(...); }
+            }
+        });
 
-        return toDTO(dag);
+        return getDetail(dag.getId());
     }
 
     @Transactional
-    public DagDTO update(Long id, DagUpdateRequest request) {
-        Dag dag = dagMapper.selectById(id);
-        if (dag == null) throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
-
-        applyUpdate(dag, request);
-        dagMapper.updateById(dag);
-
-        // 全量替换节点和边
-        dagNodeMapper.deleteByDagId(id);
-        dagEdgeMapper.deleteByDagId(id);
-        saveNodesAndEdges(id, request.getNodes(), request.getEdges());
-
-        List<DagNode> nodes = dagNodeMapper.selectByDagId(id);
-        List<DagEdge> edges = dagEdgeMapper.selectByDagId(id);
-        dagTopologyService.validateAndSort(dag, nodes, edges);
-
-        // 同步到 DS（更新 ProcessDefinition）
-        dagDsSyncService.syncToDs(dag, nodes, edges);
-
-        return toDTO(dag);
+    public DagPayload update(Long id, DagPayload payload) {
+        validateRequest(payload);
+        Dag existing = dagMapper.selectById(id);
+        if (existing == null) throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
+        // 拓扑校验、全量替换 nodes/edges、生成版本快照...
+        // 事务提交后：先下线旧 DS 定义，再全量同步新定义
+        return getDetail(id);
     }
 
-    public DagExecutionDTO execute(Long dagId) {
-        Dag dag = dagMapper.selectById(dagId);
-        if (dag == null) throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
-        if (!"ENABLED".equals(dag.getStatus())) {
-            throw new BusinessException(ErrorCode.DAG_DISABLED, "DAG 已停用，无法执行");
-        }
-        return dagExecutionService.startManual(dag);
+    @Transactional
+    public void delete(Long id) {
+        // 级联删除 execution / node_execution / nodes / edges / dag
+        // 事务提交后异步清理 DS schedule 与 workflow
     }
 
-    public void terminate(Long dagId) {
-        DagExecution execution = dagExecutionService.getLatestRunning(dagId);
-        if (execution == null) {
-            throw new BusinessException(ErrorCode.NO_RUNNING_EXECUTION);
-        }
-        dagExecutionService.terminate(execution);
+    public DagPayload getDetail(Long id) { ... }
+
+    public List<DagPayload> list(Long projectId) {
+        // 一次性返回项目下全部 DAG（前端做假分页）
+        // 附带 nodeSummary 与 latestExecution
     }
+
+    public void startSchedule(Long id) { toggleSchedule(id, true); }
+    public void stopSchedule(Long id) { toggleSchedule(id, false); }
+
+    private void syncToDs(Long dagId, DagPayload payload, Map<String, Long> codeMap) { ... }
 }
 ```
 
@@ -889,48 +981,82 @@ public class SqlEditorService {
 }
 ```
 
-### 7.7 同步任务触发与轮询
+### 7.7 同步任务触发与状态收尾
+
+> **与代码对齐**：SYNC 节点 **不再提供 `/internal/sync/{historyId}/status` 轮询接口**。DS HTTP 任务回调 engineering 的
+> `/dev/internal/sync/callback` 后，节点被标为 `RUNNING` 并记录 `sync_job_id` / `sync_job_history_id`；最终状态由
+> `DagExecutionSyncService`（task-core）轮询 `sync_job_history` 表收尾。
 
 ```java
 
-@Service
-public class DagSyncTriggerService {
+@RestController
+@RequestMapping("/dev/internal")
+public class DagNodeCallbackController {
 
-    private final SyncJobMapper syncJobMapper;
-    private final SyncJobExecutorService syncJobExecutorService;
-    private final SyncJobHistoryMapper syncJobHistoryMapper;
+    private final SyncJobService syncJobService;
+    private final SyncNodeMutexService syncNodeMutexService;
 
-    /**
-     * DAG 中同步任务节点触发入口，由 DS HTTP 任务回调。
-     */
-    public SyncTriggerResult trigger(Long syncJobId, Long dagExecutionId, String nodeId) {
-        SyncJob job = syncJobMapper.selectById(syncJobId);
-        if (job == null) {
-            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
-        }
-
-        // 任务级互斥：同一 SyncJob 同时只能有一个实例运行
-        if ("RUNNING".equals(job.getExecutionStatus())) {
-            return SyncTriggerResult.waiting("同步任务正在独立调度执行中，等待完成");
-        }
-
-        Long historyId = syncJobExecutorService.start(syncJobId, "DAG", dagExecutionId);
-        return SyncTriggerResult.started(historyId);
+    @PostMapping("/sync/callback")
+    public Result<Map<String, Integer>> syncCallback(@RequestBody Map<String, Object> body) {
+        return handleSyncNode(body);
     }
 
-    /**
-     * DS 任务通过轮询确认同步任务是否完成。
-     */
-    public SyncPollResult poll(Long historyId) {
-        SyncJobHistory history = syncJobHistoryMapper.selectById(historyId);
-        if (history == null) {
-            throw new BusinessException(ErrorCode.SYNC_HISTORY_NOT_FOUND);
+    private Result<Map<String, Integer>> handleSyncNode(Map<String, Object> body) {
+        String nodeId = stringOf(body.get("nodeId"));
+        Long dsProcessInstanceId = longOf(body.get("executionId"));
+        Long dagId = longOf(body.get("dagId"));
+        Map<?, ?> syncJobObj = (Map<?, ?>) body.get("syncJob");
+        Long syncJobId = longOf(syncJobObj.get("id"));
+
+        // 任务级互斥：同一 syncJobId 同一时刻只能一个实例运行
+        String lockToken = syncNodeMutexService.tryLock(syncJobId);
+        try {
+            NodeExecution ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
+            ne.setStatus("RUNNING");
+            ne.setStartTime(LocalDateTime.now());
+            ne.setSyncJobId(syncJobId);
+
+            // 触发 XXL-JOB，来源标记为 DAG
+            Long historyId = syncJobService.execute(syncJobId, "DAG", ne.getExecutionId());
+            ne.setSyncJobHistoryId(historyId);
+            nodeExecutionMapper.updateById(ne);
+
+            // 不标 SUCCESS！由 DagExecutionSyncService 反查 sync_job_history 收尾
+            return Result.ok(Map.of("affectedRows", 0));
+        } catch (Exception e) {
+            syncNodeMutexService.unlock(syncJobId, lockToken);
+            throw e;
         }
-        return new SyncPollResult(history.getStatus(), history.getRowsWritten(),
-                history.getErrorMessage());
     }
 }
+
+@Service
+public class SyncNodeMutexService {
+
+    private final StringRedisTemplate redisTemplate;
+
+    public String tryLock(Long syncJobId) {
+        String key = "datanest:sync:job:mutex:" + syncJobId;
+        String token = UUID.randomUUID().toString();
+        Boolean ok = redisTemplate.opsForValue()
+                .setIfAbsent(key, token, 6, TimeUnit.HOURS);
+        if (!Boolean.TRUE.equals(ok)) {
+            throw new BusinessException(ErrorCode.DAG_ALREADY_RUNNING,
+                    "同步任务正在执行中");
+        }
+        return token;
+    }
+
+    public void unlock(Long syncJobId, String token) { ... }
+}
 ```
+
+`DagExecutionSyncService`（task-core）定时轮询 RUNNING 的 `dag_execution`，对 `node_type='SYNC'` 且状态为 `RUNNING` 的节点查询
+`sync_job_history`：
+
+- `SUCCESS` → 节点标 `SUCCESS`，写 `end_time` / `duration_ms` / `output_info` / `sync_job_history_id`，释放互斥锁。
+- `FAILED` → 节点标 `FAILED`，写 `error_message`，释放锁。
+- `TERMINATED` → 节点标 `TERMINATED`，释放锁。
 
 ---
 
@@ -1062,7 +1188,7 @@ public class DolphinSchedulerClient {
   "taskType": "HTTP",
   "flag": "YES",
   "taskParams": {
-    "url": "http://data-nest-engineering:8082/engineering/dev/internal/sql/execute",
+    "url": "http://data-nest-engineering:8082/engineering/dev/internal/sql/callback",
     "httpMethod": "POST",
     "httpParams": [
       {
@@ -1081,6 +1207,30 @@ public class DolphinSchedulerClient {
 
 > 实际 SQL 内容在创建 ProcessDefinition 时直接写入 `httpParams.value`，避免 DS 参数解析问题。
 
+#### Python 任务节点映射
+
+```json
+{
+  "name": "PYTHON_用户画像评分",
+  "taskType": "HTTP",
+  "taskParams": {
+    "url": "http://data-nest-engineering:8082/engineering/dev/internal/python/callback",
+    "httpMethod": "POST",
+    "httpParams": [
+      {
+        "prop": "pythonScript",
+        "value": "...",
+        "httpParamsType": "BODY"
+      }
+    ],
+    "httpCheckCondition": "STATUS_CODE_DEFAULT",
+    "condition": "${response_code} == 200",
+    "connectTimeout": 60000,
+    "socketTimeout": 1800000
+  }
+}
+```
+
 #### 同步任务节点映射
 
 ```json
@@ -1088,7 +1238,7 @@ public class DolphinSchedulerClient {
   "name": "SYNC_日志数据同步",
   "taskType": "HTTP",
   "taskParams": {
-    "url": "http://data-nest-engineering:8082/engineering/dev/internal/sync/trigger",
+    "url": "http://data-nest-engineering:8082/engineering/dev/internal/sync/callback",
     "httpMethod": "POST",
     "httpParams": [
       {
@@ -1104,6 +1254,10 @@ public class DolphinSchedulerClient {
   }
 }
 ```
+
+> **DS 任务名称与 task code 生成策略**：DataNest 节点映射为 DS 任务时，任务名称与 task code 生成策略以代码实现为准。一般做法是由
+> DS 创建任务定义后返回 `code`，DataNest 将 `node_id` 与 DS `task_code` 的映射关系持久化到 `dag_node`
+> 或关联表，后续依赖边、状态回查均通过该映射进行。
 
 #### 依赖关系映射
 
@@ -1247,14 +1401,14 @@ public class DagExecutionService {
 
 ```java
 @RestController
-@RequestMapping("/engineering/dev/executions")
+@RequestMapping("/dag-executions")
 public class DagExecutionController {
 
     private final DagExecutionService dagExecutionService;
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
-    @PostMapping("/page")
-    public Result<PageResult<DagExecutionDTO>> page(@RequestBody DagExecutionQueryParams request) {
+    @GetMapping
+    public Result<PageResult<DagExecutionDTO>> page(@Valid DagExecutionQueryParams request) {
         return Result.ok(dagExecutionService.pageGlobal(request));
     }
 
@@ -1272,15 +1426,25 @@ public class DagExecutionController {
 }
 ```
 
-### 8.6 终止执行
+### 8.6 停止执行
 
 ```java
-public void terminate(DagExecution execution) {
+public void stop(DagExecution execution) {
     Dag dag = dagMapper.selectById(execution.getDagId());
     dsClient.stopProcessInstance(dag.getDsProjectCode(), execution.getDsProcessInstanceId());
     execution.setStatus("TERMINATED");
     execution.setEndTime(LocalDateTime.now());
     dagExecutionMapper.updateById(execution);
+}
+```
+
+### 8.7 重跑失败节点
+
+```java
+public DagExecutionDTO rerunFailedNodes(DagExecution execution) {
+    Dag dag = dagMapper.selectById(execution.getDagId());
+    // 仅重新调度失败/被跳过的节点，已成功节点不再重复执行
+    return dsClient.rerunFailedTasks(dag.getDsProjectCode(), execution.getDsProcessInstanceId());
 }
 ```
 
@@ -1290,12 +1454,35 @@ public void terminate(DagExecution execution) {
 
 ### 9.1 Flyway 迁移策略
 
-沿用 Sprint 0-2 模式：所有迁移脚本集中在 `data-nest-system/src/main/resources/db/migration/`，Sprint 3 新增：
+沿用 Sprint 0-2 模式：所有迁移脚本集中在 `data-nest-system/src/main/resources/db/migration/`，Sprint 3 新增/扩展：
 
-| 脚本                              | 版本     | 内容                                                                            |
-|-----------------------------------|----------|---------------------------------------------------------------------------------|
-| `V3.2.0__dag_tables.sql`          | Sprint 3 | `dag_project`、`dag`、`dag_node`、`dag_edge`、`dag_execution`、`node_execution` |
-| `V3.2.1__sync_job_multitable.sql` | Sprint 3 | `sync_job` 扩展：读取/写入速率限制字段                                          |
+| 脚本                                                      | 版本     | 内容                                                                            |
+|-----------------------------------------------------------|----------|---------------------------------------------------------------------------------|
+| `V3.2.0__dag_tables.sql`                                  | Sprint 3 | `dag_project`、`dag`、`dag_node`、`dag_edge`、`dag_execution`、`node_execution` |
+| `V3.2.1__sync_job_multitable_and_ratelimit.sql`           | Sprint 3 | `sync_job` 扩展：`source_tables_detail`、速率限制 3 字段                        |
+| `V3.2.2__sprint3_p0_p2_fixes.sql`                         | Sprint 3 | DAG 执行并发安全、SYNC 互斥等修复字段                                           |
+| `V3.2.3__sync_job_source_tables_detail_text.sql`          | Sprint 3 | `source_tables_detail` 改为 TEXT                                                |
+| `V3.2.4__dag_node_ds_task_code.sql`                       | Sprint 3 | `dag_node` 增加 `ds_task_code`                                                  |
+| `V3.2.5__drop_dead_columns_and_invalid_index.sql`         | Sprint 3 | 清理废弃列与无效索引                                                            |
+| `V3.2.6__node_execution_sync_job_history_id.sql`          | Sprint 3 | `node_execution` 增加 `sync_job_history_id`                                     |
+| `V3.2.7__dag_execution_edge_snapshot.sql`                 | Sprint 3 | `dag_execution` 增加 `edge_snapshot`                                            |
+| `V3.2.8__dag_execution_error_message.sql`                 | Sprint 3 | `dag_execution` 增加 `error_message`                                            |
+| `V3.3.0__extend_dag_node_python.sql`                      | Sprint 3 | `dag_node` 扩展 Python 节点配置字段；`node_execution` 增加 `sync_job_id` 等     |
+| `V3.3.1__dag_parameter.sql`                               | Sprint 3 | DAG 参数化配置表 `dag_parameter`                                                |
+| `V3.3.2__dag_version.sql`                                 | Sprint 3 | DAG 版本管理表 `dag_version`                                                    |
+| `V3.3.3__dag_alert_config.sql`                            | Sprint 3 | DAG 告警配置表 `dag_alert_config`                                               |
+| `V3.3.4__dag_alert_history.sql`                           | Sprint 3 | DAG 告警历史表 `dag_alert_history`                                              |
+| `V3.3.5__node_execution_log.sql`                          | Sprint 3 | 节点执行日志表 `node_execution_log`                                             |
+| `V3.3.6__lineage_record.sql`                              | Sprint 3 | SQL/Python 血缘记录表 `lineage_record`                                          |
+| `V3.3.7__metadata_table_source.sql`                       | Sprint 3 | `metadata_table` 增加 `source_dag_id` / `source_node_id` 等来源字段             |
+| `V3.3.8__dag_execution_params.sql`                        | Sprint 3 | `dag_execution` 增加 `resolved_params`                                          |
+| `V3.3.9__sync_job_history_dag_execution_id.sql`           | Sprint 3 | `sync_job_history` 增加 `dag_execution_id`                                      |
+| `V3.3.10__dag_alert_config_dag_id.sql`                    | Sprint 3 | `dag_alert_config` 增加 `dag_id`，支持按 DAG 配置                               |
+| `V3.4.0__alter_dag_execution_resolved_params_to_text.sql` | Sprint 4 | `dag_execution.resolved_params` 改为 TEXT                                       |
+| `V3.4.1__add_sys_user_audit_columns.sql`                  | Sprint 4 | `sys_user` 审计字段                                                             |
+
+> **与代码对齐**：由于 Python 节点、参数化、版本、告警、血缘、节点日志等能力已在 Sprint 3 提前实现，Flyway 脚本清单远不止 2
+> 个。具体文件名与顺序以代码仓库 `data-nest-system/src/main/resources/db/migration/` 目录为准。
 
 ### 9.2 V3.2.0__dag_tables.sql
 
@@ -1310,11 +1497,11 @@ CREATE TABLE IF NOT EXISTS dag_project
     name
     VARCHAR
 (
-    30
+    100
 ) NOT NULL,
     description VARCHAR
 (
-    200
+    500
 ),
     created_by BIGINT,
     updated_by BIGINT,
@@ -1346,7 +1533,7 @@ CREATE TABLE IF NOT EXISTS dag
 ),
     name VARCHAR
 (
-    50
+    100
 ) NOT NULL,
     trigger_type VARCHAR
 (
@@ -1406,15 +1593,15 @@ CREATE TABLE IF NOT EXISTS dag_node
 ) NOT NULL,
     node_name VARCHAR
 (
-    50
+    100
 ) NOT NULL,
     node_type VARCHAR
 (
     10
-) NOT NULL, -- SQL / SYNC
+) NOT NULL, -- SQL / PYTHON / SYNC
     position_x DOUBLE PRECISION,
     position_y DOUBLE PRECISION,
-    config TEXT, -- JSON: SqlNodeConfig / SyncNodeConfig
+    config TEXT, -- JSON 字符串，由 fastjson2/ObjectMapper 解析为 SqlNodeConfig / PythonNodeConfig / SyncNodeConfig
     created_by BIGINT,
     updated_by BIGINT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1528,7 +1715,7 @@ CREATE TABLE IF NOT EXISTS node_execution
 ) NOT NULL,
     node_name VARCHAR
 (
-    50
+    100
 ) NOT NULL,
     node_type VARCHAR
 (
@@ -1590,64 +1777,100 @@ ON COLUMN sync_job.rate_limit_enabled IS '是否启用速率限制 0/1';
 
 ### 10.1 Project API
 
-| 方法   | 路径                             | 说明                     |
-|--------|----------------------------------|--------------------------|
-| POST   | `/engineering/dev/projects`      | 创建项目                 |
-| PUT    | `/engineering/dev/projects/{id}` | 编辑项目                 |
-| DELETE | `/engineering/dev/projects/{id}` | 删除项目（级联删除 DAG） |
-| POST   | `/engineering/dev/projects/page` | 分页查询                 |
+| 方法   | 路径                     | 说明                                               |
+|--------|--------------------------|----------------------------------------------------|
+| GET    | `/dev/dag-projects`      | 分页查询（query params：`name`/`page`/`pageSize`） |
+| GET    | `/dev/dag-projects/{id}` | 项目详情                                           |
+| POST   | `/dev/dag-projects`      | 创建项目                                           |
+| PUT    | `/dev/dag-projects/{id}` | 编辑项目                                           |
+| DELETE | `/dev/dag-projects/{id}` | 删除项目（级联删除 DAG）                           |
+
+> 经 Gateway 后实际路径为 `/api/engineering/dev/dag-projects/**`。当前实现为 GET 一次性返回项目列表（前端做假分页），与
+> `SyncJobController` 的 `POST /page` 风格不同。
 
 ### 10.2 DAG API
 
-| 方法   | 路径                                                        | 说明                                                                     |
-|--------|-------------------------------------------------------------|--------------------------------------------------------------------------|
-| POST   | `/engineering/dev/dags`                                     | 创建 DAG                                                                 |
-| PUT    | `/engineering/dev/dags/{id}`                                | 编辑 DAG                                                                 |
-| DELETE | `/engineering/dev/dags/{id}`                                | 删除 DAG                                                                 |
-| GET    | `/engineering/dev/dags/{id}`                                | 详情（含节点和边）                                                       |
-| POST   | `/engineering/dev/dags/page`                                | 分页查询；列表展示 Cron 表达式、调度状态、最近执行时间                   |
-| POST   | `/engineering/dev/dags/{id}/execute`                        | 手动执行                                                                 |
-| POST   | `/engineering/dev/dags/{id}/terminate`                      | 终止执行                                                                 |
-| POST   | `/engineering/dev/dags/{id}/executions/page`                | 单个 DAG 的执行历史（支持 status/triggerType/startTimeFrom/startTimeTo） |
-| GET    | `/engineering/dev/dags/{id}/executions/{executionId}/nodes` | 节点执行详情                                                             |
+| 方法   | 路径                                                   | 说明                                                            |
+|--------|--------------------------------------------------------|-----------------------------------------------------------------|
+| GET    | `/dev/dags`                                            | 列表查询（query param：`projectId`）；返回全部 DAG，前端假分页  |
+| GET    | `/dev/dags/{id}`                                       | 详情（含节点和边）                                              |
+| POST   | `/dev/dags`                                            | 创建 DAG                                                        |
+| PUT    | `/dev/dags/{id}`                                       | 编辑 DAG                                                        |
+| DELETE | `/dev/dags/{id}`                                       | 删除 DAG                                                        |
+| POST   | `/dev/dags/{id}/trigger`                               | 手动触发一次 DAG 执行（支持参数覆盖）                           |
+| POST   | `/dev/dags/{id}/schedule/start`                        | 启用 Cron 调度                                                  |
+| POST   | `/dev/dags/{id}/schedule/stop`                         | 停用 Cron 调度                                                  |
+| POST   | `/dev/dags/{id}/executions/{executionId}/stop`         | 停止指定执行实例                                                |
+| POST   | `/dev/dags/{id}/executions/{executionId}/rerun-failed` | 重跑指定执行实例中失败/被跳过的节点                             |
+| GET    | `/dev/dags/{id}/executions`                            | 单个 DAG 的执行历史列表                                         |
+| POST   | `/dev/dags/{id}/nodes/{nodeId}/python/test`            | PYTHON 节点脚本测试（不注册元数据）                             |
+| GET    | `/dev/dags/node-executions/{nodeExecutionId}/logs`     | SYNC 节点执行日志（按 `sync_job_history_id` 查 `sync_job_log`） |
+
+> 经 Gateway 后实际路径为 `/api/engineering/dev/dags/**`。
 
 ### 10.3 Execution API（全局执行历史）
 
-| 方法 | 路径                                              | 说明                                                                      |
-|------|---------------------------------------------------|---------------------------------------------------------------------------|
-| POST | `/engineering/dev/executions/page`                | 全局执行历史（支持 dagName/status/triggerType/startTimeFrom/startTimeTo） |
-| GET  | `/engineering/dev/executions/{executionId}`       | 执行实例详情                                                              |
-| GET  | `/engineering/dev/executions/{executionId}/nodes` | 节点执行详情（供微缩 DAG 图使用）                                         |
+| 方法 | 路径                                                | 说明                                                                                                                                 |
+|------|-----------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| GET  | `/dag-executions`                                   | 全局执行历史（query params：`dagName`/`projectName`/`dagId`/`status`/`triggerType`/`startTimeFrom`/`startTimeTo`/`page`/`pageSize`） |
+| GET  | `/dag-executions/{executionId}/nodes/{nodeId}/logs` | 节点实时日志（`node_execution_log`）                                                                                                 |
+
+> **与代码对齐**：
+> - 无独立的 `/dag-executions/{executionId}` 详情接口；全局列表返回的 `DagExecutionGlobalDto` 已包含 `nodeExecutions`。
+> - 节点实时日志路径统一为 `/dag-executions/{executionId}/nodes/{nodeId}/logs`。
+> - 单 DAG 维度的执行历史在 `DagController` 的 `GET /dev/dags/{id}/executions`。
 
 ```java
-public class DagExecutionQueryParams {
+public class GlobalExecutionFilter {
     private String dagName;            // 按 DAG 名称模糊匹配
+    private String projectName;        // 按所属项目名称模糊匹配
+    private Long dagId;                // DAG id 精确过滤
     private String status;             // RUNNING / SUCCESS / FAILED / TERMINATED
     private String triggerType;        // MANUAL / CRON
-    private String startTimeFrom;      // 执行时间起（ISO 8601）
-    private String startTimeTo;        // 执行时间止（ISO 8601）
-    private Integer page;
-    private Integer pageSize;
+    private String startTimeFrom;      // 执行时间起（ISO 8601，支持 Z 后缀 UTC）
+    private String startTimeTo;        // 执行时间止
+    private long page;
+    private long pageSize;
 }
 ```
 
+> 经 Gateway 后实际路径为 `/api/engineering/dag-executions`。
+
 ### 10.4 SQL 编辑器 API
 
-| 方法 | 路径                                | 说明                        |
-|------|-------------------------------------|-----------------------------|
-| POST | `/engineering/dev/sql/test`         | 测试执行（不注册元数据）    |
-| POST | `/engineering/dev/sql/format`       | SQL 格式化                  |
-| GET  | `/engineering/dev/sql/autocomplete` | 获取 Doris 库表字段补全候选 |
+| 方法 | 路径               | 说明                     |
+|------|--------------------|--------------------------|
+| POST | `/dev/sql-preview` | 测试执行（不注册元数据） |
 
-### 10.5 内部回调 API（供 DS 调用）
+> **与代码对齐**：当前仅实现 `/dev/sql-preview`；`/dev/sql/format` 与 `/dev/sql/autocomplete` 尚未实现（前端 SQL 编辑器使用
+> Monaco 自带语法高亮，无格式化按钮）。
 
-| 方法 | 路径                                                | 说明                |
-|------|-----------------------------------------------------|---------------------|
-| POST | `/engineering/dev/internal/sql/execute`             | DS SQL 任务回调     |
-| POST | `/engineering/dev/internal/sync/trigger`            | DS 同步任务触发     |
-| GET  | `/engineering/dev/internal/sync/{historyId}/status` | DS 同步任务状态轮询 |
+### 10.5 DAG 参数、版本、告警 API（Sprint 3 已提前实现）
 
-> 内部 API 通过 IP 白名单或 Internal Token 鉴权，不暴露给前端。
+| 方法   | 路径                                              | 说明                                        |
+|--------|---------------------------------------------------|---------------------------------------------|
+| GET    | `/dev/dags/{dagId}/parameters`                    | 查询 DAG 参数列表                           |
+| POST   | `/dev/dags/{dagId}/parameters`                    | 创建 DAG 参数                               |
+| PUT    | `/dev/dags/{dagId}/parameters/{id}`               | 更新 DAG 参数                               |
+| DELETE | `/dev/dags/{dagId}/parameters/{id}`               | 删除 DAG 参数                               |
+| GET    | `/dev/dags/{dagId}/versions`                      | 查询 DAG 版本列表                           |
+| GET    | `/dev/dags/{dagId}/versions/compare`              | 版本对比（`left`/`right` query params）     |
+| POST   | `/dev/dags/{dagId}/versions/{versionNo}/rollback` | 回滚到指定版本                              |
+| GET    | `/dev/alert-config`                               | 读取全局告警配置                            |
+| PUT    | `/dev/alert-config`                               | 更新全局告警配置                            |
+| GET    | `/dev/dags/{dagId}/alert-config`                  | 读取按 DAG 告警配置（无专用配置时回退全局） |
+| PUT    | `/dev/dags/{dagId}/alert-config`                  | 更新按 DAG 告警配置                         |
+
+### 10.6 内部回调 API（供 DS 调用）
+
+| 方法 | 路径                            | 说明                |
+|------|---------------------------------|---------------------|
+| POST | `/dev/internal/sql/callback`    | DS SQL 任务回调     |
+| POST | `/dev/internal/python/callback` | DS Python 任务回调  |
+| POST | `/dev/internal/sync/callback`   | DS 同步任务触发回调 |
+
+> **与代码对齐**：SYNC 节点不再提供 `/internal/sync/{historyId}/status` 轮询接口；执行状态由 `DagExecutionSyncService` 反查
+> `sync_job_history` 表获得。内部 API 通过 IP 白名单或 Internal Token 鉴权，不暴露给前端。
 
 ---
 
@@ -1708,40 +1931,43 @@ pnpm add reactflow @monaco-editor/react sql-formatter
 
 ### 12.2 页面结构与路由
 
-| 页面         | 路由                          | 说明                                                                             |
-|--------------|-------------------------------|----------------------------------------------------------------------------------|
-| 项目列表     | `/data-dev/projects`          | 搜索、新建/编辑/删除项目                                                         |
-| DAG 列表     | `/data-dev/projects/:id/dags` | 搜索、新建/编辑/执行/历史/删除 DAG；表格展示 Cron 表达式                         |
-| DAG 画布     | `/data-dev/dags/:id/canvas`   | 全屏画布，节点拖拽、连线、属性面板                                               |
-| DAG 执行历史 | `/data-dev/history`           | 全局 DAG 执行历史页面，支持状态/触发方式/时间范围筛选，展开后展示微缩 DAG 拓扑图 |
+| 页面         | 路由                                            | 说明                                                                        |
+|--------------|-------------------------------------------------|-----------------------------------------------------------------------------|
+| 项目列表     | `/engineering/dags`                             | 搜索、新建/编辑/删除项目；页头标题为「数据开发」                            |
+| DAG 列表     | `/engineering/dags/:projectId`                  | 某项目下的 DAG 列表；支持搜索、新建/编辑/执行/历史/删除 DAG                 |
+| 新建 DAG     | `/engineering/dags/new?projectId=xxx`           | 全屏画布，创建新 DAG                                                        |
+| DAG 画布     | `/engineering/dags/:id/edit`                    | 全屏画布，编辑 DAG；含节点拖拽、连线、属性面板、参数/版本/告警入口          |
+| DAG 运行视图 | `/engineering/dags/:id/executions/:executionId` | 执行实例运行视图，展示节点状态、耗时、实时日志                              |
+| DAG 执行历史 | `/engineering/dag-executions`                   | 全局 DAG 执行历史页面，支持状态/触发方式/时间范围筛选；点击详情跳转运行视图 |
 
-> DAG 执行历史归入左侧导航「执行历史」分组，与「同步执行历史」「采集执行历史」并列。
+> **与代码对齐**：当前路由已实现为 `/engineering/dags`、`/engineering/dags/:projectId`、`/engineering/dags/new`、
+> `/engineering/dags/:id/edit`、`/engineering/dags/:id/executions/:executionId`，不再使用早期的
+> `/engineering/dags/projects`、`:id/dags`、`:id/canvas`、`:id/running`。
+> DAG 执行历史归入左侧导航「执行历史」分组，与「同步执行历史」「采集执行历史」并列。左侧「项目管理」菜单项位于「数据开发」分组下，路径为
+> `/engineering/dags`。
 
 ```
-data-nest-frontend/src/pages/dev/
-├── projects/
-│   └── index.tsx                # 项目列表页
-├── dags/
-│   └── index.tsx                # 某项目下的 DAG 列表页
-├── history/
-│   └── index.tsx                # 全局执行历史页
-├── canvas/
-│   ├── index.tsx                # DAG 画布页
-│   ├── components/
-│   │   ├── FlowCanvas.tsx       # ReactFlow 画布
-│   │   ├── NodePanel.tsx        # 左侧节点面板
-│   │   ├── PropertyPanel.tsx    # 右侧属性面板
-│   │   ├── SqlNodeModal.tsx     # SQL 任务编辑弹窗
-│   │   ├── SyncNodeModal.tsx    # 同步任务编辑弹窗
-│   │   └── MiniDagGraph.tsx     # 执行历史展开内的微缩 DAG 图
-│   └── hooks/
-│       ├── useDagNodes.ts
-│       └── useDagEdges.ts
+data-nest-frontend/src/pages/engineering/dags/
+├── index.tsx                    # 项目列表页
+├── project.tsx                  # 某项目下的 DAG 列表页
+├── Editor.tsx                   # DAG 画布/运行视图（复用同一组件）
+├── api.ts                       # DAG/项目/执行/参数/版本/告警 API 封装
+├── types.ts                     # 类型定义
+├── components/
+│   ├── SqlEditorModal.tsx       # SQL 任务编辑弹窗
+│   ├── PythonEditorModal.tsx    # Python 任务编辑弹窗
+│   ├── DagParameterDrawer.tsx   # 参数抽屉
+│   ├── DagVersionModal.tsx      # 版本管理弹窗
+│   ├── DagAlertConfigModal.tsx  # 告警配置弹窗
+│   ├── TriggerParamsModal.tsx   # 触发参数覆盖弹窗
+│   └── NodeRuntimeLogPanel.tsx  # 节点实时日志面板
+└── dag-executions/
+    └── index.tsx                # 全局执行历史页
 ```
 
 ### 12.3 菜单配置更新
 
-参考当前 `Sidebar.tsx` 的扁平分组结构（`group + items`），Sprint 3 新增「数据开发」分组，DAG 执行历史归入既有「执行历史」分组：
+参考当前 `Sidebar.tsx` 的扁平分组结构（`group + items`），Sprint 3 新增「项目管理」菜单，DAG 执行历史归入既有「执行历史」分组：
 
 ```ts
 const allMenus: { group: string; items: MenuItem[] }[] = [
@@ -1759,9 +1985,9 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         ],
     },
     {
-        group: '数据开发',  // 🆕
+        group: '数据开发',
         items: [
-            {label: '数据开发', path: '/data-dev/projects', icon: <Database size={18}/>,
+            {label: '项目管理', path: '/engineering/dags', icon: <Folder size={18}/>,  // 🆕
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER', 'GOVERNANCE_ADMIN', 'DATA_ANALYST']},
         ],
     },
@@ -1783,7 +2009,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER']},
             {label: '采集执行历史', path: '/governance/collect-task-history', icon: <History size={18}/>,
                 roles: ['SUPER_ADMIN', 'GOVERNANCE_ADMIN']},
-            {label: 'DAG 执行历史', path: '/data-dev/history', icon: <History size={18}/>,  // 🆕
+            {label: 'DAG 执行历史', path: '/engineering/dag-executions', icon: <History size={18}/>,  // 🆕
                 roles: ['SUPER_ADMIN', 'DATA_ENGINEER', 'GOVERNANCE_ADMIN', 'DATA_ANALYST']},
         ],
     },
@@ -1848,10 +2074,6 @@ import {format} from 'sql-formatter';
 export default function SqlNodeModal({node, onSave, onTest}: Props) {
     const [sql, setSql] = useState(node.config.sqlContent || '');
 
-    const handleFormat = () => {
-        setSql(format(sql, {language: 'mysql'}));
-    };
-
     return (
         <Modal open title="编辑 SQL 任务" width={900}>
             <Input defaultValue={node.nodeName}/>
@@ -1863,7 +2085,6 @@ export default function SqlNodeModal({node, onSave, onTest}: Props) {
                 options={{minimap: {enabled: false}}}
             />
             <Button onClick={() => onTest(sql)}>运行测试</Button>
-            <Button onClick={handleFormat}>格式化</Button>
             <Button type="primary" onClick={() => onSave({...node, config: {sqlContent: sql}})}>
                 保存
             </Button>
@@ -1871,6 +2092,8 @@ export default function SqlNodeModal({node, onSave, onTest}: Props) {
     );
 }
 ```
+
+> **与代码对齐**：当前 SQL 编辑器未提供「格式化」按钮；运行测试调用 `POST /dev/sql-preview`。SELECT 语句执行后结果以表格形式展示在弹窗结果区。
 
 ### 12.6 执行状态实时刷新
 
@@ -1899,7 +2122,8 @@ export function useExecutionStatus(dagId: string, executionId?: string) {
 
 ### 12.7 执行历史页面
 
-全局执行历史页面路由为 `/data-dev/history`，从左侧导航「数据开发 → 执行历史」进入。
+全局执行历史页面路由为 `/engineering/dag-executions`，从左侧导航「执行历史 → DAG 执行历史」进入。接口为
+`GET /dag-executions`（query params）。
 
 **筛选条件**：
 
@@ -1912,44 +2136,13 @@ export function useExecutionStatus(dagId: string, executionId?: string) {
 
 **表格字段**：执行时间、所属 DAG、执行方式、状态、耗时、节点执行情况、操作。
 
-**展开内容：微缩 DAG 拓扑图**
+**操作：详情、日志、重跑失败节点**
 
-点击「展开」后，该行下方展示 `MiniDagGraph` 组件：
+- **详情**：点击后跳转至「运行视图」`/engineering/dags/:id/running?executionId=xxx`，在运行视图中查看完整节点拓扑、状态、耗时及实时日志。
+- **日志**：运行视图内已支持 SQL/Python/SYNC 节点日志轮询（Sprint 3 已提前实现）。
+- **重跑失败节点**：对失败记录调用 `POST /dags/{id}/executions/{executionId}/rerun-failed`。
 
-- 从 DS 流程实例中读取节点执行状态（`dev_node_execution` 或 DS task instance）。
-- 复用 DAG 画布中的节点位置（`x`, `y`）与边（`source → target`）。
-- 节点边框按状态着色：成功（绿）、失败（红）、被跳过（橙）、运行中（蓝）。
-- 节点内展示：图标、节点名称、状态、耗时。
-- 失败记录下方显示「重跑失败节点」按钮，仅重跑失败/被跳过节点。
-
-```tsx
-// history/components/MiniDagGraph.tsx
-interface Props {
-    nodes: NodeExecution[];   // 含 x, y, nodeName, status, duration
-    edges: {source: string; target: string}[];
-}
-
-export default function MiniDagGraph({nodes, edges}: Props) {
-    return (
-        <div className="mini-dag">
-            <svg>
-                {edges.map(e => <line className="mini-dag-line" ... />)}
-            </svg>
-            {nodes.map(n => (
-                <div
-                    key={n.nodeId}
-                    className={`mini-dag-node ${n.status}`}
-                    style={{left: n.x * scale, top: n.y * scale}}
-                >
-                    <div className="mini-dag-node-icon">📝</div>
-                    <div className="mini-dag-node-name">{n.nodeName}</div>
-                    <div className="mini-dag-node-meta">{n.status} {n.duration}</div>
-                </div>
-            ))}
-        </div>
-    );
-}
-```
+> **与代码对齐**：当前执行历史页不再在行内展开「微缩 DAG 拓扑图」；节点拓扑与日志统一在运行视图展示。
 
 ---
 
@@ -1965,12 +2158,12 @@ export default function MiniDagGraph({nodes, edges}: Props) {
 | **替代方案** | XXL-JOB + 自研 DAG 引擎（复用现有 infra，但需自研拓扑/并发/失败处理）；Airflow（生态强但依赖 Python/Scheduler 部署重）。                                                             |
 | **后果**     | 📈 与架构文档 ADR-007 一致，获得生产级 DAG 能力；📉 需新增 DS Master/Worker/API/Alert 服务，本地部署变重；📉 前端画布模型与 DS 模型需要双向映射。                                    |
 
-### ADR-S3-002：数据开发模块放置位置
+### ADR-S3-002：项目管理模块放置位置
 
 | 项目         | 内容                                                                                                                                          |
 |--------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
 | **状态**     | Accepted                                                                                                                                      |
-| **上下文**   | 数据开发涉及 DAG 管理、SQL 执行、同步任务引用，与数据工程（engineering）业务域高度相关。                                                      |
+| **上下文**   | 项目管理涉及 DAG 管理、SQL/Python 执行、同步任务引用，与数据工程（engineering）业务域高度相关。                                               |
 | **决策**     | **不新建独立微服务**，DAG 核心领域模型下沉到 `data-nest-task-core`，API 层放在 `data-nest-engineering` 的 `dev` 包下。                        |
 | **替代方案** | 新建 `data-nest-dev` 服务（独立部署但增加运维成本）。                                                                                         |
 | **后果**     | 📈 复用 engineering 的 Doris/数据源连接能力，减少 RPC；📉 engineering 服务代码量增加，需通过包结构隔离 `datasource`、`sync`、`dev` 三个子域。 |
@@ -1991,27 +2184,27 @@ export default function MiniDagGraph({nodes, edges}: Props) {
 
 ### 14.1 功能验收
 
-| #     | 验收项                 | 通过标准                                                    |
-|-------|------------------------|-------------------------------------------------------------|
-| AC-1  | 创建项目               | 进入数据开发 → 新建项目 → 列表出现该项目                    |
-| AC-2  | 创建 DAG               | 进入项目 → 新建 DAG → 进入画布                              |
-| AC-3  | 添加 SQL 节点          | 拖入 SQL 节点 → 双击编辑 → 填写 SQL → 保存                  |
-| AC-4  | 添加同步节点           | 拖入同步节点 → 选择已有 SyncJob → 保存                      |
-| AC-5  | 连线依赖               | 节点 A 输出拖到节点 B 输入 → 创建依赖                       |
-| AC-6  | DAG 保存同步到 DS      | 保存 DAG 后 DS 出现同名 ProcessDefinition 且已上线          |
-| AC-7  | 手动执行 DAG           | 点击执行 → DS 生成流程实例 → 节点依次执行                   |
-| AC-8  | Cron 定时执行          | 配置 Cron → DS 自动按时间触发                               |
-| AC-9  | 启用/停用 DAG          | 停用后 DS Schedule 下线，不再自动触发                       |
-| AC-10 | 终止执行               | 运行中点击终止 → DS 流程实例 STOP                           |
-| AC-11 | SQL 测试执行           | 弹窗点击运行测试 → 结果显示，不注册元数据                   |
-| AC-12 | SQL 正式执行注册元数据 | DAG 执行成功后，CTAS 创建的新表出现在元数据管理             |
-| AC-13 | 多表同步               | 创建同步任务选择多个源表 → 执行后所有目标表存在             |
-| AC-14 | 速率限流               | 设置 5MB/s 读取限制 → Addax 实际速率不超过 5MB/s            |
-| AC-15 | 删除引用校验           | 删除被 DAG 引用的 SyncJob 时阻断并列出 DAG                  |
-| AC-16 | 权限隔离               | 治理员/分析师只读，工程师可创建/编辑/执行                   |
-| AC-17 | DAG 列表 Cron 表达式   | 定时 DAG 在列表中展示 Cron 表达式，手动 DAG 展示「—」       |
-| AC-18 | 全局执行历史页面       | 左侧导航进入执行历史，支持按 DAG/状态/触发方式/时间范围筛选 |
-| AC-19 | 执行历史微缩 DAG 图    | 展开执行记录后展示微缩 DAG 拓扑图，节点状态色与画布一致     |
+| #     | 验收项                 | 通过标准                                                         |
+|-------|------------------------|------------------------------------------------------------------|
+| AC-1  | 创建项目               | 进入项目管理 → 新建项目 → 列表出现该项目                         |
+| AC-2  | 创建 DAG               | 进入项目 → 新建 DAG → 进入画布                                   |
+| AC-3  | 添加 SQL 节点          | 拖入 SQL 节点 → 双击编辑 → 填写 SQL → 保存                       |
+| AC-4  | 添加同步节点           | 拖入同步节点 → 选择已有 SyncJob → 保存                           |
+| AC-5  | 连线依赖               | 节点 A 输出拖到节点 B 输入 → 创建依赖                            |
+| AC-6  | DAG 保存同步到 DS      | 保存 DAG 后 DS 出现同名 ProcessDefinition 且已上线               |
+| AC-7  | 手动执行 DAG           | 点击执行 → DS 生成流程实例 → 节点依次执行                        |
+| AC-8  | Cron 定时执行          | 配置 Cron → DS 自动按时间触发                                    |
+| AC-9  | 启用/停用 DAG          | 停用后 DS Schedule 下线，不再自动触发                            |
+| AC-10 | 终止执行               | 运行中点击终止 → DS 流程实例 STOP                                |
+| AC-11 | SQL 测试执行           | 弹窗点击运行测试 → 结果显示，不注册元数据                        |
+| AC-12 | SQL 正式执行注册元数据 | DAG 执行成功后，CTAS 创建的新表出现在元数据管理                  |
+| AC-13 | 多表同步               | 创建同步任务选择多个源表 → 执行后所有目标表存在                  |
+| AC-14 | 速率限流               | 设置 5MB/s 读取限制 → Addax 实际速率不超过 5MB/s                 |
+| AC-15 | 删除引用校验           | 删除被 DAG 引用的 SyncJob 时阻断并列出 DAG                       |
+| AC-16 | 权限隔离               | 治理员/分析师只读，工程师可创建/编辑/执行                        |
+| AC-17 | DAG 列表 Cron 表达式   | 定时 DAG 在列表中展示 Cron 表达式，手动 DAG 展示「—」            |
+| AC-18 | 全局执行历史页面       | 左侧导航进入执行历史，支持按 DAG/状态/触发方式/时间范围筛选      |
+| AC-19 | 执行历史运行视图       | 点击执行记录详情跳转运行视图，节点状态色与画布一致，支持实时日志 |
 
 ### 14.2 非功能验收
 

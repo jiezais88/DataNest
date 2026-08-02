@@ -1,6 +1,6 @@
-package com.datanest.engineering.service;
+package com.datanest.task.core.service;
 
-import com.datanest.engineering.dto.NodeExecutionLogDTO;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.task.core.entity.NodeExecutionLog;
 import com.datanest.task.core.mapper.NodeExecutionLogMapper;
 import org.slf4j.Logger;
@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * DAG 节点执行日志服务
+ * DAG 节点执行日志服务。
+ * Sprint 4 下沉到 task-core，供 engineering 与 worker 共用。
  */
 @Service
 public class NodeExecutionLogService {
@@ -33,7 +34,7 @@ public class NodeExecutionLogService {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        AtomicInteger lineNum = new AtomicInteger(1);
+        AtomicInteger lineNum = new AtomicInteger(nextLineNum(executionId, nodeId));
         List<NodeExecutionLog> entities = new ArrayList<>(lines.size());
         for (LogLine line : lines) {
             NodeExecutionLog log = new NodeExecutionLog();
@@ -62,25 +63,20 @@ public class NodeExecutionLogService {
         log.setNodeId(nodeId);
         log.setLevel(level);
         log.setMessage(message);
+        log.setLineNum(nextLineNum(executionId, nodeId));
         log.setCreatedAt(LocalDateTime.now());
         nodeExecutionLogMapper.insert(log);
     }
 
-    public List<NodeExecutionLogDTO> query(Long executionId, String nodeId) {
-        List<NodeExecutionLog> list = nodeExecutionLogMapper.selectByExecutionAndNode(executionId, nodeId);
-        return list.stream().map(this::toDTO).toList();
-    }
-
-    private NodeExecutionLogDTO toDTO(NodeExecutionLog log) {
-        NodeExecutionLogDTO dto = new NodeExecutionLogDTO();
-        dto.setId(log.getId());
-        dto.setExecutionId(log.getExecutionId());
-        dto.setNodeId(log.getNodeId());
-        dto.setLevel(log.getLevel());
-        dto.setMessage(log.getMessage());
-        dto.setLineNum(log.getLineNum());
-        dto.setCreatedAt(log.getCreatedAt());
-        return dto;
+    private int nextLineNum(Long executionId, String nodeId) {
+        if (executionId == null || nodeId == null) {
+            return 1;
+        }
+        Long count = nodeExecutionLogMapper.selectCount(
+                new QueryWrapper<NodeExecutionLog>()
+                        .eq("execution_id", executionId)
+                        .eq("node_id", nodeId));
+        return (int) (count == null ? 0 : count) + 1;
     }
 
     /**

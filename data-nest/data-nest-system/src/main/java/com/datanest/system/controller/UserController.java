@@ -21,9 +21,9 @@ public class UserController {
     }
 
     /**
-     * 用户列表
+     * 用户列表（仅超级管理员）
      */
-    @SaCheckLogin
+    @SaCheckRole("SUPER_ADMIN")
     @GetMapping
     public Result<PageResult<UserVO>> list(
             @RequestParam(defaultValue = "1") int page,

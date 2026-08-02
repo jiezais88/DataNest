@@ -11,12 +11,12 @@ import org.springframework.context.annotation.Bean;
 /**
  * MyBatis-Plus 拦截器自动配置（task-core 域，所有消费方共享）。
  * <p>
- * engineering/governance/system 各自注册过 MybatisPlusInterceptor，
- * 但 job/worker 模块没有——导致 job 模块分页查询退化为全量查询、
- * node_execution 的 {@code @Version} 乐观锁不生效。
+ * Sprint 4 架构调整：统一由 task-core 提供分页 + 乐观锁拦截器，
+ * engineering/worker/job/governance 不再各自维护 MybatisPlusConfig，
+ * 避免部分模块缺分页插件或乐观锁插件导致的问题。
  * <p>
  * {@link ConditionalOnMissingBean} 保证消费方自带的配置优先（行为不变），
- * 未配置的服务（job/worker）由本自动配置兜底提供。
+ * 未配置的服务由本自动配置兜底提供。
  */
 @AutoConfiguration
 public class MybatisPlusInterceptorAutoConfiguration {

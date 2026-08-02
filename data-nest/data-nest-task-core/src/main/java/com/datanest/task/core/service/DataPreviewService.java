@@ -1,11 +1,11 @@
-package com.datanest.engineering.service;
+package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcPreviewHelper;
 import com.datanest.common.util.JdbcSchemaExtractor;
-import com.datanest.engineering.dto.DataPreviewResult;
+import com.datanest.task.core.dto.DataPreviewResult;
 import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import org.springframework.stereotype.Service;
@@ -14,6 +14,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 数据源表预览服务。
+ * Sprint 4 下沉到 task-core，供 engineering / governance 共用。
+ */
 @Service
 public class DataPreviewService {
 

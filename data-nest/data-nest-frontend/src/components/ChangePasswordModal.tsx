@@ -29,7 +29,7 @@ export default function ChangePasswordModal({open, onClose}: Props) {
             setError('新密码至少6位');
             return;
         }
-        await changePassword(oldPwd, newPwd);
+        await changePassword(oldPwd, newPwd, confirmPwd);
         setSuccess(true);
         setTimeout(() => {
             onClose();

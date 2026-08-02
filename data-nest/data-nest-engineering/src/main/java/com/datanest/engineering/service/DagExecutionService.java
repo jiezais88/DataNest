@@ -13,6 +13,7 @@ import com.datanest.engineering.config.DolphinSchedulerConfig;
 import com.datanest.engineering.dto.*;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.DagEdgeSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;

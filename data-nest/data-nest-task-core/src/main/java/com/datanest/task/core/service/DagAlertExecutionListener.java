@@ -1,15 +1,14 @@
-package com.datanest.engineering.service;
+package com.datanest.task.core.service;
 
 import com.datanest.task.core.entity.DagExecution;
 import com.datanest.task.core.entity.NodeExecution;
-import com.datanest.task.core.service.DagAlertService;
-import com.datanest.task.core.service.DagExecutionFinishedListener;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /**
  * DAG 执行终态监听器：触发邮件告警。
+ * Sprint 4 下沉到 task-core，供 engineering / worker / job 共用。
  */
 @Component
 public class DagAlertExecutionListener implements DagExecutionFinishedListener {

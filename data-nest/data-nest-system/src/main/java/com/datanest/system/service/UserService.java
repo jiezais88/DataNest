@@ -158,6 +158,10 @@ public class UserService {
         }
         user.setEnabled(!user.getEnabled());
         userMapper.updateById(user);
+        // 禁用用户后强制下线其当前会话
+        if (!user.getEnabled()) {
+            StpUtil.logout(userId);
+        }
     }
 
     public void changePassword(Long userId, String oldPassword, String newPassword) {

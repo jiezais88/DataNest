@@ -7,7 +7,7 @@
 DataNest 是一个数据平台，技术栈如下：
 
 - **后端**：Java 21 + Spring Boot 4.x，Maven 多模块
-- **前端**：独立容器 `app-frontend`，通过 `app-gateway:8080` 统一入口
+- **前端**：独立容器 `app-frontend`（源码目录 `data-nest/data-nest-frontend`），通过 `app-gateway:8080` 统一入口
 - **部署**：Docker Compose，所有服务在同一 `datanest-net` 网络
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
 - **调度**：XXL-JOB（官方镜像），数据库为 `datanest_scheduler`（不是 `xxl_job`）
@@ -322,10 +322,14 @@ POST   /datasources/{id}/test         # 动作类接口
 ```
 
 - 权限注解 `@SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)`，角色代码与前端
-  `src/constants/roles.ts` 保持一致。
+  `src/constants/roles.ts` 保持一致；左侧菜单显隐以 `src/components/Sidebar.tsx` 为准。
 - 网关路由：`/api/system/**` → `data-nest-system`，`/api/engineering/**` → `data-nest-engineering`，`/api/governance/**` →
   `data-nest-governance`。
 - 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`，Controller 路径不要重复写前缀。
+- **列表接口**：当前代码实现多为 `POST /{resource}/page`（如 `/api/engineering/datasources/page`、
+  `/api/engineering/sync-jobs/page`），请求体带 keyword + 筛选 + 分页；新增/详情/删除仍用 RESTful 方法表达。
+- 工程侧 Controller 前缀：数据源/同步任务为 `/engineering/*`，DAG/项目管理为 `/dev/*`，执行历史为 `/dag-executions`； 网关已配置
+  StripPrefix，前端统一以 `/api/engineering/...` 调用。
 
 ### 8.10 配置与 Nacos
 
@@ -423,6 +427,8 @@ catch
 - 路由定义在 `src/router/index.tsx`，使用 `createBrowserRouter`。
 - 需要登录的页面用 `<ProtectedRoute>` 包裹。
 - 角色判断用 `useHasRole(...roles)` 或 `useCanEdit()`，角色代码从 `src/constants/roles.ts` 引入，不要硬编码字符串。
+- **菜单权限唯一出处**：`src/components/Sidebar.tsx` 中的 `allMenus` + `src/constants/roles.ts` 中的角色数组；
+  PRD/原型中的权限矩阵必须与此二者保持一致。
 
 ### 9.7 UI 与样式规范
 
@@ -433,6 +439,7 @@ catch
   `components/Pagination`。
 - 弹窗统一用 `components/DsModal`，按钮用 `components/DsButton`，状态徽章用 `components/DsStatusBadge`。
 - 表格列宽参考 `src/constants/table.ts` 中的 `COL`，同类列在不同页面保持相近宽度。
+- **源码全部为 `.tsx`**，不要新增 `.jsx`；图标统一使用 `react-icons`（以 `HiOutline*` 系列为主）。
 
 ### 9.8 列表页与分页
 
@@ -485,6 +492,9 @@ notify.error('操作失败');
 
 - 所有请求统一走 Gateway：`http://localhost:8080/api/<服务>/<路径>`。
 - 后端 `Long` 类型主键会序列化为字符串，前端类型声明用 `string`，URL 拼接不要转 Number。
+- **列表/分页接口**：优先用 `POST /.../page`（如 `/api/engineering/sync-jobs/page`），不要用 `GET` 列表； DAG 执行历史等场景用
+  `GET` + query params（如 `/api/engineering/dag-executions`）。
+- **命名统一**：批量数据同步任务在代码/路由/API/表中均为 `sync-jobs`（不是 `sync-tasks`），DAG 菜单在代码中为「项目管理」。
 - 修改 DTO、返回结构、URL 路径、字段含义时，必须同步检查：
     1. 后端 Controller / Service / DTO
     2. 前端 `src/api/*` 调用点

@@ -37,7 +37,8 @@ public class SaTokenConfig {
                         "/actuator/health",
                         // 决策 ADR-S3-012：DS 回调内部接口走 gateway，不鉴权
                         // 决策 ADR-S3-008：依赖 Docker 网络隔离（datanest-net）
-                        "/api/engineering/dev/internal/**"
+                        "/api/engineering/dev/internal/**",
+                        "/api/worker/dev/internal/**"
                 )
                 .setAuth(obj -> {
                     SaRouter.match("/**", StpUtil::checkLogin);

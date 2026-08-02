@@ -4,8 +4,7 @@
 
 FROM eclipse-temurin:21-jre-alpine
 
-RUN apk add --no-cache netcat-openbsd python3 py3-pip && \
-    pip3 install --no-cache-dir pandas --break-system-packages
+RUN apk add --no-cache netcat-openbsd
 
 WORKDIR /app
 

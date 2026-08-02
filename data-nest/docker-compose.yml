@@ -577,9 +577,8 @@ services:
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
-    # ADR-S3-012：回调走 gateway（app-gateway:8080/api/engineering/dev/internal/**），
-    # 不再直连 engineering 8082。Docker 内网 gateway 与 app-engineering 在同 datanest-net。
-    # 测试（conftest.py）也走 gateway 路径，模拟 DS 真实调用链路。
+    # ADR-S3-012：回调走 gateway（app-gateway:8080/api/worker/dev/internal/**），
+    # 不再直连 engineering 8082。Docker 内网 gateway 与 app-worker 在同 datanest-net。
     depends_on:
       middleware-nacos:
         condition: service_healthy
@@ -603,8 +602,6 @@ services:
       start_period: 60s
     networks:
       - datanest-net
-    volumes:
-      - ./data/python-sandbox:/tmp/datanest-python-sandbox
 
   # ============================================
   # Governance — 元数据采集与治理服务
@@ -697,6 +694,8 @@ services:
       start_period: 60s
     networks:
       - datanest-net
+    volumes:
+      - ./data/python-sandbox:/tmp/datanest-python-sandbox
 
   # ============================================
   # Job — 平台定时任务执行器

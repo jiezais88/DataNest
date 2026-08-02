@@ -100,7 +100,7 @@ Sprint 3 完成了 SQL/SYNC 节点的 DAG 编排与执行。Sprint 4 在此基�
 
 ### 3.1 模块职责划分
 
-Sprint 4 不新增独立微服务，核心逻辑继续下沉到 `task-core`，API 暴露在 `engineering-service`。
+Sprint 4 不新增独立微服务，核心逻辑继续下沉到 `task-core`；节点执行从 `engineering-service` 迁移到 `data-nest-worker`。
 
 ```
 data-nest/
@@ -121,6 +121,10 @@ data-nest/
 │       ├── service/
 │       │   ├── PythonExecutor.java          # Python 脚本执行器
 │       │   ├── SqlLineageExtractor.java     # SQL 血缘提取
+│       │   ├── DagParameterResolver.java    # DAG 参数解析/占位符替换
+│       │   ├── SyncJobTriggerService.java   # 同步任务触发
+│       │   ├── SyncNodeMutexService.java    # SYNC 节点互斥锁
+│       │   ├── NodeExecutionLogService.java # 节点执行日志
 │       │   ├── DagAlertService.java         # 告警触发
 │       │   ├── MailService.java             # 邮件发送
 │       │   └── ...
@@ -134,18 +138,25 @@ data-nest/
 │       │   ├── DagVersionController.java    # 🆕 版本管理
 │       │   ├── DagAlertConfigController.java # 🆕 告警配置
 │       │   ├── DagExecutionController.java
-│       │   ├── PythonCallbackController.java # 🆕 Python 节点回调
 │       │   └── ...
 │       ├── dto/
 │       ├── service/
 │       │   ├── DagService.java
-│       │   ├── DagDsConverter.java          # 扩展 PYTHON 节点映射
-│       │   ├── DagParameterService.java     # 🆕 DAG 参数 CRUD + 替换
+│       │   ├── DagDsConverter.java          # 扩展 PYTHON 节点映射，回调 URL 指向 worker
+│       │   ├── DagParameterService.java     # 🆕 DAG 参数 CRUD（解析下沉到 task-core）
 │       │   ├── DagVersionService.java       # 🆕 版本快照/对比/回滚
 │       │   ├── DagExecutionService.java     # 扩展真正重跑失败节点
 │       │   ├── DagAlertExecutionListener.java # 🆕 DAG 执行事件监听
 │       │   └── ...
 │       └── EngineeringApplication.java
+│
+├── data-nest-worker/                 # 🆕 接收 DS 节点回调并执行（SQL/SYNC/PYTHON）
+│   └── src/main/java/com/datanest/worker/
+│       ├── controller/
+│       │   └── DagNodeCallbackController.java    # /dev/internal/{sql,sync,python}/callback
+│       ├── service/
+│       │   └── DagNodeExecuteService.java
+│       └── WorkerApplication.java
 │
 ├── data-nest-governance/             # 血缘消费 + 元数据详情展示
 │   └── src/main/java/com/datanest/governance/
@@ -172,11 +183,13 @@ data-nest/
 
 ### 3.2 设计原则
 
-1. **不新增微服务**：Python 执行、血缘解析放在 `task-core`；告警配置放在 `engineering-service`（与 DAG 强相关）。超时告警扫描任务放在现有
-   `data-nest-job`。
-2. **DS 只负责调度编排**：Python 节点同样映射为 DS HTTP 任务，回调 engineering-service 执行。
-3. **版本快照全量存储**：Sprint 4 先全量保存节点/边/参数 JSON，后续 Sprint 再优化为 diff。
-4. **血缘先表级后字段级**：Sprint 4 只解析表级 source/target，字段级留 Sprint 5。
+1. **不新增微服务**：Python 执行、血缘解析、参数解析、同步任务触发、互斥锁放在 `task-core`；告警配置放在 `engineering-service`
+   （与 DAG 强相关）。超时告警扫描任务放在现有 `data-nest-job`。
+2. **DS 只负责调度编排**：SQL/SYNC/Python 节点均映射为 DS HTTP 任务，回调 `data-nest-worker` 执行。
+3. **节点执行收敛到 worker**：`data-nest-worker` 直接操作业务库写 `node_execution`、`node_execution_log`、`lineage_record`、
+   `sync_job_history` 等。
+4. **版本快照全量存储**：Sprint 4 先全量保存节点/边/参数 JSON，后续 Sprint 再优化为 diff。
+5. **血缘先表级后字段级**：Sprint 4 只解析表级 source/target，字段级留 Sprint 5。
 
 ---
 
@@ -184,24 +197,21 @@ data-nest/
 
 ### 4.1 Python 运行环境
 
-Python 任务依赖 DataNest 服务所在容器内的 Python 3 解释器。基础镜像需预装 Python：
+Sprint 4 架构调整：Python 节点执行从 `data-nest-engineering` 迁移到 `data-nest-worker`， Python 运行环境相应从 engineering
+镜像移除，改到 worker 镜像预装：
 
 ```dockerfile
-# data-nest-engineering/Dockerfile 调整
+# data-nest-worker/Dockerfile 调整
 FROM eclipse-temurin:21-jre-alpine
 
 # 安装 Python 3 + pip + pandas + pymysql
-RUN apk add --no-cache netcat-openbsd python3 py3-pip && \
+RUN apk add --no-cache bash netcat-openbsd python3 py3-pip && \
     pip3 install --no-cache-dir pandas pymysql --break-system-packages
 
-COPY target/data-nest-engineering-1.0.0-SNAPSHOT.jar app.jar
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-EXPOSE 8082
-
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# ... 拷贝 Addax、jar 等
 ```
+
+`data-nest-engineering/Dockerfile` 不再安装 Python 相关依赖。
 
 > 注：Sprint 4 支持 Python 标准库 + pandas + pymysql。镜像通过 pip 安装 pandas 与 pymysql，`read_doris_table` 返回 pandas
 > DataFrame，`write_doris_table` 接受 DataFrame 或 list[dict]。Java 基础镜像与项目一致使用 21-jre-alpine。
@@ -211,7 +221,7 @@ ENTRYPOINT ["/docker-entrypoint.sh"]
 Python 脚本执行时使用临时工作目录：
 
 ```yaml
-# docker-compose.yml 新增 volumes（engineering-service 服务）
+# docker-compose.yml 调整 volumes（从 engineering-service 移到 app-worker）
 volumes:
   - ./data/python-sandbox:/tmp/datanest-python-sandbox
 ```
@@ -295,11 +305,14 @@ system → engineering → governance → worker → job → gateway → fronten
 
 ### 5.2 节点执行模型
 
-| DataNest 节点类型 | DS 任务类型 | 回调接口                        | 执行方              |
-|-------------------|-------------|---------------------------------|---------------------|
-| SQL 任务          | HTTP 任务   | `/dev/internal/sql/callback`    | engineering-service |
-| 同步任务          | HTTP 任务   | `/dev/internal/sync/callback`   | engineering-service |
-| Python 任务 🆕    | HTTP 任务   | `/dev/internal/python/callback` | engineering-service |
+Sprint 4 架构调整：所有节点回调统一由 `data-nest-worker` 接收并执行，engineering-service 只负责 DAG 管理、参数、版本、告警配置等非执行类
+API。
+
+| DataNest 节点类型 | DS 任务类型 | 回调接口                        | 执行方           |
+|-------------------|-------------|---------------------------------|------------------|
+| SQL 任务          | HTTP 任务   | `/dev/internal/sql/callback`    | data-nest-worker |
+| 同步任务          | HTTP 任务   | `/dev/internal/sync/callback`   | data-nest-worker |
+| Python 任务 🆕    | HTTP 任务   | `/dev/internal/python/callback` | data-nest-worker |
 
 ---
 
@@ -336,22 +349,21 @@ public class PythonNodeConfig extends NodeConfig {
 
 ### 6.3 Python 执行器
 
-**实际运行位置**：Python 节点与 SQL/SYNC 节点一样，由 DolphinScheduler Worker 通过 HTTP 回调到 `data-nest-engineering`，
-`engineering-service` 在本地通过 `ProcessBuilder` 调用容器内的 `python3` 执行脚本。即 **Python 进程运行在
-`data-nest-engineering` 容器内**。
+**实际运行位置**：Python 节点与 SQL/SYNC 节点一样，由 DolphinScheduler Worker 通过 HTTP 回调到 `data-nest-worker`，
+`data-nest-worker` 在本地通过 `ProcessBuilder` 调用容器内的 `python3` 执行脚本。即 **Python 进程运行在
+`data-nest-worker` 容器内**。
 
 Sprint 4 采用该方案的理由：
 
-- 与现有 DS HTTP 回调架构完全一致，不新增服务。
-- 实现简单，调度、状态回写、元数据注册都在 engineering-service 内完成。
+- 与现有 DS HTTP 回调架构保持一致，节点执行统一收敛到 worker。
+- 用户脚本与工程服务解耦，避免占用 engineering-service 的 API 资源。
+- 调度、状态回写、元数据注册、血缘上报都在 worker 内直接操作业务库完成。
 
 风险与缓解：
 
 - **资源争抢**：用户脚本可能占用大量 CPU/内存；通过超时、内存限制、独立子进程缓解。
-- **安全风险**：用户代码与工程服务同容器；通过白名单 API、禁止文件/网络/子进程、临时沙箱目录缓解。
-
-> 如果后续对安全隔离要求更高，可演进为独立的 `data-nest-python-worker` 容器，DS 回调直接打到 worker，worker 通过 gRPC/HTTP
-> 回写状态到 engineering-service。Sprint 4 不引入该 worker。
+- **安全风险**：用户代码与 worker 服务同容器；通过白名单 API、禁止文件/网络/子进程、临时沙箱目录缓解。
+- **worker 重启影响**：运行中的 Python 进程会随 worker 容器重启而中断；生产环境需控制 worker 滚动重启时机。
 
 Python 脚本在独立进程中执行，通过临时文件传递脚本，通过 stdout/stderr 捕获输出。
 
@@ -448,48 +460,25 @@ Sprint 4 提供以下内置函数，通过脚本包裹注入：
 
 ### 6.5 回调接口
 
+Python 节点回调由 `data-nest-worker` 接收并执行：
+
 ```java
 
 @RestController
-@RequestMapping("/engineering/dev/internal")
-public class PythonCallbackController {
+@RequestMapping("/dev/internal")
+public class DagNodeCallbackController {
 
-    private final PythonExecutor pythonExecutor;
-    private final DagExecutionService dagExecutionService;
-    private final MetadataRegistrationService metadataRegistrationService;
+    private final DagNodeExecuteService dagNodeExecuteService;
 
     @PostMapping("/python/callback")
-    public ResponseEntity<Void> callback(@RequestBody PythonCallbackRequest request) {
-        // 1. 替换参数
-        Dag dag = dagService.getById(request.getDagId());
-        DagNode node = dagNodeMapper.selectByDagIdAndNodeId(request.getDagId(), request.getNodeId());
-        PythonNodeConfig config = parseConfig(node.getConfig());
-        String script = dagParameterService.replacePlaceholders(
-                config.getPythonScript(), dag.getId(), request.getExecutionId());
-
-        // 2. 执行
-        PythonContext context = buildContext(dag, request);
-        PythonExecuteResult result = pythonExecutor.execute(
-                script, context, config.getTimeoutMinutes(), config.getMemoryLimitMb());
-
-        // 3. 更新节点状态
-        nodeExecutionService.finish(request.getExecutionId(), request.getNodeId(),
-                result.isSuccess() ? "SUCCESS" : "FAILED",
-                result.getStdout(), result.getStderr(), result.getOutputTables());
-
-        // 4. 元数据注册
-        if (result.isSuccess() && !result.getOutputTables().isEmpty()) {
-            for (String table : result.getOutputTables()) {
-                metadataRegistrationService.registerFromPython(table, request.getOperatorId(),
-                        request.getDagId(), request.getNodeId());
-            }
-        }
-
-        // 5. DS 通过 HTTP 状态码判断任务成败
-        return ResponseEntity.ok().build();
+    public Result<Map<String, Object>> pythonCallback(@RequestBody Map<String, Object> body) {
+        return dagNodeExecuteService.handlePythonNode(body);
     }
 }
 ```
+
+`DagNodeExecuteService` 在 worker 内完成参数替换、Python 执行、节点状态更新、元数据注册与血缘上报，并直接写
+`node_execution`、`node_execution_log`、`lineage_record` 等业务库表。
 
 ### 6.6 运行测试
 

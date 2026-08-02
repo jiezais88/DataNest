@@ -59,8 +59,8 @@ export const updateUser = (userId: string, params: UpdateUserParams) =>
 export const toggleUserStatus = (userId: string) =>
     request.put(`/system/users/${userId}/toggle`);
 
-export const changePassword = (oldPassword: string, newPassword: string) =>
-    request.put('/system/users/password', {oldPassword, newPassword});
+export const changePassword = (oldPassword: string, newPassword: string, confirmNewPassword: string) =>
+    request.put('/system/users/password', {oldPassword, newPassword, confirmNewPassword});
 
 export const resetPassword = (userId: string, newPassword: string) =>
     request.put(`/system/users/${userId}/reset-password`, {newPassword});

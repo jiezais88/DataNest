@@ -8,7 +8,7 @@ import com.datanest.engineering.dto.DagExecutionGlobalDto;
 import com.datanest.engineering.dto.GlobalExecutionFilter;
 import com.datanest.engineering.dto.NodeExecutionLogDTO;
 import com.datanest.engineering.service.DagExecutionService;
-import com.datanest.engineering.service.NodeExecutionLogService;
+import com.datanest.engineering.service.NodeExecutionLogQueryService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,12 +32,12 @@ import java.util.List;
 public class DagExecutionController {
 
     private final DagExecutionService dagExecutionService;
-    private final NodeExecutionLogService nodeExecutionLogService;
+    private final NodeExecutionLogQueryService nodeExecutionLogQueryService;
 
     public DagExecutionController(DagExecutionService dagExecutionService,
-                                  NodeExecutionLogService nodeExecutionLogService) {
+                                  NodeExecutionLogQueryService nodeExecutionLogQueryService) {
         this.dagExecutionService = dagExecutionService;
-        this.nodeExecutionLogService = nodeExecutionLogService;
+        this.nodeExecutionLogQueryService = nodeExecutionLogQueryService;
     }
 
     /**
@@ -81,9 +81,9 @@ public class DagExecutionController {
      * 查询节点执行日志（node_execution_log）
      */
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
-    @GetMapping("/dev/executions/{executionId}/nodes/{nodeId}/logs")
+    @GetMapping("/{executionId}/nodes/{nodeId}/logs")
     public Result<List<NodeExecutionLogDTO>> nodeLogs(@PathVariable Long executionId,
                                                       @PathVariable String nodeId) {
-        return Result.ok(nodeExecutionLogService.query(executionId, nodeId));
+        return Result.ok(nodeExecutionLogQueryService.query(executionId, nodeId));
     }
 }

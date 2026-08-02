@@ -887,6 +887,16 @@
 </head>
 <body>
 
+<!-- 实现说明批注（Sprint 0 文档/原型对齐）：
+  1. 左侧菜单以代码 Sidebar.tsx 为准：数据平台（首页）、数据工程、数据开发、数据治理、执行历史、系统管理（仅用户管理）。
+  2. 登录页 Logo 为 "DN"，副标题 "企业级数据中台"；创建/编辑用户弹窗不含「确认密码」。
+  3. 用户列表列与前端一致：用户名、角色、邮箱、状态、创建人、创建时间、修改人、修改时间、操作。
+  4. 行操作含 详情、编辑、重置密码、禁用/启用；状态标签为 "正常" / "已禁用"。
+  5. 搜索占位文案为 "搜索用户名或邮箱..."。
+  6. 用户名字段后端已加正则校验；禁用用户后代码会调用 StpUtil.logout 踢会话。
+  7. 本原型为静态示意，P2 级样式细节（图标按钮、主题 token 等）以实际前端组件为准。
+-->
+
 <div class="view-tabs">
     <button class="view-tab active" onclick="switchView('login')">登录页</button>
     <button class="view-tab" onclick="switchView('admin')">用户管理</button>
@@ -896,10 +906,10 @@
 <div id="view-login" class="login-page">
     <div class="login-card">
         <div class="login-logo">
-            <div class="login-logo-icon">D</div>
+            <div class="login-logo-icon">DN</div>
             <div>
                 <div class="login-logo-text">DataNest</div>
-                <div class="login-subtitle">开源数据中台 · 开发治理一体化</div>
+                <div class="login-subtitle">企业级数据中台</div>
             </div>
         </div>
 
@@ -923,7 +933,7 @@
         </div>
         <div class="checkbox-row">
             <input type="checkbox" id="remember-me">
-            <label for="remember-me">记住登录状态（有效期 7 天）</label>
+            <label for="remember-me">记住登录状态</label>
         </div>
         <button class="btn btn-primary" id="login-btn" onclick="simulateLogin()" disabled>登录</button>
         <div class="login-footer">还没有账号？请联系管理员创建</div>
@@ -940,16 +950,32 @@
         <nav>
             <div class="nav-section">
                 <div class="nav-section-title">数据平台</div>
-                <div class="nav-item"><span class="nav-item-icon">&#8599;</span> 数据集成</div>
-                <div class="nav-item"><span class="nav-item-icon">&#9776;</span> 数据开发</div>
-                <div class="nav-item"><span class="nav-item-icon">&#9737;</span> 数据治理</div>
-                <div class="nav-item"><span class="nav-item-icon">&#9733;</span> 资产目录</div>
-                <div class="nav-item"><span class="nav-item-icon">&#8663;</span> 数据服务</div>
+                <div class="nav-item"><span class="nav-item-icon">&#127968;</span> 首页</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">数据工程</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128230;</span> 数据源管理</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128260;</span> 批量数据同步任务</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">数据开发</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128295;</span> 项目管理</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">数据治理</div>
+                <div class="nav-item"><span class="nav-item-icon">&#9201;</span> 元数据采集任务</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128203;</span> 元数据管理</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128207;</span> 数据标准</div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">执行历史</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128260;</span> 同步执行历史</div>
+                <div class="nav-item"><span class="nav-item-icon">&#9201;</span> 采集执行历史</div>
+                <div class="nav-item"><span class="nav-item-icon">&#128295;</span> DAG 执行历史</div>
             </div>
             <div class="nav-section">
                 <div class="nav-section-title">系统管理</div>
                 <div class="nav-item active"><span class="nav-item-icon">&#128101;</span> 用户管理</div>
-                <div class="nav-item"><span class="nav-item-icon">&#9881;</span> 角色管理</div>
             </div>
         </nav>
     </aside>
@@ -1000,70 +1026,85 @@
                 <th>角色</th>
                 <th>邮箱</th>
                 <th>状态</th>
+                <th>创建人</th>
                 <th>创建时间</th>
+                <th>修改人</th>
+                <th>修改时间</th>
                 <th style="text-align:right">操作</th>
             </tr>
             </thead>
             <tbody>
             <tr>
-                <td><span style="font-weight:700">admin</span> <span
-                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1001</span></td>
+                <td><span style="font-weight:700">admin</span></td>
                 <td><span class="badge badge-role">超级管理员</span></td>
                 <td>admin@datanest.io</td>
                 <td><span class="badge badge-status-active">正常</span></td>
+                <td style="color:var(--text-muted)">-</td>
+                <td style="color:var(--text-muted)">2026-07-15 10:32</td>
+                <td style="color:var(--text-muted)">-</td>
                 <td style="color:var(--text-muted)">2026-07-15 10:32</td>
                 <td>
                     <div class="action-btns" style="justify-content:flex-end">
                         <button class="action-btn">详情</button>
                         <button class="action-btn" onclick="openModal('edit','admin')">编辑</button>
+                        <button class="action-btn">重置密码</button>
                         <button class="action-btn danger" onclick="openConfirm('admin','禁用')">禁用</button>
                     </div>
                 </td>
             </tr>
             <tr>
-                <td><span style="font-weight:700">zhangw</span> <span
-                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1002</span></td>
+                <td><span style="font-weight:700">zhangw</span></td>
                 <td><span class="badge badge-role">数据工程师</span></td>
                 <td>zhangw@datanest.io</td>
                 <td><span class="badge badge-status-active">正常</span></td>
+                <td style="color:var(--text-muted)">admin</td>
+                <td style="color:var(--text-muted)">2026-07-18 14:15</td>
+                <td style="color:var(--text-muted)">admin</td>
                 <td style="color:var(--text-muted)">2026-07-18 14:15</td>
                 <td>
                     <div class="action-btns" style="justify-content:flex-end">
                         <button class="action-btn">详情</button>
                         <button class="action-btn" onclick="openModal('edit','zhangw')">编辑</button>
+                        <button class="action-btn">重置密码</button>
                         <button class="action-btn danger" onclick="openConfirm('zhangw','禁用')">禁用</button>
                     </div>
                 </td>
             </tr>
             <tr>
-                <td><span style="font-weight:700">lisi</span> <span
-                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1003</span></td>
+                <td><span style="font-weight:700">lisi</span></td>
                 <td><span class="badge badge-role">数据分析师</span></td>
                 <td>lisi@datanest.io</td>
                 <td><span class="badge badge-status-disabled">已禁用</span></td>
+                <td style="color:var(--text-muted)">admin</td>
+                <td style="color:var(--text-muted)">2026-07-20 09:08</td>
+                <td style="color:var(--text-muted)">admin</td>
                 <td style="color:var(--text-muted)">2026-07-20 09:08</td>
                 <td>
                     <div class="action-btns" style="justify-content:flex-end">
                         <button class="action-btn">详情</button>
                         <button class="action-btn" onclick="openModal('edit','lisi')">编辑</button>
+                        <button class="action-btn">重置密码</button>
                         <button class="action-btn success" onclick="openConfirm('lisi','启用')">启用</button>
                     </div>
                 </td>
             </tr>
             <tr>
-                <td><span style="font-weight:700">wangw</span> <span
-                        style="color:var(--text-muted);font-size:11px;margin-left:6px">#U-1004</span></td>
+                <td><span style="font-weight:700">wangw</span></td>
                 <td>
                     <span class="badge badge-role">数据工程师</span>
                     <span class="badge badge-role" style="margin-left:3px">数据分析师</span>
                 </td>
                 <td>wangw@datanest.io</td>
                 <td><span class="badge badge-status-active">正常</span></td>
+                <td style="color:var(--text-muted)">admin</td>
+                <td style="color:var(--text-muted)">2026-07-22 16:44</td>
+                <td style="color:var(--text-muted)">admin</td>
                 <td style="color:var(--text-muted)">2026-07-22 16:44</td>
                 <td>
                     <div class="action-btns" style="justify-content:flex-end">
                         <button class="action-btn">详情</button>
                         <button class="action-btn" onclick="openModal('edit','wangw')">编辑</button>
+                        <button class="action-btn">重置密码</button>
                         <button class="action-btn danger" onclick="openConfirm('wangw','禁用')">禁用</button>
                     </div>
                 </td>
@@ -1100,15 +1141,11 @@
         </div>
         <div class="form-group">
             <label class="form-label">用户名 <span style="color:var(--danger)">*</span></label>
-            <input class="form-input" type="text" placeholder="3-30 位字母数字下划线" id="field-username">
+            <input class="form-input" type="text" placeholder="请输入用户名" id="field-username">
         </div>
         <div class="form-group">
             <label class="form-label" id="pwd-label">初始密码 <span style="color:var(--danger)">*</span></label>
-            <input class="form-input" type="password" placeholder="6-20 位" id="field-password">
-        </div>
-        <div class="form-group">
-            <label class="form-label">确认密码 <span style="color:var(--danger)">*</span></label>
-            <input class="form-input" type="password" placeholder="与初始密码一致" id="field-confirm">
+            <input class="form-input" type="password" placeholder="请输入密码（6-20位）" id="field-password">
         </div>
         <div class="form-group">
             <label class="form-label">角色 <span style="color:var(--danger)">*</span></label>
@@ -1202,7 +1239,6 @@
             l.innerHTML = '初始密码 <span style="color:var(--danger)">*</span>';
             document.getElementById('field-username').value = '';
             document.getElementById('field-password').value = '';
-            document.getElementById('field-confirm').value = '';
             document.getElementById('field-email').value = '';
             document.getElementById('field-phone').value = '';
         } else {
@@ -1210,7 +1246,6 @@
             l.innerHTML = '密码 <span style="color:var(--text-muted)">(不修改则留空)</span>';
             document.getElementById('field-username').value = user;
             document.getElementById('field-password').value = '';
-            document.getElementById('field-confirm').value = '';
             document.getElementById('field-email').value = user + '@datanest.io';
             document.getElementById('field-phone').value = '';
         }

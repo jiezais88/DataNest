@@ -1,8 +1,12 @@
-package com.datanest.engineering.dto;
+package com.datanest.task.core.dto;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 数据源表预览结果。
+ * Sprint 4 下沉到 task-core，供 engineering / governance 共用。
+ */
 public class DataPreviewResult {
 
     private List<String> columns;

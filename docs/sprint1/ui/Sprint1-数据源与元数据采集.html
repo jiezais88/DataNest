@@ -1432,7 +1432,7 @@
             </div>
             <div class="hr">
                 <div class="ph">
-                    <div class="pt">数据源</div>
+                    <div class="pt">数据源管理</div>
                     <div class="ps">管理所有已接入的外部数据源连接</div>
                 </div>
                 <button class="btn btn-a" onclick="od('create','ds')">+ 新增数据源</button>
@@ -1444,6 +1444,8 @@
                     <option>MySQL</option>
                     <option>PostgreSQL</option>
                     <option>Doris</option>
+                    <option>Oracle</option>
+                    <option>SQL Server</option>
                 </select>
                 <select class="sel">
                     <option>全部状态</option>
@@ -1456,6 +1458,9 @@
             </div>
         </div>
         <div class="cs">
+            <div class="fhint" style="margin-bottom:12px">批注：实际前端列表还包含「创建人、创建时间、修改人、修改时间」等列，并支持数据预览（Sprint
+                2 能力）；原型仅展示核心列。
+            </div>
             <table class="dt">
                 <thead>
                 <tr>
@@ -1538,9 +1543,10 @@
                 <select class="sel">
                     <option>全部状态</option>
                     <option>运行中</option>
-                    <option>正常</option>
+                    <option>成功</option>
                     <option>失败</option>
                     <option>未执行</option>
+                    <option>已终止</option>
                 </select>
                 <div class="tbsp"></div>
                 <button class="btn btn-a">查询</button>
@@ -1550,6 +1556,12 @@
         <div class="cs">
             <div class="inline-status" style="cursor:pointer" title="点击刷新">核心库采集 正在执行中... 已采集 23/45
                 个表
+            </div>
+            <div class="fhint" style="margin-bottom:12px">批注：Cron
+                任务保存后默认调度未启动，列表页需提供「启动调度/停止调度」操作；当前原型仅展示「执行」按钮，实际以代码为准。
+            </div>
+            <div class="fhint" style="margin-bottom:12px">批注：实际前端任务列表还包含「数据源、Cron
+                表达式、调度状态、下次执行时间、创建人、创建时间」等列；原型仅展示核心列。
             </div>
             <table class="dt">
                 <thead>
@@ -1712,6 +1724,7 @@
             </div>
         </div>
         <div class="cs" style="display:flex;gap:0;padding-top:0">
+            <!-- 批注：当前原型仍用左侧树展示元数据，但代码实现为右侧分步浏览（数据源 → Database → Schema → Table）。左侧树仅作为低保真示意，实际 UI 以代码为准。 -->
             <!-- left tree -->
             <div class="tree-panel" style="border:1px solid var(--border-subtle);border-right:none">
                 <div class="tree-item lv1" onclick="tmt(this)"><span class="tree-arrow expanded">&#9654;</span> order_db
@@ -1844,9 +1857,9 @@
 
         <div class="fg"><label class="fl">数据源名称 <span
                 style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
-                                                                                       placeholder="3-30位 字母数字下划线"
+                                                                                       placeholder="例如：订单业务库"
                                                                                        id="ds-name">
-            <div class="fhint">支持字母、数字、下划线，3-30 位</div>
+            <div class="fhint">最多 100 字符，全局唯一；当前代码无正则限制</div>
         </div>
         <div class="fg"><label class="fl">数据源类型 <span
                 style="color:var(--danger);text-transform:none">*</span></label><select class="sel" style="width:100%"
@@ -1856,6 +1869,8 @@
             <option>MySQL</option>
             <option>PostgreSQL</option>
             <option>Doris</option>
+            <option>Oracle</option>
+            <option>SQL Server</option>
         </select></div>
         <div class="fg"><label class="fl">主机地址 <span
                 style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
@@ -1865,7 +1880,9 @@
                 style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="number"
                                                                                        placeholder="例如：3306"
                                                                                        id="ds-port" style="width:140px">
-            <div class="fhint" id="port-hint">MySQL 默认 3306，PG 默认 5432，Doris 默认 9030</div>
+            <div class="fhint" id="port-hint">MySQL 默认 3306，PG 默认 5432，Doris 默认 9030，Oracle 默认 1521，SQL Server
+                默认 1433
+            </div>
         </div>
         <div class="fg"><label class="fl">数据库名 <span
                 style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
@@ -1883,12 +1900,19 @@
             </div>
         </div>
         <div class="fg"><label class="fl">描述</label><input class="fi" type="text" placeholder="可选，说明数据源用途">
-            <div class="fhint">最多 200 字</div>
+            <div class="fhint">最多 500 字</div>
+        </div>
+        <div class="fg" style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="ds-auto-collect" checked><label for="ds-auto-collect"
+                                                                       style="font-size:13px;color:var(--text-secondary)">保存后立即采集元数据</label>
+        </div>
+        <div class="fhint" style="margin-bottom:12px">批注：当前原型简化了保存按钮状态。代码实现中测试与保存相互独立，未测试或测试失败仍可保存；保存后若勾选上方选项，会通过
+            <code>autoCollectOnSave</code> 自动触发一次元数据采集。
         </div>
         <div class="drf">
             <button class="btn btn-a" onclick="testConn()">测试连接</button>
             <button class="btn btn-o" onclick="cd()">取消</button>
-            <button class="btn btn-a" id="ds-save-btn" disabled onclick="cd()">保存</button>
+            <button class="btn btn-a" id="ds-save-btn" onclick="cd()">保存</button>
         </div>
     </div>
 </div>
@@ -1903,8 +1927,9 @@
 
         <div class="fg"><label class="fl">任务名称 <span
                 style="color:var(--danger);text-transform:none">*</span></label><input class="fi" type="text"
-                                                                                       placeholder="支持字母、数字、下划线、中文，3-50 位">
-            <div class="fhint">支持字母、数字、下划线、中文，3-50 位</div>
+                                                                                       placeholder="例如：订单库元数据采集">
+            <div class="fhint">最多 100 字符，全局唯一；当前代码后端允许编辑任务名称，但前端编辑页将其禁用，需确认是否统一
+            </div>
         </div>
 
         <div class="fg"><label class="fl">选择数据源 <span
@@ -1931,9 +1956,9 @@
 
         <div class="fg"><label class="fl">采集模式 <span
                 style="color:var(--danger);text-transform:none">*</span></label>
-            <div class="rg"><label><input type="radio" name="collect-mode"><span>全量采集</span><span
+            <div class="rg"><label><input type="radio" name="collect-mode"><span>全量采集（FULL）</span><span
                     style="font-size:11px;color:var(--text-muted);margin-left:4px">每次重新采集全部</span></label><label><input
-                    type="radio" name="collect-mode" checked><span>全量+增量</span><span
+                    type="radio" name="collect-mode" checked><span>全量+增量（FULL_INCREMENT）</span><span
                     style="font-size:11px;color:var(--text-muted);margin-left:4px">首次全量，后续仅同步变更</span></label>
             </div>
         </div>
@@ -1951,13 +1976,15 @@
         </div>
 
         <div class="fg"><label class="fl">描述</label><input class="fi" type="text" placeholder="可选，说明任务用途">
-            <div class="fhint">最多 200 字</div>
+            <div class="fhint">不限制长度（DB 为 TEXT）</div>
         </div>
 
         <div class="drf">
-            <button class="btn btn-a">立即执行</button>
             <button class="btn btn-o" onclick="cd()">取消</button>
             <button class="btn btn-a" onclick="cd()">保存</button>
+        </div>
+        <div class="fhint" style="text-align:right;margin-top:8px">注：Cron
+            任务保存后默认不启动，需在列表页点击「启动调度」；「立即执行」也在列表页操作。
         </div>
     </div>
 </div>
@@ -1972,7 +1999,7 @@
         <div id="md-del-body"><p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">
             确定删除数据源「order_db」吗？</p>
             <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.8">删除后：<br>&bull;
-                该数据源从列表中移除<br>&bull; 已创建的元数据采集任务无法再引用它<br>&bull; 已采集的元数据记录仍保留，并标记源已下线
+                该数据源从列表中移除<br>&bull; 已创建的元数据采集任务无法再引用它<br>&bull; 已采集的元数据记录将被级联清理
             </div>
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
@@ -2255,7 +2282,7 @@
         });
         // update browser tab title
         const titles = {
-            ds: 'DataNest — 数据源',
+            ds: 'DataNest — 数据源管理',
             task: 'DataNest — 元数据采集任务',
             meta: 'DataNest — 元数据管理',
             history: 'DataNest — 元数据采集 / 历史记录'
@@ -2269,7 +2296,6 @@
             document.getElementById('dr-title-ds').textContent = mode === 'create' ? '新增数据源' : '编辑数据源 — ' + item;
             document.getElementById('ds-name').value = mode === 'edit' ? item : '';
             document.getElementById('ds-name').disabled = mode === 'edit';
-            document.getElementById('ds-save-btn').disabled = true;
             document.getElementById('conn-ok').style.display = 'none';
             document.getElementById('conn-err').style.display = 'none';
             document.getElementById('dr-ds').classList.add('op');
@@ -2293,7 +2319,7 @@
             document.getElementById('md-blocked').classList.add('op');
         } else {
             document.getElementById('md-del-title').textContent = '删除确认';
-            document.getElementById('md-del-body').innerHTML = '<p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">确定删除' + (type === 'ds' ? '数据源' : '任务') + '「' + item + '」吗？</p><div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.8">删除后：<br>&bull; ' + (type === 'ds' ? '该数据源从列表中移除' : '该任务不再执行') + '<br>&bull; ' + (type === 'ds' ? '已创建的采集任务无法再引用它' : '该任务的所有历史记录将被删除') + '<br>&bull; 已采集的元数据记录仍保留' + (type === 'ds' ? '，并标记源已下线' : '') + '</div>';
+            document.getElementById('md-del-body').innerHTML = '<p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">确定删除' + (type === 'ds' ? '数据源' : '任务') + '「' + item + '」吗？</p><div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.8">删除后：<br>&bull; ' + (type === 'ds' ? '该数据源从列表中移除' : '该任务不再执行') + '<br>&bull; ' + (type === 'ds' ? '已创建的采集任务无法再引用它' : '该任务的所有历史记录将被删除') + '<br>&bull; 已采集的元数据记录' + (type === 'ds' ? '将被级联清理' : '仍保留') + '</div>';
             document.getElementById('md-del').classList.add('op');
         }
     }
@@ -2392,14 +2418,13 @@
     function dsTypeChange() {
         const t = document.getElementById('ds-type').value;
         document.getElementById('schema-group').style.display = t === 'PostgreSQL' ? 'block' : 'none';
-        const ports = {MySQL: 3306, PostgreSQL: 5432, Doris: 9030};
+        const ports = {MySQL: 3306, PostgreSQL: 5432, Doris: 9030, Oracle: 1521, 'SQL Server': 1433};
         if (ports[t]) document.getElementById('ds-port').value = ports[t];
     }
 
     function testConn() {
         document.getElementById('conn-ok').style.display = 'block';
         document.getElementById('conn-err').style.display = 'none';
-        document.getElementById('ds-save-btn').disabled = false
     }
 
     function tpw2(id) {

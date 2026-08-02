@@ -1,12 +1,7 @@
-package com.datanest.engineering.service;
+package com.datanest.task.core.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
-import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.entity.SyncJobHistory;
-import com.datanest.task.core.mapper.SyncJobHistoryMapper;
-import com.datanest.task.core.mapper.SyncJobMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -15,7 +10,8 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 
 /**
- * DAG 同步任务节点互斥锁
+ * DAG 同步任务节点互斥锁。
+ * Sprint 4 下沉到 task-core，供 engineering 与 worker 共用。
  * 决策 ADR-S3-006：同一 syncJobId 在任意时刻只能有一个执行实例
  * 用 Redis SETNX 实现（lock_key = "datanest:dag:sync-lock:{syncJobId}"）
  */
@@ -28,21 +24,13 @@ public class SyncNodeMutexService {
     private static final Duration DEFAULT_TTL = Duration.ofHours(6);
 
     private final StringRedisTemplate redisTemplate;
-    private final SyncJobMapper syncJobMapper;
-    private final SyncJobHistoryMapper syncJobHistoryMapper;
 
-    public SyncNodeMutexService(StringRedisTemplate redisTemplate,
-                                SyncJobMapper syncJobMapper,
-                                SyncJobHistoryMapper syncJobHistoryMapper) {
+    public SyncNodeMutexService(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
-        this.syncJobMapper = syncJobMapper;
-        this.syncJobHistoryMapper = syncJobHistoryMapper;
     }
 
     /**
      * 尝试获取锁；获取成功返回 token，失败抛 DAG_ALREADY_RUNNING。
-     * 发现 Redis 中存在锁但底层 sync_job/sync_job_history 没有 RUNNING 记录时，
-     * 判定为残留锁并强制清理后重试，避免上次执行异常导致 6h 内后续 DAG 执行被永远阻塞。
      */
     public String tryLock(Long syncJobId) {
         String key = KEY_PREFIX + syncJobId;
@@ -53,33 +41,9 @@ public class SyncNodeMutexService {
             return token;
         }
 
-        // 锁已存在：检查是否残留
-        if (!hasActiveSyncJob(syncJobId)) {
-            logger.warn("同步任务互斥锁疑似残留（无 RUNNING 记录），强制清理后重试: syncJobId={}", syncJobId);
-            redisTemplate.delete(key);
-            ok = redisTemplate.opsForValue().setIfAbsent(key, token, DEFAULT_TTL);
-            if (Boolean.TRUE.equals(ok)) {
-                logger.info("成功清理残留锁并获取锁: syncJobId={}, token={}", syncJobId, token);
-                return token;
-            }
-        }
-
         logger.warn("同步任务互斥锁冲突: syncJobId={} 已有执行实例", syncJobId);
         throw new BusinessException(ErrorCode.DAG_ALREADY_RUNNING,
                 "同步任务 " + syncJobId + " 已有执行实例在跑");
-    }
-
-    private boolean hasActiveSyncJob(Long syncJobId) {
-        if (syncJobId == null) return false;
-        SyncJob job = syncJobMapper.selectById(syncJobId);
-        if (job != null && "RUNNING".equalsIgnoreCase(job.getExecutionStatus())) {
-            return true;
-        }
-        Long runningHistories = syncJobHistoryMapper.selectCount(
-                new QueryWrapper<SyncJobHistory>()
-                        .eq("sync_job_id", syncJobId)
-                        .eq("status", "RUNNING"));
-        return runningHistories != null && runningHistories > 0;
     }
 
     /**
@@ -99,8 +63,8 @@ public class SyncNodeMutexService {
     }
 
     /**
-     * 决策 Sprint3-Fix4：按 syncJobId 强释放（不走 token 校验）。
-     * 用途：DagExecutionSyncService 收尾时通过 SPI 调；callback 不再 finally 释放（避免锁窗口太短测不到冲突）。
+     * 按 syncJobId 强释放（不走 token 校验）。
+     * 用途：DagExecutionSyncService SPI 收尾时调用。
      * 安全性：syncJobId 本身具有唯一性，按 id 释放不会误删其他 syncJob 的锁。
      */
     public void unlockBySyncJobId(Long syncJobId) {

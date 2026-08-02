@@ -6,8 +6,8 @@ package com.datanest.common.exception;
 public enum ErrorCode {
 
     // Auth errors (1xxx)
-    USER_NOT_FOUND(1001, "用户不存在"),
-    PASSWORD_ERROR(1002, "密码错误"),
+    USER_NOT_FOUND(1001, "用户名或密码错误"),
+    PASSWORD_ERROR(1002, "用户名或密码错误"),
     ACCOUNT_DISABLED(1003, "账号已禁用"),
     UNAUTHORIZED(1004, "未登录或 Token 已过期"),
     FORBIDDEN(1005, "无权限访问"),
@@ -39,7 +39,7 @@ public enum ErrorCode {
     FIELD_TYPE_STANDARD_NOT_FOUND(5003, "字段类型标准不存在"),
     FIELD_TYPE_STANDARD_NAME_EXISTS(5004, "字段类型标准名称已存在"),
 
-    INVALID_COMPLIANCE_SCOPE(5005, "合规检查删除范围必须指定数据源或表"),
+    COMPLIANCE_CHECK_ITEM_REQUIRED(5005, "检查项目不能全部关闭"),
     INVALID_NAMING_STANDARD_PARAM(5006, "命名规范参数非法"),
 
     // Batch sync errors (6xxx)

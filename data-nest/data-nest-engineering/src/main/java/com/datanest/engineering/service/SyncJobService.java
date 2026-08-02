@@ -14,6 +14,8 @@ import com.datanest.engineering.dto.*;
 import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.SyncJobTriggerService;
+import com.datanest.task.core.service.SyncNodeMutexService;
 import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,14 +44,15 @@ public class SyncJobService {
     private final DagMapper dagMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final SchedulerServiceForEngineering schedulerService;
-    private final RetryService retryService;
+    private final SyncJobTriggerService syncJobTriggerService;
     private final SyncNodeMutexService syncNodeMutexService;
     private final SysUserService sysUserService;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
                           SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                           DagNodeMapper dagNodeMapper, DagMapper dagMapper, DagExecutionMapper dagExecutionMapper,
-                          SchedulerServiceForEngineering schedulerService, RetryService retryService,
+                          SchedulerServiceForEngineering schedulerService,
+                          SyncJobTriggerService syncJobTriggerService,
                           SyncNodeMutexService syncNodeMutexService, SysUserService sysUserService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
@@ -59,7 +62,7 @@ public class SyncJobService {
         this.dagMapper = dagMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.schedulerService = schedulerService;
-        this.retryService = retryService;
+        this.syncJobTriggerService = syncJobTriggerService;
         this.syncNodeMutexService = syncNodeMutexService;
         this.sysUserService = sysUserService;
     }
@@ -267,38 +270,7 @@ public class SyncJobService {
      * 触发同步任务执行并记录来源 DAG 执行实例。
      */
     public Long execute(Long id, String triggerType, Long dagExecutionId) {
-        SyncJob job = syncJobMapper.selectById(id);
-        if (job == null) {
-            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
-        }
-        // 手动任务在创建时不会注册 XXL-JOB，执行前按需注册
-        if (job.getXxlJobId() == null) {
-            Integer jobId = schedulerService.registerJob(job.getId(), job.getName(),
-                    job.getCronExpression(), job.getTriggerType(), false);
-            job.setXxlJobId(jobId);
-            syncJobMapper.updateById(job);
-        }
-        job.setExecutionStatus(SyncJobExecutionStatus.RUNNING.getCode());
-        job.setUpdatedAt(LocalDateTime.now());
-        syncJobMapper.updateById(job);
-
-        SyncJobHistory history = new SyncJobHistory();
-        history.setSyncJobId(id);
-        history.setDagExecutionId(dagExecutionId);
-        history.setTriggerType(triggerType);
-        history.setStatus("RUNNING");
-        history.setStartTime(LocalDateTime.now());
-        history.setRetryCount(0);
-        history.setSourceRows(0L);
-        history.setTargetRows(0L);
-        history.setCreatedAt(LocalDateTime.now());
-        syncJobHistoryMapper.insert(history);
-
-        String param = id + "," + triggerType + "," + history.getId();
-        schedulerService.triggerJob(job.getXxlJobId(), param);
-        logger.info("已触发同步任务执行: syncJobId={}, historyId={}, triggerType={}, param={}",
-                id, history.getId(), triggerType, param);
-        return history.getId();
+        return syncJobTriggerService.triggerSyncJob(id, triggerType, dagExecutionId);
     }
 
     @Transactional

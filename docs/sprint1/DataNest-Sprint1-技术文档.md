@@ -32,13 +32,13 @@ Sprint 0 建好了门和锁（用户体系），Sprint 1 让平台 **有数据�
 
 ### 1.2 Sprint 范围
 
-| # | 工作项               | 所属服务            | 说明                                                               |
-|---|----------------------|---------------------|--------------------------------------------------------------------|
-| 1 | **XXL-JOB 调度中心** | Docker Compose      | 复用 Sprint 0 的 `nacos-mysql`，新增 `datanest_scheduler` 库       |
-| 2 | **数据源连接管理**   | engineering-service | 添加、测试、编辑、删除 MySQL/PostgreSQL/Doris 数据源；密码加密存储 |
-| 3 | **元数据采集任务**   | governance-service  | 创建、编辑、删除、手动执行、Cron 定时、全量+增量、历史记录+日志    |
-| 4 | **元数据管理**       | governance-service  | 树形浏览（源→库→表→字段）、编辑表/字段注释                         |
-| 5 | **权限控制生效**     | gateway + 前端      | 工程师管数据源、治理员管采集、分析师只看元数据                     |
+| # | 工作项               | 所属服务            | 说明                                                                                 |
+|---|----------------------|---------------------|--------------------------------------------------------------------------------------|
+| 1 | **XXL-JOB 调度中心** | Docker Compose      | 复用 Sprint 0 的 `nacos-mysql`，新增 `datanest_scheduler` 库                         |
+| 2 | **数据源连接管理**   | engineering-service | 添加、测试、编辑、删除 MySQL/PostgreSQL/Doris/Oracle/SQL Server 数据源；密码加密存储 |
+| 3 | **元数据采集任务**   | governance-service  | 创建、编辑、删除、手动执行、Cron 定时、全量+增量、历史记录+日志                      |
+| 4 | **元数据管理**       | governance-service  | 树形浏览（源→库→表→字段）、编辑表/字段注释                                           |
+| 5 | **权限控制生效**     | gateway + 前端      | 工程师管数据源、治理员管采集、分析师只看元数据                                       |
 
 ### 1.3 新增 Maven 模块
 
@@ -261,7 +261,7 @@ routes:
 
 | 功能                         | 接口                                               | 鉴权                                    |
 |------------------------------|----------------------------------------------------|-----------------------------------------|
-| 数据源列表（搜索/筛选/分页） | `GET /api/engineering/datasources`                 | SUPER_ADMIN / DATA_ENGINEER / GOV_ADMIN |
+| 数据源列表（搜索/筛选/分页） | `POST /api/engineering/datasources/page`           | SUPER_ADMIN / DATA_ENGINEER / GOV_ADMIN |
 | 新增数据源                   | `POST /api/engineering/datasources`                | SUPER_ADMIN / DATA_ENGINEER             |
 | 编辑数据源                   | `PUT /api/engineering/datasources/{id}`            | SUPER_ADMIN / DATA_ENGINEER             |
 | 删除数据源                   | `DELETE /api/engineering/datasources/{id}`         | SUPER_ADMIN / DATA_ENGINEER             |
@@ -269,6 +269,8 @@ routes:
 | 测试已保存数据源并更新状态   | `POST /api/engineering/datasources/{id}/test`      | SUPER_ADMIN / DATA_ENGINEER             |
 | 检查引用关系                 | `GET /api/engineering/datasources/{id}/references` | 内部（删除前校验）                      |
 | 拉取库/Schema 列表           | `GET /api/engineering/datasources/{id}/schemas`    | GOV_ADMIN（采集任务创建时用）           |
+| 拉取 Database 列表           | `GET /api/engineering/datasources/{id}/databases`  | GOV_ADMIN（采集任务创建时用）           |
+| 拉取表列表                   | `GET /api/engineering/datasources/{id}/tables`     | GOV_ADMIN（元数据浏览/预览用）          |
 
 ### 5.2 数据源实体
 
@@ -279,18 +281,21 @@ routes:
 public class DataSourceConnection {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
-    private String name;             // 唯一，3-30 位字母数字下划线
-    private String type;             // MYSQL / POSTGRESQL / DORIS
+    private String name;             // 唯一，最多 100 字符
+    private String type;             // MYSQL / POSTGRESQL / DORIS / ORACLE / SQLSERVER
     private String host;             // IP 或域名
     private Integer port;
     private String databaseName;
-    private String schemaName;       // PostgreSQL 必填，默认 public
+    private String schemaName;       // PostgreSQL / Oracle / SQL Server 必填
     private String username;
     private String encryptedPassword; // AES-256-GCM 加密
     private String description;
-    private String status;           // ACTIVE / ERROR / UNKNOWN
+    private Integer autoCollectOnSave; // 0/1，保存后是否自动触发一次元数据采集
+    private String status;           // NORMAL / ERROR / OFFLINE / UNKNOWN
     private String errorMessage;
     private LocalDateTime lastTestTime;
+    private Long createdBy;
+    private Long updatedBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
@@ -361,7 +366,10 @@ public void deleteDataSource(Long id) {
                 "该数据源已被 " + refs.size() + " 个采集任务引用：" +
                         refs.stream().map(CollectTask::getName).collect(joining(", ")));
     }
-    // 2. 删除
+    // 2. 级联清理该数据源已采集的元数据
+    metadataTableMapper.deleteByDataSourceId(id);
+    metadataColumnMapper.deleteByDataSourceId(id);
+    // 3. 删除数据源
     datasourceMapper.deleteById(id);
 }
 ```
@@ -382,17 +390,21 @@ engineering-service 通过 Spring Scheduler 每 5 分钟自动检测所有 `stat
 
 ### 6.1 职责
 
-| 功能         | 接口                                              | 鉴权                                    |
-|--------------|---------------------------------------------------|-----------------------------------------|
-| 采集任务列表 | `GET /api/governance/collect-tasks`               | SUPER_ADMIN / GOV_ADMIN                 |
-| 创建任务     | `POST /api/governance/collect-tasks`              | SUPER_ADMIN / GOV_ADMIN                 |
-| 编辑任务     | `PUT /api/governance/collect-tasks/{id}`          | SUPER_ADMIN / GOV_ADMIN                 |
-| 删除任务     | `DELETE /api/governance/collect-tasks/{id}`       | SUPER_ADMIN / GOV_ADMIN                 |
-| 执行任务     | `POST /api/governance/collect-tasks/{id}/execute` | SUPER_ADMIN / GOV_ADMIN                 |
-| 任务历史     | `GET /api/governance/collect-tasks/{id}/history`  | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER |
-| 执行日志     | `GET /api/governance/collect-history/{id}/log`    | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER |
-| 元数据浏览   | `GET /api/governance/metadata/**`                 | 所有角色（分析师只读）                  |
-| 编辑注释     | `PUT /api/governance/metadata/**`                 | SUPER_ADMIN / GOV_ADMIN                 |
+| 功能         | 接口                                                        | 鉴权                                                   |
+|--------------|-------------------------------------------------------------|--------------------------------------------------------|
+| 数据源列表   | `POST /api/engineering/datasources/page`                    | SUPER_ADMIN / DATA_ENGINEER / GOV_ADMIN                |
+| 采集任务列表 | `POST /api/governance/collect-tasks/page`                   | SUPER_ADMIN / GOV_ADMIN                                |
+| 创建任务     | `POST /api/governance/collect-tasks`                        | SUPER_ADMIN / GOV_ADMIN                                |
+| 编辑任务     | `PUT /api/governance/collect-tasks/{id}`                    | SUPER_ADMIN / GOV_ADMIN                                |
+| 删除任务     | `DELETE /api/governance/collect-tasks/{id}`                 | SUPER_ADMIN / GOV_ADMIN                                |
+| 执行任务     | `POST /api/governance/collect-tasks/{id}/execute`           | SUPER_ADMIN / GOV_ADMIN                                |
+| 启动调度     | `POST /api/governance/collect-tasks/{id}/schedule/start`    | SUPER_ADMIN / GOV_ADMIN                                |
+| 停止调度     | `POST /api/governance/collect-tasks/{id}/schedule/stop`     | SUPER_ADMIN / GOV_ADMIN                                |
+| 任务历史列表 | `POST /api/governance/collect-tasks/{id}/history/page`      | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER / DATA_ANALYST |
+| 任务历史详情 | `GET /api/governance/collect-tasks/{id}/history/{hid}`      | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER / DATA_ANALYST |
+| 执行日志     | `GET /api/governance/collect-tasks/{id}/history/{hid}/logs` | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER / DATA_ANALYST |
+| 元数据浏览   | `GET /api/governance/metadata/**`                           | 所有角色（分析师只读）                                 |
+| 编辑注释     | `PUT /api/governance/metadata/**`                           | SUPER_ADMIN / GOV_ADMIN                                |
 
 ### 6.2 采集执行引擎
 
@@ -416,7 +428,7 @@ public class CollectExecutor {
 
         try {
             DataSourceConnection ds = getDataSource(task.getDataSourceId());
-            List<String> schemas = task.getTargetSchemas();
+            List<String> schemas = task.getScope();
 
             for (String schema : schemas) {
                 logger.info("开始采集 " + task.getDataSourceName() + "." + schema);
@@ -428,7 +440,7 @@ public class CollectExecutor {
 
             history.setStatus("SUCCESS");
             task.setLastExecutedAt(Instant.now());
-            task.setStatus("NORMAL");
+            task.setStatus("SUCCESS");
         } catch (Exception e) {
             logger.error("采集失败：" + e.getMessage());
             history.setStatus("FAILED");
@@ -453,7 +465,7 @@ public class CollectExecutor {
         int newColumns = 0, deletedColumns = 0, modifiedColumns = 0;
 
         // 2. 对比增量
-        if ("INCREMENTAL".equals(mode)) {
+        if ("FULL_INCREMENT".equals(mode)) {
             Set<String> existingTables = tableMapper.selectNamesBySchema(ds.getId(), schema);
             newTables = countNew(tables, existingTables);
             deletedTables = countDeleted(tables, existingTables);
@@ -468,7 +480,7 @@ public class CollectExecutor {
             List<ColumnInfo> columns = listColumns(ds, schema, table);
 
             // 增量：只更新有变化的字段，保留人工注释
-            if ("INCREMENTAL".equals(mode)) {
+            if ("FULL_INCREMENT".equals(mode)) {
                 upsertColumnsIncremental(ds.getId(), schema, table, columns);
             } else {
                 upsertColumns(ds.getId(), schema, table, columns);
@@ -484,8 +496,10 @@ public class CollectExecutor {
 
 ### 6.3 Cron 调度（XXL-JOB Executor）
 
-governance-service 作为 XXL-JOB Executor 注册到调度中心。 **任务创建时即注册为 XXL-JOB 任务**：CRON 类型带 Cron
-表达式自动调度，MANUAL 类型注册为 `ScheduleType.NONE`（不自动调度，仅用于手动触发）。编辑/删除时同步更新/注销。
+governance-service 作为 XXL-JOB Executor 注册到调度中心。 **任务创建时即注册为 XXL-JOB 任务**，但默认调度状态为停止：
+
+- CRON 类型保存 Cron 表达式，但需要额外调用 `/schedule/start` 才会真正启动调度；调用 `/schedule/stop` 可暂停。
+- MANUAL 类型注册为 `ScheduleType.NONE`（不自动调度，仅用于手动触发）。编辑/删除时同步更新/注销。
 
 ```java
 
@@ -635,36 +649,45 @@ class InMemoryLogger {
 所有迁移脚本统一在 `data-nest-system/src/main/resources/db/migration/`（沿用 Sprint 0 的 system-service Flyway
 集中管理）。engineering-service 和 governance-service 各自 POM 只依赖 MyBatis-Plus + PostgreSQL Driver，不包含 Flyway。
 
-| 脚本                                      | 版本          | 内容                                                                                      |
-|-------------------------------------------|---------------|-------------------------------------------------------------------------------------------|
-| `V1.0.0__init_user_tables.sql`            | Sprint 0 已有 | sys_user / sys_role / sys_permission / sys_user_role / sys_role_permission                |
-| `V1.0.1__seed_roles_and_admin.sql`        | Sprint 0 已有 | 预置角色+权限+admin 账号                                                                  |
-| `V2.0.0__create_datasource_tables.sql` 🆕 | Sprint 1      | datasource_connection                                                                     |
-| `V2.0.1__create_governance_tables.sql` 🆕 | Sprint 1      | collect_task / collect_history / collect_execution_log / metadata_table / metadata_column |
+| 脚本                                            | 版本          | 内容                                                                                                         |
+|-------------------------------------------------|---------------|--------------------------------------------------------------------------------------------------------------|
+| `V1.0.0__init_user_tables.sql`                  | Sprint 0 已有 | sys_user / sys_role / sys_permission / sys_user_role / sys_role_permission                                   |
+| `V1.0.1__seed_roles_and_admin.sql`              | Sprint 0 已有 | 预置角色+权限+admin 账号                                                                                     |
+| `V2.0.0__init_datasource_connection.sql`        | Sprint 1      | datasource_connection                                                                                        |
+| `V2.0.1__init_governance.sql`                   | Sprint 1      | collect_task / collect_history / collect_execution_log / metadata_table / metadata_column                    |
+| `V2.0.2__alter_governance_scope_to_text.sql`    | Sprint 1      | collect_task.scope 从 JSONB 改为 TEXT                                                                        |
+| `V2.0.3__fix_metadata_columns.sql`              | Sprint 1      | 元数据表/字段列调整，增加 last_collect_history_id                                                            |
+| `V2.0.4__add_collect_change_detail.sql`         | Sprint 1      | 新增 collect_change_detail 变更明细表                                                                        |
+| `V2.0.5__add_collect_task_schedule_enabled.sql` | Sprint 1      | collect_task 增加 schedule_enabled                                                                           |
+| `V2.0.6__add_metadata_column_remark.sql`        | Sprint 1      | metadata_column 增加 remark                                                                                  |
+| `V3.0.2__metadata_source_type_and_preview.sql`  | Sprint 3      | 元数据增加 source_type；datasource_connection 增加 auto_collect_on_save（Sprint 1 能力在 Sprint 3 脚本落地） |
 
 ### 7.2 datasource_connection
 
 ```sql
 CREATE TABLE IF NOT EXISTS datasource_connection
 (
-    id                 BIGINT PRIMARY KEY,
-    name               VARCHAR(30)  NOT NULL,
-    type               VARCHAR(20)  NOT NULL,                  -- MYSQL / POSTGRESQL / DORIS
-    host               VARCHAR(255) NOT NULL,
-    port               INTEGER      NOT NULL,
-    database_name      VARCHAR(100) NOT NULL,
-    schema_name        VARCHAR(100)          DEFAULT 'public',
-    username           VARCHAR(100) NOT NULL,
-    encrypted_password VARCHAR(500) NOT NULL,                  -- AES-256-GCM 密文
-    description        VARCHAR(200),
-    status             VARCHAR(20)           DEFAULT 'NORMAL', -- NORMAL / ERROR
-    last_error_message TEXT,
-    last_tested_at     TIMESTAMP,
-    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_ds_name UNIQUE (name)
+    id                  BIGINT PRIMARY KEY,
+    name                VARCHAR(100) NOT NULL,
+    type                VARCHAR(20)  NOT NULL,                  -- MYSQL / POSTGRESQL / DORIS / ORACLE / SQLSERVER
+    host                VARCHAR(255) NOT NULL,
+    port                INT          NOT NULL,
+    database_name       VARCHAR(100) NOT NULL,
+    schema_name         VARCHAR(100) DEFAULT NULL,               -- PG/Oracle/SQL Server 必填
+    username            VARCHAR(100) NOT NULL,
+    encrypted_password  TEXT         NOT NULL,                   -- AES-256-GCM 密文
+    description         TEXT         DEFAULT NULL,
+    status              VARCHAR(20)  NOT NULL DEFAULT 'NORMAL',  -- NORMAL / ERROR / OFFLINE / UNKNOWN
+    last_test_time      TIMESTAMP    DEFAULT NULL,
+    error_message       TEXT         DEFAULT NULL,
+    auto_collect_on_save SMALLINT    NOT NULL DEFAULT 0,         -- 0-否 1-是（Sprint 3 V3.0.2 脚本新增）
+    created_by          BIGINT       DEFAULT NULL,
+    updated_by          BIGINT       DEFAULT NULL,
+    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-COMMENT ON TABLE datasource_connection IS '数据源连接';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_datasource_connection_name ON datasource_connection(name);
+COMMENT ON TABLE datasource_connection IS '数据源连接信息';
 ```
 
 ### 7.3 元数据采集相关表
@@ -673,84 +696,133 @@ COMMENT ON TABLE datasource_connection IS '数据源连接';
 -- ===== 采集任务 =====
 CREATE TABLE IF NOT EXISTS collect_task
 (
-    id               BIGINT PRIMARY KEY,
-    name             VARCHAR(50) NOT NULL,
-    datasource_id    BIGINT      NOT NULL,                   -- 关联 datasource_connection.id
-    target_schemas   JSONB       NOT NULL,                   -- ["production", "users_db"]
-    collect_mode     VARCHAR(20) NOT NULL,                   -- FULL / INCREMENTAL
-    trigger_type     VARCHAR(10) NOT NULL,                   -- MANUAL / CRON
-    cron_expression  VARCHAR(100),
-    description      VARCHAR(200),
-    status           VARCHAR(20)          DEFAULT 'PENDING', -- PENDING / RUNNING / NORMAL / FAILED
-    last_executed_at TIMESTAMP,
-    created_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_task_name UNIQUE (name)
+    id                  BIGINT PRIMARY KEY,
+    name                VARCHAR(100) NOT NULL,
+    datasource_id       BIGINT       NOT NULL,                   -- 关联 datasource_connection.id
+    datasource_name     VARCHAR(100) NOT NULL,                   -- 数据源名称冗余
+    scope               TEXT         NOT NULL DEFAULT '[]',      -- ["production", "users_db"] JSON 字符串
+    collect_mode        VARCHAR(20)  NOT NULL DEFAULT 'FULL',    -- FULL / FULL_INCREMENT
+    trigger_type        VARCHAR(20)  NOT NULL DEFAULT 'MANUAL',  -- MANUAL / CRON
+    cron_expression     VARCHAR(100) DEFAULT NULL,
+    status              VARCHAR(20)  NOT NULL DEFAULT 'NORMAL',  -- DB 默认 NORMAL；代码写入 NEVER_EXECUTED / RUNNING / SUCCESS / FAILED / TERMINATED
+    last_execute_time   TIMESTAMP    DEFAULT NULL,
+    last_history_id     BIGINT       DEFAULT NULL,
+    description         TEXT         DEFAULT NULL,
+    xxl_job_id          INT          DEFAULT NULL,               -- XXL-JOB 注册任务 ID
+    schedule_enabled    SMALLINT     NOT NULL DEFAULT 0,         -- Cron 调度是否已启动（0-停止 1-运行）
+    next_execution_time TIMESTAMP    DEFAULT NULL,
+    created_by          BIGINT       DEFAULT NULL,
+    updated_by          BIGINT       DEFAULT NULL,
+    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uk_collect_task_name ON collect_task(name);
+CREATE INDEX IF NOT EXISTS idx_collect_task_datasource_id ON collect_task(datasource_id);
+CREATE INDEX IF NOT EXISTS idx_collect_task_status ON collect_task(status);
 
 -- ===== 采集历史 =====
 CREATE TABLE IF NOT EXISTS collect_history
 (
-    id               BIGINT PRIMARY KEY,
-    task_id          BIGINT      NOT NULL,
-    trigger_type     VARCHAR(10) NOT NULL, -- MANUAL / CRON
-    status           VARCHAR(20) NOT NULL, -- RUNNING / SUCCESS / FAILED
-    started_at       TIMESTAMP   NOT NULL,
-    ended_at         TIMESTAMP,
-    duration_seconds INTEGER,
-    schema_results   JSONB,                -- 按 Schema 统计
-    change_stats     JSONB,                -- 变更统计
-    created_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                  BIGINT PRIMARY KEY,
+    task_id             BIGINT      NOT NULL,
+    task_name           VARCHAR(100) NOT NULL,
+    datasource_id       BIGINT      NOT NULL,
+    trigger_type        VARCHAR(20) NOT NULL,                    -- MANUAL / CRON
+    status              VARCHAR(20) NOT NULL DEFAULT 'RUNNING',  -- RUNNING / SUCCESS / FAILED
+    started_at          TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at            TIMESTAMP   DEFAULT NULL,
+    duration_ms         BIGINT      DEFAULT NULL,
+    db_count            INT         NOT NULL DEFAULT 0,
+    table_count         INT         NOT NULL DEFAULT 0,
+    column_count        INT         NOT NULL DEFAULT 0,
+    added_table_count   INT         NOT NULL DEFAULT 0,
+    updated_table_count INT         NOT NULL DEFAULT 0,
+    deleted_table_count INT         NOT NULL DEFAULT 0,
+    added_column_count  INT         NOT NULL DEFAULT 0,
+    updated_column_count INT        NOT NULL DEFAULT 0,
+    deleted_column_count INT        NOT NULL DEFAULT 0,
+    error_message       TEXT        DEFAULT NULL,
+    created_at          TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_history_task ON collect_history (task_id);
+CREATE INDEX IF NOT EXISTS idx_collect_history_task_id ON collect_history(task_id);
+CREATE INDEX IF NOT EXISTS idx_collect_history_status ON collect_history(status);
+CREATE INDEX IF NOT EXISTS idx_collect_history_started_at ON collect_history(started_at);
 
 -- ===== 采集日志 =====
 CREATE TABLE IF NOT EXISTS collect_execution_log
 (
-    id         BIGSERIAL PRIMARY KEY,
+    id         BIGINT PRIMARY KEY,
     history_id BIGINT      NOT NULL,
-    seq        INTEGER     NOT NULL, -- 行号
-    level      VARCHAR(10) NOT NULL, -- INFO / ERROR
+    task_id    BIGINT      NOT NULL,
+    level      VARCHAR(20) NOT NULL DEFAULT 'INFO', -- INFO / WARN / ERROR
     message    TEXT        NOT NULL,
-    logged_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_log_history ON collect_execution_log (history_id);
+CREATE INDEX IF NOT EXISTS idx_collect_execution_log_history_id ON collect_execution_log(history_id);
+CREATE INDEX IF NOT EXISTS idx_collect_execution_log_task_id ON collect_execution_log(task_id);
+CREATE INDEX IF NOT EXISTS idx_collect_execution_log_created_at ON collect_execution_log(created_at);
+
+-- ===== 采集变更明细 =====
+CREATE TABLE IF NOT EXISTS collect_change_detail
+(
+    id            BIGINT PRIMARY KEY,
+    history_id    BIGINT      NOT NULL,
+    change_type   VARCHAR(30) NOT NULL, -- ADDED_TABLE / DELETED_TABLE / MODIFIED_TABLE / ...
+    database_name VARCHAR(100),
+    schema_name   VARCHAR(100),
+    table_name    VARCHAR(200),
+    column_name   VARCHAR(200),
+    old_value     TEXT,
+    new_value     TEXT,
+    created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_change_detail_history ON collect_change_detail(history_id);
 
 -- ===== 元数据-表 =====
 CREATE TABLE IF NOT EXISTS metadata_table
 (
-    id             BIGINT PRIMARY KEY,
-    datasource_id  BIGINT       NOT NULL,
-    schema_name    VARCHAR(100) NOT NULL,
-    table_name     VARCHAR(200) NOT NULL,
-    comment        VARCHAR(500),                        -- 人工补充注释
-    column_count   INTEGER,
-    collected_at   TIMESTAMP,                           -- 最近采集时间
-    source_task    VARCHAR(50),                         -- 采集任务名
-    source_offline BOOLEAN               DEFAULT FALSE, -- 数据源已下线
-    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_table UNIQUE (datasource_id, schema_name, table_name)
+    id                    BIGINT PRIMARY KEY,
+    datasource_id         BIGINT       NOT NULL,
+    database_name         VARCHAR(100) NOT NULL,
+    schema_name           VARCHAR(100) DEFAULT NULL,
+    table_name            VARCHAR(100) NOT NULL,
+    table_comment         TEXT         DEFAULT NULL, -- 源库原始注释
+    manual_comment        TEXT         DEFAULT NULL, -- 人工补充注释
+    source_status         VARCHAR(20)  NOT NULL DEFAULT 'ONLINE', -- ONLINE / OFFLINE
+    source_type           VARCHAR(20)  NOT NULL DEFAULT 'EXTERNAL', -- EXTERNAL / BUILTIN_DORIS（Sprint 3 V3.0.2 新增）
+    last_collect_history_id BIGINT     DEFAULT NULL,
+    created_by            BIGINT       DEFAULT NULL,
+    updated_by            BIGINT       DEFAULT NULL,
+    created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uk_metadata_table_unique ON metadata_table(datasource_id, database_name, COALESCE(schema_name, ''), table_name);
+CREATE INDEX IF NOT EXISTS idx_metadata_table_datasource_id ON metadata_table(datasource_id);
+CREATE INDEX IF NOT EXISTS idx_metadata_table_database_name ON metadata_table(database_name);
 
 -- ===== 元数据-字段 =====
 CREATE TABLE IF NOT EXISTS metadata_column
 (
-    id             BIGINT PRIMARY KEY,
-    table_id       BIGINT       NOT NULL,
-    column_name    VARCHAR(200) NOT NULL,
-    data_type      VARCHAR(100) NOT NULL,
-    nullable       BOOLEAN,
-    is_primary_key BOOLEAN,
-    ordinal        INTEGER,      -- 字段序号
-    comment        VARCHAR(500), -- 人工补充注释
-    remark         VARCHAR(500), -- 备注（业务口径等）
-    source_comment VARCHAR(500), -- 源库原始注释
-    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_column UNIQUE (table_id, column_name)
+    id                    BIGINT PRIMARY KEY,
+    table_id              BIGINT       NOT NULL,
+    column_name           VARCHAR(100) NOT NULL,
+    data_type             VARCHAR(100) NOT NULL,
+    column_comment        TEXT         DEFAULT NULL, -- 源库原始注释
+    manual_comment        TEXT         DEFAULT NULL, -- 人工补充注释
+    remark                TEXT         DEFAULT NULL, -- 业务口径/枚举说明等备注
+    nullable              BOOLEAN      DEFAULT TRUE,
+    column_default        TEXT         DEFAULT NULL,
+    ordinal_position      INT          NOT NULL DEFAULT 0,
+    last_collect_history_id BIGINT     DEFAULT NULL,
+    source_status         VARCHAR(20)  NOT NULL DEFAULT 'ONLINE',
+    source_type           VARCHAR(20)  NOT NULL DEFAULT 'EXTERNAL',
+    created_by            BIGINT       DEFAULT NULL,
+    updated_by            BIGINT       DEFAULT NULL,
+    created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_column_table ON metadata_column (table_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_metadata_column_unique ON metadata_column(table_id, column_name);
+CREATE INDEX IF NOT EXISTS idx_metadata_column_table_id ON metadata_column(table_id);
 ```
 
 ---
@@ -761,7 +833,7 @@ CREATE INDEX idx_column_table ON metadata_column (table_id);
 
 | 方法   | 路径                                        | 请求参数                                    | 响应                        |
 |--------|---------------------------------------------|---------------------------------------------|-----------------------------|
-| GET    | `/api/engineering/datasources`              | `keyword`, `type`, `status`, `page`, `size` | `PageResult<DataSourceDTO>` |
+| POST   | `/api/engineering/datasources/page`         | `keyword`, `type`, `status`, `page`, `size` | `PageResult<DataSourceDTO>` |
 | GET    | `/api/engineering/datasources/{id}`         | —                                           | `DataSourceDTO`             |
 | POST   | `/api/engineering/datasources`              | `DataSourceCreateRequest`                   | `DataSourceDTO`             |
 | PUT    | `/api/engineering/datasources/{id}`         | `DataSourceUpdateRequest`                   | `DataSourceDTO`             |
@@ -776,7 +848,21 @@ public record DataSourceCreateRequest(
                 @NotBlank String host, @NotNull Integer port,
                 @NotBlank String databaseName, String schemaName,
                 @NotBlank String username, @NotBlank String password,
-                String description
+                String description,
+                Boolean autoCollectOnSave            // true 时保存后自动触发一次元数据采集
+        ) {
+}
+
+// DataSourceUpdateRequest
+public record DataSourceUpdateRequest(
+                @NotBlank String type,
+                @NotBlank String host, @NotNull Integer port,
+                @NotBlank String databaseName, String schemaName,
+                @NotBlank String username,
+                String password,
+                @NotNull Boolean passwordChanged,    // true 时必须提供 password
+                String description,
+                Boolean autoCollectOnSave
         ) {
 }
 
@@ -792,38 +878,54 @@ public record TestConnectionRequest(
 public record DataSourceDTO(
         Long id, String name, String type, String host, Integer port,
         String databaseName, String schemaName, String username,
-        String passwordMasked,       // "••••••••"
-        String status, String lastErrorMessage,
-        LocalDateTime lastTestedAt, LocalDateTime createdAt
+        String passwordMasked,       // "********"
+        String description, String status, String errorMessage,
+        Integer autoCollectOnSave, String message,
+        LocalDateTime lastTestTime, LocalDateTime createdAt, LocalDateTime updatedAt,
+        Long createdBy, Long updatedBy, String createdByName, String updatedByName
 ) {
 }
 ```
 
 ### 8.2 采集任务接口
 
-| 方法   | 路径                                                   | 说明                                               |
-|--------|--------------------------------------------------------|----------------------------------------------------|
-| GET    | `/api/governance/collect-tasks`                        | 列表（搜索 `keyword` + 状态 `status` 筛选 + 分页） |
-| GET    | `/api/governance/collect-tasks/{id}`                   | 详情                                               |
-| POST   | `/api/governance/collect-tasks`                        | 创建                                               |
-| PUT    | `/api/governance/collect-tasks/{id}`                   | 编辑                                               |
-| DELETE | `/api/governance/collect-tasks/{id}`                   | 删除                                               |
-| POST   | `/api/governance/collect-tasks/{id}/execute`           | 手动执行                                           |
-| GET    | `/api/governance/collect-tasks/{id}/history`           | 历史记录列表（分页）                               |
-| GET    | `/api/governance/collect-tasks/{id}/history/{hid}`     | 某次执行详情                                       |
-| GET    | `/api/governance/collect-tasks/{id}/history/{hid}/log` | 某次执行日志                                       |
+| 方法   | 路径                                                    | 说明                                               | 鉴权                                    |
+|--------|---------------------------------------------------------|----------------------------------------------------|-----------------------------------------|
+| POST   | `/api/governance/collect-tasks/page`                    | 列表（搜索 `keyword` + 状态 `status` 筛选 + 分页） | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER |
+| GET    | `/api/governance/collect-tasks/{id}`                    | 详情                                               | SUPER_ADMIN / GOV_ADMIN / DATA_ENGINEER |
+| POST   | `/api/governance/collect-tasks`                         | 创建                                               | SUPER_ADMIN / GOV_ADMIN                 |
+| PUT    | `/api/governance/collect-tasks/{id}`                    | 编辑                                               | SUPER_ADMIN / GOV_ADMIN                 |
+| DELETE | `/api/governance/collect-tasks/{id}`                    | 删除                                               | SUPER_ADMIN / GOV_ADMIN                 |
+| POST   | `/api/governance/collect-tasks/{id}/execute`            | 手动执行                                           | SUPER_ADMIN / GOV_ADMIN                 |
+| POST   | `/api/governance/collect-tasks/{id}/schedule/start`     | 启动 Cron 调度                                     | SUPER_ADMIN / GOV_ADMIN                 |
+| POST   | `/api/governance/collect-tasks/{id}/schedule/stop`      | 停止 Cron 调度                                     | SUPER_ADMIN / GOV_ADMIN                 |
+| POST   | `/api/governance/collect-tasks/{id}/history/page`       | 历史记录列表（分页）                               | 所有登录角色                            |
+| GET    | `/api/governance/collect-tasks/{id}/history/{hid}`      | 某次执行详情                                       | 所有登录角色                            |
+| GET    | `/api/governance/collect-tasks/{id}/history/{hid}/logs` | 某次执行日志                                       | 所有登录角色                            |
 
 ```java
-// CollectTaskCreateRequest
+// CollectTaskCreateRequest / CollectTaskUpdateRequest
 public record CollectTaskCreateRequest(
                 @NotBlank String name,
                 @NotNull Long datasourceId,
-                @NotEmpty List<String> targetSchemas,    // 库/Schema 列表
-                @NotBlank String collectMode,            // FULL / INCREMENTAL
+                @NotEmpty List<String> scope,            // 库/Schema 列表（代码字段名）
+                @NotBlank String collectMode,            // FULL / FULL_INCREMENT
                 @NotBlank String triggerType,            // MANUAL / CRON
                 String cronExpression,                   // 定时触发时必填
+                String description
+        ) {
+}
+
+// CollectTaskUpdateRequest 额外携带当前状态
+public record CollectTaskUpdateRequest(
+                @NotBlank String name,
+                @NotNull Long datasourceId,
+                @NotEmpty List<String> scope,
+                @NotBlank String collectMode,
+                @NotBlank String triggerType,
+                String cronExpression,
                 String description,
-                boolean executeImmediately               // 保存后是否立即执行
+                @NotBlank String status
         ) {
 }
 ```
@@ -893,14 +995,27 @@ public class CollectTaskService {
 
 ### 8.3 元数据管理接口
 
-| 方法 | 路径                                               | 说明                             |
-|------|----------------------------------------------------|----------------------------------|
-| GET  | `/api/governance/metadata/datasources`             | 有元数据的数据源列表（供左侧树） |
-| GET  | `/api/governance/metadata/{dsId}/schemas`          | 某数据源下的 Schema 列表         |
-| GET  | `/api/governance/metadata/{dsId}/{schema}/tables`  | 某 Schema 下的表列表             |
-| GET  | `/api/governance/metadata/{dsId}/{schema}/{table}` | 表详情（含字段列表）             |
-| PUT  | `/api/governance/metadata/tables/{id}/comment`     | 编辑表注释                       |
-| PUT  | `/api/governance/metadata/columns/{id}`            | 编辑字段注释+备注                |
+代码实际采用四级路径（数据源 → Database → Schema → Table），并支持搜索树与 Doris 内置数据源：
+
+| 方法 | 路径                                                                               | 说明                                      |
+|------|------------------------------------------------------------------------------------|-------------------------------------------|
+| GET  | `/api/governance/metadata/datasources`                                             | 有元数据的数据源列表                      |
+| GET  | `/api/governance/metadata/search-tree`                                             | 全局元数据搜索树                          |
+| GET  | `/api/governance/metadata/datasources/{id}/databases`                              | 某数据源下的 Database 列表                |
+| GET  | `/api/governance/metadata/datasources/{id}/databases/{db}/schemas`                 | 某 Database 下的 Schema 列表              |
+| GET  | `/api/governance/metadata/datasources/{id}/databases/{db}/schemas/{schema}/tables` | 某 Database/Schema 下的表列表             |
+| GET  | `/api/governance/metadata/datasources/{id}/databases/{db}/tables`                  | 无 Schema 数据源（MySQL/Doris）下的表列表 |
+| GET  | `/api/governance/metadata/tables/{tableId}`                                        | 表详情                                    |
+| GET  | `/api/governance/metadata/tables/{tableId}/columns`                                | 某表下的字段列表                          |
+| GET  | `/api/governance/metadata/tables/{tableId}/preview`                                | 预览表数据（Sprint 2 起支持）             |
+| GET  | `/api/governance/metadata/builtin-doris/databases`                                 | Doris 内置数据源 Database 列表            |
+| GET  | `/api/governance/metadata/builtin-doris/databases/{db}/tables`                     | Doris 内置数据源表列表                    |
+| PUT  | `/api/governance/metadata/tables/{tableId}/comment`                                | 编辑表人工注释（`manual_comment`）        |
+| PUT  | `/api/governance/metadata/columns/{columnId}/comment`                              | 编辑字段人工注释                          |
+| PUT  | `/api/governance/metadata/columns/{columnId}/remark`                               | 编辑字段备注                              |
+
+> MySQL/Doris 三级模型可理解为 `database` 与 `schema` 同名；PostgreSQL/Oracle/SQL Server 四级模型区分 `database` 与
+> `schema`。
 
 ---
 
@@ -960,19 +1075,19 @@ PRD 要求不同角色看到不同菜单。菜单配置更新如下：
 const menuConfig: Record<string, MenuItem[]> = {
     SUPER_ADMIN: [
         {key: 'home', label: '首页'},
-        {key: 'datasources', label: '数据源', path: '/engineering/datasources'},
+        {key: 'datasources', label: '数据源管理', path: '/engineering/datasources'},
         {key: 'collect-tasks', label: '元数据采集任务', path: '/governance/collect-tasks'},
         {key: 'metadata', label: '元数据管理', path: '/governance/metadata'},
         {key: 'system', label: '系统管理', children: [...]},
     ],
     DATA_ENGINEER: [
         {key: 'home', label: '首页'},
-        {key: 'datasources', label: '数据源', path: '/engineering/datasources'},
+        {key: 'datasources', label: '数据源管理', path: '/engineering/datasources'},
         {key: 'metadata', label: '元数据管理', path: '/governance/metadata'},
     ],
     GOV_ADMIN: [
         {key: 'home', label: '首页'},
-        {key: 'datasources', label: '数据源', path: '/engineering/datasources', readonly: true},
+        {key: 'datasources', label: '数据源管理', path: '/engineering/datasources', readonly: true},
         {key: 'collect-tasks', label: '元数据采集任务', path: '/governance/collect-tasks'},
         {key: 'metadata', label: '元数据管理', path: '/governance/metadata'},
     ],
@@ -1082,10 +1197,10 @@ const menuConfig: Record<string, MenuItem[]> = {
 
 ## 附录 B：修订记录
 
-| 版本 | 日期                   | 修订内容                                                                                                     | 作者       |
-|------|------------------------|--------------------------------------------------------------------------------------------------------------|------------|
-| v1.1 | 2026-07-24             | 交互确认：数据源+采集分两服务；Flyway 集中 system-service；API 路径 /api/engineering/** + /api/governance/** | 软件架构师 |
-| v1.3 | 2026-07-24             | XXL-JOB 升级 3.4.2；SchedulerService 加 cookie 失效自动重登录                                                | 软件架构师 |
-| v1.4 | 2026-07-24             | XXL-JOB 复用 `nacos-mysql`；任务创建时即注册到 XXL-JOB（MANUAL 为 NONE）；手动/Cron 统一走调度中心           | 软件架构师 |
-| ✅   | 增量采集不覆盖人工注释 | 编辑注释后重新采集，注释保留                                                                                 |
-| ✅   | Cron                   
+| 版本 | 日期       | 修订内容                                                                                                                                                                                                                                                                                                                                                                                           | 作者       |
+|------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| v1.1 | 2026-07-24 | 交互确认：数据源+采集分两服务；Flyway 集中 system-service；API 路径 /api/engineering/** + /api/governance/**                                                                                                                                                                                                                                                                                       | 软件架构师 |
+| v1.3 | 2026-07-24 | XXL-JOB 升级 3.4.2；SchedulerService 加 cookie 失效自动重登录                                                                                                                                                                                                                                                                                                                                      | 软件架构师 |
+| v1.6 | 2026-08-02 | 文档/代码对齐：数据源实体增加 `autoCollectOnSave`、状态枚举补全 OFFLINE/UNKNOWN；API 补充 /databases、/tables；采集任务/历史/日志 API 路径与鉴权按代码修正；数据库设计按 V2.0.x 实际脚本重写（scope TEXT、collect_change_detail 独立表、metadata_table/column 字段与 source_type/last_collect_history_id 等）；元数据管理 API 补充 search-tree、/databases、/tables/{tableId}/columns、/preview 等 | 软件架构师 |
+| v1.5 | 2026-08-02 | 文档/代码对齐：数据源类型扩展为 5 类；列表接口改为 POST /page；删除数据源改为级联清理元数据；采集任务字段改为 `scope`、模式改为 FULL/FULL_INCREMENT；任务状态枚举 NEVER_EXECUTED/RUNNING/SUCCESS/FAILED/TERMINATED；Cron 调度需单独启停；元数据接口改为四级路径；字段长度按代码修正；菜单改为「数据源管理」                                                                                        | 软件架构师 |
+| v1.4 | 2026-07-24 | XXL-JOB 复用 `nacos-mysql`；任务创建时即注册到 XXL-JOB（MANUAL 为 NONE）；手动/Cron 统一走调度中心                                                                                                                                                                                                                                                                                                 | 软件架构师 |

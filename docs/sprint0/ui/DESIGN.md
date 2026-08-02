@@ -826,7 +826,7 @@ DataNest Sprint 0 — 快速参考卡片
 基于 DataNest DESIGN.md 生成创建/编辑用户弹窗。要求：
 - 居中弹窗，520px 宽，backdrop-filter blur 遮罩
 - 出现动画：scale(0.97)→scale(1)，250ms ease
-- 表单字段：用户名* / 密码* / 确认密码* / 角色*(chip多选) / 邮箱 / 手机号
+- 表单字段：用户名* / 密码* / 角色*(chip多选) / 邮箱 / 手机号
 - 编辑模式下密码字段显示"不修改则留空"
 - 角色 chip 多选：选中态蓝底蓝字，未选中灰底灰字
 - 底部：取消(outline) + 创建/保存(primary) 按钮

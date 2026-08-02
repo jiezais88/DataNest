@@ -6,6 +6,7 @@ import com.datanest.engineering.dto.SqlPreviewResponse;
 import com.datanest.engineering.dto.SqlPreviewResponse.StatementResult;
 import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.service.DorisSqlExecutor;
+import com.datanest.task.core.service.GenericSqlExecutor;
 import com.datanest.task.core.service.SqlStatementSplitter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

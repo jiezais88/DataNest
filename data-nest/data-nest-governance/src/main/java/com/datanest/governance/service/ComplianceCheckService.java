@@ -58,34 +58,41 @@ public class ComplianceCheckService {
     @Transactional
     public List<ComplianceCheckResultDTO> check(ComplianceCheckRequest request) {
         Long tableId = request.getTableId();
-        List<Long> datasourceIds = resolveDatasourceIds(request);
         String databaseName = request.getDatabaseName();
         String schemaName = request.getSchemaName();
 
-        if (tableId == null && datasourceIds.isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "合规检查请求必须指定数据源或表范围，不能单独使用库/Schema");
+        boolean checkNaming = request.getCheckNaming() == null || request.getCheckNaming();
+        boolean checkFieldType = request.getCheckFieldType() == null || request.getCheckFieldType();
+        if (!checkNaming && !checkFieldType) {
+            throw new BusinessException(ErrorCode.COMPLIANCE_CHECK_ITEM_REQUIRED);
         }
+
+        List<Long> datasourceIds = resolveDatasourceIds(request, tableId);
 
         deleteExistingResults(request, datasourceIds);
 
-        List<NamingStandard> tableStandards = namingStandardMapper.selectEnabledByAppliesTo("TABLE");
-        List<NamingStandard> columnStandards = namingStandardMapper.selectEnabledByAppliesTo("COLUMN");
+        List<NamingStandard> tableStandards = checkNaming
+                ? namingStandardMapper.selectEnabledByAppliesTo("TABLE")
+                : List.of();
+        List<NamingStandard> columnStandards = checkNaming
+                ? namingStandardMapper.selectEnabledByAppliesTo("COLUMN")
+                : List.of();
         List<Long> standardIds = Stream.concat(tableStandards.stream(), columnStandards.stream())
                 .map(NamingStandard::getTargetStandardId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
-        Map<Long, FieldTypeStandard> standardMap = standardIds.isEmpty()
-                ? Map.of()
-                : fieldTypeStandardMapper.selectBatchIds(standardIds)
-                .stream().collect(Collectors.toMap(FieldTypeStandard::getId, s -> s));
+        Map<Long, FieldTypeStandard> standardMap = checkFieldType && !standardIds.isEmpty()
+                ? fieldTypeStandardMapper.selectBatchIds(standardIds)
+                .stream().collect(Collectors.toMap(FieldTypeStandard::getId, s -> s))
+                : Map.of();
 
         List<ComplianceCheckResult> results = new ArrayList<>();
         LocalDateTime checkedAt = LocalDateTime.now();
 
         if (tableId != null) {
             checkOneTable(tableId, tableStandards, columnStandards, standardMap, results, checkedAt);
-        } else {
+        } else if (!datasourceIds.isEmpty()) {
             for (Long datasourceId : datasourceIds) {
                 List<MetadataTable> tables = listTables(datasourceId, databaseName, schemaName);
                 if (!tables.isEmpty()) {
@@ -101,14 +108,32 @@ public class ComplianceCheckService {
         return results.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    private List<Long> resolveDatasourceIds(ComplianceCheckRequest request) {
+    /**
+     * 解析检查范围。若请求未指定数据源/表，则视为「全部数据源」（取 metadata_table 中所有在线数据源 ID）。
+     */
+    private List<Long> resolveDatasourceIds(ComplianceCheckRequest request, Long tableId) {
+        if (tableId != null) {
+            return List.of();
+        }
         if (request.getDatasourceIds() != null && !request.getDatasourceIds().isEmpty()) {
             return new ArrayList<>(request.getDatasourceIds());
         }
         if (request.getDatasourceId() != null) {
             return List.of(request.getDatasourceId());
         }
-        return List.of();
+        return allOnlineDatasourceIds();
+    }
+
+    private List<Long> allOnlineDatasourceIds() {
+        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.eq("source_status", MetadataSourceStatus.ONLINE.getCode());
+        wrapper.select("distinct datasource_id");
+        List<Object> ids = metadataTableMapper.selectObjs(wrapper);
+        return ids.stream()
+                .filter(Objects::nonNull)
+                .map(o -> ((Number) o).longValue())
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private void deleteExistingResults(ComplianceCheckRequest request, List<Long> datasourceIds) {
@@ -165,17 +190,19 @@ public class ComplianceCheckService {
 
     public List<ComplianceCheckResultDTO> listResults(ComplianceCheckRequest request) {
         QueryWrapper<ComplianceCheckResult> wrapper = new QueryWrapper<>();
-        if (request.getTableId() != null) {
-            wrapper.eq("table_id", request.getTableId());
+        Long tableId = request.getTableId();
+        if (tableId != null) {
+            wrapper.eq("table_id", tableId);
         } else {
-            List<Long> datasourceIds = resolveDatasourceIds(request);
-            if (!datasourceIds.isEmpty()) {
-                List<Long> tableIds = listTableIds(datasourceIds, request.getDatabaseName(), request.getSchemaName());
-                if (!tableIds.isEmpty()) {
-                    wrapper.in("table_id", tableIds);
-                } else {
-                    return List.of();
-                }
+            List<Long> datasourceIds = resolveDatasourceIds(request, tableId);
+            if (datasourceIds.isEmpty()) {
+                return List.of();
+            }
+            List<Long> tableIds = listTableIds(datasourceIds, request.getDatabaseName(), request.getSchemaName());
+            if (!tableIds.isEmpty()) {
+                wrapper.in("table_id", tableIds);
+            } else {
+                return List.of();
             }
         }
         if (request.getStartTime() != null) {

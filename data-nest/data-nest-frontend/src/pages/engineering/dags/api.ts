@@ -157,8 +157,8 @@ export const putDagAlertConfig = (dagId: string | number, data: DagAlertConfig) 
     request.put<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`, data).then(r => r.data);
 
 // =================== 节点实时日志（Sprint 4） ===================
-// 注意：实际路径带 /dag-executions 前缀（后端 DagExecutionController 类级映射），与文档 /dev/executions/... 不一致
+// 注意：节点日志统一走 /dag-executions/{executionId}/nodes/{nodeId}/logs
 
 // RUNNING 轮询期间后端可能持续报错，禁用全局错误弹窗（面板内自行静默处理）
 export const getNodeRuntimeLogs = (executionId: string | number, nodeId: string) =>
-    request.get<Result<NodeExecutionLog[]>>(`/engineering/dag-executions/dev/executions/${executionId}/nodes/${nodeId}/logs`, {skipErrorMessage: true}).then(r => r.data);
+    request.get<Result<NodeExecutionLog[]>>(`/engineering/dag-executions/${executionId}/nodes/${nodeId}/logs`, {skipErrorMessage: true}).then(r => r.data);

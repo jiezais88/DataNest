@@ -9,7 +9,8 @@ FROM quay.io/wgzhao/addax:6.0.11 AS addax
 # Stage 2: 构建应用运行镜像
 FROM eclipse-temurin:21-jre-alpine
 
-RUN apk add --no-cache bash netcat-openbsd
+RUN apk add --no-cache bash netcat-openbsd python3 py3-pip && \
+    pip3 install --no-cache-dir pandas pymysql --break-system-packages
 
 # 拷贝 Addax
 COPY --from=addax /opt/addax /opt/addax

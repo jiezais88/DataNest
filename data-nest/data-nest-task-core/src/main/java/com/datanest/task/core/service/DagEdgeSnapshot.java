@@ -1,4 +1,4 @@
-package com.datanest.engineering.service;
+package com.datanest.task.core.service;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
@@ -10,9 +10,10 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * DAG 执行实例的边快照工具：
+ * DAG 执行实例的边快照工具。
+ * Sprint 4 下沉到 task-core，供 engineering / worker 共用。
  * trigger / CRON 自动补单创建 dag_execution 行时，把该 DAG 当前 dag_edge 列表
- * 序列化为 JSON（[{"source":"<nodeId>","target":"<nodeId>"},...]，无边时 []）
+ * 序列化为 JSON（[{ "source": "<nodeId>", "target": "<nodeId>" }, ...]，无边时 []）
  * 写入 edge_snapshot 列，历史视图（run-view）据此渲染边，
  * 避免用户删除节点后历史实例的连线丢失。
  * <p>

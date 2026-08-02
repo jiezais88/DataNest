@@ -53,3 +53,9 @@ spring:
                 - Path=/api/governance/**
               filters:
                 - StripPrefix=1
+            - id: worker-service
+              uri: lb://data-nest-worker
+              predicates:
+                - Path=/api/worker/**
+              filters:
+                - StripPrefix=1

@@ -1,11 +1,10 @@
-package com.datanest.engineering.service;
+package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
-import com.datanest.task.core.service.ConnectionTester;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,13 +28,15 @@ import java.util.List;
  * <p>
  * Timeout: Statement.setQueryTimeout(5) - prevents SELECT on huge table from
  * pinning the HTTP thread.
+ * <p>
+ * Sprint 4 下沉到 task-core，供 engineering / governance 共用。
  */
 @Service
 public class GenericSqlExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(GenericSqlExecutor.class);
     private static final int QUERY_TIMEOUT_SECONDS = 5;
-    private static final int PREVIEW_MAX_ROWS = 200;
+    public static final int PREVIEW_MAX_ROWS = 200;
 
     private final DataSourceConnectionMapper dataSourceMapper;
     private final EncryptionConfig encryptionConfig;

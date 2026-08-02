@@ -52,48 +52,49 @@ cd data-nest && mvn clean install   # 全量编译通过
 
 ### 1.3 不在本 Sprint 范围
 
-| 暂缓项                      | 理由                  | 后续 Sprint |
-|-----------------------------|-----------------------|:-----------:|
-| Redis                       | Sa-Token 内存模式足够 | Sprint 1-2  |
-| OpenSearch / Neo4j          | 搜索/血缘，Sprint 6-8 |  Sprint 6   |
-| DolphinScheduler            | 调度引擎，Sprint 3-5  |  Sprint 3   |
-| MinIO + Iceberg + Flink CDC | 实时/湖仓，Sprint 8-9 |  Sprint 8   |
-| SSO / 第三方登录 / 验证码   | P2 功能               |   企业版    |
-| 密码复杂度策略 / 登录锁定   | 安全加固              |  Sprint 3   |
-| 数据级权限（表/字段级）     | Sprint 10             |  Sprint 10  |
+| 暂缓项                      | 理由                      |  后续 Sprint   |
+|-----------------------------|---------------------------|:--------------:|
+| ~~Redis~~                   | ~~Sa-Token 内存模式足够~~ | ~~Sprint 1-2~~ |
+| Redis                       | Sa-Token 会话存储         |    Sprint 0    |
+| OpenSearch / Neo4j          | 搜索/血缘，Sprint 6-8     |    Sprint 6    |
+| DolphinScheduler            | 调度引擎，Sprint 3-5      |    Sprint 3    |
+| MinIO + Iceberg + Flink CDC | 实时/湖仓，Sprint 8-9     |    Sprint 8    |
+| SSO / 第三方登录 / 验证码   | P2 功能                   |     企业版     |
+| 密码复杂度策略 / 登录锁定   | 安全加固                  |    Sprint 3    |
+| 数据级权限（表/字段级）     | Sprint 10                 |   Sprint 10    |
 
 ### 1.4 技术栈
 
-| 组件                         | 版本       | 用途              |
-|------------------------------|------------|-------------------|
-| JDK                          | 21 LTS     | —                 |
-| Spring Boot                  | 4.0.7      | 微服务框架        |
-| Spring Cloud                 | 2025.1.2   | 微服务生态        |
-| SCA                          | 2025.1.0.0 | Nacos 集成        |
-| Nacos                        | 3.1.1      | 注册 + 配置中心   |
-| PostgreSQL                   | 16         | 元数据 + 用户权限 |
-| Apache Doris                 | 4.1.3      | OLAP 引擎         |
-| Maven                        | 3.9+       | 构建              |
-| React 18 + TS 5.x + Vite 6.x | 最新稳定版 | 前端              |
-| Sa-Token                     | 1.44+      | 鉴权（内存模式）  |
-| MyBatis-Plus                 | 3.5.10     | ORM + 雪花主键    |
-| Flyway                       | 10.22.0    | 数据库迁移        |
-| Nginx                        | alpine     | 前端托管          |
+| 组件                         | 版本       | 用途               |
+|------------------------------|------------|--------------------|
+| JDK                          | 21 LTS     | —                  |
+| Spring Boot                  | 4.0.7      | 微服务框架         |
+| Spring Cloud                 | 2025.1.2   | 微服务生态         |
+| SCA                          | 2025.1.0.0 | Nacos 集成         |
+| Nacos                        | 3.1.1      | 注册 + 配置中心    |
+| PostgreSQL                   | 16         | 元数据 + 用户权限  |
+| Apache Doris                 | 4.1.3      | OLAP 引擎          |
+| Maven                        | 3.9+       | 构建               |
+| React 18 + TS 5.x + Vite 6.x | 最新稳定版 | 前端               |
+| Sa-Token                     | 1.44+      | 鉴权（Redis 模式） |
+| MyBatis-Plus                 | 3.5.10     | ORM + 雪花主键     |
+| Flyway                       | 10.22.0    | 数据库迁移         |
+| Nginx                        | alpine     | 前端托管           |
 
 ---
 
 ## 2. 交付物清单
 
-| #  | 交付物                                                              | 类型 | 验收方式                              |
-|----|---------------------------------------------------------------------|------|---------------------------------------|
-| D1 | `data-nest/pom.xml` + 3 个子模块                                    | 代码 | `mvn clean install` 成功              |
-| D2 | `docker-compose.yml`（中间件 + gateway + system + 前端，共 7 容器） | 配置 | `docker compose up -d` 全容器 healthy |
-| D3 | 4 个 `shared-configs/` YAML                                         | 配置 | Nacos Console 可见                    |
-| D4 | `data-nest-common/`                                                 | 代码 | 编译通过                              |
-| D5 | `data-nest-gateway/`（登录 + JWT + 路由）                           | 代码 | `POST /api/auth/login` 返回 Token     |
-| D6 | `data-nest-system/`（用户/角色 CRUD + Flyway 迁移）                 | 代码 | 管理员可创建用户并分配角色            |
-| D7 | `data-nest-frontend/`（登录页 + 主页 + 用户管理）                   | 代码 | `npm run dev` 可启动                  |
-| D8 | `start-local.sh`                                                    | 脚本 | 一键启动全栈                          |
+| #  | 交付物                                                              | 类型 | 验收方式                                 |
+|----|---------------------------------------------------------------------|------|------------------------------------------|
+| D1 | `data-nest/pom.xml` + 3 个子模块                                    | 代码 | `mvn clean install` 成功                 |
+| D2 | `docker-compose.yml`（中间件 + gateway + system + 前端，共 8 容器） | 配置 | `docker compose up -d` 全容器 healthy    |
+| D3 | 4 个 `shared-configs/` YAML                                         | 配置 | Nacos Console 可见                       |
+| D4 | `data-nest-common/`                                                 | 代码 | 编译通过                                 |
+| D5 | `data-nest-gateway/`（路由 + Sa-Token 统一鉴权）                    | 代码 | `POST /api/system/auth/login` 返回 Token |
+| D6 | `data-nest-system/`（用户/角色 CRUD + Flyway 迁移）                 | 代码 | 管理员可创建用户并分配角色               |
+| D7 | `data-nest-frontend/`（登录页 + 主页 + 用户管理）                   | 代码 | `npm run dev` 可启动                     |
+| D8 | `start-local.sh`                                                    | 脚本 | 一键启动全栈                             |
 
 ---
 
@@ -119,19 +120,19 @@ data-nest/
 ├── data-nest-gateway/                    # 🚪 API 网关
 │   └── src/main/java/com/datanest/gateway/
 │       ├── GatewayApplication.java
-│       ├── controller/AuthController.java   # 登录入口
-│       ├── config/RouteConfig.java
-│       └── filter/JwtAuthFilter.java
+│       ├── config/SaTokenConfig.java        # Sa-Token 统一鉴权
+│       ├── config/CorsConfig.java
+│       └── filter/JwtAuthFilter.java        # Token 解析并透传 X-User-Id
 │
-├── data-nest-system/                     # 👤 用户与权限管理
+├── data-nest-system/                     # 👤 用户与权限管理（含登录入口）
 │   └── src/main/java/com/datanest/system/
 │       ├── SystemApplication.java
-│       ├── controller/   # UserController, RoleController
-│       ├── service/      # UserService, RoleService
-│       ├── mapper/       # UserMapper, RoleMapper, PermissionMapper
-│       ├── entity/       # User, Role, Permission, UserRole
-│       ├── dto/          # UserDTO, UserCreateRequest...
-│       └── resources/db/migration/  # V1.0.0, V1.0.1
+│       ├── controller/   # AuthController, UserController
+│       ├── service/      # UserService
+│       ├── mapper/       # UserMapper, RoleMapper
+│       ├── entity/       # User, Role
+│       ├── dto/          # UserVO, UserCreateRequest, UserUpdateRequest...
+│       └── resources/db/migration/  # V1.0.0, V1.0.1, V3.4.1
 │
 ├── data-nest-frontend/                   # 🎨 前端工程
 │   ├── package.json, vite.config.ts, tsconfig.json
@@ -377,6 +378,7 @@ server:
 |----------------|-------|------------|---------------------------------------------------|:------:|
 | **Nacos**      | 3.1.1 | 8848       | 所有微服务                                        |   0    |
 | **PostgreSQL** | 16    | 5432       | system（用户权限）→ governance（Sprint 1 元数据） |  0/1   |
+| **Redis**      | 7.x   | 6379       | gateway / system（Sa-Token 会话存储）             |   0    |
 | **Doris**      | 4.1.3 | 9030(JDBC) | integration（Sprint 1）                           |   1    |
 
 ### 4.2 docker-compose.yml
@@ -415,6 +417,17 @@ services:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U datanest" ]
+      interval: 10s; timeout: 5s; retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: datanest-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s; timeout: 5s; retries: 5
 
   doris-fe:
@@ -472,6 +485,7 @@ services:
     depends_on:
       nacos:    { condition: service_healthy }
       postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
     environment:
       NACOS_ADDR: nacos:8848
       PG_HOST: postgres
@@ -492,6 +506,7 @@ services:
     depends_on:
       nacos:  { condition: service_healthy }
       system: { condition: service_healthy }
+      redis:  { condition: service_healthy }
     environment:
       NACOS_ADDR: nacos:8848
       JWT_SECRET: ${JWT_SECRET:-DataNestSecretKey2026!}
@@ -521,10 +536,11 @@ services:
 ```
 1. nacos
 2. postgres
-3. doris-fe → doris-be
-4. system        ← 等 PG（Flyway 自动建表 + 预置数据）
-5. gateway       ← 等 nacos + system（登录接口依赖 system）
-6. frontend      ← 等 gateway
+3. redis
+4. doris-fe → doris-be
+5. system        ← 等 PG + Redis（Flyway 自动建表 + 预置数据）
+6. gateway       ← 等 nacos + system + Redis（Sa-Token 会话依赖 Redis）
+7. frontend      ← 等 gateway
 ```
 
 ---
@@ -535,9 +551,9 @@ services:
 
 ```
 浏览器 (3000) ──▶ gateway-service (8080)
-                     │ JwtAuthFilter
+                     │ SaReactorFilter
                      │
-                     ├── POST /api/auth/login        → Gateway 自身，调 system-service 验证→签发 JWT
+                     ├── POST /api/system/auth/login  → lb://system-service（登录入口在 system）
                      ├── /api/system/**               → lb://system-service
                      └── /actuator/**                 → 放行
 ```
@@ -562,16 +578,36 @@ spring:
         namespace: datanest-dev
         file-extension: yaml
     gateway:
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Origin
-      routes:
-        - id: system-service
-          uri: lb://system-service
-          predicates: [ Path=/api/system/** ]
-        # 后续 Sprint 按需添加：
-        # - id: engineering-service   → Sprint 1
-        # - id: governance-service    → Sprint 1
-        # - id: data-service          → Sprint 10
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 3000
+            response-timeout: 30s
+            pool:
+              type: elastic
+              max-connections: 500
+              max-life-time: 30s
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+          routes:
+            - id: system-service
+              uri: lb://data-nest-system
+              predicates:
+                - Path=/api/system/**
+              filters:
+                - StripPrefix=1
+            - id: engineering-service
+              uri: lb://data-nest-engineering
+              predicates:
+                - Path=/api/engineering/**
+              filters:
+                - StripPrefix=1
+            - id: governance-service
+              uri: lb://data-nest-governance
+              predicates:
+                - Path=/api/governance/**
+              filters:
+                - StripPrefix=1
 
 server:
   port: 8080
@@ -579,99 +615,113 @@ server:
 
 > Sa-Token 配置统一放在 Nacos `shared-configs/shared-security.yaml`，通过 `spring.config.import` 加载，本地
 > `application.yml` 不再重复声明。
+>
+> **路由说明**：`system-service` 设置了 `server.servlet.context-path=/system`，Gateway 通过 `StripPrefix=1` 去掉 `/api`
+> 前缀，转发后的路径自然落在 `/system` 上下文下。例如 `/api/system/auth/login` → `/system/auth/login`。
 
 ### 5.3 登录时序
 
 ```
-1. 前端 POST /api/auth/login { username: "admin", password: "admin123" }
-2. Gateway AuthController → Feign → system-service POST /api/system/users/verify
-3. system-service: 查 DB → 验证密码（BCrypt）→ 返回 UserLoginDTO (含 userId, roles)
-4. Gateway: StpUtil.login(userId) → 签发 JWT → 返回 { token, userInfo }
-5. 前端存 token → 后续所有请求带 Authorization header
-6. JwtAuthFilter 校验 JWT → 透传 X-User-Id → 路由到目标服务
+1. 前端 POST /api/system/auth/login { username: "admin", password: "admin123" }
+2. system-service AuthController: 查 DB → 验证密码（BCrypt）→ `StpUtil.login(userId, rememberMe)` → 签发 JWT
+3. system-service 返回 `{ token, userInfo }`（含 `userId`、`username`、`roles`）
+4. 前端存 token → 后续所有请求带 Authorization header
+5. Gateway SaReactorFilter 校验 JWT → 透传 X-User-Id → 路由到目标服务
 ```
 
-### 5.4 Gateway 登录接口代码
+### 5.4 system-service 登录接口代码
 
 ```java
-// Gateway AuthController
+// system-service AuthController
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 public class AuthController {
 
-    private final SystemServiceClient systemClient;
+    private final UserService userService;
 
-    @PostMapping("/login")
-    public Mono<Map<String, Object>> login(@RequestBody LoginRequest req) {
-        // 1. 调 system-service 验证账户
-        UserLoginDTO user = systemClient.verifyCredentials(req);
-        if (user == null) {
-            return Mono.error(new ResponseStatusException(
-                HttpStatus.UNAUTHORIZED, "用户名或密码错误"));
-        }
-        if (!user.isEnabled()) {
-            return Mono.error(new ResponseStatusException(
-                HttpStatus.FORBIDDEN, "账号已被禁用"));
-        }
-        // 2. 签发 JWT
-        StpUtil.login(user.getUserId());
-        // 3. 返回 Token + 用户信息
-        return Mono.just(Map.of(
-            "token", StpUtil.getTokenValue(),
-            "tokenName", "Authorization",
-            "userInfo", Map.of(
-                "userId", user.getUserId(),
-                "username", user.getUsername(),
-                "roles", user.getRoles(),
-                "permissions", user.getPermissions()
-            )
-        ));
+    public AuthController(UserService userService) {
+        this.userService = userService;
     }
-}
 
-// Feign Client
-@FeignClient(name = "system-service", path = "/api/system")
-interface SystemServiceClient {
-    @PostMapping("/users/verify")
-    UserLoginDTO verifyCredentials(@RequestBody LoginRequest request);
+    /**
+     * 用户登录
+     * POST /api/system/auth/login
+     */
+    @PostMapping("/login")
+    public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
+        UserLoginDTO user = userService.verify(req.username(), req.password());
+
+        StpUtil.login(user.userId(), req.rememberMe() == Boolean.TRUE);
+        StpUtil.getSession().set("roles", user.roles());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", StpUtil.getTokenValue());
+        result.put("userInfo", Map.of(
+                "userId", user.userId(),
+                "username", user.username(),
+                "roles", user.roles()
+        ));
+        return Result.ok(result);
+    }
+
+    /**
+     * 用户登出
+     */
+    @PostMapping("/logout")
+    public Result<Void> logout() {
+        StpUtil.logout();
+        return Result.ok(null);
+    }
 }
 ```
 
-### 5.5 JWT 过滤器
+### 5.5 Gateway 统一鉴权过滤器
+
+Gateway 使用 **Sa-Token `SaReactorFilter` 做登录/权限校验**，并保留一个轻量 `JwtAuthFilter` 负责把当前登录用户 ID 通过
+`X-User-Id` Header 透传给下游微服务。
 
 ```java
-@Component
-public class JwtAuthFilter implements GlobalFilter, Ordered {
+@Configuration
+public class SaTokenConfig {
 
-    private static final List<String> WHITELIST = List.of(
-        "/api/auth/login", "/actuator/health", "/actuator/info"
-    );
+    private static final String CONTENT_TYPE_JSON = MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8";
 
-    @Override
-    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        String path = exchange.getRequest().getURI().getPath();
-        if (WHITELIST.stream().anyMatch(path::startsWith)) {
-            return chain.filter(exchange);
-        }
+    @Bean
+    public SaReactorFilter saReactorFilter() {
+        return new SaReactorFilter()
+                .addInclude("/**")
+                .addExclude(
+                        "/api/system/auth/login",
+                        "/api/system/auth/logout",
+                        "/actuator/gateway/**",
+                        "/actuator/health",
+                        "/api/engineering/dev/internal/**"
+                )
+                .setAuth(obj -> SaRouter.match("/**", StpUtil::checkLogin))
+                .setError(e -> {
+                    SaHolder.getResponse().setHeader("Content-Type", CONTENT_TYPE_JSON);
+                    ServerHttpResponse nativeResponse = (ServerHttpResponse) SaHolder.getResponse().getSource();
+                    if (e instanceof NotLoginException) {
+                        nativeResponse.setStatusCode(HttpStatus.UNAUTHORIZED);
+                        return writeResult(Result.fail(ErrorCode.UNAUTHORIZED.getCode(), ErrorCode.UNAUTHORIZED.getMessage()));
+                    }
+                    if (e instanceof NotRoleException || e instanceof NotPermissionException) {
+                        nativeResponse.setStatusCode(HttpStatus.FORBIDDEN);
+                        return writeResult(Result.fail(ErrorCode.FORBIDDEN.getCode(), ErrorCode.FORBIDDEN.getMessage()));
+                    }
+                    nativeResponse.setStatusCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                    return writeResult(Result.fail(ErrorCode.INTERNAL_ERROR.getCode(), ErrorCode.INTERNAL_ERROR.getMessage()));
+                });
+    }
 
-        String token = exchange.getRequest().getHeaders().getFirst("Authorization");
-        if (token == null || token.isBlank()) {
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
-        }
-
-        try {
-            Object loginId = StpUtil.getLoginIdByToken(token);
-            exchange.getRequest().mutate()
-                .header("X-User-Id", String.valueOf(loginId));
-        } catch (Exception e) {
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
-        }
-        return chain.filter(exchange);
+    private static String writeResult(Result<?> result) {
+        return JSON.toJSONString(result);
     }
 }
 ```
+
+> `JwtAuthFilter`（`data-nest-gateway/filter/JwtAuthFilter.java`）仅解析 Token 并透传 `X-User-Id`， **不替代
+SaReactorFilter 做鉴权**。
 
 ---
 
@@ -679,100 +729,111 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
 ### 6.1 职责边界
 
-| 功能                     | 调用方                   | 鉴权                          |
-|--------------------------|--------------------------|-------------------------------|
-| `POST /users/verify`     | Gateway（Feign）         | Internal Token                |
-| `GET /users`             | 前端（管理员）           | `@SaCheckRole("SUPER_ADMIN")` |
-| `POST /users`            | 前端（管理员）           | `@SaCheckRole("SUPER_ADMIN")` |
-| `PUT /users/{id}`        | 前端（管理员）           | `@SaCheckRole("SUPER_ADMIN")` |
-| `PUT /users/{id}/status` | 前端（管理员）           | `@SaCheckRole("SUPER_ADMIN")` |
-| `GET /roles`             | 前端（admin + 普通用户） | `@SaCheckLogin`               |
+| 功能                                 | 调用方           | 鉴权                              |
+|--------------------------------------|------------------|-----------------------------------|
+| `POST /api/system/auth/login`        | 前端             | 匿名（登录入口在 system-service） |
+| `GET /users`                         | 前端（管理员）   | `@SaCheckRole("SUPER_ADMIN")`     |
+| `POST /users`                        | 前端（管理员）   | `@SaCheckRole("SUPER_ADMIN")`     |
+| `PUT /users/{userId}`                | 前端（管理员）   | `@SaCheckRole("SUPER_ADMIN")`     |
+| `PUT /users/{userId}/toggle`         | 前端（管理员）   | `@SaCheckRole("SUPER_ADMIN")`     |
+| `PUT /users/password`                | 前端（登录用户） | `@SaCheckLogin`                   |
+| `PUT /users/{userId}/reset-password` | 前端（管理员）   | `@SaCheckRole("SUPER_ADMIN")`     |
 
 ### 6.2 4 个预置角色
 
-| 角色代码           | 显示名     | 可见菜单                                                 |
-|--------------------|------------|----------------------------------------------------------|
-| `SUPER_ADMIN`      | 超级管理员 | 全部（含系统管理）                                       |
-| `DATA_ENGINEER`    | 数据工程师 | 数据集成、数据开发、数据治理（查看）、资产目录、数据服务 |
-| `DATA_ANALYST`     | 数据分析师 | 资产目录、数据服务（SQL 终端）                           |
-| `GOVERNANCE_ADMIN` | 治理管理员 | 数据治理（全部）、资产目录                               |
+| 角色代码           | 显示名     | 可见菜单                                       |
+|--------------------|------------|------------------------------------------------|
+| `SUPER_ADMIN`      | 超级管理员 | 全部（含系统管理）                             |
+| `DATA_ENGINEER`    | 数据工程师 | 数据工程、数据开发、数据治理（查看）、执行历史 |
+| `DATA_ANALYST`     | 数据分析师 | 数据治理（查看）、执行历史                     |
+| `GOVERNANCE_ADMIN` | 治理管理员 | 数据治理（全部）、执行历史                     |
 
 ### 6.3 权限矩阵（API 层）
 
-| API 路径前缀          | SUPER_ADMIN | DATA_ENGINEER | DATA_ANALYST | GOV_ADMIN |
-|-----------------------|:-----------:|:-------------:|:------------:|:---------:|
-| `/api/system/**`      |   ✅ 全部   |      ❌       |      ❌      |    ❌     |
-| `/api/integration/**` |     ✅      |      ✅       |      ❌      |    ❌     |
-| `/api/dev/**`         |     ✅      |      ✅       |      ❌      |    ❌     |
-| `/api/governance/**`  |     ✅      |     查看      |     查看     |    ✅     |
-| `/api/catalog/**`     |     ✅      |      ✅       |      ✅      |    ✅     |
-| `/api/data/**`        |     ✅      |      ✅       |      ✅      |    ❌     |
-| `/api/realtime/**`    |     ✅      |      ✅       |      ❌      |    ❌     |
+| API 路径前缀                | SUPER_ADMIN | DATA_ENGINEER | DATA_ANALYST | GOV_ADMIN |
+|-----------------------------|:-----------:|:-------------:|:------------:|:---------:|
+| `/api/system/**`            |   ✅ 全部   |      ❌       |      ❌      |    ❌     |
+| `/api/engineering/**`       |     ✅      |      ✅       |      ❌      |    ❌     |
+| `/api/dev/**`               |     ✅      |      ✅       |      ❌      |    ❌     |
+| `/api/governance/**`        |     ✅      |     查看      |     查看     |    ✅     |
+| `/api/execution-history/**` |     ✅      |      ✅       |      ✅      |    ✅     |
 
 ### 6.4 核心接口定义
 
 ```java
 // UserController.java
 @RestController
-@RequestMapping("/api/system")
+@RequestMapping("/users")
 public class UserController {
 
     private final UserService userService;
 
-    /** 内部接口：验证登录凭据 */
-    @PostMapping("/users/verify")
-    public Result<UserLoginDTO> verifyCredentials(@RequestBody LoginVerifyRequest req) {
-        return Result.ok(userService.verifyCredentials(req.getUsername(), req.getPassword()));
+    public UserController(UserService userService) {
+        this.userService = userService;
     }
 
-    /** 用户列表（搜索 + 分页 + 角色筛选 + 状态筛选）*/
-    @GetMapping("/users")
+    /**
+     * 用户列表（仅超级管理员）
+     */
     @SaCheckRole("SUPER_ADMIN")
-    public Result<PageResult<UserDTO>> listUsers(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String role,
-            @RequestParam(required = false) String status,
+    @GetMapping
+    public Result<PageResult<UserVO>> list(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return Result.ok(userService.listUsers(keyword, role, status, page, size));
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String roleCode,
+            @RequestParam(required = false) String status) {
+        return Result.ok(userService.listUsers(page, pageSize, keyword, roleCode, status));
     }
 
-    /** 创建用户 */
-    @PostMapping("/users")
+    /**
+     * 创建用户 (仅超级管理员)
+     */
     @SaCheckRole("SUPER_ADMIN")
-    public Result<UserDTO> createUser(@RequestBody @Valid UserCreateRequest req) {
+    @PostMapping
+    public Result<UserVO> create(@Valid @RequestBody UserCreateRequest req) {
         return Result.ok(userService.createUser(req));
     }
 
-    /** 编辑用户 */
-    @PutMapping("/users/{id}")
+    /**
+     * 编辑用户 (仅超级管理员)
+     */
     @SaCheckRole("SUPER_ADMIN")
-    public Result<UserDTO> updateUser(@PathVariable Long id, @RequestBody UserUpdateRequest req) {
-        return Result.ok(userService.updateUser(id, req));
+    @PutMapping("/{userId}")
+    public Result<UserVO> update(@PathVariable Long userId,
+                                 @Valid @RequestBody UserUpdateRequest req) {
+        return Result.ok(userService.updateUser(userId, req));
     }
 
-    /** 禁用/启用用户 */
-    @PutMapping("/users/{id}/status")
+    /**
+     * 切换启用/禁用 (仅超级管理员)
+     */
     @SaCheckRole("SUPER_ADMIN")
-    public Result<Void> toggleStatus(@PathVariable Long id, @RequestBody StatusRequest req) {
-        userService.toggleStatus(id, req.isEnabled());
+    @PutMapping("/{userId}/toggle")
+    public Result<Void> toggleStatus(@PathVariable Long userId) {
+        userService.toggleStatus(userId);
         return Result.ok(null);
     }
 
-    /** 修改自己的密码 */
-    @PutMapping("/users/password")
+    /**
+     * 修改密码 (用户自主)
+     */
     @SaCheckLogin
-    public Result<Void> changePassword(@RequestBody ChangePasswordRequest req) {
-        Long userId = StpUtil.getLoginIdAsLong();
-        userService.changePassword(userId, req.getOldPassword(), req.getNewPassword());
+    @PutMapping("/password")
+    public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequest req) {
+        long userId = StpUtil.getLoginIdAsLong();
+        userService.changePassword(userId, req.oldPassword(), req.newPassword());
         return Result.ok(null);
     }
 
-    /** 管理员重置用户密码 */
-    @PutMapping("/users/{id}/reset-password")
+    /**
+     * 管理员重置用户密码 (仅超级管理员)
+     */
     @SaCheckRole("SUPER_ADMIN")
-    public Result<Void> resetPassword(@PathVariable Long id, @RequestBody ResetPasswordRequest req) {
-        userService.resetPassword(id, req.getNewPassword());
+    @PutMapping("/{userId}/reset-password")
+    public Result<Void> resetPassword(@PathVariable Long userId,
+                                      @Valid @RequestBody ResetPasswordRequest req) {
+        userService.resetPassword(userId, req.newPassword());
         return Result.ok(null);
     }
 }
@@ -781,13 +842,18 @@ public class UserController {
 ### 6.5 DTO 关键字段
 
 ```java
-// LoginVerifyRequest
-public record LoginVerifyRequest(String username, String password) {}
+// LoginRequest（common 模块）
+public record LoginRequest(
+    @NotBlank String username,
+    @NotBlank String password,
+    Boolean rememberMe
+) {}
 
-// UserLoginDTO（Gateway 登录接口返回值）
+// UserLoginDTO（common 模块，system-service 登录后返回给 gateway）
 public record UserLoginDTO(
     Long userId,
     String username,
+    String password,
     boolean enabled,
     List<String> roles,
     List<String> permissions
@@ -795,11 +861,36 @@ public record UserLoginDTO(
 
 // UserCreateRequest
 public record UserCreateRequest(
-    @NotBlank @Size(min=3, max=30) String username,
+    @NotBlank @Size(min=3, max=30) @Pattern(regexp = "[a-zA-Z0-9_]{3,30}", message = "用户名只能包含字母、数字、下划线") String username,
     @NotBlank @Size(min=6, max=20) String password,
     @NotNull List<String> roles,
     @Email String email,
     String phone
+) {}
+
+// UserUpdateRequest（编辑时密码为空表示不修改）
+public record UserUpdateRequest(
+    String password,
+    List<String> roles,
+    @Email String email,
+    String phone
+) {}
+
+// ChangePasswordRequest
+public record ChangePasswordRequest(
+    @NotBlank String oldPassword,
+    @NotBlank @Size(min = 6, max = 20) String newPassword,
+    @NotBlank @Size(min = 6, max = 20) String confirmNewPassword
+) {
+    @AssertTrue(message = "两次输入的新密码不一致")
+    public boolean isNewPasswordMatch() {
+        return newPassword != null && newPassword.equals(confirmNewPassword);
+    }
+}
+
+// ResetPasswordRequest
+public record ResetPasswordRequest(
+    @NotBlank @Size(min = 6, max = 20) String newPassword
 ) {}
 ```
 
@@ -810,24 +901,63 @@ public record UserCreateRequest(
 @Service
 public class UserService {
 
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final UserMapper userMapper;
+    private final RoleMapper roleMapper;
+    private final PasswordEncoder passwordEncoder;
+    private final IdentifierGenerator idGenerator;
 
-    public UserLoginDTO verifyCredentials(String username, String rawPassword) {
-        User user = userMapper.selectByUsername(username);
-        if (user == null) return null;
-        if (!encoder.matches(rawPassword, user.getPasswordHash())) return null;
-        // 返回不含密码的用户信息
-        return toLoginDTO(user);
+    public UserLoginDTO verify(String username, String password) {
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, username));
+        if (user == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            throw new BusinessException(ErrorCode.PASSWORD_ERROR);
+        }
+        if (!user.getEnabled()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_DISABLED);
+        }
+        List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
+        return new UserLoginDTO(user.getId(), user.getUsername(),
+                user.getPassword(), user.getEnabled(), roles, List.of());
     }
 
-    public UserDTO createUser(UserCreateRequest req) {
+    @Transactional
+    public UserVO createUser(UserCreateRequest req) {
+        Long count = userMapper.selectCount(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, req.username()));
+        if (count > 0) {
+            throw new BusinessException(ErrorCode.USERNAME_EXISTS);
+        }
+
         User user = new User();
-        user.setUsername(req.getUsername());
-        user.setPasswordHash(encoder.encode(req.getPassword()));  // BCrypt
+        user.setUsername(req.username());
+        user.setPassword(passwordEncoder.encode(req.password()));
+        user.setEmail(req.email());
+        user.setPhone(req.phone());
         user.setEnabled(true);
+        Long operatorId = currentUserId();
+        user.setCreatedBy(operatorId);
+        user.setUpdatedBy(operatorId);
         userMapper.insert(user);
-        // 关联角色...
-        return toDTO(user);
+
+        assignRoles(user.getId(), req.roles());
+        // ...
+        return toUserVO(user, req.roles());
+    }
+
+    public void toggleStatus(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        user.setEnabled(!user.getEnabled());
+        userMapper.updateById(user);
+        // 禁用用户后强制下线其当前会话
+        if (!user.getEnabled()) {
+            StpUtil.logout(userId);
+        }
     }
 }
 ```
@@ -844,112 +974,264 @@ Flyway 迁移脚本放在 `data-nest-system/src/main/resources/db/migration/`。
 
 ```sql
 -- ===== 用户表 =====
-CREATE TABLE IF NOT EXISTS sys_user (
-    id          BIGINT PRIMARY KEY,
-    username    VARCHAR(30)  NOT NULL,
-    password_hash VARCHAR(200) NOT NULL,
-    email       VARCHAR(100),
-    phone       VARCHAR(20),
-    enabled     BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_login  TIMESTAMP,
-    CONSTRAINT uk_username UNIQUE (username)
-);
+CREATE TABLE IF NOT EXISTS sys_user
+(
+    id
+    BIGINT
+    NOT
+    NULL
+    PRIMARY
+    KEY,
+    username
+    VARCHAR
+(
+    30
+) NOT NULL,
+    password VARCHAR
+(
+    255
+) NOT NULL,
+    email VARCHAR
+(
+    100
+) DEFAULT NULL,
+    phone VARCHAR
+(
+    20
+) DEFAULT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
 
-COMMENT ON TABLE sys_user IS '系统用户';
-COMMENT ON COLUMN sys_user.id IS '雪花主键';
-COMMENT ON COLUMN sys_user.password_hash IS 'BCrypt 哈希';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sys_user_username ON sys_user(username);
+
+COMMENT
+ON TABLE  sys_user             IS '系统用户';
+COMMENT
+ON COLUMN sys_user.id          IS '主键ID (雪花算法)';
+COMMENT
+ON COLUMN sys_user.username    IS '用户名';
+COMMENT
+ON COLUMN sys_user.password    IS '密码 (BCrypt)';
+COMMENT
+ON COLUMN sys_user.email       IS '邮箱';
+COMMENT
+ON COLUMN sys_user.phone       IS '手机号';
+COMMENT
+ON COLUMN sys_user.enabled     IS '是否启用';
+COMMENT
+ON COLUMN sys_user.created_at  IS '创建时间';
+COMMENT
+ON COLUMN sys_user.updated_at  IS '更新时间';
 
 -- ===== 角色表 =====
-CREATE TABLE IF NOT EXISTS sys_role (
-    id          BIGINT PRIMARY KEY,
-    code        VARCHAR(50)  NOT NULL,
-    name        VARCHAR(50)  NOT NULL,
-    description VARCHAR(200),
-    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_role_code UNIQUE (code)
+CREATE TABLE IF NOT EXISTS sys_role
+(
+    id
+    BIGINT
+    NOT
+    NULL
+    PRIMARY
+    KEY,
+    code
+    VARCHAR
+(
+    30
+) NOT NULL,
+    name VARCHAR
+(
+    50
+) NOT NULL,
+    description VARCHAR
+(
+    200
+) DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sys_role_code ON sys_role(code);
+
+COMMENT
+ON TABLE  sys_role             IS '系统角色';
+COMMENT
+ON COLUMN sys_role.id          IS '主键ID';
+COMMENT
+ON COLUMN sys_role.code        IS '角色编码';
+COMMENT
+ON COLUMN sys_role.name        IS '角色名称';
+COMMENT
+ON COLUMN sys_role.description IS '角色描述';
+
+-- ===== 用户角色关联表 =====
+CREATE TABLE IF NOT EXISTS sys_user_role
+(
+    id
+    BIGINT
+    NOT
+    NULL
+    PRIMARY
+    KEY,
+    user_id
+    BIGINT
+    NOT
+    NULL,
+    role_id
+    BIGINT
+    NOT
+    NULL,
+    created_at
+    TIMESTAMP
+    NOT
+    NULL
+    DEFAULT
+    CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE sys_role IS '系统角色';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sys_user_role ON sys_user_role(user_id, role_id);
 
--- ===== 用户-角色关联表 =====
-CREATE TABLE IF NOT EXISTS sys_user_role (
-    user_id BIGINT NOT NULL REFERENCES sys_user(id),
-    role_id BIGINT NOT NULL REFERENCES sys_role(id),
-    PRIMARY KEY (user_id, role_id)
-);
+COMMENT
+ON TABLE  sys_user_role         IS '用户角色关联';
+COMMENT
+ON COLUMN sys_user_role.user_id IS '用户ID';
+COMMENT
+ON COLUMN sys_user_role.role_id IS '角色ID';
 
 -- ===== 权限表 =====
-CREATE TABLE IF NOT EXISTS sys_permission (
-    id          BIGINT PRIMARY KEY,
-    code        VARCHAR(100) NOT NULL,
-    name        VARCHAR(100) NOT NULL,
-    resource    VARCHAR(200),         -- API 路径模式，如 /api/integration/**
-    action      VARCHAR(20),           -- GET, POST, PUT, DELETE, *
-    created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_perm_code UNIQUE (code)
+CREATE TABLE IF NOT EXISTS sys_permission
+(
+    id
+    BIGINT
+    NOT
+    NULL
+    PRIMARY
+    KEY,
+    code
+    VARCHAR
+(
+    50
+) NOT NULL,
+    name VARCHAR
+(
+    100
+) NOT NULL,
+    description VARCHAR
+(
+    200
+) DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sys_permission_code ON sys_permission(code);
+
+COMMENT
+ON TABLE  sys_permission             IS '系统权限';
+COMMENT
+ON COLUMN sys_permission.code        IS '权限编码';
+COMMENT
+ON COLUMN sys_permission.name        IS '权限名称';
+
+-- ===== 角色权限关联表 =====
+CREATE TABLE IF NOT EXISTS sys_role_permission
+(
+    id
+    BIGINT
+    NOT
+    NULL
+    PRIMARY
+    KEY,
+    role_id
+    BIGINT
+    NOT
+    NULL,
+    permission_id
+    BIGINT
+    NOT
+    NULL,
+    created_at
+    TIMESTAMP
+    NOT
+    NULL
+    DEFAULT
+    CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE sys_permission IS '权限定义';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sys_role_permission ON sys_role_permission(role_id, permission_id);
 
--- ===== 角色-权限关联表 =====
-CREATE TABLE IF NOT EXISTS sys_role_permission (
-    role_id       BIGINT NOT NULL REFERENCES sys_role(id),
-    permission_id BIGINT NOT NULL REFERENCES sys_permission(id),
-    PRIMARY KEY (role_id, permission_id)
-);
+COMMENT
+ON TABLE  sys_role_permission             IS '角色权限关联';
+COMMENT
+ON COLUMN sys_role_permission.role_id     IS '角色ID';
+COMMENT
+ON COLUMN sys_role_permission.permission_id IS '权限ID';
 ```
+
+> 后续 `V3.4.1__add_sys_user_audit_columns.sql` 为用户表追加 `created_by`、`updated_by` 两个审计字段。
 
 ### 7.3 V1.0.1__seed_roles_and_admin.sql
 
 ```sql
 -- ===== 预置角色 =====
-INSERT INTO sys_role (id, code, name, description) VALUES
-(1, 'SUPER_ADMIN',      '超级管理员',  '全部权限，可管理用户和角色'),
-(2, 'DATA_ENGINEER',    '数据工程师',  '数据集成、开发、治理查看、资产目录、数据服务'),
-(3, 'DATA_ANALYST',     '数据分析师',  '资产目录、数据服务（SQL 终端）'),
-(4, 'GOVERNANCE_ADMIN', '治理管理员',  '数据治理全部功能、资产目录');
+INSERT INTO sys_role (id, code, name, description)
+VALUES (1, 'SUPER_ADMIN', '超级管理员', '拥有系统所有权限'),
+       (2, 'DATA_ENGINEER', '数据工程师', '负责数据集成和数据开发'),
+       (3, 'DATA_ANALYST', '数据分析师', '数据查询与分析'),
+       (4, 'GOVERNANCE_ADMIN', '治理管理员', '数据治理与质量管理') ON CONFLICT DO NOTHING;
 
 -- ===== 预置权限 =====
-INSERT INTO sys_permission (id, code, name, resource, action) VALUES
-(1,  'system:*',         '系统管理',     '/api/system/**',  '*'),
-(2,  'integration:*',    '数据集成',     '/api/integration/**', '*'),
-(3,  'dev:*',            '数据开发',     '/api/dev/**',     '*'),
-(4,  'governance:*',     '数据治理全部',  '/api/governance/**', '*'),
-(5,  'governance:read',  '数据治理查看',  '/api/governance/**', 'GET'),
-(6,  'catalog:*',        '资产目录',     '/api/catalog/**', '*'),
-(7,  'data:*',           '数据服务',     '/api/data/**',    '*'),
-(8,  'realtime:*',       '实时计算',     '/api/realtime/**', '*');
+INSERT INTO sys_permission (id, code, name, description)
+VALUES (1, 'user:read', '查看用户', NULL),
+       (2, 'user:create', '创建用户', NULL),
+       (3, 'user:update', '编辑用户', NULL),
+       (4, 'user:delete', '删除用户', NULL),
+       (5, 'user:reset_password', '重置密码', NULL),
+       (6, 'user:toggle_status', '启用/禁用用户', NULL),
+       (7, 'system:admin', '系统管理', NULL),
+       (8, 'data:read', '数据读取', NULL),
+       (9, 'data:write', '数据写入', NULL),
+       (10, 'pipeline:manage', '任务管理', NULL),
+       (11, 'query:execute', '查询执行', NULL),
+       (12, 'governance:manage', '治理管理', NULL),
+       (13, 'quality:manage', '质量管理', NULL) ON CONFLICT DO NOTHING;
 
 -- ===== 角色-权限关联 =====
--- 超级管理员：全部权限
-INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(1,1), (1,2), (1,3), (1,4), (1,5), (1,6), (1,7), (1,8);
+-- 超级管理员 -> 全部权限
+INSERT INTO sys_role_permission (id, role_id, permission_id)
+SELECT id, 1, id
+FROM sys_permission ON CONFLICT DO NOTHING;
 
 -- 数据工程师
-INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(2,2), (2,3), (2,5), (2,6), (2,7), (2,8);
+INSERT INTO sys_role_permission (id, role_id, permission_id)
+VALUES (100, 2, 1),
+       (101, 2, 8),
+       (102, 2, 9),
+       (103, 2, 10) ON CONFLICT DO NOTHING;
 
 -- 数据分析师
-INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(3,5), (3,6), (3,7);
+INSERT INTO sys_role_permission (id, role_id, permission_id)
+VALUES (200, 3, 1),
+       (201, 3, 8),
+       (202, 3, 11) ON CONFLICT DO NOTHING;
 
 -- 治理管理员
-INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(4,4), (4,6);
+INSERT INTO sys_role_permission (id, role_id, permission_id)
+VALUES (300, 4, 1),
+       (301, 4, 8),
+       (302, 4, 12),
+       (303, 4, 13) ON CONFLICT DO NOTHING;
 
--- ===== 预置管理员账号 ====
-INSERT INTO sys_user (id, username, password_hash, email, enabled) VALUES
-(10001, 'admin',
- '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi',  -- admin123
- 'admin@datanest.io', TRUE);
+-- ===== 预置管理员账号 =====
+INSERT INTO sys_user (id, username, password, email, enabled)
+VALUES (1, 'admin',
+        '$2b$12$5Hsog/ML5QbrAPivCqsCeuLJpItjSvMS7HPqtWwOy53DgX8mE1Deu',
+        'admin@datanest.io', TRUE) ON CONFLICT DO NOTHING;
 
 -- 关联超级管理员角色
-INSERT INTO sys_user_role (user_id, role_id) VALUES (10001, 1);
+INSERT INTO sys_user_role (id, user_id, role_id)
+VALUES (1, 1, 1) ON CONFLICT DO NOTHING;
 ```
 
-> ⚠️ BCrypt hash 是预计算的：`$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi` = `admin123`。生产部署时通过启动脚本替换。
+> ⚠️ BCrypt hash 是预计算的：`$2b$12$5Hsog/ML5QbrAPivCqsCeuLJpItjSvMS7HPqtWwOy53DgX8mE1Deu` = `admin123`。生产部署时通过启动脚本替换。
 
 ---
 
@@ -1097,31 +1379,62 @@ const handleLogin = async () => {
 
 ```tsx
 // components/Sidebar.tsx
-const menuConfig: Record<string, MenuItem[]> = {
-    SUPER_ADMIN: [
-        { key: 'home', label: '首页', path: '/home' },
-        { key: 'system', label: '系统管理', children: [
-            { key: 'users', label: '用户管理', path: '/system/users' },
-        ]},
-    ],
-    DATA_ENGINEER: [
-        { key: 'home', label: '首页', path: '/home' },
-    ],
-    DATA_ANALYST: [
-        { key: 'home', label: '首页', path: '/home' },
-    ],
-    GOVERNANCE_ADMIN: [
-        { key: 'home', label: '首页', path: '/home' },
-    ],
-    // 后续 Sprint 按角色加菜单项
-};
+const allMenus: { group: string; items: MenuItem[] }[] = [
+    {
+        group: '数据平台',
+        items: [{ label: '首页', path: '/', icon: '🏠' }],
+    },
+    {
+        group: '数据工程',
+        items: [
+            { label: '数据源管理', path: '/engineering/datasources', icon: '📦', roles: [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.GOVERNANCE_ADMIN] },
+            { label: '批量数据同步任务', path: '/engineering/sync-jobs', icon: '🔄', roles: ENGINEERING_WRITE_ROLES },
+        ],
+    },
+    {
+        group: '数据开发',
+        items: [
+            { label: '项目管理', path: '/engineering/dags', icon: '🔧', roles: ALL_ROLES },
+        ],
+    },
+    {
+        group: '数据治理',
+        items: [
+            { label: '元数据采集任务', path: '/governance/collect-tasks', icon: '⏱', roles: GOVERNANCE_WRITE_ROLES },
+            { label: '元数据管理', path: '/governance/metadata', icon: '📋', roles: ALL_ROLES },
+            { label: '数据标准', path: '/governance/data-standards', icon: '📏', roles: GOVERNANCE_WRITE_ROLES },
+        ],
+    },
+    {
+        group: '执行历史',
+        items: [
+            { label: '同步执行历史', path: '/engineering/sync-job-history', icon: '🔄', roles: ENGINEERING_WRITE_ROLES },
+            { label: '采集执行历史', path: '/governance/collect-task-history', icon: '⏱', roles: GOVERNANCE_WRITE_ROLES },
+            { label: 'DAG 执行历史', path: '/engineering/dag-executions', icon: '🔧', roles: ALL_ROLES },
+        ],
+    },
+    {
+        group: '系统管理',
+        items: [
+            { label: '用户管理', path: '/system/users', icon: '👥', roles: [ROLE.SUPER_ADMIN] },
+        ],
+    },
+];
 
 function Sidebar() {
-    const roles = useAuthStore(s => s.userInfo?.roles || []);
-    const menus = roles.flatMap(r => menuConfig[r] || []);
-    // 去重渲染...
+    const { userInfo } = useAuthStore();
+    const userRoles = userInfo?.roles || [];
+
+    const hasAccess = (item: MenuItem) => {
+        if (!item.roles || item.roles.length === 0) return true;
+        return item.roles.some((role) => userRoles.includes(role));
+    };
+
+    // 渲染时按 group 过滤可见 items，空 group 不渲染...
 }
 ```
+
+> 角色常量定义在 `src/constants/roles.ts`，前端不调用 `/roles` 接口，角色选项与菜单权限统一收敛到该文件。
 
 ### 10.4 路由鉴权守卫
 
@@ -1207,7 +1520,7 @@ mvn clean install -DskipTests -T 4
 
 # 2. 启动中间件
 echo "📦 2/4 启动中间件..."
-docker compose up -d nacos postgres doris-fe doris-be
+docker compose up -d nacos postgres redis doris-fe doris-be
 
 echo "⏳ 等待 Nacos..."
 until curl -s http://localhost:8848/nacos/v1/console/health/readiness > /dev/null 2>&1; do sleep 3; done
@@ -1244,7 +1557,7 @@ echo "  管理员账号: admin / admin123"
 
 ```bash
 # 终端 1：只起中间件
-docker compose up -d nacos postgres doris-fe doris-be
+docker compose up -d nacos postgres redis doris-fe doris-be
 
 # 终端 2：前端热更新开发
 cd data-nest-frontend && npm run dev    # port 5173 → proxy /api → 8080
@@ -1259,19 +1572,19 @@ cd data-nest-frontend && npm run dev    # port 5173 → proxy /api → 8080
 
 ### ADR-S0-001: 中间件按需引入
 
-| 项目     | 内容                                                                                                           |
-|----------|----------------------------------------------------------------------------------------------------------------|
-| **状态** | Accepted                                                                                                       |
-| **决策** | Sprint 0 只装 Nacos + PostgreSQL + Doris。Redis / OpenSearch / Neo4j / DS / MinIO / Flink 等有明确消费方时再加 |
-| **后果** | 📈 部署轻量（3 容器）；📉 后续 Sprint 需改 docker-compose.yml                                                  |
+| 项目     | 内容                                                                                                         |
+|----------|--------------------------------------------------------------------------------------------------------------|
+| **状态** | Accepted                                                                                                     |
+| **决策** | Sprint 0 装 Nacos + PostgreSQL + Redis + Doris。OpenSearch / Neo4j / DS / MinIO / Flink 等有明确消费方时再加 |
+| **后果** | 📈 部署轻量（3 容器）；📉 后续 Sprint 需改 docker-compose.yml                                                |
 
-### ADR-S0-002: Sa-Token 内存模式
+### ADR-S0-002: Sa-Token Redis 模式
 
-| 项目     | 内容                                                              |
-|----------|-------------------------------------------------------------------|
-| **状态** | Accepted                                                          |
-| **决策** | 先用内存模式，Sprint 1-2 引入 Redis 后切 `sa-token-redis-jackson` |
-| **后果** | 📈 少一个中间件；📉 Gateway 重启后 Token 全失效                   |
+| 项目     | 内容                                                          |
+|----------|---------------------------------------------------------------|
+| **状态** | Accepted                                                      |
+| **决策** | Sprint 0 即引入 Redis，使用 `sa-token-redis-jackson` 存储会话 |
+| **后果** | 📈 Gateway / system 重启后 Token 不失效；📉 多一个中间件容器  |
 
 ### ADR-S0-003: system-service 独立 vs 嵌入 gateway
 
@@ -1328,20 +1641,20 @@ cd data-nest-frontend && npm run dev    # port 5173 → proxy /api → 8080
 
 ## 13. 验收标准
 
-| #  | 验收项                                                         | 验证                |
-|----|----------------------------------------------------------------|---------------------|
-| ✅ | `mvn clean install` 全量编译通过                               | 命令行              |
-| ✅ | `docker compose up -d` 全部容器 healthy                        | `docker compose ps` |
-| ✅ | Nacos Console 可访问，4 个 shared-configs 可见                 | 浏览器              |
-| ✅ | `POST /api/auth/login` (admin/admin123) 返回 JWT + userInfo    | curl                |
-| ✅ | 用 Token 调用 `GET /api/system/users` 返回用户列表（含 admin） | curl                |
-| ✅ | 未登录访问 `/api/system/users` 返回 401                        | curl                |
-| ✅ | 用 admin 账号创建用户 `zhangw`（角色=数据工程师）→ 成功        | curl 或前端         |
-| ✅ | 用 `zhangw` 登录 → Token 中 roles 含 `DATA_ENGINEER`           | curl 或前端         |
-| ✅ | 前端 `http://localhost:3000` → 未登录跳转登录页                | 浏览器              |
-| ✅ | admin 登录后左侧菜单含「系统管理」→ 用户管理页可操作用户 CRUD  | 浏览器              |
-| ✅ | zhangw 登录后左侧菜单无「系统管理」                            | 浏览器              |
-| ✅ | `start-local.sh` 一键启动通过                                  | 执行脚本            |
+| #  | 验收项                                                             | 验证                |
+|----|--------------------------------------------------------------------|---------------------|
+| ✅ | `mvn clean install` 全量编译通过                                   | 命令行              |
+| ✅ | `docker compose up -d` 全部容器 healthy                            | `docker compose ps` |
+| ✅ | Nacos Console 可访问，4 个 shared-configs 可见                     | 浏览器              |
+| ✅ | `POST /api/system/auth/login` (admin/admin123) 返回 JWT + userInfo | curl                |
+| ✅ | 用 Token 调用 `GET /api/system/users` 返回用户列表（含 admin）     | curl                |
+| ✅ | 未登录访问 `/api/system/users` 返回 401                            | curl                |
+| ✅ | 用 admin 账号创建用户 `zhangw`（角色=数据工程师）→ 成功            | curl 或前端         |
+| ✅ | 用 `zhangw` 登录 → Token 中 roles 含 `DATA_ENGINEER`               | curl 或前端         |
+| ✅ | 前端 `http://localhost:3000` → 未登录跳转登录页                    | 浏览器              |
+| ✅ | admin 登录后左侧菜单含「系统管理」→ 用户管理页可操作用户 CRUD      | 浏览器              |
+| ✅ | zhangw 登录后左侧菜单无「系统管理」                                | 浏览器              |
+| ✅ | `start-local.sh` 一键启动通过                                      | 执行脚本            |
 
 ---
 
@@ -1360,24 +1673,26 @@ cd data-nest-frontend && npm run dev    # port 5173 → proxy /api → 8080
 
 ## 附录 A：端口速查
 
-| 端口 | 服务               | 说明           |
-|------|--------------------|----------------|
-| 3000 | frontend (Nginx)   | React SPA      |
-| 8080 | gateway-service    | API 入口       |
-| 8087 | **system-service** | 用户权限管理   |
-| 8848 | Nacos              | 控制台         |
-| 5432 | PostgreSQL         | 元数据库       |
-| 9030 | Doris JDBC         | MySQL Protocol |
+| 端口 | 服务               | 说明              |
+|------|--------------------|-------------------|
+| 3000 | frontend (Nginx)   | React SPA         |
+| 8080 | gateway-service    | API 入口          |
+| 8087 | **system-service** | 用户权限管理      |
+| 8848 | Nacos              | 控制台            |
+| 5432 | PostgreSQL         | 元数据库          |
+| 6379 | Redis              | Sa-Token 会话存储 |
+| 9030 | Doris JDBC         | MySQL Protocol    |
 
 > 8082 / 8083 / 8085 端口预留给后续 Sprint 的 engineering-service / governance-service / data-service。
 
 ## 附录 B：修订记录
 
-| 版本 | 日期       | 修订内容                                                                                                      | 作者       |
-|------|------------|---------------------------------------------------------------------------------------------------------------|------------|
-| v1.0 | 2026-07-23 | 初始版本                                                                                                      | 软件架构师 |
-| v1.1 | 2026-07-23 | 精简：去 CI/CD、中间件减到 3 个、Docker Compose 加前后端                                                      | 软件架构师 |
-| v1.2 | 2026-07-23 | 集成用户管理 PRD：新增 system-service、Flyway 迁移、4 预置角色、登录页、RBAC                                  | 软件架构师 |
-| v1.3 | 2026-07-23 | 精简：Maven 模块从 9 减到 4（去空壳）、Docker Compose 只起 gateway+system+frontend、路由只保留 /api/system/** | 软件架构师 |
-| v1.4 | 2026-07-23 | 架构合并 8→5：新增 ADR-S0-007；更新 POM/Routes/Ports 注释                                                     | 软件架构师 |
-| v1.5 | 2026-07-23 | 版本统一：PG16/Doris4.1.3/system 端口 8087；菜单去掉角色管理（权限在 DB、无界面）                             | 软件架构师 |
+| 版本 | 日期       | 修订内容                                                                                                                                                  | 作者       |
+|------|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| v1.0 | 2026-07-23 | 初始版本                                                                                                                                                  | 软件架构师 |
+| v1.1 | 2026-07-23 | 精简：去 CI/CD、中间件减到 3 个、Docker Compose 加前后端                                                                                                  | 软件架构师 |
+| v1.2 | 2026-07-23 | 集成用户管理 PRD：新增 system-service、Flyway 迁移、4 预置角色、登录页、RBAC                                                                              | 软件架构师 |
+| v1.3 | 2026-07-23 | 精简：Maven 模块从 9 减到 4（去空壳）、Docker Compose 只起 gateway+system+frontend、路由只保留 /api/system/**                                             | 软件架构师 |
+| v1.4 | 2026-07-23 | 架构合并 8→5：新增 ADR-S0-007；更新 POM/Routes/Ports 注释                                                                                                 | 软件架构师 |
+| v1.5 | 2026-07-23 | 版本统一：PG16/Doris4.1.3/system 端口 8087；菜单去掉角色管理（权限在 DB、无界面）                                                                         | 软件架构师 |
+| v1.6 | 2026-08-02 | 按当前代码对齐：Gateway 路由/StripPrefix、system context-path、UserController/AuthController 路径、JWT 过滤器职责、数据库 schema 与种子数据、动态菜单结构 | 软件架构师 |

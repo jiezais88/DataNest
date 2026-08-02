@@ -122,7 +122,7 @@ BASE_URL=http://localhost:8080 node api-smoke-test.js
 2. 进入用户管理列表
 3. 若已存在 `zhangw`，先禁用清理，保证幂等
 4. 创建数据工程师 `zhangw`
-5. `zhangw` 登录，验证无「系统管理」菜单，有「数据集成」菜单
+5. `zhangw` 登录，验证无「系统管理」菜单，有「数据工程」菜单
 6. admin 重置 `zhangw` 密码
 7. `zhangw` 使用新密码登录成功
 8. admin 禁用 `zhangw`
