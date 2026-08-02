@@ -508,7 +508,7 @@ export default function CollectTasksPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 2200}}
+                            scroll={{x: 2210}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) =>

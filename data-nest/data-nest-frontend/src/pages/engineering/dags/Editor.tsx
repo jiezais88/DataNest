@@ -664,6 +664,20 @@ function DagEditorInner() {
         [rfNodes, selectedNodeId],
     );
 
+    // 从执行历史「节点执行情况」列的失败节点链接跳入：定位并选中该节点（只聚焦一次，
+    // 运行视图轮询重建节点时不重复跳动）
+    const focusNodeId = (location.state as { focusNodeId?: string } | null)?.focusNodeId;
+    const focusDoneRef = useRef(false);
+    useEffect(() => {
+        if (!isRunView || !focusNodeId || focusDoneRef.current) return;
+        const target = rfNodes.find(n => n.id === focusNodeId);
+        if (!target) return;
+        focusDoneRef.current = true;
+        setSelectedNodeId(focusNodeId);
+        // 节点宽约 180、高约 60，取节点中心让视野居中
+        reactFlowInstance.setCenter(target.position.x + 90, target.position.y + 30, {zoom: 1.2, duration: 400});
+    }, [isRunView, focusNodeId, rfNodes, reactFlowInstance]);
+
     // 统一节点编辑入口（铅笔图标 / 双击 / 属性面板「编辑节点」共用）：
     // - SQL 节点：打开 900x600 dark Monaco modal
     // - PYTHON 节点：打开 PythonEditorModal（Sprint 4）
@@ -1021,8 +1035,9 @@ function DagEditorInner() {
      * - 保存并离开：调 handleSave，保存成功后由它自己 navigate
      */
     const handleBack = useCallback(() => {
+        // 运行视图返回全局执行历史时不带 dagId/dagName 过滤：从详情回来不应把名称过滤套上
         const backTarget = isRunView
-            ? (fromPath || `/engineering/dag-executions?dagId=${id}&dagName=${encodeURIComponent(dag.name || '')}`)
+            ? (fromPath || '/engineering/dag-executions')
             : (fromPath || (dag.projectId ? `/engineering/dags/${dag.projectId}` : '/engineering/dags'));
         if (!isDirty) {
             navigate(backTarget);
@@ -1041,7 +1056,7 @@ function DagEditorInner() {
                 navigate(backTarget);
             },
         });
-    }, [isDirty, navigate, handleSave, dag.projectId, dag.name, fromPath, id, isRunView]);
+    }, [isDirty, navigate, handleSave, dag.projectId, fromPath, isRunView]);
 
     /**
      * 离开页面前拦截：浏览器关闭/刷新时也提示（PRD §6.4.1）
@@ -1175,6 +1190,8 @@ function DagEditorInner() {
                                     </span>
                                     <span>触发：{execution.triggerType === 'MANUAL' ? '手动' : '定时'}</span>
                                     <span>耗时：{formatDuration(execution.durationMs)}</span>
+                                    <span>开始：{formatDateTime(execution.startTime)}</span>
+                                    <span>结束：{formatDateTime(execution.endTime)}</span>
                                 </div>
                                 {execution.status === 'FAILED' && execution.errorMessage && (
                                     <div className="text-ds-danger text-ds-caption max-w-[600px] truncate"

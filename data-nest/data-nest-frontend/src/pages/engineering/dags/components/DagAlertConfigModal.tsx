@@ -146,21 +146,30 @@ export default function DagAlertConfigModal({
                         </div>
                     )}
 
-                    <label className="flex items-center gap-ds-2 text-ds-body text-ds-text-primary">
-                        <Switch
-                            checked={enabled}
-                            onChange={setEnabled}
-                            disabled={readOnly}
-                            size="small"
-                        />
-                        启用 DAG 邮件告警
-                    </label>
+                    <div className="flex items-center gap-ds-2">
+                        <span data-testid="dag-alert-enabled">
+                            <Switch
+                                id="dag-alert-switch"
+                                checked={enabled}
+                                onChange={setEnabled}
+                                disabled={readOnly}
+                                size="small"
+                            />
+                        </span>
+                        <label
+                            htmlFor="dag-alert-switch"
+                            className="text-ds-body text-ds-text-primary cursor-pointer"
+                        >
+                            启用 DAG 邮件告警
+                        </label>
+                    </div>
 
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             收件人 {enabled && <span className="text-ds-danger">*</span>}
                         </label>
                         <textarea
+                            data-testid="dag-alert-recipients"
                             value={recipients}
                             onChange={e => setRecipients(e.target.value)}
                             rows={2}

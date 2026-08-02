@@ -381,7 +381,7 @@ export default function MetadataTree({
     };
 
     return (
-        <div className="w-full h-full flex flex-col overflow-hidden">
+        <div data-testid="metadata-tree" className="w-full h-full flex flex-col overflow-hidden">
             <div className="px-ds-3 py-ds-2 border-b border-ds-border-subtle">
                 <div className="relative">
                     <input

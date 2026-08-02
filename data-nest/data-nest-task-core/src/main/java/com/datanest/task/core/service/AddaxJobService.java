@@ -177,15 +177,20 @@ public class AddaxJobService {
 
         Map<String, Object> speed = new HashMap<>();
         speed.put("channel", DEFAULT_CHANNEL);
-        // Sprint 3 AC-13：速率限流
+        // Sprint 3 AC-13：速率限流（全局限速放在 job.setting.speed 下）
+        Long bytePerChannel = null;
+        Long recordPerChannel = null;
         if (job.getRateLimitEnabled() != null && job.getRateLimitEnabled() == 1) {
             if (job.getReadRateLimitMbps() != null && job.getReadRateLimitMbps() > 0) {
                 // Addax speed.byte 单位 Byte/s；Mbps -> Byte/s：* 1024 * 1024 / 8
                 long bytePerSecond = job.getReadRateLimitMbps() * 1024L * 1024L / 8L;
+                bytePerChannel = Math.max(1L, bytePerSecond / DEFAULT_CHANNEL);
                 speed.put("byte", bytePerSecond);
             }
             if (job.getWriteRateLimitRowsPerSecond() != null && job.getWriteRateLimitRowsPerSecond() > 0) {
-                speed.put("record", job.getWriteRateLimitRowsPerSecond());
+                long recordPerSecond = job.getWriteRateLimitRowsPerSecond();
+                recordPerChannel = Math.max(1L, recordPerSecond / DEFAULT_CHANNEL);
+                speed.put("record", recordPerSecond);
             }
         }
 
@@ -198,6 +203,24 @@ public class AddaxJobService {
 
         Map<String, Object> root = new HashMap<>();
         root.put("job", jobMap);
+
+        // Addax 单 channel 限速读取 core.transport.channel.speed.byte/record，需放在根节点
+        if (bytePerChannel != null || recordPerChannel != null) {
+            Map<String, Object> channelSpeed = new HashMap<>();
+            if (bytePerChannel != null) {
+                channelSpeed.put("byte", bytePerChannel);
+            }
+            if (recordPerChannel != null) {
+                channelSpeed.put("record", recordPerChannel);
+            }
+            Map<String, Object> channel = new HashMap<>();
+            channel.put("speed", channelSpeed);
+            Map<String, Object> transport = new HashMap<>();
+            transport.put("channel", channel);
+            Map<String, Object> core = new HashMap<>();
+            core.put("transport", transport);
+            root.put("core", core);
+        }
 
         try {
             return objectMapper.writeValueAsString(root);

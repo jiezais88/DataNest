@@ -181,6 +181,7 @@ export default function DagParameterDrawer({
                 取消
             </DsButton>
             <DsButton
+                data-testid="dag-param-save"
                 onClick={handleSave}
                 disabled={readOnly || saving || !dagId || loading}
                 title={readOnly ? '只读模式：您没有编辑权限' : !dagId ? '请先保存 DAG' : undefined}
@@ -238,6 +239,7 @@ export default function DagParameterDrawer({
                                             value={p.paramType}
                                             onChange={e => updateRow(p._key, {paramType: e.target.value})}
                                             disabled={readOnly}
+                                            data-testid="param-type-select"
                                             className="w-[110px] px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
                                         >
                                             {PARAM_TYPE_OPTIONS.map(t => (
@@ -271,6 +273,7 @@ export default function DagParameterDrawer({
                                                 value={p.defaultValue || ''}
                                                 onChange={e => updateRow(p._key, {defaultValue: e.target.value})}
                                                 disabled={readOnly}
+                                                data-testid="param-default-value"
                                                 className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
                                             />
                                         ) : p.paramType === 'BOOLEAN' ? (
@@ -290,6 +293,7 @@ export default function DagParameterDrawer({
                                                 onChange={e => updateRow(p._key, {defaultValue: e.target.value})}
                                                 disabled={readOnly}
                                                 placeholder="默认值"
+                                                data-testid="param-default-value"
                                                 className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
                                             />
                                         )}
@@ -298,6 +302,7 @@ export default function DagParameterDrawer({
                                             onChange={e => updateRow(p._key, {description: e.target.value})}
                                             disabled={readOnly}
                                             placeholder="描述（可选）"
+                                            data-testid="param-description"
                                             className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
                                         />
                                     </div>

@@ -634,7 +634,8 @@ export default function MetadataPage() {
 
                 {/* Sprint 4：数据来源卡片（SQL/Python/同步任务自动注册的表） */}
                 {isTaskRegistered && (
-                    <div className="mb-ds-6 border border-ds-accent/30 bg-ds-accent-light rounded-ds-sm p-ds-4">
+                    <div data-testid="metadata-source-card"
+                         className="mb-ds-6 border border-ds-accent/30 bg-ds-accent-light rounded-ds-sm p-ds-4">
                         <h3 className="text-ds-small font-semibold text-ds-accent uppercase tracking-wider mb-ds-3">
                             数据来源
                         </h3>

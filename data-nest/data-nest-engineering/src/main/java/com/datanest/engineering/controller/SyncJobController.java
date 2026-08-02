@@ -90,7 +90,8 @@ public class SyncJobController {
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/history/page")
     public Result<PageResult<SyncJobHistoryDTO>> allHistoryPage(@Valid @RequestBody SyncJobHistoryQueryRequest request) {
-        return Result.ok(syncJobService.historyPage(null, request));
+        // 全局历史接口也支持按 syncJobId 精确过滤（从任务列表「历史」跳入时 URL 带 ?syncJobId=xxx）
+        return Result.ok(syncJobService.historyPage(request.getSyncJobId(), request));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)

@@ -452,7 +452,7 @@ export default function DataSourcesPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1570}}
+                            scroll={{x: 1540}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({'data-testid': `datasource-row-${item.name}`}) as HTMLAttributes<HTMLElement>}

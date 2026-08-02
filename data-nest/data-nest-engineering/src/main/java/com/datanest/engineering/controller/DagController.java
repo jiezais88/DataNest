@@ -85,8 +85,9 @@ public class DagController {
         }
         Map<String, Object> params = dagParameterService.resolveParams(id, request.getParams());
         String script = dagParameterService.replacePlaceholders(request.getPythonScript(), params);
+        Integer timeoutSeconds = request.getTimeoutSeconds();
         PythonExecuteResult result = pythonExecutor.execute(
-                script, new PythonExecutor.PythonContext(params, null), null, null);
+                script, new PythonExecutor.PythonContext(params, null), timeoutSeconds, null);
         return Result.ok(result);
     }
 

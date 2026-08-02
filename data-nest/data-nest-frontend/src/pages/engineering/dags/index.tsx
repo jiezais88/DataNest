@@ -40,7 +40,7 @@ export default function DagsPage() {
             return {list: result.records, total: result.total};
         }, []),
         initialQuery: {name: ''},
-        defaultPageSize: 20,
+        defaultPageSize: 10,
     });
     const [projectModalOpen, setProjectModalOpen] = useState(false);
     const [projectModalMode, setProjectModalMode] = useState<'create' | 'edit' | 'detail'>('create');
@@ -111,7 +111,7 @@ export default function DagsPage() {
             dataIndex: 'name',
             width: COL.NAME,
             ellipsis: true,
-            render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
+            render: (v: string) => <span className="text-ds-small font-semibold text-ds-text-primary">{v}</span>
         },
         {
             title: '项目描述',
@@ -119,14 +119,16 @@ export default function DagsPage() {
             width: 320,
             ellipsis: true,
             render: (v?: string) => v
-                ? <span className="text-ds-text-secondary">{v}</span>
-                : <span className="text-ds-text-muted">—</span>
+                ? <span className="text-ds-small text-ds-text-secondary">{v}</span>
+                : <span className="text-ds-small text-ds-text-muted">—</span>
         },
         {
             title: 'DAG 数',
             width: COL.COUNT_NORMAL,
             align: 'center',
-            render: (_, r: DagProject) => r.dagCount ?? 0
+            render: (_, r: DagProject) => (
+                <span className="text-ds-small text-ds-text-secondary">{r.dagCount ?? 0}</span>
+            )
         },
         {
             title: '创建时间',
@@ -134,7 +136,7 @@ export default function DagsPage() {
             dataIndex: 'createdAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
                 </Tooltip>
             )
         },
@@ -144,7 +146,9 @@ export default function DagsPage() {
             dataIndex: 'createdByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{v || '—'}</span>
+                    {v
+                        ? <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v}</span>
+                        : <span className="text-ds-small text-ds-text-muted whitespace-nowrap">—</span>}
                 </Tooltip>
             )
         },
@@ -154,7 +158,7 @@ export default function DagsPage() {
             dataIndex: 'updatedAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
                 </Tooltip>
             )
         },
@@ -164,7 +168,9 @@ export default function DagsPage() {
             dataIndex: 'updatedByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{v || '—'}</span>
+                    {v
+                        ? <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v}</span>
+                        : <span className="text-ds-small text-ds-text-muted whitespace-nowrap">—</span>}
                 </Tooltip>
             )
         },
@@ -231,7 +237,7 @@ export default function DagsPage() {
             {/* 页头：标题 + 新建项目按钮 */}
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
-                    <h1 className="text-ds-display text-ds-text-primary">数据开发</h1>
+                    <h1 className="text-ds-display text-ds-text-primary">项目管理</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">按项目分组管理 DAG 编排与 SQL 任务</p>
                 </div>
                 <Tooltip title={canEdit ? '' : '只读模式：您没有编辑权限'}>
@@ -283,7 +289,7 @@ export default function DagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1370}}
+                            scroll={{x: 1340}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description="暂无项目"/>}}
@@ -317,7 +323,7 @@ export default function DagsPage() {
                 onOk={handleSaveProject}
                 okText="保存"
                 cancelText="取消"
-                okButtonProps={projectModalMode === 'detail' ? {style: {display: 'none'}} : undefined}
+                okButtonProps={projectModalMode === 'detail' ? {style: {display: 'none'}} : {'data-testid': 'project-save-btn'}}
                 footer={projectModalMode === 'detail' ? (
                     <DsButton variant="secondary" onClick={() => setProjectModalOpen(false)}>关闭</DsButton>
                 ) : undefined}
@@ -351,6 +357,7 @@ export default function DagsPage() {
                         extra={<span className="text-ds-nano text-ds-text-muted">最多 200 字</span>}
                     >
                         <Input placeholder="可选，最多 200 字"
+                               data-testid="project-description"
                                disabled={projectModalMode === 'detail'}
                                className="px-[14px] py-[10px] bg-ds-bg-root border-ds-border-subtle rounded-ds-sm text-ds-small"/>
                     </Form.Item>

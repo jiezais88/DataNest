@@ -2,13 +2,9 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Empty, Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {getCollectHistoryLogs, queryAllCollectHistory, stopCollectHistory} from '../../../../api/collect';
-import type {
-    CollectExecutionLog,
-    CollectHistoryQueryParams,
-    CollectTaskExecution,
-    ExecutionStatus,
-} from '../../../../types/collect';
+import {queryAllCollectHistory, stopCollectHistory} from '../../../../api/collect';
+import type {CollectHistoryQueryParams, CollectTaskExecution, ExecutionStatus,} from '../../../../types/collect';
+import CollectLogModal from './CollectLogModal';
 import usePagedList from '../../../../hooks/usePagedList';
 import Pagination from '../../../../components/Pagination';
 import SearchInput from '../../../../components/SearchInput';
@@ -30,7 +26,6 @@ const STATUS_OPTIONS: { value: ExecutionStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
     {value: 'RUNNING', label: '执行中'},
     {value: 'SUCCESS', label: '成功'},
-    {value: 'PARTIAL', label: '部分成功'},
     {value: 'FAILED', label: '失败'},
     {value: 'TERMINATED', label: '已终止'},
 ];
@@ -38,18 +33,12 @@ const STATUS_OPTIONS: { value: ExecutionStatus | ''; label: string }[] = [
 const STATUS_LABELS: Record<ExecutionStatus, string> = {
     SUCCESS: '成功',
     RUNNING: '执行中',
-    PARTIAL: '部分成功',
     FAILED: '失败',
     TERMINATED: '已终止',
 };
 
 // 「已应用」查询条件：接口分页参数由 usePagedList 注入，页面只管业务条件
 type HistoryQuery = Omit<CollectHistoryQueryParams, 'page' | 'pageSize'>;
-
-// PARTIAL（部分成功）不在统一映射里，保留原 statusClass 的 warning 语义
-function statusVariant(value: ExecutionStatus) {
-    return value === 'PARTIAL' ? 'warning' : executionStatusVariant(value);
-}
 
 function triggerBadge(triggerType: string) {
     if (triggerType === 'MANUAL') {
@@ -116,8 +105,6 @@ export default function CollectHistoryGlobalPage() {
     };
 
     const [selectedHistory, setSelectedHistory] = useState<CollectTaskExecution | null>(null);
-    const [logs, setLogs] = useState<CollectExecutionLog[]>([]);
-    const [logsLoading, setLogsLoading] = useState(false);
     const [logOpen, setLogOpen] = useState(false);
     const [detailOpen, setDetailOpen] = useState(false);
 
@@ -161,13 +148,9 @@ export default function CollectHistoryGlobalPage() {
         setDetailOpen(true);
     };
 
-    const handleOpenLogs = async (item: CollectTaskExecution) => {
+    const handleOpenLogs = (item: CollectTaskExecution) => {
         setSelectedHistory(item);
         setLogOpen(true);
-        setLogsLoading(true);
-        const result = await getCollectHistoryLogs(item.taskId, item.id);
-        setLogs(result.data || []);
-        setLogsLoading(false);
     };
 
     // 手动停止运行中的执行实例（停止后状态归一为 TERMINATED）
@@ -212,7 +195,7 @@ export default function CollectHistoryGlobalPage() {
             dataIndex: 'status',
             width: 90,
             render: (v: ExecutionStatus) => (
-                <DsStatusBadge label={STATUS_LABELS[v]} variant={statusVariant(v)}/>
+                <DsStatusBadge label={STATUS_LABELS[v]} variant={executionStatusVariant(v)}/>
             ),
         },
         {
@@ -244,13 +227,29 @@ export default function CollectHistoryGlobalPage() {
             },
         },
         {
-            title: '库/表/字段',
+            title: '扫描库表字段',
             width: COL.COUNT,
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                     {item.dbCount ?? 0}/{item.tableCount ?? 0}/{item.columnCount ?? 0}
                 </span>
             ),
+        },
+        {
+            title: '是否变化',
+            width: COL.STATUS,
+            align: 'center',
+            render: (_, item) => {
+                const hasChange =
+                    (item.addedTableCount ?? 0) + (item.updatedTableCount ?? 0) + (item.deletedTableCount ?? 0) +
+                    (item.addedColumnCount ?? 0) + (item.updatedColumnCount ?? 0) + (item.deletedColumnCount ?? 0) > 0;
+                return (
+                    <DsStatusBadge
+                        label={hasChange ? '有变化' : '无变化'}
+                        variant={hasChange ? 'success' : 'disabled'}
+                    />
+                );
+            },
         },
         {
             title: '错误信息',
@@ -397,7 +396,7 @@ export default function CollectHistoryGlobalPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1120}}
+                            scroll={{x: 1200}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{
@@ -471,7 +470,7 @@ export default function CollectHistoryGlobalPage() {
                                 <span className="text-ds-text-primary">
                                     <DsStatusBadge
                                         label={STATUS_LABELS[selectedHistory.status]}
-                                        variant={statusVariant(selectedHistory.status)}
+                                        variant={executionStatusVariant(selectedHistory.status)}
                                     />
                                 </span>
 
@@ -507,40 +506,14 @@ export default function CollectHistoryGlobalPage() {
             )}
 
             {logOpen && selectedHistory && (
-                <DsModal
+                <CollectLogModal
                     open={logOpen}
+                    history={selectedHistory}
                     onClose={() => {
                         setLogOpen(false);
                         setSelectedHistory(null);
                     }}
-                    title={`执行日志 - ${formatDateTime(selectedHistory.startedAt)}`}
-                    width="w-[720px]"
-                    bordered
-                >
-                    {logsLoading ? (
-                        <div className="text-ds-small text-ds-text-secondary">加载中...</div>
-                    ) : logs.length === 0 ? (
-                        <div className="text-ds-small text-ds-text-muted">暂无日志</div>
-                    ) : (
-                        <div className="space-y-1 font-mono text-ds-small">
-                            {logs.map((log, idx) => (
-                                <div
-                                    key={idx}
-                                    className={`break-all ${
-                                        log.level === 'ERROR'
-                                            ? 'text-ds-danger'
-                                            : log.level === 'WARN'
-                                                ? 'text-ds-warning'
-                                                : 'text-ds-text-secondary'
-                                    }`}
-                                >
-                                    <span
-                                        className="font-semibold">[{log.level}]</span> {formatDateTime(log.createdAt)} {log.message}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </DsModal>
+                />
             )}
         </div>
     );

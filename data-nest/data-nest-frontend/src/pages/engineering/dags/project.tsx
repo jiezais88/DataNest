@@ -3,6 +3,7 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
+    HiChevronRight,
     HiOutlineCalendar,
     HiOutlineClock,
     HiOutlineEye,
@@ -11,7 +12,7 @@ import {
     HiOutlinePlus,
     HiOutlineTrash
 } from 'react-icons/hi2';
-import {Link, useNavigate, useParams} from 'react-router-dom';
+import {useNavigate, useParams} from 'react-router-dom';
 import {deleteDag, getDagProject, listDags, startDagSchedule, stopDagSchedule, triggerDag} from './api';
 import type {Dag, DagProject} from './types';
 import {useCanEdit} from '../../../hooks/useCanEdit';
@@ -58,7 +59,7 @@ export default function ProjectDagsPage() {
     // 后端 GET /engineering/dev/dags 只接收 projectId、一次性返回全量列表（不支持 page/pageSize），
     // 因此本页保留前端假分页，不接入 usePagedList
     const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(20);
+    const [pageSize, setPageSize] = useState(10);
 
     const refresh = useCallback(async () => {
         if (!projectId) return;
@@ -156,7 +157,7 @@ export default function ProjectDagsPage() {
             dataIndex: 'name',
             width: COL.NAME,
             ellipsis: true,
-            render: (v: string) => <span className="font-semibold text-ds-text-primary">{v}</span>
+            render: (v: string) => <span className="text-ds-small font-semibold text-ds-text-primary">{v}</span>
         },
         {
             title: '触发方式', width: COL.TRIGGER_TYPE,
@@ -170,13 +171,13 @@ export default function ProjectDagsPage() {
             title: 'Cron 表达式', dataIndex: 'cronExpression', width: COL.CRON,
             render: (v?: string) => v
                 ? <span className="font-mono text-ds-caption text-ds-text-secondary whitespace-nowrap">{v}</span>
-                : <span className="text-ds-text-muted">—</span>
+                : <span className="text-ds-small text-ds-text-muted">—</span>
         },
         {
             title: '调度状态', width: COL.STATUS,
             render: (_, r: Dag) => {
                 if (r.triggerType !== 'CRON') {
-                    return <span className="text-ds-text-muted">—</span>;
+                    return <span className="text-ds-small text-ds-text-muted">—</span>;
                 }
                 return r.scheduleEnabled
                     ? <DsStatusBadge label="已启用" variant="success"/>
@@ -189,7 +190,9 @@ export default function ProjectDagsPage() {
             dataIndex: 'createdByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{v || '—'}</span>
+                    {v
+                        ? <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v}</span>
+                        : <span className="text-ds-small text-ds-text-muted whitespace-nowrap">—</span>}
                 </Tooltip>
             )
         },
@@ -199,7 +202,7 @@ export default function ProjectDagsPage() {
             dataIndex: 'createdAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
                 </Tooltip>
             )
         },
@@ -209,7 +212,9 @@ export default function ProjectDagsPage() {
             dataIndex: 'updatedByName',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{v || '—'}</span>
+                    {v
+                        ? <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v}</span>
+                        : <span className="text-ds-small text-ds-text-muted whitespace-nowrap">—</span>}
                 </Tooltip>
             )
         },
@@ -219,7 +224,7 @@ export default function ProjectDagsPage() {
             dataIndex: 'updatedAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
-                    <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(v)}</span>
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
                 </Tooltip>
             )
         },
@@ -241,7 +246,8 @@ export default function ProjectDagsPage() {
                 const t = r.latestExecution?.startTime;
                 return (
                     <Tooltip title={t || '无'}>
-                        <span className="text-ds-text-muted whitespace-nowrap">{formatDateTime(t)}</span>
+                        <span
+                            className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(t)}</span>
                     </Tooltip>
                 );
             }
@@ -309,13 +315,6 @@ export default function ProjectDagsPage() {
 
     return (
         <div className="flex flex-col">
-            {/* 面包屑 */}
-            <div className="text-ds-small text-ds-text-muted mb-ds-3 flex-shrink-0">
-                <Link to="/engineering/dags" className="text-ds-accent hover:underline">数据开发</Link>
-                <span className="mx-2">/</span>
-                <span className="text-ds-text-secondary">{project?.name ?? '加载中...'}</span>
-            </div>
-
             {/* 页头：项目名 + 刷新 + 新建 DAG */}
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
@@ -323,6 +322,13 @@ export default function ProjectDagsPage() {
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">管理项目下的 DAG 编排</p>
                 </div>
                 <div className="flex items-center gap-ds-2">
+                    <DsButton
+                        variant="secondary"
+                        onClick={() => navigate('/engineering/dags')}
+                    >
+                        <HiChevronRight size={16} className="rotate-180"/>
+                        返回项目列表
+                    </DsButton>
                     <Tooltip title={canEdit ? '' : '只读模式：您没有编辑权限'}>
                         <DsButton
                             disabled={!canEdit}
@@ -374,7 +380,7 @@ export default function ProjectDagsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1630}}
+                            scroll={{x: 1600}}
                             className="prototype-table prototype-table-flush"
                             columns={columns}
                             locale={{emptyText: <DsTableEmpty description={loading ? '加载中...' : '暂无 DAG'}/>}}

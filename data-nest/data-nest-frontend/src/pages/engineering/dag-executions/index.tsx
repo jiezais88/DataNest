@@ -45,21 +45,7 @@ const TRIGGER_OPTIONS = [
 ];
 
 // =================== helpers ===================
-function nodeSummary(record: DagExecution): string {
-    const nodes = record.nodeExecutions || [];
-    if (nodes.length === 0) return '-';
-    const success = nodes.filter(n => n.status === 'SUCCESS').length;
-    const failed = nodes.filter(n => n.status === 'FAILED');
-    if (failed.length > 0) {
-        const names = failed
-            .map(f => f.nodeName || f.nodeId || '?')
-            .join('、');
-        return `${success}/${nodes.length} 成功，${failed.length} 失败（${names}）`;
-    }
-    const sqlCount = nodes.filter(n => n.nodeType === 'SQL').length;
-    const syncCount = nodes.filter(n => n.nodeType === 'SYNC').length;
-    return `${success}/${nodes.length} 成功（${sqlCount} SQL + ${syncCount} 同步）`;
-}
+const NODE_TYPE_BREAKDOWN_LABEL: Record<string, string> = {SQL: 'SQL', SYNC: '同步', PYTHON: 'Python'};
 
 // datetime-local 用户手动编辑后可能只有分钟（YYYY-MM-DDTHH:mm），补秒保证后端 LocalDateTime 解析一致
 function normalizeDateTime(v: string): string {
@@ -324,18 +310,50 @@ export default function DagExecutionsGlobalPage() {
             title: '节点执行情况',
             dataIndex: 'nodeExecutions',
             width: COL.NODE_SUMMARY,
-            render: (_, r) => (
-                <div style={{color: '#475569', fontSize: 13}}>
-                    <div>{nodeSummary(r)}</div>
-                    {r.status === 'FAILED' && r.errorMessage && (
-                        <Tooltip title={r.errorMessage}>
-                            <div className="text-ds-danger text-[12px] truncate max-w-[200px]">
-                                {r.errorMessage}
-                            </div>
-                        </Tooltip>
-                    )}
-                </div>
-            ),
+            render: (_, r) => {
+                const nodes = r.nodeExecutions || [];
+                if (nodes.length === 0) {
+                    return <span className="text-ds-small text-ds-text-secondary">-</span>;
+                }
+                const success = nodes.filter(n => n.status === 'SUCCESS').length;
+                const failed = nodes.filter(n => n.status === 'FAILED');
+                // 失败节点名渲染为可点击链接（对齐 Sprint4 原型）：点击进执行详情并定位到该节点
+                const goDetail = (nodeId?: string) => {
+                    navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`,
+                        nodeId ? {state: {focusNodeId: nodeId}} : undefined);
+                };
+                if (failed.length > 0) {
+                    return (
+                        <div className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                            {success}/{nodes.length} 成功，{failed.length} 失败（
+                            {failed.map((f, idx) => (
+                                <span key={f.nodeId || String(f.id ?? idx)}>
+                                    {idx > 0 && '、'}
+                                    <a
+                                        className="text-ds-danger font-semibold underline cursor-pointer"
+                                        onClick={() => goDetail(f.nodeId)}
+                                    >
+                                        {f.nodeName || f.nodeId || '?'}
+                                    </a>
+                                </span>
+                            ))}
+                            ）
+                        </div>
+                    );
+                }
+                const breakdown = Object.entries(NODE_TYPE_BREAKDOWN_LABEL)
+                    .map(([type, label]) => {
+                        const count = nodes.filter(n => n.nodeType === type).length;
+                        return count > 0 ? `${count} ${label}` : null;
+                    })
+                    .filter(Boolean)
+                    .join(' + ');
+                return (
+                    <div className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                        {success}/{nodes.length} 成功{breakdown ? `（${breakdown}）` : ''}
+                    </div>
+                );
+            },
         },
         {
             title: '操作',
@@ -368,6 +386,7 @@ export default function DagExecutionsGlobalPage() {
                         <Tooltip title={canEdit ? '重跑失败节点' : '只读模式：您没有编辑权限'}>
                             <DsIconButton
                                 tone="accent"
+                                data-testid={`dag-execution-rerun-${r.id}`}
                                 disabled={!canEdit}
                                 onClick={() => handleRerun(r)}
                             >
@@ -378,7 +397,7 @@ export default function DagExecutionsGlobalPage() {
                 </div>
             ),
         },
-    ], [canEdit, handleRerun, handleStop]);
+    ], [canEdit, handleRerun, handleStop, navigate]);
 
     return (
         <div className="flex flex-col">

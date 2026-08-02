@@ -19,9 +19,9 @@ public interface DagNodeMapper extends BaseMapper<DagNode> {
      * Sprint 3 性能优化：真正的批量插入
      */
     @Insert("<script>" +
-            "INSERT INTO dag_node (id, dag_id, node_id, node_name, node_type, position_x, position_y, config, created_by, updated_by, created_at, updated_at) VALUES " +
+            "INSERT INTO dag_node (id, dag_id, node_id, node_name, node_type, position_x, position_y, config, ds_task_code, created_by, updated_by, created_at, updated_at) VALUES " +
             "<foreach collection='list' item='item' separator=','>" +
-            "(#{item.id}, #{item.dagId}, #{item.nodeId}, #{item.nodeName}, #{item.nodeType}, #{item.positionX}, #{item.positionY}, #{item.config}, #{item.createdBy}, #{item.updatedBy}, #{item.createdAt}, #{item.updatedAt})" +
+            "(#{item.id}, #{item.dagId}, #{item.nodeId}, #{item.nodeName}, #{item.nodeType}, #{item.positionX}, #{item.positionY}, #{item.config}, #{item.dsTaskCode}, #{item.createdBy}, #{item.updatedBy}, #{item.createdAt}, #{item.updatedAt})" +
             "</foreach>" +
             "</script>")
     int insertBatch(@Param("list") List<DagNode> list);

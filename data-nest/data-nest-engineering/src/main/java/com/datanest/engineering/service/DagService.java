@@ -100,7 +100,9 @@ public class DagService {
         Map<String, Long> codeMap = saveNodesAndEdges(dag.getId(), payload, Map.of());
 
         // 5. 同步到 DS（HTTP 调用不能放在 DB 事务里：事务提交后再同步，失败仅记日志，异步重试兜底）
+        //    新建时 payload 没有 id，但 DS task 的 httpBody 需要回传 dagId，因此先回填
         Long dagId = dag.getId();
+        payload.setId(dagId);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {

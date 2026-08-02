@@ -1,0 +1,2223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataNest — Sprint 5 原型：血缘可视化 / 告警中心 / DAG 控制流</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-root: #f8fafc;
+            --bg-surface: #ffffff;
+            --bg-elevated: #ffffff;
+            --bg-hover: #f1f5f9;
+            --bg-canvas: #f8fafc;
+            --bg-subtle: #f1f5f9;
+            --border-subtle: #e2e8f0;
+            --border-strong: #cbd5e1;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --text-placeholder: #94a3b8;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --accent-light: #eef2ff;
+            --accent-soft: #e0e7ff;
+            --accent-glow: rgba(79, 70, 229, .12);
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --danger-light: #fef2f2;
+            --danger-soft: #fee2e2;
+            --success: #16a34a;
+            --success-light: #f0fdf4;
+            --success-soft: #dcfce7;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --warning-soft: #fef3c7;
+            --info: #0ea5e9;
+            --info-light: #f0f9ff;
+            --info-soft: #e0f2fe;
+            --purple: #7c3aed;
+            --purple-light: #ede9fe;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow-xs: 0 1px 2px rgba(15, 23, 42, .04);
+            --shadow-sm: 0 1px 3px rgba(15, 23, 42, .06), 0 1px 2px rgba(15, 23, 42, .04);
+            --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, .06), 0 2px 4px -2px rgba(15, 23, 42, .04);
+            --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, .07), 0 4px 6px -4px rgba(15, 23, 42, .03);
+            --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, .08), 0 8px 10px -6px rgba(15, 23, 42, .02);
+            --transition-fast: 150ms cubic-bezier(.4, 0, .2, 1);
+            --transition-smooth: 250ms cubic-bezier(.4, 0, .2, 1);
+            --z-elevated: 100;
+            --z-overlay: 200;
+            --z-dialog: 300;
+            --z-drawer: 250;
+            --sidebar-width: 256px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-root);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        /* View tabs */
+        .view-tabs {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 5px;
+            box-shadow: var(--shadow-lg);
+            z-index: var(--z-elevated);
+        }
+
+        .view-tab {
+            padding: 9px 18px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-muted);
+            transition: all var(--transition-fast);
+            white-space: nowrap;
+        }
+
+        .view-tab:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .view-tab.active {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Pages */
+        .page {
+            display: none;
+            min-height: 100vh;
+            padding-top: 76px;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* Layout */
+        .app-layout {
+            display: flex;
+            min-height: calc(100vh - 76px);
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
+            padding: 20px 14px;
+            flex-shrink: 0;
+        }
+
+        .sidebar-brand {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--text-primary);
+            padding: 8px 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-brand span {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+        }
+
+        .sidebar-group {
+            margin-bottom: 24px;
+        }
+
+        .sidebar-group-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            padding: 8px 12px;
+        }
+
+        .sidebar-item {
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 3px;
+            font-size: 13px;
+        }
+
+        .sidebar-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .sidebar-item.active {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 28px 36px;
+            overflow: auto;
+        }
+
+        /* Page header */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+
+        .breadcrumb {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -.01em;
+        }
+
+        .page-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .card-header {
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .card-body {
+            padding: 22px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            border: 1px solid transparent;
+            font-size: 13px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 1px 2px rgba(79, 70, 229, .2);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(79, 70, 229, .2);
+        }
+
+        .btn-secondary {
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            border-color: var(--border-strong);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border-color: var(--border-strong);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background: var(--danger-hover);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-link {
+            background: transparent;
+            color: var(--accent);
+            padding: 4px 8px;
+        }
+
+        .btn-link:hover {
+            background: var(--accent-light);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn.active-mode {
+            background: var(--accent-light);
+            color: var(--accent);
+            border-color: var(--accent-soft);
+        }
+
+        /* Icon buttons (aligned with DsIconButton) */
+        .icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .icon-btn:hover {
+            background: var(--bg-hover);
+            color: var(--accent);
+        }
+
+        .icon-btn.danger:hover {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .icon-btn.success:hover {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .icon-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .icon-btn[disabled] {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 7px;
+        }
+
+        .form-label .required {
+            color: var(--danger);
+            margin-left: 2px;
+        }
+
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 9px 13px;
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-primary);
+            background: var(--bg-surface);
+            transition: all var(--transition-fast);
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: var(--font-mono);
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .checkbox-item input[type="checkbox"], .checkbox-item input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        /* Tables */
+        .table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .table th, .table td {
+            padding: 14px 18px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .table th {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            background: var(--bg-subtle);
+        }
+
+        .table th:first-child {
+            border-radius: var(--radius-sm) 0 0 0;
+        }
+
+        .table th:last-child {
+            border-radius: 0 var(--radius-sm) 0 0;
+        }
+
+        .table tr:hover td {
+            background: var(--bg-hover);
+        }
+
+        .table td {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 6px;
+            border-bottom: 1px solid var(--border-subtle);
+            margin-bottom: 24px;
+        }
+
+        .tab {
+            padding: 11px 18px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-muted);
+            border-bottom: 2px solid transparent;
+            transition: all var(--transition-fast);
+            margin-bottom: -1px;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .alert-panel {
+            display: none;
+        }
+
+        .alert-panel.active {
+            display: block;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .badge-success {
+            background: var(--success-soft);
+            color: var(--success);
+        }
+
+        .badge-danger {
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+
+        .badge-warning {
+            background: var(--warning-soft);
+            color: var(--warning);
+        }
+
+        .badge-info {
+            background: var(--info-soft);
+            color: var(--info);
+        }
+
+        .badge-purple {
+            background: var(--purple-light);
+            color: var(--purple);
+        }
+
+        .badge-disabled {
+            background: var(--bg-subtle);
+            color: var(--text-muted);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .45);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: var(--z-dialog);
+            padding: 20px;
+            opacity: 0;
+            transition: opacity var(--transition-smooth);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal {
+            background: var(--bg-surface);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-xl);
+            width: 100%;
+            max-width: 560px;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transform: translateY(10px);
+            transition: transform var(--transition-smooth);
+        }
+
+        .modal-overlay.active .modal {
+            transform: translateY(0);
+        }
+
+        .modal-lg {
+            max-width: 720px;
+        }
+
+        .modal-header {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: var(--text-muted);
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .modal-close:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Graph - SVG based */
+        .graph-wrapper {
+            position: relative;
+            height: 520px;
+            background: linear-gradient(180deg, #fafbfc 0%, #f8fafc 100%);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+
+        .graph-toolbar {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .graph-toolbar > * {
+            pointer-events: auto;
+        }
+
+        .graph-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, .9);
+            padding: 7px 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(4px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .graph-svg {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        .graph-svg:active {
+            cursor: grabbing;
+        }
+
+        .graph-edge-path {
+            fill: none;
+            stroke: var(--border-strong);
+            stroke-width: 1.8;
+            transition: stroke var(--transition-fast);
+        }
+
+        .graph-edge-path.highlight {
+            stroke: var(--accent);
+            stroke-width: 2.5;
+        }
+
+        .graph-edge-arrow {
+            fill: var(--border-strong);
+            transition: fill var(--transition-fast);
+        }
+
+        .graph-edge-arrow.highlight {
+            fill: var(--accent);
+        }
+
+        .graph-node-group {
+            cursor: pointer;
+        }
+
+        .graph-node-rect {
+            fill: var(--bg-surface);
+            stroke: var(--border-strong);
+            stroke-width: 1.5;
+            rx: 12;
+            ry: 12;
+            filter: drop-shadow(0 2px 4px rgba(15, 23, 42, .06));
+            transition: all var(--transition-fast);
+        }
+
+        .graph-node-group:hover .graph-node-rect {
+            stroke: var(--accent);
+            filter: drop-shadow(0 6px 12px rgba(79, 70, 229, .12));
+        }
+
+        .graph-node-rect.current {
+            fill: var(--accent-light);
+            stroke: var(--accent);
+            stroke-width: 2;
+        }
+
+        .graph-node-rect.highlight {
+            fill: var(--success-light);
+            stroke: var(--success);
+        }
+
+        .graph-node-icon {
+            font-size: 18px;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+
+        .graph-node-title {
+            font-size: 13px;
+            font-weight: 700;
+            fill: var(--text-primary);
+            text-anchor: middle;
+        }
+
+        .graph-node-subtitle {
+            font-size: 11px;
+            fill: var(--text-muted);
+            text-anchor: middle;
+        }
+
+        .graph-node-badge {
+            font-size: 10px;
+            font-weight: 700;
+            fill: #fff;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+
+        /* Field lineage */
+        .field-lineage-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            padding: 32px;
+            background: linear-gradient(180deg, var(--bg-subtle) 0%, var(--bg-canvas) 100%);
+            border-radius: var(--radius-lg);
+            border: 1px dashed var(--border-strong);
+        }
+
+        .field-node {
+            min-width: 160px;
+            padding: 14px 18px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-md);
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .field-node.current {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .field-node-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .field-node-subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .field-arrow {
+            font-size: 28px;
+            color: var(--accent);
+            font-weight: 300;
+        }
+
+        /* User selector */
+        .user-selector-trigger {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 7px 11px;
+            border: 1px dashed var(--border-strong);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            color: var(--text-secondary);
+            min-height: 40px;
+            transition: all var(--transition-fast);
+        }
+
+        .user-selector-trigger:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .user-list {
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .user-list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 14px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background var(--transition-fast);
+        }
+
+        .user-list-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .user-list-item.disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        .user-list-item input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        .user-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .user-email {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Branch list */
+        .branch-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 12px;
+            align-items: start;
+            padding: 14px;
+            background: var(--bg-subtle);
+            border-radius: var(--radius-md);
+            margin-bottom: 12px;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .branch-item .form-group {
+            margin-bottom: 0;
+        }
+
+        .branch-default-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-radius: var(--radius-sm);
+            font-size: 10px;
+            font-weight: 800;
+            margin-left: 8px;
+            text-transform: uppercase;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 72px 24px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 52px;
+            margin-bottom: 18px;
+            opacity: .55;
+        }
+
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .empty-state-desc {
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        /* Canvas nodes */
+        .canvas-node {
+            width: 130px;
+            padding: 13px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-md);
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .canvas-node:hover {
+            box-shadow: var(--shadow-md);
+            border-color: var(--accent);
+        }
+
+        .canvas-node.active {
+            background: var(--accent-light);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .canvas-node-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .canvas-node-subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .canvas-edge {
+            background: var(--border-strong);
+            position: absolute;
+            transform-origin: left center;
+        }
+
+        /* ReactFlow-style DAG canvas */
+        .rf-canvas {
+            position: relative;
+            width: 760px;
+            height: 460px;
+            margin: 0 auto;
+            background-color: var(--bg-canvas);
+            background-image: radial-gradient(circle, #e2e6ed 1px, transparent 1px);
+            background-size: 20px 20px;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+
+        .rf-node {
+            position: absolute;
+            width: 220px;
+            height: 66px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            z-index: 2;
+        }
+
+        .rf-node:hover {
+            box-shadow: var(--shadow-md);
+            border-color: var(--accent);
+        }
+
+        .rf-node.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-sm);
+        }
+
+        .rf-node.condition {
+            border-color: #c4b5fd;
+            background: #f5f3ff;
+        }
+
+        .rf-node.condition:hover {
+            border-color: var(--purple);
+        }
+
+        .rf-node.condition.active {
+            border-color: var(--purple);
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, .12), var(--shadow-sm);
+        }
+
+        .rf-node.subdag {
+            border-color: #5eead4;
+            background: #f0fdfa;
+        }
+
+        .rf-node.subdag:hover {
+            border-color: #14b8a6;
+        }
+
+        .rf-node.subdag.active {
+            border-color: #0d9488;
+            box-shadow: 0 0 0 3px rgba(13, 148, 136, .12), var(--shadow-sm);
+        }
+
+        .rf-node-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .rf-node-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+
+        .rf-node.type-sql .rf-node-icon {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .rf-node.type-python .rf-node-icon {
+            background: var(--warning-soft);
+            color: var(--warning);
+        }
+
+        .rf-node.type-sync .rf-node-icon {
+            background: var(--info-light);
+            color: var(--info);
+        }
+
+        .rf-node.condition .rf-node-icon {
+            background: var(--purple-light);
+            color: var(--purple);
+        }
+
+        .rf-node.subdag .rf-node-icon {
+            background: #ccfbf1;
+            color: #0d9488;
+        }
+
+        .rf-node-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .rf-node-type {
+            font-size: 11px;
+            color: var(--text-muted);
+            padding-left: 34px;
+        }
+
+        .rf-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            border: 1.5px solid #cbd5e1;
+            transition: all var(--transition-fast);
+            z-index: 3;
+        }
+
+        .rf-node:hover .rf-handle {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .rf-node.condition:hover .rf-handle {
+            background: var(--purple);
+            border-color: var(--purple);
+        }
+
+        .rf-node.subdag:hover .rf-handle {
+            background: #0d9488;
+            border-color: #0d9488;
+        }
+
+        .rf-handle-top {
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .rf-handle-bottom {
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .rf-handle-left {
+            left: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .rf-handle-right {
+            right: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .rf-edge-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .rf-edge-path {
+            fill: none;
+            stroke: #cbd5e1;
+            stroke-width: 1.8;
+        }
+
+        .rf-edge-arrow {
+            fill: #cbd5e1;
+        }
+
+        /* Utils */
+        .flex {
+            display: flex;
+        }
+
+        .flex-col {
+            flex-direction: column;
+        }
+
+        .items-center {
+            align-items: center;
+        }
+
+        .justify-between {
+            justify-content: space-between;
+        }
+
+        .gap-2 {
+            gap: 8px;
+        }
+
+        .gap-3 {
+            gap: 12px;
+        }
+
+        .gap-4 {
+            gap: 16px;
+        }
+
+        .mt-2 {
+            margin-top: 8px;
+        }
+
+        .mt-3 {
+            margin-top: 12px;
+        }
+
+        .mt-4 {
+            margin-top: 16px;
+        }
+
+        .mb-2 {
+            margin-bottom: 8px;
+        }
+
+        .mb-3 {
+            margin-bottom: 12px;
+        }
+
+        .mb-4 {
+            margin-bottom: 16px;
+        }
+
+        .w-full {
+            width: 100%;
+        }
+
+        .text-muted {
+            color: var(--text-muted);
+        }
+
+        .text-secondary {
+            color: var(--text-secondary);
+        }
+
+        .font-mono {
+            font-family: var(--font-mono);
+        }
+    </style>
+</head>
+
+<body>
+<!-- View tabs -->
+<div class="view-tabs">
+    <div class="view-tab active" data-view="lineage">血缘图谱</div>
+    <div class="view-tab" data-view="alert">告警中心</div>
+    <div class="view-tab" data-view="condition">条件分支</div>
+    <div class="view-tab" data-view="subdag">子 DAG</div>
+</div>
+
+<!-- Page: 血缘图谱 -->
+<div class="page active" id="page-lineage">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand"><span>◆</span> DataNest</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-group">
+                    <div class="sidebar-group-title">数据治理</div>
+                    <div class="sidebar-item">元数据采集任务</div>
+                    <div class="sidebar-item active">📋 元数据管理</div>
+                    <div class="sidebar-item">数据标准</div>
+                </li>
+                <li class="sidebar-group">
+                    <div class="sidebar-group-title">执行历史</div>
+                    <div class="sidebar-item">同步执行历史</div>
+                    <div class="sidebar-item">采集执行历史</div>
+                    <div class="sidebar-item">DAG 执行历史</div>
+                </li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div>
+                    <div class="breadcrumb">元数据管理 / Doris（内置）/ dwd / orders</div>
+                    <div class="page-title">dwd.orders</div>
+                    <div class="page-subtitle">订单事实表 · 最近更新：2026-08-02 10:00:00</div>
+                </div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm">返回列表</button>
+                    <button class="btn btn-primary btn-sm">编辑注释</button>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <div class="tab">基础信息</div>
+                <div class="tab">字段列表</div>
+                <div class="tab">分区信息</div>
+                <div class="tab active">💫 血缘图谱</div>
+                <div class="tab">数据预览</div>
+            </div>
+
+            <!-- Graph card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">血缘图谱</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="btn-impact">影响分析</button>
+                        <button class="btn btn-secondary btn-sm" id="btn-source">溯源分析</button>
+                        <button class="btn btn-secondary btn-sm" id="btn-reset">重置视图</button>
+                        <button class="btn btn-primary btn-sm" id="btn-field-lineage">字段血缘</button>
+                    </div>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="graph-wrapper">
+                        <div class="graph-toolbar">
+                            <div class="graph-hint">💡 点击节点跳转表详情；点击「影响分析」后选择节点查看下游链路</div>
+                        </div>
+                        <svg class="graph-svg" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet">
+                            <defs>
+                                <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"
+                                        markerUnits="strokeWidth">
+                                    <path d="M0,0 L0,6 L9,3 z" class="graph-edge-arrow"/>
+                                </marker>
+                                <marker id="arrow-highlight" markerWidth="10" markerHeight="10" refX="9" refY="3"
+                                        orient="auto" markerUnits="strokeWidth">
+                                    <path d="M0,0 L0,6 L9,3 z" class="graph-edge-arrow highlight"/>
+                                </marker>
+                            </defs>
+                            <!-- Edges -->
+                            <path d="M 175 230 C 240 230, 240 230, 305 230" class="graph-edge-path"
+                                  marker-end="url(#arrow)" data-from="ods.orders" data-to="dwd.orders"></path>
+                            <path d="M 435 230 C 530 230, 530 230, 625 230" class="graph-edge-path"
+                                  marker-end="url(#arrow)" data-from="dwd.orders" data-to="dws.order_summary"></path>
+                            <path d="M 175 390 C 270 390, 330 270, 370 270" class="graph-edge-path"
+                                  marker-end="url(#arrow)" data-from="ods.order_logs" data-to="dwd.orders"></path>
+
+                            <!-- Nodes -->
+                            <g class="graph-node-group" data-node="ods.orders" transform="translate(50, 200)">
+                                <rect x="0" y="0" width="125" height="60" class="graph-node-rect"/>
+                                <text x="62.5" y="20" class="graph-node-title">ods.orders</text>
+                                <text x="62.5" y="40" class="graph-node-subtitle">Doris（内置）</text>
+                            </g>
+
+                            <g class="graph-node-group" data-node="ods.order_logs" transform="translate(50, 360)">
+                                <rect x="0" y="0" width="125" height="60" class="graph-node-rect"/>
+                                <text x="62.5" y="20" class="graph-node-title">ods.order_logs</text>
+                                <text x="62.5" y="40" class="graph-node-subtitle">Doris（内置）</text>
+                            </g>
+
+                            <g class="graph-node-group" data-node="dwd.orders" transform="translate(305, 200)">
+                                <rect x="0" y="0" width="130" height="70" class="graph-node-rect current"/>
+                                <text x="65" y="25" class="graph-node-title">dwd.orders</text>
+                                <text x="65" y="45" class="graph-node-subtitle">当前表</text>
+                            </g>
+
+                            <g class="graph-node-group" data-node="dws.order_summary" transform="translate(625, 200)">
+                                <rect x="0" y="0" width="150" height="60" class="graph-node-rect"/>
+                                <text x="75" y="20" class="graph-node-title">dws.order_summary</text>
+                                <text x="75" y="40" class="graph-node-subtitle">Doris（内置）</text>
+                            </g>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Field lineage panel -->
+            <div class="card mt-4" id="field-lineage-panel" style="display: none;">
+                <div class="card-header">
+                    <div class="card-title">字段级血缘</div>
+                    <button class="btn btn-secondary btn-sm" id="btn-close-field">关闭</button>
+                </div>
+                <div class="card-body">
+                    <div class="form-group" style="max-width: 320px;">
+                        <label class="form-label">选择字段</label>
+                        <select class="form-select" id="field-select">
+                            <option value="amount">amount</option>
+                            <option value="order_id">order_id</option>
+                            <option value="user_id">user_id</option>
+                            <option value="create_time">create_time</option>
+                        </select>
+                    </div>
+                    <div class="field-lineage-flow mt-4">
+                        <div class="field-node">
+                            <div class="field-node-title">ods.orders.amount</div>
+                            <div class="field-node-subtitle">来源字段</div>
+                        </div>
+                        <div class="field-arrow">→</div>
+                        <div class="field-node current">
+                            <div class="field-node-title">dwd.orders.amount</div>
+                            <div class="field-node-subtitle">当前字段</div>
+                        </div>
+                        <div class="field-arrow">→</div>
+                        <div class="field-node">
+                            <div class="field-node-title">dws.order_summary.total_amount</div>
+                            <div class="field-node-subtitle">下游字段</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center text-muted" style="font-size: 12px;">
+                        来源：DAG「订单数据流水线」/ 节点「订单数据清洗」
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Page: 告警中心 -->
+<div class="page" id="page-alert">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand"><span>◆</span> DataNest</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-group">
+                    <div class="sidebar-group-title">系统管理</div>
+                    <div class="sidebar-item">用户管理</div>
+                    <div class="sidebar-item active">📢 告警中心</div>
+                </li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">告警中心</div>
+                    <div class="page-subtitle">统一管理 DAG、同步任务、采集任务的告警规则</div>
+                </div>
+                <button class="btn btn-primary" id="btn-add-alert">+ 新增告警规则</button>
+            </div>
+
+            <div class="tabs" id="alert-tabs">
+                <div class="tab active" data-alert-tab="rules">告警规则</div>
+                <div class="tab" data-alert-tab="history">告警历史</div>
+            </div>
+
+            <!-- 告警规则 -->
+            <div class="alert-panel active" id="alert-panel-rules">
+                <div class="card" style="margin-bottom: 16px;">
+                    <div class="card-body">
+                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" class="form-input" style="width: 240px;" placeholder="搜索对象名称...">
+                            <select class="form-select" style="width: 140px;">
+                                <option value="">全部类型</option>
+                                <option>DAG</option>
+                                <option>同步任务</option>
+                                <option>采集任务</option>
+                            </select>
+                            <select class="form-select" style="width: 140px;">
+                                <option value="">全部状态</option>
+                                <option>启用</option>
+                                <option>停用</option>
+                            </select>
+                            <div style="margin-left: auto; display: flex; gap: 8px;">
+                                <button class="btn btn-primary btn-sm">查询</button>
+                                <button class="btn btn-secondary btn-sm">重置</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body" style="padding: 0;">
+                        <table class="table">
+                            <thead>
+                            <tr>
+                                <th>对象类型</th>
+                                <th>对象名称</th>
+                                <th>触发条件</th>
+                                <th>接收用户</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td><span class="badge badge-info">DAG</span></td>
+                                <td><strong>订单数据流水线</strong></td>
+                                <td><span class="badge badge-danger">失败</span> <span
+                                        class="badge badge-warning">超时</span></td>
+                                <td>张三、李四</td>
+                                <td><span class="badge badge-success">启用</span></td>
+                                <td>
+                                    <button class="icon-btn" title="编辑" aria-label="编辑"
+                                            onclick="openModal('modal-alert')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                                        </svg>
+                                    </button>
+                                    <button class="icon-btn danger" title="停用" aria-label="停用">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-purple">同步任务</span></td>
+                                <td><strong>用户数据同步</strong></td>
+                                <td><span class="badge badge-danger">失败</span></td>
+                                <td>张三</td>
+                                <td><span class="badge badge-success">启用</span></td>
+                                <td>
+                                    <button class="icon-btn" title="编辑" aria-label="编辑"
+                                            onclick="openModal('modal-alert')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                                        </svg>
+                                    </button>
+                                    <button class="icon-btn danger" title="停用" aria-label="停用">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-info">采集任务</span></td>
+                                <td><strong>订单库元数据采集</strong></td>
+                                <td><span class="badge badge-danger">失败</span></td>
+                                <td>李四</td>
+                                <td><span class="badge badge-disabled">停用</span></td>
+                                <td>
+                                    <button class="icon-btn" title="编辑" aria-label="编辑"
+                                            onclick="openModal('modal-alert')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                                        </svg>
+                                    </button>
+                                    <button class="icon-btn success" title="启用" aria-label="启用">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <polygon points="5 3 19 12 5 21 5 3"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 告警历史 -->
+            <div class="alert-panel" id="alert-panel-history">
+                <div class="card" style="margin-bottom: 16px;">
+                    <div class="card-body">
+                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" class="form-input" style="width: 220px;" placeholder="搜索对象名称...">
+                            <select class="form-select" style="width: 140px;">
+                                <option value="">全部类型</option>
+                                <option>DAG</option>
+                                <option>同步任务</option>
+                                <option>采集任务</option>
+                            </select>
+                            <select class="form-select" style="width: 140px;">
+                                <option value="">发送状态</option>
+                                <option>发送成功</option>
+                                <option>发送失败</option>
+                            </select>
+                            <input type="datetime-local" class="form-input" style="width: 190px;">
+                            <span class="text-muted">至</span>
+                            <input type="datetime-local" class="form-input" style="width: 190px;">
+                            <div style="margin-left: auto; display: flex; gap: 8px;">
+                                <button class="btn btn-primary btn-sm">查询</button>
+                                <button class="btn btn-secondary btn-sm">重置</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body" style="padding: 0;">
+                        <table class="table">
+                            <thead>
+                            <tr>
+                                <th>告警时间</th>
+                                <th>对象类型</th>
+                                <th>对象名称</th>
+                                <th>触发条件</th>
+                                <th>接收人</th>
+                                <th>发送状态</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td>2026-08-02 09:12:00</td>
+                                <td><span class="badge badge-info">DAG</span></td>
+                                <td><strong>订单数据流水线</strong></td>
+                                <td><span class="badge badge-danger">失败</span></td>
+                                <td>张三、李四</td>
+                                <td><span class="badge badge-success">发送成功</span></td>
+                                <td>
+                                    <button class="icon-btn" title="详情" aria-label="详情"
+                                            onclick="openModal('modal-alert-history')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                            <circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>2026-08-02 08:45:00</td>
+                                <td><span class="badge badge-purple">同步任务</span></td>
+                                <td><strong>用户数据同步</strong></td>
+                                <td><span class="badge badge-danger">失败</span></td>
+                                <td>张三</td>
+                                <td><span class="badge badge-success">发送成功</span></td>
+                                <td>
+                                    <button class="icon-btn" title="详情" aria-label="详情"
+                                            onclick="openModal('modal-alert-history')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                            <circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>2026-08-01 23:18:00</td>
+                                <td><span class="badge badge-info">采集任务</span></td>
+                                <td><strong>订单库元数据采集</strong></td>
+                                <td><span class="badge badge-warning">超时</span></td>
+                                <td>李四</td>
+                                <td><span class="badge badge-danger">发送失败</span></td>
+                                <td>
+                                    <button class="icon-btn" title="详情" aria-label="详情"
+                                            onclick="openModal('modal-alert-history')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                            <circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Page: 条件分支节点 -->
+<div class="page" id="page-condition">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand"><span>◆</span> DataNest</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-group">
+                    <div class="sidebar-group-title">数据开发</div>
+                    <div class="sidebar-item active">项目管理</div>
+                </li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">订单数据流水线</div>
+                    <div class="page-subtitle">DAG 画布 · 条件分支节点配置预览</div>
+                </div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm">返回列表</button>
+                    <button class="btn btn-primary btn-sm">保存</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div style="display: grid; grid-template-columns: 210px 1fr; gap: 24px; min-height: 540px;">
+                        <div style="background: var(--bg-subtle); border-radius: var(--radius-md); padding: 18px;">
+                            <div style="font-weight: 700; margin-bottom: 14px; font-size: 13px;">节点面板</div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div class="sidebar-item">📝 SQL 任务</div>
+                                <div class="sidebar-item">🐍 Python 任务</div>
+                                <div class="sidebar-item">🔄 同步任务</div>
+                                <div class="sidebar-item active">🔀 条件分支</div>
+                                <div class="sidebar-item">📦 子 DAG</div>
+                            </div>
+                        </div>
+
+                        <div style="background: var(--bg-subtle); border-radius: var(--radius-md); padding: 24px; position: relative; overflow: auto; display: flex; align-items: center; justify-content: center;">
+                            <div class="rf-canvas">
+                                <svg class="rf-edge-layer" viewBox="0 0 760 460" preserveAspectRatio="xMidYMid meet">
+                                    <defs>
+                                        <marker id="rf-arrow-condition" markerWidth="10" markerHeight="10" refX="9"
+                                                refY="3" orient="auto" markerUnits="strokeWidth">
+                                            <path d="M0,0 L0,6 L9,3 z" class="rf-edge-arrow"/>
+                                        </marker>
+                                    </defs>
+                                    <path d="M 380 116 C 380 144, 380 144, 380 170" class="rf-edge-path"
+                                          marker-end="url(#rf-arrow-condition)"></path>
+                                    <path d="M 380 236 C 380 290, 170 290, 170 340" class="rf-edge-path"
+                                          marker-end="url(#rf-arrow-condition)"></path>
+                                    <path d="M 380 236 C 380 290, 590 290, 590 340" class="rf-edge-path"
+                                          marker-end="url(#rf-arrow-condition)"></path>
+                                </svg>
+
+                                <div class="rf-node type-sql" style="top: 50px; left: 270px;">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">📝</div>
+                                        <div class="rf-node-title">数据清洗</div>
+                                    </div>
+                                    <div class="rf-node-type">SQL 任务</div>
+                                </div>
+
+                                <div class="rf-node condition active" style="top: 170px; left: 270px;"
+                                     onclick="openModal('modal-condition')">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">🔀</div>
+                                        <div class="rf-node-title">数据量判断</div>
+                                    </div>
+                                    <div class="rf-node-type">条件分支</div>
+                                </div>
+
+                                <div class="rf-node type-sql" style="top: 340px; left: 60px;">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">📝</div>
+                                        <div class="rf-node-title">正常流程</div>
+                                    </div>
+                                    <div class="rf-node-type">SQL 任务</div>
+                                </div>
+
+                                <div class="rf-node type-python" style="top: 340px; left: 480px;">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">🐍</div>
+                                        <div class="rf-node-title">空数据告警</div>
+                                    </div>
+                                    <div class="rf-node-type">Python 任务</div>
+                                </div>
+
+                                <div style="position: absolute; bottom: 18px; right: 18px; font-size: 12px; color: var(--text-muted); background: #fff; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);">
+                                    点击条件分支节点查看配置弹窗
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Page: 子 DAG 节点 -->
+<div class="page" id="page-subdag">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand"><span>◆</span> DataNest</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-group">
+                    <div class="sidebar-group-title">数据开发</div>
+                    <div class="sidebar-item active">项目管理</div>
+                </li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div>
+                    <div class="page-title">订单数据流水线</div>
+                    <div class="page-subtitle">DAG 画布 · 子 DAG 节点配置预览</div>
+                </div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm">返回列表</button>
+                    <button class="btn btn-primary btn-sm">保存</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div style="display: grid; grid-template-columns: 210px 1fr; gap: 24px; min-height: 540px;">
+                        <div style="background: var(--bg-subtle); border-radius: var(--radius-md); padding: 18px;">
+                            <div style="font-weight: 700; margin-bottom: 14px; font-size: 13px;">节点面板</div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div class="sidebar-item">📝 SQL 任务</div>
+                                <div class="sidebar-item">🐍 Python 任务</div>
+                                <div class="sidebar-item">🔄 同步任务</div>
+                                <div class="sidebar-item">🔀 条件分支</div>
+                                <div class="sidebar-item active">📦 子 DAG</div>
+                            </div>
+                        </div>
+
+                        <div style="background: var(--bg-subtle); border-radius: var(--radius-md); padding: 24px; position: relative; overflow: auto; display: flex; align-items: center; justify-content: center;">
+                            <div class="rf-canvas">
+                                <svg class="rf-edge-layer" viewBox="0 0 760 460" preserveAspectRatio="xMidYMid meet">
+                                    <defs>
+                                        <marker id="rf-arrow-subdag" markerWidth="10" markerHeight="10" refX="9"
+                                                refY="3" orient="auto" markerUnits="strokeWidth">
+                                            <path d="M0,0 L0,6 L9,3 z" class="rf-edge-arrow"/>
+                                        </marker>
+                                    </defs>
+                                    <path d="M 380 126 C 380 154, 380 154, 380 180" class="rf-edge-path"
+                                          marker-end="url(#rf-arrow-subdag)"></path>
+                                    <path d="M 380 246 C 380 286, 380 286, 380 320" class="rf-edge-path"
+                                          marker-end="url(#rf-arrow-subdag)"></path>
+                                </svg>
+
+                                <div class="rf-node type-sync" style="top: 60px; left: 270px;">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">🔄</div>
+                                        <div class="rf-node-title">数据同步</div>
+                                    </div>
+                                    <div class="rf-node-type">同步任务</div>
+                                </div>
+
+                                <div class="rf-node subdag active" style="top: 180px; left: 270px;"
+                                     onclick="openModal('modal-subdag')">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">📦</div>
+                                        <div class="rf-node-title">统一清洗</div>
+                                    </div>
+                                    <div class="rf-node-type">子 DAG</div>
+                                </div>
+
+                                <div class="rf-node type-sql" style="top: 320px; left: 270px;">
+                                    <div class="rf-handle rf-handle-top"></div>
+                                    <div class="rf-handle rf-handle-bottom"></div>
+                                    <div class="rf-node-header">
+                                        <div class="rf-node-icon">📝</div>
+                                        <div class="rf-node-title">数据聚合</div>
+                                    </div>
+                                    <div class="rf-node-type">SQL 任务</div>
+                                </div>
+
+                                <div style="position: absolute; bottom: 18px; right: 18px; font-size: 12px; color: var(--text-muted); background: #fff; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);">
+                                    点击子 DAG 节点查看配置弹窗
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Modal: Alert rule -->
+<div class="modal-overlay" id="modal-alert">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">告警规则配置</div>
+            <button class="modal-close" onclick="closeModal('modal-alert')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">对象类型 <span class="required">*</span></label>
+                <select class="form-select">
+                    <option>DAG</option>
+                    <option>同步任务</option>
+                    <option>采集任务</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">对象 <span class="required">*</span></label>
+                <select class="form-select">
+                    <option>订单数据流水线</option>
+                    <option>用户数据流水线</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">触发条件 <span class="required">*</span></label>
+                <div class="checkbox-group">
+                    <label class="checkbox-item"><input type="checkbox" checked> 失败</label>
+                    <label class="checkbox-item"><input type="checkbox" checked> 超时</label>
+                    <label class="checkbox-item"><input type="checkbox"> 成功</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">接收用户 <span class="required">*</span></label>
+                <div class="user-selector-trigger" onclick="openModal('modal-user')">
+                    <span class="user-tag">张三</span>
+                    <span class="user-tag">李四</span>
+                    <span class="text-muted" style="margin-left: auto;">+ 选择用户</span>
+                </div>
+                <div class="form-hint">仅显示已填写邮箱的平台用户</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">超时阈值</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" class="form-input" value="30" style="max-width: 100px;">
+                    <span class="text-secondary">分钟</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="checkbox-item"><input type="checkbox" checked> 启用告警规则</label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-alert')">取消</button>
+            <button class="btn btn-primary" onclick="closeModal('modal-alert')">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Alert history detail -->
+<div class="modal-overlay" id="modal-alert-history">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">告警历史详情</div>
+            <button class="modal-close" onclick="closeModal('modal-alert-history')">×</button>
+        </div>
+        <div class="modal-body">
+            <div style="display: grid; grid-template-columns: 100px 1fr; gap: 12px 18px; font-size: 13px; margin-bottom: 18px;">
+                <div class="text-muted">告警时间</div>
+                <div>2026-08-02 09:12:00</div>
+                <div class="text-muted">对象类型</div>
+                <div><span class="badge badge-info">DAG</span></div>
+                <div class="text-muted">对象名称</div>
+                <div>订单数据流水线</div>
+                <div class="text-muted">触发条件</div>
+                <div><span class="badge badge-danger">失败</span></div>
+                <div class="text-muted">接收人</div>
+                <div>张三、李四</div>
+                <div class="text-muted">发送状态</div>
+                <div><span class="badge badge-success">发送成功</span></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">邮件标题</label>
+                <input type="text" class="form-input" value="【DataNest 告警】DAG「订单数据流水线」执行失败" readonly>
+            </div>
+            <div class="form-group">
+                <label class="form-label">邮件内容</label>
+                <textarea class="form-textarea" rows="5" readonly>DAG：订单数据流水线
+执行实例：20260802091000
+触发条件：执行失败
+告警时间：2026-08-02 09:12:00
+
+请登录 DataNest 查看详细日志。</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">错误信息</label>
+                <div style="background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 12px; color: var(--text-muted);">
+                    —
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-alert-history')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: User selector -->
+<div class="modal-overlay" id="modal-user">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">选择接收用户</div>
+            <button class="modal-close" onclick="closeModal('modal-user')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <input type="text" class="form-input" placeholder="搜索用户名或邮箱">
+            </div>
+            <div class="user-list">
+                <label class="user-list-item">
+                    <input type="checkbox" checked>
+                    <div>
+                        <div class="user-name">张三</div>
+                        <div class="user-email">zhangsan@example.com</div>
+                    </div>
+                </label>
+                <label class="user-list-item">
+                    <input type="checkbox" checked>
+                    <div>
+                        <div class="user-name">李四</div>
+                        <div class="user-email">lisi@example.com</div>
+                    </div>
+                </label>
+                <label class="user-list-item">
+                    <input type="checkbox">
+                    <div>
+                        <div class="user-name">王五</div>
+                        <div class="user-email">wangwu@example.com</div>
+                    </div>
+                </label>
+                <div class="user-list-item disabled" title="该用户未填写邮箱，不可选">
+                    <input type="checkbox" disabled>
+                    <div>
+                        <div class="user-name">赵六</div>
+                        <div class="user-email" style="color: var(--danger);">未填写邮箱</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-user')">取消</button>
+            <button class="btn btn-primary" onclick="closeModal('modal-user')">确定</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Condition branch -->
+<div class="modal-overlay" id="modal-condition">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <div class="modal-title">条件分支配置</div>
+            <button class="modal-close" onclick="closeModal('modal-condition')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">节点名称 <span class="required">*</span></label>
+                <input type="text" class="form-input" value="数据量判断">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">分支 <span class="required">*</span></label>
+                <div class="branch-item">
+                    <div class="form-group">
+                        <label class="form-label">分支名称</label>
+                        <input type="text" class="form-input" value="正常流程">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">条件表达式</label>
+                        <input type="text" class="form-input font-mono" value="${upstream.row_count} > 0">
+                    </div>
+                    <button class="btn btn-danger btn-sm" style="margin-top: 22px;">删除</button>
+                </div>
+                <div class="branch-item">
+                    <div class="form-group">
+                        <label class="form-label">分支名称</label>
+                        <input type="text" class="form-input" value="空数据告警">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">条件表达式</label>
+                        <input type="text" class="form-input font-mono" value="${upstream.row_count} == 0">
+                    </div>
+                    <button class="btn btn-danger btn-sm" style="margin-top: 22px;">删除</button>
+                </div>
+                <div class="branch-item" style="opacity: .75;">
+                    <div class="form-group">
+                        <label class="form-label">分支名称</label>
+                        <input type="text" class="form-input" value="默认分支"><span class="branch-default-badge">DEFAULT</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">条件表达式</label>
+                        <input type="text" class="form-input font-mono" value="true" disabled>
+                    </div>
+                    <span></span>
+                </div>
+                <button class="btn btn-secondary btn-sm">+ 添加分支</button>
+            </div>
+
+            <div class="form-hint">
+                表达式可引用上游节点输出（如 <code>${upstream.nodeId.row_count}</code>）和 DAG 参数。按分支顺序匹配，第一个满足条件的分支被执行。
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-condition')">取消</button>
+            <button class="btn btn-primary" onclick="closeModal('modal-condition')">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Sub DAG -->
+<div class="modal-overlay" id="modal-subdag">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">子 DAG 配置</div>
+            <button class="modal-close" onclick="closeModal('modal-subdag')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">节点名称 <span class="required">*</span></label>
+                <input type="text" class="form-input" value="统一清洗流程">
+            </div>
+            <div class="form-group">
+                <label class="form-label">选择子 DAG <span class="required">*</span></label>
+                <select class="form-select">
+                    <option>请选择 DAG</option>
+                    <option selected>数据标准化清洗</option>
+                    <option>统一校验流程</option>
+                </select>
+                <div class="form-hint">仅显示已启用、且不会造成循环引用的 DAG</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">执行方式</label>
+                <div class="checkbox-group">
+                    <label class="checkbox-item"><input type="radio" name="subdag-mode" checked> 同步执行（等待子 DAG 完成）</label>
+                    <label class="checkbox-item"><input type="radio" name="subdag-mode"> 异步执行（触发后继续）</label>
+                </div>
+            </div>
+            <div class="form-hint"
+                 style="background: var(--info-light); color: var(--info); padding: 10px 14px; border-radius: var(--radius-md);">
+                提示：本期不支持子 DAG 参数透传与覆盖。
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modal-subdag')">取消</button>
+            <button class="btn btn-primary" onclick="closeModal('modal-subdag')">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // View tabs
+    document.querySelectorAll('.view-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const view = tab.dataset.view;
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + view).classList.add('active');
+        });
+    });
+
+    // Alert center tabs
+    document.querySelectorAll('#alert-tabs .tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#alert-tabs .tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const panel = tab.dataset.alertTab;
+            document.querySelectorAll('.alert-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('alert-panel-' + panel).classList.add('active');
+        });
+    });
+
+    // Modal helpers
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) overlay.classList.remove('active');
+        });
+    });
+
+    // Add alert
+    document.getElementById('btn-add-alert').addEventListener('click', () => openModal('modal-alert'));
+
+    // Field lineage panel
+    document.getElementById('btn-field-lineage').addEventListener('click', () => {
+        document.getElementById('field-lineage-panel').style.display = 'block';
+    });
+    document.getElementById('btn-close-field').addEventListener('click', () => {
+        document.getElementById('field-lineage-panel').style.display = 'none';
+    });
+
+    // Graph interactions
+    const graphNodes = document.querySelectorAll('.graph-node-group');
+    const graphEdges = document.querySelectorAll('.graph-edge-path');
+    let analysisMode = null;
+
+    document.getElementById('btn-impact').addEventListener('click', () => {
+        analysisMode = 'impact';
+        resetHighlights();
+        document.getElementById('btn-impact').classList.add('active-mode');
+        document.getElementById('btn-source').classList.remove('active-mode');
+    });
+
+    document.getElementById('btn-source').addEventListener('click', () => {
+        analysisMode = 'source';
+        resetHighlights();
+        document.getElementById('btn-source').classList.add('active-mode');
+        document.getElementById('btn-impact').classList.remove('active-mode');
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        analysisMode = null;
+        resetHighlights();
+        document.getElementById('btn-impact').classList.remove('active-mode');
+        document.getElementById('btn-source').classList.remove('active-mode');
+    });
+
+    function resetHighlights() {
+        graphNodes.forEach(n => {
+            n.querySelector('rect').classList.remove('highlight');
+        });
+        graphEdges.forEach(e => {
+            e.classList.remove('highlight');
+            e.setAttribute('marker-end', 'url(#arrow)');
+        });
+    }
+
+    graphNodes.forEach(node => {
+        node.addEventListener('click', () => {
+            if (!analysisMode) return;
+            resetHighlights();
+            node.querySelector('rect').classList.add('highlight');
+            graphNodes.forEach(n => {
+                if (n !== node) n.querySelector('rect').classList.add('highlight');
+            });
+            graphEdges.forEach(e => {
+                e.classList.add('highlight');
+                e.setAttribute('marker-end', 'url(#arrow-highlight)');
+            });
+        });
+    });
+</script>
+</body>
+</html>

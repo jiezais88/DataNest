@@ -28,6 +28,10 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -35,6 +39,7 @@ import java.util.stream.Collectors;
 public class SyncJobService {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncJobService.class);
+    private static final ZoneId APP_TIME_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final SyncJobMapper syncJobMapper;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
@@ -400,8 +405,10 @@ public class SyncJobService {
         if (StringUtils.hasText(request.getStatus())) {
             wrapper.eq("status", request.getStatus());
         }
-        if (request.getStartTimeFrom() != null && request.getStartTimeTo() != null) {
-            wrapper.between("start_time", request.getStartTimeFrom(), request.getStartTimeTo());
+        LocalDateTime startTimeFrom = parseIsoToLocalDateTime(request.getStartTimeFrom());
+        LocalDateTime startTimeTo = parseIsoToLocalDateTime(request.getStartTimeTo());
+        if (startTimeFrom != null && startTimeTo != null) {
+            wrapper.between("start_time", startTimeFrom, startTimeTo);
         }
 
         // 按任务名称模糊搜索：先查 sync_job 得到匹配 ID，再过滤历史
@@ -700,5 +707,29 @@ public class SyncJobService {
         dto.setLineNum(entity.getLineNum());
         dto.setCreatedAt(entity.getCreatedAt());
         return dto;
+    }
+
+    /**
+     * 把 ISO 字符串解析为 LocalDateTime（容器时区 Asia/Shanghai）。
+     * 兼容 "2026-08-02T12:00:00Z"（UTC）和 "2026-08-02T12:00:00"（无时区）。
+     * null/空 视为无界；非法格式抛 INTERNAL_ERROR。
+     */
+    private LocalDateTime parseIsoToLocalDateTime(String iso) {
+        if (!StringUtils.hasText(iso)) {
+            return null;
+        }
+        String trimmed = iso.trim();
+        try {
+            return OffsetDateTime.parse(trimmed, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .atZoneSameInstant(APP_TIME_ZONE)
+                    .toLocalDateTime();
+        } catch (DateTimeParseException ignore) {
+            try {
+                return LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            } catch (DateTimeParseException e) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "时间格式非法：" + trimmed + "，期望 ISO 8601 格式");
+            }
+        }
     }
 }

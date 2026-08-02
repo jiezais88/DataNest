@@ -236,10 +236,11 @@ public class MetadataRegistrationService {
      *
      * @param sql        完整 SQL 字符串（支持多条 SQL 用 ; 分隔）
      * @param operatorId 操作人 ID
+     * @param ctx        来源上下文（DAG/节点信息）
      * @return 注册的表名列表
      */
     @Transactional(rollbackFor = Exception.class)
-    public List<String> registerFromSql(String sql, Long operatorId) {
+    public List<String> registerFromSql(String sql, Long operatorId, SourceContext ctx) {
         if (!StringUtils.hasText(sql)) {
             throw new BusinessException(ErrorCode.SQL_PARSE_FAILED, "SQL 不能为空");
         }
@@ -270,7 +271,7 @@ public class MetadataRegistrationService {
                     if (ct.getSelect() != null) {
                         logger.info("检测到 CTAS: {} (基于 SELECT)", tableName);
                     }
-                    executeAndRegister(targetDb, tableName, operatorId);
+                    executeAndRegister(targetDb, tableName, operatorId, ctx);
                     registeredTables.add(tableName);
                 } else if (parsed instanceof net.sf.jsqlparser.statement.insert.Insert) {
                     // INSERT INTO xxx：目标表已注册则刷新元数据（最近写入时间/列结构）
@@ -281,7 +282,7 @@ public class MetadataRegistrationService {
                         logger.warn("无法提取 INSERT 表名: {}", trimmed);
                         continue;
                     }
-                    if (refreshIfExists(targetDb, tableName, operatorId)) {
+                    if (refreshIfExists(targetDb, tableName, operatorId, ctx)) {
                         registeredTables.add(tableName);
                     }
                 } else if (parsed instanceof net.sf.jsqlparser.statement.alter.Alter) {
@@ -293,7 +294,7 @@ public class MetadataRegistrationService {
                         logger.warn("无法提取 ALTER TABLE 表名: {}", trimmed);
                         continue;
                     }
-                    if (refreshIfExists(targetDb, tableName, operatorId)) {
+                    if (refreshIfExists(targetDb, tableName, operatorId, ctx)) {
                         registeredTables.add(tableName);
                     }
                 } else if (parsed instanceof net.sf.jsqlparser.statement.drop.Drop) {
@@ -319,26 +320,44 @@ public class MetadataRegistrationService {
     }
 
     /**
+     * 把 schema-qualified 表名拆分为 db + table。
+     * 如果表名本身包含 schema，优先使用表名里的 schema；否则回退到 defaultDb。
+     */
+    private DbTable resolveDbAndTable(String defaultDb, String tableName) {
+        if (tableName != null && tableName.contains(".")) {
+            int idx = tableName.indexOf('.');
+            return new DbTable(tableName.substring(0, idx), tableName.substring(idx + 1));
+        }
+        return new DbTable(defaultDb, tableName);
+    }
+
+    private record DbTable(String db, String table) {
+    }
+
+    /**
      * 注册单个表到元数据（含建表 / 刷新列）
      */
-    private void executeAndRegister(String targetDb, String tableName, Long operatorId) {
+    private void executeAndRegister(String targetDb, String tableName, Long operatorId, SourceContext ctx) {
+        DbTable dbTable = resolveDbAndTable(targetDb, tableName);
+        String db = dbTable.db();
+        String table = dbTable.table();
         try (Connection conn = dorisConn()) {
             // 先确保表真实存在（外部系统已执行过 SQL；这里做幂等保护）
-            if (!tableExists(conn, targetDb, tableName)) {
-                logger.warn("表 {}.{} 在 Doris 中不存在，元数据无法注册", targetDb, tableName);
+            if (!tableExists(conn, db, table)) {
+                logger.warn("表 {}.{} 在 Doris 中不存在，元数据无法注册", db, table);
                 return;
             }
-            MetadataTable table = findOrCreateTable(targetDb, tableName, new SourceContext("SQL", null, null, null, null));
-            table.setCreatedBy(operatorId);
-            table.setUpdatedBy(operatorId);
-            table.setUpdatedAt(LocalDateTime.now());
-            List<MetadataColumn> columns = extractColumns(conn, targetDb, tableName, table.getId());
-            refreshColumns(table.getId(), columns);
-            table.setColumnCount(columns.size());
-            metadataTableMapper.updateById(table);
-            logger.info("从 SQL 注册元数据: db={}, table={}, cols={}", targetDb, tableName, columns.size());
+            MetadataTable t = findOrCreateTable(db, table, ctx != null ? ctx : new SourceContext("SQL", null, null, null, null));
+            t.setCreatedBy(operatorId);
+            t.setUpdatedBy(operatorId);
+            t.setUpdatedAt(LocalDateTime.now());
+            List<MetadataColumn> columns = extractColumns(conn, db, table, t.getId());
+            refreshColumns(t.getId(), columns);
+            t.setColumnCount(columns.size());
+            metadataTableMapper.updateById(t);
+            logger.info("从 SQL 注册元数据: db={}, table={}, cols={}", db, table, columns.size());
         } catch (Exception e) {
-            logger.error("从 SQL 注册元数据失败: db={}, table={}", targetDb, tableName, e);
+            logger.error("从 SQL 注册元数据失败: db={}, table={}", db, table, e);
             throw new BusinessException(ErrorCode.METADATA_REGISTRATION_FAILED,
                     "元数据注册失败: " + e.getMessage());
         }
@@ -347,23 +366,26 @@ public class MetadataRegistrationService {
     /**
      * 表已存在时刷新元数据（用于 INSERT/ALTER）。不存在则静默跳过。
      */
-    private boolean refreshIfExists(String targetDb, String tableName, Long operatorId) {
+    private boolean refreshIfExists(String targetDb, String tableName, Long operatorId, SourceContext ctx) {
+        DbTable dbTable = resolveDbAndTable(targetDb, tableName);
+        String db = dbTable.db();
+        String table = dbTable.table();
         try (Connection conn = dorisConn()) {
-            if (!tableExists(conn, targetDb, tableName)) {
-                logger.debug("表 {}.{} 不存在，跳过元数据刷新", targetDb, tableName);
+            if (!tableExists(conn, db, table)) {
+                logger.debug("表 {}.{} 不存在，跳过元数据刷新", db, table);
                 return false;
             }
-            MetadataTable table = findOrCreateTable(targetDb, tableName, new SourceContext("SQL", null, null, null, null));
-            table.setUpdatedBy(operatorId);
-            table.setUpdatedAt(LocalDateTime.now());
-            List<MetadataColumn> columns = extractColumns(conn, targetDb, tableName, table.getId());
-            refreshColumns(table.getId(), columns);
-            table.setColumnCount(columns.size());
-            metadataTableMapper.updateById(table);
-            logger.info("从 SQL 刷新元数据: db={}, table={}, cols={}", targetDb, tableName, columns.size());
+            MetadataTable t = findOrCreateTable(db, table, ctx != null ? ctx : new SourceContext("SQL", null, null, null, null));
+            t.setUpdatedBy(operatorId);
+            t.setUpdatedAt(LocalDateTime.now());
+            List<MetadataColumn> columns = extractColumns(conn, db, table, t.getId());
+            refreshColumns(t.getId(), columns);
+            t.setColumnCount(columns.size());
+            metadataTableMapper.updateById(t);
+            logger.info("从 SQL 刷新元数据: db={}, table={}, cols={}", db, table, columns.size());
             return true;
         } catch (Exception e) {
-            logger.error("从 SQL 刷新元数据失败: db={}, table={}", targetDb, tableName, e);
+            logger.error("从 SQL 刷新元数据失败: db={}, table={}", db, table, e);
             throw new BusinessException(ErrorCode.METADATA_REGISTRATION_FAILED,
                     "元数据刷新失败: " + e.getMessage());
         }
@@ -373,19 +395,22 @@ public class MetadataRegistrationService {
      * 表存在时从元数据移除（用于 DROP TABLE）。不存在则静默跳过。
      */
     private void removeIfExists(String targetDb, String tableName) {
+        DbTable dbTable = resolveDbAndTable(targetDb, tableName);
+        String db = dbTable.db();
+        String table = dbTable.table();
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
         wrapper.eq("datasource_id", BUILTIN_DORIS_DATASOURCE_ID)
-                .eq("database_name", targetDb)
+                .eq("database_name", db)
                 .apply("COALESCE(schema_name, '') = {0}", "")
-                .eq("table_name", tableName);
-        MetadataTable table = metadataTableMapper.selectOne(wrapper);
-        if (table == null) {
-            logger.debug("元数据表 {}.{} 不存在，跳过删除", targetDb, tableName);
+                .eq("table_name", table);
+        MetadataTable t = metadataTableMapper.selectOne(wrapper);
+        if (t == null) {
+            logger.debug("元数据表 {}.{} 不存在，跳过删除", db, table);
             return;
         }
-        metadataColumnMapper.delete(new QueryWrapper<MetadataColumn>().eq("table_id", table.getId()));
-        metadataTableMapper.deleteById(table.getId());
-        logger.info("从 SQL 删除元数据: db={}, table={}", targetDb, tableName);
+        metadataColumnMapper.delete(new QueryWrapper<MetadataColumn>().eq("table_id", t.getId()));
+        metadataTableMapper.deleteById(t.getId());
+        logger.info("从 SQL 删除元数据: db={}, table={}", db, table);
     }
 
     private boolean tableExists(Connection conn, String db, String tableName) throws SQLException {

@@ -4,7 +4,7 @@ export type {CollectMode, TaskTriggerType};
 
 // 状态字符串统一在 constants/task.ts 的 ExecutionStatusEnum 声明，这里只收窄出业务域子集
 export type TaskStatus = Extract<AnyExecutionStatus, 'NEVER_EXECUTED' | 'RUNNING' | 'SUCCESS' | 'FAILED'>;
-export type ExecutionStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'TERMINATED'>;
+export type ExecutionStatus = Extract<AnyExecutionStatus, 'RUNNING' | 'SUCCESS' | 'FAILED' | 'TERMINATED'>;
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
 export interface CollectTask {

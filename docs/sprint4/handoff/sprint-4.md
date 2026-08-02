@@ -28,12 +28,12 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 
 ## 范围
 
-| 模块 | 状态   | 说明                                                                                               |
-|------|--------|----------------------------------------------------------------------------------------------------|
-| 文档 | 进行中 | PRD/技术文档已存在；按 DAG 告警配置已回写到技术文档 8.1/8.2/8.5 节。其他文档由对应负责人继续维护。 |
-| 前端 | 已完成 | Sprint 4 全部功能已开发，构建验证通过；review 修复已落地。未联调。                                 |
-| 后端 | 已完成 | Phase 1~4 实现 + review 4 项优化均已落地；节点执行迁移到 worker 已部署并回归通过。                 |
-| 测试 | 未开始 | 用户明确安排后再执行，当前仅保证编译通过。                                                         |
+| 模块 | 状态   | 说明                                                                                                       |
+|------|--------|------------------------------------------------------------------------------------------------------------|
+| 文档 | 进行中 | PRD/技术文档已存在；按 DAG 告警配置已回写到技术文档 8.1/8.2/8.5 节。其他文档由对应负责人继续维护。         |
+| 前端 | 已完成 | Sprint 4 全部功能已开发，构建验证通过；review 修复已落地。已联调并通过 E2E。                               |
+| 后端 | 已完成 | Phase 1~4 实现 + review 4 项优化均已落地；节点执行迁移到 worker 已部署并回归通过；测试中发现的问题已修复。 |
+| 测试 | 已完成 | API 测试 + E2E 12/12 通过；测试数据已清理；遗留问题已标记。                                                |
 
 ## 关键决策
 
@@ -248,6 +248,29 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
   时强制带 sourceTablesDetail）；限流校验改 >0；告警未勾 TIMEOUT 不提交 timeoutMinutes；PythonEditorModal 复用
   selectedNode；结果区补 outputTables
 
+### 前端 review 修复（2026-08-02 第二轮）
+
+- 采集执行历史：
+  - 状态筛选删除「部分成功」（后端 `ExecutionStatus` 无 `PARTIAL`），同步收窄 `types/collect.ts` 的 `ExecutionStatus`。
+  - 新增「是否变化」列：按 `added/updated/deleted` 表/字段数合计 >0 显示「有变化」/「无变化」徽章。
+  - 「库/表/字段」列改名为「扫描库表字段」；对应 `scroll.x` 从 1120 调整到 1200。
+- 项目列表 / DAG 列表：日期、创建人/修改人等实际数据颜色从 `text-ds-text-muted` 改为 `text-ds-text-secondary`，`—` 占位保持
+  muted；统一为 `text-ds-small` 以与同步/DAG 执行历史页行高对齐。
+- 用户管理：重置按钮不再把 `pageSize` 切回 20，保持默认 10 条。
+
+### 前端 review 修复（2026-08-02 第三轮）
+
+- **列表页高度不一致根因修复**：
+  - `Layout.tsx` 原先对 `/engineering/dags` 路由跳过全局面包屑，导致项目列表 / DAG 列表顶部基准线比其他列表页低约
+    39.5px，表现为"项目列表比 DAG/同步历史高一点"。
+  - 统一所有路由渲染 `<Breadcrumb/>`；移除 `ProjectDagsPage` 内部面包屑避免重复。
+  - 同步修正 `/engineering/dag-executions` 面包屑分组为"数据工程"。
+- **量化验证**：Playwright 测量确认 10 条时项目列表、DAG 执行历史、同步执行历史的表格卡片高度均为 564.78px，行高
+  47px，header/toolbar/card 顶部基准线一致。
+- **采集执行变更日志样式补齐**：新增表 / 删除表 / 变化表 / 原始日志统一为带标题头的圆角卡片，标题头置于卡片内部并带灰底，内容行以分隔线区分，对齐原型；本期不实现点击看字段。
+- **项目列表标题对齐**：项目列表页大标题从「数据开发」改为「项目管理」，与面包屑「数据开发 / 项目管理」一致。
+- **DAG 列表增加返回入口**：`ProjectDagsPage` 页头右侧新增「返回项目列表」按钮，与同步执行历史等页面返回风格一致。
+
 ## 验证证据
 
 - 编译命令：
@@ -259,9 +282,20 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - 前端验证（2026-08-02）：
   ```bash
   cd data-nest/data-nest-frontend
-  npx tsc -b && npx vite build
+  pnpm build
   ```
-- 结果： **成功**；eslint 0 error（dag-executions 有 1 个 Sprint 4 之前就存在的 useMemo 依赖 warning，未动）。
+- 结果： **成功**；`eslint .` 0 error（dag-executions 有 1 个 Sprint 4 之前就存在的 useMemo 依赖 warning，未动）。
+- 前端部署（2026-08-02）：
+  ```bash
+  cd data-nest
+  docker compose build app-frontend && docker compose up -d app-frontend
+  ```
+- 结果：`datanest-app-frontend` 镜像重建成功，容器 `healthy`，`http://localhost:3000/` 返回 200。
+- 前端第三轮修复验证（2026-08-02）：
+  - `pnpm build` 通过；`npx eslint src` 通过。
+  - Docker 重建 `app-frontend` 成功，`datanest-app-frontend` healthy。
+  - Playwright 测量：10 条时项目列表 / DAG 执行历史 / 同步执行历史表格卡片高度均为 564.78px，行高 47px，顶部对齐。
+  - 采集变更日志弹窗截图验证：新增表已渲染为带边框圆角卡片 + 行分隔线。
 - 后端迁移回归测试（2026-08-02，重新部署后）：
     - 触发 DAG `regression-migration`（1 SQL + 1 SYNC）→ SQL 节点与 SYNC 节点均回调到 `data-nest-worker`，执行记录 ID
       `2083822336429502465` 最终 status SUCCESS，两个节点均 SUCCESS。
@@ -271,17 +305,71 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
       通过；app-engineering/app-worker/app-job/app-governance/app-gateway 镜像已重建并启动健康。
 - 未执行 Sprint 4 新功能（Python/血缘/告警/版本等）的端到端测试。
 
+## 2026-08-02 — Sprint 4 全功能测试完成
+
+### 测试执行结果
+
+- **API 测试**：完成（通过 `e2e/sprint4/api-helpers.ts` 与 curl 覆盖数据准备、触发、状态轮询）。
+- **E2E 测试**：`npx playwright test e2e/sprint4/ --project=chromium --reporter=list --timeout=120000`
+  - **结果：12/12 通过**，耗时约 40 秒。
+  - 命令：
+    `cd data-nest/data-nest-frontend && npx playwright test e2e/sprint4/ --project=chromium --reporter=list --timeout=120000`
+
+| #  | 用例                           | 状态 |
+|----|--------------------------------|------|
+| 1  | 用户登录进入首页               | ✅   |
+| 2  | 创建 DAG 项目                  | ✅   |
+| 3  | 在项目中新建并保存 DAG         | ✅   |
+| 4  | DAG 参数化增删改查             | ✅   |
+| 5  | Python 节点配置与运行测试      | ✅   |
+| 6  | DAG 版本对比与回滚             | ✅   |
+| 7  | DAG 告警配置                   | ✅   |
+| 8  | 触发 DAG 执行并查看执行详情    | ✅   |
+| 9  | SQL 产出表在元数据页面展示来源 | ✅   |
+| 10 | 重跑失败节点                   | ✅   |
+| 11 | 创建多表同步任务并执行         | ✅   |
+| 12 | （setup）authenticate          | ✅   |
+
+### 测试中发现并修复的问题
+
+| # | 问题                                                        | 根因                                                                                                                                                                                      | 修复位置                                                                                                                                                                                                                                 | 状态            |
+|---|-------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| 1 | `MetadataRegistrationService` schema-qualified 表名重复前缀 | `CREATE TABLE datanest.xxx` 被拼成 `datanest.datanest.xxx`                                                                                                                                | `data-nest-task-core/.../service/MetadataRegistrationService.java`                                                                                                                                                                       | ✅ 已修复并验证 |
+| 2 | SQL 节点来源信息未写入 SourceContext                        | 元数据注册时未传来源字段                                                                                                                                                                  | `data-nest-worker/.../service/DagNodeExecuteService.java`                                                                                                                                                                                | ✅ 已修复并验证 |
+| 3 | 元数据详情「数据来源」卡片不展示                            | `MetadataTableMapper.selectTableDetailById` SQL 未选来源字段                                                                                                                              | `data-nest-task-core/.../mapper/MetadataTableMapper.java`                                                                                                                                                                                | ✅ 已修复并验证 |
+| 4 | E2E 测试 7 antd Switch 在 headless 下不切换                 | Playwright 原生 click/Space/label click 无法触发 antd Switch onChange；需等弹窗加载后用 `evaluate((el) => el.click())`                                                                    | `data-nest-frontend/e2e/sprint4/sprint4.spec.ts`                                                                                                                                                                                         | ✅ 已修复并验证 |
+| 5 | E2E 测试 11 `waitSyncJobSuccess` 超时                       | ① `/sync-jobs/history/page` 要求 `LocalDateTime`，但 Jackson 无法解析前端/测试传来的 ISO 字符串；② 全局历史接口忽略 `syncJobId`；③  helper 使用 UTC 时间而与后端 Asia/Shanghai 时区不一致 | `data-nest-engineering/.../dto/SyncJobHistoryQueryRequest.java`、`data-nest-engineering/.../service/SyncJobService.java`、`data-nest-engineering/.../controller/SyncJobController.java`、`data-nest-frontend/e2e/sprint4/api-helpers.ts` | ✅ 已修复并验证 |
+
+### 仍未修复 / 已标记缺失的问题
+
+| # | 问题                                     | 说明                                                                                                                                                                                                                                                                        | 建议处理方式                                                                    |
+|---|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| 1 | **元数据详情页「表级血缘」列表前端缺失** | 原型 `docs/sprint4/ui/Sprint4-Python参数化监控告警血缘.html:2250` 有「表级血缘」列表（source → target），但前端 `metadata/index.tsx` 仅实现「数据来源」卡片，未调用 `/governance/lineage/target/{tableName}` 展示表级血缘。PRD 未明确将其列为 Sprint 4 验收项，但原型包含。 | 已按用户指示标记缺失，交专门前端 AI 处理。                                      |
+| 2 | **多表同步实际只同步第一张表**           | 选择 `s4_orders` 与 `s4_logs` 两个源表时，生成的 Addax job JSON 包含两个 `content`，但 Addax 实际只执行第一个（`s4_orders`），`s4_logs` 目标表行数为 0。不满足 PRD AC-17「执行后所有表被同步」。                                                                            | 需进一步调查 Addax 6.0.11 多 content 执行行为或 worker 调用方式，建议单独跟进。 |
+
+### 本次变更文件清单
+
+- `data-nest/data-nest-task-core/src/main/java/com/datanest/task/core/service/MetadataRegistrationService.java`
+- `data-nest/data-nest-worker/src/main/java/com/datanest/worker/service/DagNodeExecuteService.java`
+- `data-nest/data-nest-task-core/src/main/java/com/datanest/task/core/mapper/MetadataTableMapper.java`
+- `data-nest/data-nest-engineering/src/main/java/com/datanest/engineering/dto/SyncJobHistoryQueryRequest.java`
+- `data-nest/data-nest-engineering/src/main/java/com/datanest/engineering/service/SyncJobService.java`
+- `data-nest/data-nest-engineering/src/main/java/com/datanest/engineering/controller/SyncJobController.java`
+- `data-nest/data-nest-frontend/src/pages/engineering/dags/components/DagAlertConfigModal.tsx`
+- `data-nest/data-nest-frontend/e2e/sprint4/sprint4.spec.ts`
+- `data-nest/data-nest-frontend/e2e/sprint4/api-helpers.ts`
+
+### 环境/脏数据状态
+
+- 已清理本次 E2E 产生的 `e2e_*` / `debug_*` 项目、DAG、同步任务、Doris 表及元数据记录。
+- `s4_test.s4_orders` / `s4_test.s4_logs` 保留，Doris 端对应表已 `TRUNCATE`。
+- `app-engineering` 镜像已基于最新代码重建并健康运行。
+
 ## Next Action
 
-1. 本次迁移回归测试已完成；Sprint 4 新功能（Python/血缘/告警/版本等）仍待用户安排联调/测试。
-2. 后续测试阶段建议优先覆盖：
-    - DAG 版本保存/对比/回滚（验证 diff 性能优化后逻辑正确）。
-    - 按 DAG 告警配置：专用配置覆盖全局、未配置时回退全局、超时阈值按 DAG 生效。
-    - 告警邮件内容：失败/超时/成功邮件均包含 DAG 名、时间、查看链接。
-    - SQL/Python 血缘批量写入：多语句/多节点场景下记录完整。
-3. 前后端联调重点：
-    - Python 节点运行测试（注意：节点需先保存 DAG 才可测试，前端已禁用未保存场景）。
-    - 多表同步创建/编辑回显（sourceTablesDetail 字符串 vs 数组口径）。
+1. **表级血缘列表前端缺失** 与 **多表同步仅同步首表** 两个问题已标记，等待用户/专门 Agent 跟进。
+2. 如需继续覆盖邮件告警实际发送、Python 节点真实执行、节点超时告警等，可补充专项测试（当前 E2E
+   已覆盖配置与执行链路，但未断言邮件到达与超时扫描任务触发）。
     - 节点实时日志轮询（路径带 /dag-executions 前缀）。
     - 触发参数覆盖、版本回滚后画布刷新。
 

@@ -501,7 +501,7 @@ export default function SyncJobsPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1790}}
+                            scroll={{x: 1760}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             onRow={(item) => ({

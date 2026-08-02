@@ -4,7 +4,11 @@
 
 FROM eclipse-temurin:21-jre-alpine
 
-RUN apk add --no-cache netcat-openbsd
+# Python 3 + pip + pandas/pymysql，供 Sprint 4 Python 节点执行
+RUN apk add --no-cache python3 py3-pip && \
+    python3 --version && \
+    pip3 --version && \
+    pip3 install --no-cache-dir pandas pymysql --break-system-packages
 
 WORKDIR /app
 

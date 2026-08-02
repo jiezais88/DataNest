@@ -35,7 +35,7 @@ public class PythonExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(PythonExecutor.class);
 
-    private static final int DEFAULT_TIMEOUT_MINUTES = 30;
+    private static final int DEFAULT_TIMEOUT_SECONDS = 30 * 60;
     private static final int DEFAULT_MEMORY_LIMIT_MB = 2048;
 
     @Value("${datanest.python.sandbox:/tmp/datanest-python-sandbox}")
@@ -46,12 +46,12 @@ public class PythonExecutor {
      *
      * @param userScript    用户脚本（在 helper 之后执行）
      * @param context       上下文：参数、日志回调等
-     * @param timeoutMinutes 超时分钟数，null 则默认 30
+     * @param timeoutSeconds 超时秒数，null 则默认 30 分钟
      * @param memoryLimitMb 内存限制（MB），通过 ulimit -v 限制虚拟内存，默认 2048MB
      */
     public PythonExecuteResult execute(String userScript, PythonContext context,
-                                       Integer timeoutMinutes, Integer memoryLimitMb) {
-        int timeout = timeoutMinutes == null || timeoutMinutes <= 0 ? DEFAULT_TIMEOUT_MINUTES : timeoutMinutes;
+                                       Integer timeoutSeconds, Integer memoryLimitMb) {
+        int timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? DEFAULT_TIMEOUT_SECONDS : timeoutSeconds;
         int memory = memoryLimitMb == null || memoryLimitMb <= 0 ? DEFAULT_MEMORY_LIMIT_MB : memoryLimitMb;
         LocalDateTime startTime = LocalDateTime.now();
         Path workDir = null;
@@ -310,7 +310,7 @@ public class PythonExecutor {
         Files.writeString(workDir.resolve("task.py"), sb.toString(), StandardCharsets.UTF_8);
     }
 
-    private PythonExecuteResult runPython(Path workDir, int timeoutMinutes, int memoryLimitMb,
+    private PythonExecuteResult runPython(Path workDir, int timeoutSeconds, int memoryLimitMb,
                                           PythonContext context, LocalDateTime startTime) {
         // 通过 /bin/sh 设置 ulimit -v 限制虚拟内存（KB），再 exec python3 避免额外 shell 进程
         List<String> command = new ArrayList<>();
@@ -327,32 +327,35 @@ public class PythonExecutor {
         Process process = null;
         try {
             process = pb.start();
-            try (BufferedReader outReader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-                 BufferedReader errReader = new BufferedReader(
-                         new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = outReader.readLine()) != null) {
-                    stdout.append(line).append("\n");
-                    if (context != null && context.logCollector != null) {
-                        context.logCollector.accept(line);
-                    }
-                }
-                while ((line = errReader.readLine()) != null) {
-                    stderr.append(line).append("\n");
-                    if (context != null && context.logCollector != null) {
-                        context.logCollector.accept("[STDERR] " + line);
-                    }
-                }
-            }
 
-            boolean finished = process.waitFor(timeoutMinutes, TimeUnit.MINUTES);
+            // 在后台线程并发读取 stdout/stderr，避免脚本无输出时主线程阻塞在 readLine
+            Process finalProcess = process;
+            Thread outThread = new Thread(() -> pumpReader(
+                    new BufferedReader(new InputStreamReader(finalProcess.getInputStream(), StandardCharsets.UTF_8)),
+                    stdout, context, false), "python-stdout-pump");
+            Thread errThread = new Thread(() -> pumpReader(
+                    new BufferedReader(new InputStreamReader(finalProcess.getErrorStream(), StandardCharsets.UTF_8)),
+                    stderr, context, true), "python-stderr-pump");
+            outThread.setDaemon(true);
+            errThread.setDaemon(true);
+            outThread.start();
+            errThread.start();
+
+            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             long durationMs = Duration.between(startTime, LocalDateTime.now()).toMillis();
+
+            // 等待流泵线程在进程结束后把数据读完（或超时后强制结束）
             if (!finished) {
                 process.destroyForcibly();
-                logger.error("Python 执行超时: timeout={}min", timeoutMinutes);
+                logger.error("Python 执行超时: timeout={}s", timeoutSeconds);
+                // 给泵线程一点时间收尾，避免丢失已输出内容
+                joinQuietly(outThread, 1000);
+                joinQuietly(errThread, 1000);
                 return PythonExecuteResult.timeout();
             }
+
+            joinQuietly(outThread, 5000);
+            joinQuietly(errThread, 5000);
 
             int exitCode = process.exitValue();
             Object output = null;
@@ -387,6 +390,34 @@ public class PythonExecutor {
             if (process != null) process.destroyForcibly();
             long durationMs = Duration.between(startTime, LocalDateTime.now()).toMillis();
             return PythonExecuteResult.failure(stdout.toString(), stderr.toString(), e.getMessage(), durationMs);
+        }
+    }
+
+    private void pumpReader(BufferedReader reader, StringBuilder sink,
+                            PythonContext context, boolean isStderr) {
+        try (reader) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                synchronized (sink) {
+                    sink.append(line).append("\n");
+                }
+                if (context != null && context.logCollector != null) {
+                    context.logCollector.accept(isStderr ? "[STDERR] " + line : line);
+                }
+            }
+        } catch (IOException e) {
+            // 进程被销毁时流关闭会抛异常，正常忽略
+            if (!"Stream closed".equalsIgnoreCase(e.getMessage())) {
+                logger.debug("Python 流读取异常: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void joinQuietly(Thread thread, long millis) {
+        try {
+            thread.join(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

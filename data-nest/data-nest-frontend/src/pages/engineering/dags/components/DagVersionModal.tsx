@@ -112,6 +112,7 @@ export default function DagVersionModal({
             content: `确定回滚到 v${version.versionNo} 吗？回滚后会生成新版本，内容等同于 v${version.versionNo}。当前未保存的更改将丢失。`,
             okText: '回滚',
             cancelText: '取消',
+            okButtonProps: {'data-testid': 'dag-version-rollback-confirm'},
             onOk: async () => {
                 setRollingBack(true);
                 try {
@@ -209,6 +210,7 @@ export default function DagVersionModal({
                                         </button>
                                         {canEdit && (
                                             <button
+                                                data-testid={`dag-version-rollback-${v.versionNo}`}
                                                 className="text-ds-accent hover:text-ds-accent-hover disabled:opacity-50"
                                                 onClick={() => handleRollback(v)}
                                                 disabled={rollingBack || v.versionNo === current?.versionNo}

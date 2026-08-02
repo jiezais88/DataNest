@@ -84,7 +84,7 @@ export default function UsersPage() {
             return {list: result.data.records, total: result.data.total};
         },
         initialQuery: {keyword: '', roleCode: '', status: ''},
-        defaultPageSize: 20,
+        defaultPageSize: 10,
     });
 
     const handleSearch = () => {
@@ -96,7 +96,6 @@ export default function UsersPage() {
         setDraftRoleCode('');
         setDraftStatus('');
         applyQuery({keyword: '', roleCode: '', status: ''});
-        setPageSize(20);
     };
 
     const handlePageChange = (nextPage: number, nextPageSize: number) => {
@@ -378,7 +377,7 @@ export default function UsersPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1340}}
+                            scroll={{x: 1290}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{

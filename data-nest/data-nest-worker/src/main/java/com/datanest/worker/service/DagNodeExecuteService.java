@@ -128,7 +128,15 @@ public class DagNodeExecuteService {
             // 元数据注册
             try {
                 if ("DDL".equals(type) || "DML".equals(type)) {
-                    List<String> registered = metadataRegistrationService.registerFromSql(sqlContent, currentUserId());
+                    Dag dag = dagMapper.selectById(dagId);
+                    DagNode node = dagNodeMapper.selectList(
+                                    new QueryWrapper<DagNode>()
+                                            .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
+                            .stream().findFirst().orElse(null);
+                    MetadataRegistrationService.SourceContext ctx = new MetadataRegistrationService.SourceContext(
+                            "SQL", dagId, dag == null ? null : dag.getName(),
+                            nodeId, node == null ? null : node.getNodeName());
+                    List<String> registered = metadataRegistrationService.registerFromSql(sqlContent, currentUserId(), ctx);
                     if (!registered.isEmpty()) {
                         output.registeredTables = registered;
                     }
@@ -358,10 +366,12 @@ public class DagNodeExecuteService {
 
         LocalDateTime startTime = LocalDateTime.now();
         try {
+            Integer timeoutSeconds = config.getTimeoutMinutes() != null && config.getTimeoutMinutes() > 0
+                    ? config.getTimeoutMinutes() * 60 : null;
             PythonExecuteResult result = pythonExecutor.execute(
                     script,
                     new PythonExecutor.PythonContext(params, logCollector),
-                    config.getTimeoutMinutes(),
+                    timeoutSeconds,
                     config.getMemoryLimitMb());
 
             long durationMs = Duration.between(startTime, LocalDateTime.now()).toMillis();

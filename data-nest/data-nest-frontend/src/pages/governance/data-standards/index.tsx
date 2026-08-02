@@ -722,7 +722,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={namingLoading}
                                 pagination={false}
-                                scroll={{x: 1690}}
+                                scroll={{x: 1660}}
                                 columns={namingColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{
@@ -790,7 +790,7 @@ export default function DataStandardsPage() {
                                 rowKey="id"
                                 loading={fieldTypeLoading}
                                 pagination={false}
-                                scroll={{x: 1250}}
+                                scroll={{x: 1220}}
                                 columns={fieldTypeColumns}
                                 className="prototype-table prototype-table-flush"
                                 locale={{
