@@ -23,6 +23,8 @@ public class DagVersionPayload {
 
     private Long createdBy;
 
+    private String createdByName;
+
     private LocalDateTime createdAt;
 
     /** 版本对比结果（仅 compare 接口使用） */

@@ -83,6 +83,7 @@ export default function DagExecutionsGlobalPage() {
     const canEdit = useCanEdit();
     const [searchParams, setSearchParams] = useSearchParams();
     const fromPath = (location.state as { from?: string } | null)?.from;
+    const currentUrl = `${location.pathname}${location.search}`;
 
     // 草稿：用户在工具栏里编辑但未点查询
     const defaultRange = getDefaultTimeRange();
@@ -261,7 +262,17 @@ export default function DagExecutionsGlobalPage() {
             dataIndex: 'dagName',
             width: COL.NAME_COMPACT,
             ellipsis: true,
-            render: (v) => <span style={{color: '#1e293b'}}>{v || '-'}</span>,
+            render: (v, r) => (
+                <a
+                    className="text-ds-accent hover:underline cursor-pointer"
+                    title={v || '-'}
+                    onClick={() => navigate(`/engineering/dags/${r.dagId}/edit?mode=view`, {
+                        state: {from: currentUrl},
+                    })}
+                >
+                    {v || '-'}
+                </a>
+            ),
         },
         {
             title: '执行方式',
@@ -369,7 +380,9 @@ export default function DagExecutionsGlobalPage() {
                         <DsIconButton
                             tone="accent"
                             data-testid={`dag-execution-view-${r.id}`}
-                            onClick={() => navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`)}
+                            onClick={() => navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`, {
+                                state: {from: currentUrl},
+                            })}
                             aria-label="详情"
                         >
                             <HiOutlineEye size={14}/>
@@ -401,7 +414,7 @@ export default function DagExecutionsGlobalPage() {
                 </div>
             ),
         },
-    ], [canEdit, handleRerun, handleStop, navigate]);
+    ], [canEdit, handleRerun, handleStop, navigate, currentUrl]);
 
     return (
         <div className="flex flex-col">
@@ -416,7 +429,13 @@ export default function DagExecutionsGlobalPage() {
                         variant="secondary"
                         onClick={() => navigate(fromPath)}
                     >
-                        ← 返回
+                        ← {fromPath.startsWith('/governance/metadata')
+                        ? '返回元数据'
+                        : fromPath === '/engineering/dags' || /^\/engineering\/dags\/[^/]+$/.test(fromPath)
+                            ? '返回 DAG 列表'
+                            : fromPath.includes('/edit')
+                                ? '返回 DAG'
+                                : '返回'}
                     </DsButton>
                 )}
             </div>

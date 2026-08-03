@@ -1,15 +1,14 @@
 // Sprint 4 DAG 版本管理弹窗（PRD §6.7 / 技术文档 §15.4）
-// - 版本列表：版本号 / 保存时间 / 保存人 / 变更摘要 / 操作（对比、回滚）
-//   后端每次保存 DAG 自动生成快照版本（全量 nodes/edges/params JSON）。
-// - 对比：基准版本 vs 对比版本，按 节点/连线/参数 三组渲染差异（diff 项为字符串：nodeId / "a->b" / paramName）。
+// - 版本列表：版本号 / 保存时间 / 保存人 / 变更摘要 / 操作（设为基准、设为对比、回滚）
+// - 对比：在表格行选择基准版本与对比版本，按 节点/连线/参数 三组渲染差异。
 // - 回滚：生成一个与目标版本内容一致的新版本，不删除历史；成功后回调父组件刷新画布。
 // 权限：列表/对比所有角色可看；回滚仅 canEdit（PRD §8 权限矩阵）。
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Modal, Spin} from 'antd';
 import DsButton from '../../../../components/DsButton';
 import DsModal from '../../../../components/DsModal';
 import {compareDagVersions, listDagVersions, rollbackDagVersion} from '../api';
-import type {DagVersion, DagVersionDiff} from '../types';
+import type {DagNode, DagVersion, DagVersionDiff} from '../types';
 import {formatDateTime} from '../../../../utils/format';
 import {notify} from '../../../../utils/notify';
 
@@ -33,6 +32,12 @@ const DIFF_STYLE: Record<DiffKind, string> = {
 
 const DIFF_PREFIX: Record<DiffKind, string> = {add: '+ 新增', mod: '~ 修改', del: '- 删除'};
 
+interface Snapshot {
+    nodes?: DagNode[];
+    edges?: { sourceNodeId?: string; targetNodeId?: string }[];
+    params?: { paramName?: string }[];
+}
+
 function DiffGroup({title, items}: { title: string; items: { kind: DiffKind; text: string }[] }) {
     if (items.length === 0) return null;
     return (
@@ -50,6 +55,40 @@ function DiffGroup({title, items}: { title: string; items: { kind: DiffKind; tex
             </div>
         </div>
     );
+}
+
+function parseSnapshot(snapshot?: string): Snapshot {
+    if (!snapshot) return {};
+    try {
+        return JSON.parse(snapshot) as Snapshot;
+    } catch {
+        return {};
+    }
+}
+
+function buildNodeNameMap(versions: DagVersion[]): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const v of versions) {
+        const snap = parseSnapshot(v.snapshot);
+        for (const n of snap.nodes || []) {
+            if (n.nodeId && n.nodeName && !map.has(n.nodeId)) {
+                map.set(n.nodeId, n.nodeName);
+            }
+        }
+    }
+    return map;
+}
+
+function formatNodeId(id: string, nodeNameMap: Map<string, string>): string {
+    return nodeNameMap.get(id) || id;
+}
+
+function formatEdgeKey(key: string, nodeNameMap: Map<string, string>): string {
+    const [source, target] = key.split('->');
+    if (!source || !target) return key;
+    const sourceName = nodeNameMap.get(source) || source;
+    const targetName = nodeNameMap.get(target) || target;
+    return `${sourceName} → ${targetName}`;
 }
 
 export default function DagVersionModal({
@@ -76,9 +115,9 @@ export default function DagVersionModal({
             // 版本号倒序：最新在前
             const sorted = [...list].sort((a, b) => b.versionNo - a.versionNo);
             setVersions(sorted);
-            // 默认对比：上一版 vs 最新版
-            setRightVersion(sorted[0]?.versionNo ?? null);
-            setLeftVersion(sorted[1]?.versionNo ?? null);
+            // 弹窗打开时不预选任何版本
+            setRightVersion(null);
+            setLeftVersion(null);
         } finally {
             setLoading(false);
         }
@@ -130,13 +169,24 @@ export default function DagVersionModal({
     };
 
     const current = versions[0];
+    const nodeNameMap = useMemo(() => buildNodeNameMap(versions), [versions]);
+
+    // 下拉框选项：当前版本不可选；已选为对方时禁用
+    const versionOptions = versions
+        .filter(v => v.versionNo !== current?.versionNo)
+        .map(v => ({value: v.versionNo, label: `v${v.versionNo}`}));
+
     const hasDiff = diff && [
         diff.addedNodes, diff.removedNodes, diff.modifiedNodes,
         diff.addedEdges, diff.removedEdges,
         diff.addedParams, diff.removedParams, diff.modifiedParams,
     ].some(list => (list?.length ?? 0) > 0);
 
-    const versionOptions = versions.map(v => ({value: v.versionNo, label: `v${v.versionNo}`}));
+    const clearComparison = () => {
+        setLeftVersion(null);
+        setRightVersion(null);
+        setDiff(null);
+    };
 
     return (
         <DsModal
@@ -161,16 +211,6 @@ export default function DagVersionModal({
                 </div>
             ) : (
                 <div>
-                    {/* 当前版本 */}
-                    {current && (
-                        <div className="text-ds-small text-ds-text-secondary mb-ds-3">
-                            当前版本：<span className="font-semibold text-ds-text-primary">v{current.versionNo}</span>
-                            <span className="text-ds-text-muted">
-                                （{formatDateTime(current.createdAt)}{current.createdBy != null ? `，用户 ${current.createdBy}` : ''}）
-                            </span>
-                        </div>
-                    )}
-
                     {/* 版本表格 */}
                     <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden mb-ds-4">
                         <table className="w-full text-left">
@@ -184,81 +224,111 @@ export default function DagVersionModal({
                             </tr>
                             </thead>
                             <tbody>
-                            {versions.map(v => (
-                                <tr key={v.versionNo}
-                                    className="border-t border-ds-border-subtle first:border-t-0">
-                                    <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-primary font-semibold">
-                                        v{v.versionNo}
-                                    </td>
-                                    <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary whitespace-nowrap">
-                                        {formatDateTime(v.createdAt)}
-                                    </td>
-                                    <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary">
-                                        {v.createdBy != null ? `用户 ${v.createdBy}` : '—'}
-                                    </td>
-                                    <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary">
-                                        {v.changeSummary || '—'}
-                                    </td>
-                                    <td className="px-ds-3 py-ds-2 text-ds-small whitespace-nowrap">
-                                        <button
-                                            className="text-ds-accent hover:text-ds-accent-hover mr-ds-3"
-                                            onClick={() => setLeftVersion(v.versionNo)}
-                                            disabled={v.versionNo === rightVersion}
-                                            title={v.versionNo === rightVersion ? '该版本已是对比目标' : '作为基准版本与最新版对比'}
-                                        >
-                                            对比
-                                        </button>
-                                        {canEdit && (
-                                            <button
-                                                data-testid={`dag-version-rollback-${v.versionNo}`}
-                                                className="text-ds-accent hover:text-ds-accent-hover disabled:opacity-50"
-                                                onClick={() => handleRollback(v)}
-                                                disabled={rollingBack || v.versionNo === current?.versionNo}
-                                                title={v.versionNo === current?.versionNo ? '已是当前版本' : '回滚到该版本'}
-                                            >
-                                                回滚
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
+                            {versions.map(v => {
+                                const isCurrent = v.versionNo === current?.versionNo;
+                                const isLeft = v.versionNo === leftVersion;
+                                const isRight = v.versionNo === rightVersion;
+                                return (
+                                    <tr key={v.versionNo}
+                                        className="border-t border-ds-border-subtle first:border-t-0">
+                                        <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-primary font-semibold">
+                                            v{v.versionNo}
+                                            {isCurrent && (
+                                                <span className="ml-ds-1 text-ds-caption text-ds-accent">（当前）</span>
+                                            )}
+                                        </td>
+                                        <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary whitespace-nowrap">
+                                            {formatDateTime(v.createdAt)}
+                                        </td>
+                                        <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary">
+                                            {v.createdByName || '—'}
+                                        </td>
+                                        <td className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary">
+                                            {v.changeSummary || '—'}
+                                        </td>
+                                        <td className="px-ds-3 py-ds-2 text-ds-small whitespace-nowrap">
+                                            {!isCurrent && (
+                                                <>
+                                                    <button
+                                                        className="text-ds-accent hover:text-ds-accent-hover mr-ds-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        onClick={() => setLeftVersion(v.versionNo)}
+                                                        disabled={isRight}
+                                                        title={isRight ? '已设为对比版本' : '设为基准版本'}
+                                                    >
+                                                        设为基准
+                                                    </button>
+                                                    <button
+                                                        className="text-ds-accent hover:text-ds-accent-hover mr-ds-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        onClick={() => setRightVersion(v.versionNo)}
+                                                        disabled={isLeft}
+                                                        title={isLeft ? '已设为基准版本' : '设为对比版本'}
+                                                    >
+                                                        设为对比
+                                                    </button>
+                                                </>
+                                            )}
+                                            {canEdit && (
+                                                <button
+                                                    data-testid={`dag-version-rollback-${v.versionNo}`}
+                                                    className="text-ds-accent hover:text-ds-accent-hover disabled:opacity-50"
+                                                    onClick={() => handleRollback(v)}
+                                                    disabled={rollingBack || isCurrent}
+                                                    title={isCurrent ? '已是当前版本' : '回滚到该版本'}
+                                                >
+                                                    回滚
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             </tbody>
                         </table>
                     </div>
 
                     {/* 版本对比 */}
                     <div className="border-t border-ds-border-subtle pt-ds-4">
-                        <div className="flex items-center gap-ds-3 mb-ds-3">
-                            <span className="text-ds-small font-semibold text-ds-text-secondary">版本对比</span>
-                            <select
-                                value={leftVersion ?? ''}
-                                onChange={e => setLeftVersion(e.target.value ? Number(e.target.value) : null)}
-                                className="px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent"
-                            >
-                                <option value="">基准版本</option>
-                                {versionOptions.map(o => (
-                                    <option key={o.value} value={o.value} disabled={o.value === rightVersion}>
-                                        {o.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <span className="text-ds-small text-ds-text-muted">vs</span>
-                            <select
-                                value={rightVersion ?? ''}
-                                onChange={e => setRightVersion(e.target.value ? Number(e.target.value) : null)}
-                                className="px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent"
-                            >
-                                <option value="">对比版本</option>
-                                {versionOptions.map(o => (
-                                    <option key={o.value} value={o.value} disabled={o.value === leftVersion}>
-                                        {o.label}
-                                    </option>
-                                ))}
-                            </select>
-                            {leftVersion != null && rightVersion != null && (
-                                <span className="text-ds-caption text-ds-text-muted">
-                                    v{leftVersion} → v{rightVersion} 的变化
-                                </span>
+                        <div className="flex items-center justify-between mb-ds-3">
+                            <div className="flex items-center gap-ds-3 flex-wrap">
+                                <span className="text-ds-small font-semibold text-ds-text-secondary">版本对比</span>
+                                <select
+                                    value={leftVersion ?? ''}
+                                    onChange={e => setLeftVersion(e.target.value ? Number(e.target.value) : null)}
+                                    className="px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent"
+                                >
+                                    <option value="" disabled hidden>基准版本</option>
+                                    {versionOptions.map(o => (
+                                        <option key={o.value} value={o.value} disabled={o.value === rightVersion}>
+                                            {o.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span className="text-ds-small text-ds-text-muted">vs</span>
+                                <select
+                                    value={rightVersion ?? ''}
+                                    onChange={e => setRightVersion(e.target.value ? Number(e.target.value) : null)}
+                                    className="px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent"
+                                >
+                                    <option value="" disabled hidden>对比版本</option>
+                                    {versionOptions.map(o => (
+                                        <option key={o.value} value={o.value} disabled={o.value === leftVersion}>
+                                            {o.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                {leftVersion != null && rightVersion != null && (
+                                    <span className="text-ds-caption text-ds-text-muted">
+                                        v{leftVersion} → v{rightVersion} 的变化
+                                    </span>
+                                )}
+                            </div>
+                            {(leftVersion != null || rightVersion != null) && (
+                                <button
+                                    className="text-ds-caption text-ds-accent hover:text-ds-accent-hover"
+                                    onClick={clearComparison}
+                                >
+                                    清除选择
+                                </button>
                             )}
                         </div>
 
@@ -273,16 +343,31 @@ export default function DagVersionModal({
                                     <DiffGroup
                                         title="节点变化"
                                         items={[
-                                            ...(diff.addedNodes || []).map(t => ({kind: 'add' as const, text: t})),
-                                            ...(diff.modifiedNodes || []).map(t => ({kind: 'mod' as const, text: t})),
-                                            ...(diff.removedNodes || []).map(t => ({kind: 'del' as const, text: t})),
+                                            ...(diff.addedNodes || []).map(t => ({
+                                                kind: 'add' as const,
+                                                text: formatNodeId(t, nodeNameMap)
+                                            })),
+                                            ...(diff.modifiedNodes || []).map(t => ({
+                                                kind: 'mod' as const,
+                                                text: formatNodeId(t, nodeNameMap)
+                                            })),
+                                            ...(diff.removedNodes || []).map(t => ({
+                                                kind: 'del' as const,
+                                                text: formatNodeId(t, nodeNameMap)
+                                            })),
                                         ]}
                                     />
                                     <DiffGroup
                                         title="连线变化"
                                         items={[
-                                            ...(diff.addedEdges || []).map(t => ({kind: 'add' as const, text: t})),
-                                            ...(diff.removedEdges || []).map(t => ({kind: 'del' as const, text: t})),
+                                            ...(diff.addedEdges || []).map(t => ({
+                                                kind: 'add' as const,
+                                                text: formatEdgeKey(t, nodeNameMap)
+                                            })),
+                                            ...(diff.removedEdges || []).map(t => ({
+                                                kind: 'del' as const,
+                                                text: formatEdgeKey(t, nodeNameMap)
+                                            })),
                                         ]}
                                     />
                                     <DiffGroup

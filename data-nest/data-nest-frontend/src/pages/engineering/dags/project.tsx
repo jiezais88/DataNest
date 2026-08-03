@@ -13,8 +13,17 @@ import {
     HiOutlineTrash
 } from 'react-icons/hi2';
 import {useNavigate, useParams} from 'react-router-dom';
-import {deleteDag, getDagProject, listDags, startDagSchedule, stopDagSchedule, triggerDag} from './api';
-import type {Dag, DagProject} from './types';
+import {
+    deleteDag,
+    getDagProject,
+    listDagParameters,
+    listDags,
+    startDagSchedule,
+    stopDagSchedule,
+    triggerDag
+} from './api';
+import type {Dag, DagParameter, DagProject} from './types';
+import TriggerParamsModal from './components/TriggerParamsModal';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import SearchInput from '../../../components/SearchInput';
 import Pagination from '../../../components/Pagination';
@@ -51,6 +60,11 @@ export default function ProjectDagsPage() {
     const [deleteTarget, setDeleteTarget] = useState<Dag | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [schedulingId, setSchedulingId] = useState<string | number | null>(null);
+    // Sprint 4：列表执行也支持参数覆盖（与画布执行对齐）
+    const [triggerModalOpen, setTriggerModalOpen] = useState(false);
+    const [triggering, setTriggering] = useState(false);
+    const [triggerDagId, setTriggerDagId] = useState<string | number | null>(null);
+    const [triggerParams, setTriggerParams] = useState<DagParameter[]>([]);
 
     const [searchName, setSearchName] = useState('');
     const [appliedName, setAppliedName] = useState('');
@@ -97,15 +111,48 @@ export default function ProjectDagsPage() {
         }
     };
 
-    const handleTrigger = useCallback(async (id: string | number) => {
+    const doTrigger = useCallback(async (dag: Dag, overrides?: Record<string, unknown>) => {
+        if (!dag.id) return;
+        setTriggering(true);
         try {
-            await triggerDag(id);
-            notify.success('触发成功');
-            // 触发后停留在列表页，由用户主动查看历史
+            await triggerDag(dag.id, overrides);
+            notify.success(
+                <span>
+                    已触发执行。
+                    <a
+                        className="text-ds-accent underline cursor-pointer ml-1"
+                        onClick={() => navigate(`/engineering/dag-executions?dagId=${dag.id}&dagName=${encodeURIComponent(dag.name || '')}`)}
+                    >
+                        查看执行 →
+                    </a>
+                </span>,
+                5,
+            );
         } catch {
             // 错误提示由 request 拦截器统一弹出
+        } finally {
+            setTriggering(false);
+            setTriggerModalOpen(false);
+            setTriggerDagId(null);
         }
-    }, []);
+    }, [navigate]);
+
+    const handleTrigger = useCallback(async (dag: Dag) => {
+        if (!dag.id) return;
+        try {
+            const params = await listDagParameters(dag.id);
+            if (params && params.length > 0) {
+                setTriggerParams(params);
+                setTriggerDagId(dag.id);
+                setTriggerModalOpen(true);
+                return;
+            }
+        } catch {
+            // 参数加载失败：拦截器已提示，不再继续触发
+            return;
+        }
+        doTrigger(dag);
+    }, [doTrigger]);
 
     const handleToggleSchedule = useCallback(async (dag: Dag) => {
         if (!dag.id) return;
@@ -260,7 +307,9 @@ export default function ProjectDagsPage() {
                         <DsIconButton
                             tone="accent"
                             aria-label="详情"
-                            onClick={() => navigate(`/engineering/dags/${r.id}/edit`)}
+                            onClick={() => navigate(`/engineering/dags/${r.id}/edit?mode=view`, {
+                                state: {from: projectId ? `/engineering/dags/${projectId}` : '/engineering/dags'},
+                            })}
                         >
                             <HiOutlineEye size={14}/>
                         </DsIconButton>
@@ -289,14 +338,16 @@ export default function ProjectDagsPage() {
                         <DsIconButton
                             tone="accent"
                             disabled={!canEdit}
-                            onClick={() => handleTrigger(r.id!)}
+                            onClick={() => handleTrigger(r)}
                         >
                             <HiOutlinePlayCircle size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="历史">
                         <DsIconButton
-                            onClick={() => navigate(`/engineering/dag-executions?dagId=${r.id}&dagName=${encodeURIComponent(r.name || '')}`)}
+                            onClick={() => navigate(`/engineering/dag-executions?dagId=${r.id}&dagName=${encodeURIComponent(r.name || '')}`, {
+                                state: {from: projectId ? `/engineering/dags/${projectId}` : '/engineering/dags'},
+                            })}
                         >
                             <HiOutlineClock size={14}/>
                         </DsIconButton>
@@ -311,7 +362,7 @@ export default function ProjectDagsPage() {
                 </div>
             )
         }
-    ], [canEdit, navigate, handleTrigger, handleToggleSchedule, schedulingId]);
+    ], [canEdit, navigate, handleTrigger, handleToggleSchedule, schedulingId, projectId]);
 
     return (
         <div className="flex flex-col">
@@ -397,6 +448,21 @@ export default function ProjectDagsPage() {
                     />
                 </div>
             </div>
+
+            {/* Sprint 4：列表执行也支持参数覆盖（与画布执行对齐） */}
+            <TriggerParamsModal
+                open={triggerModalOpen}
+                params={triggerParams}
+                executing={triggering}
+                onCancel={() => {
+                    setTriggerModalOpen(false);
+                    setTriggerDagId(null);
+                }}
+                onExecute={overrides => {
+                    const dag = dags.find(d => d.id === triggerDagId);
+                    if (dag) doTrigger(dag, overrides);
+                }}
+            />
 
             {/* 删除确认弹框：对齐原型 md-dag-del */}
             <Modal

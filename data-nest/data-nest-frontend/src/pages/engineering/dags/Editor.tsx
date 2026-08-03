@@ -20,7 +20,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Form, Input, Modal, Popover, Select, Spin, Tag} from 'antd';
-import {HiOutlineDocumentText, HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
+import {HiOutlineDocumentText, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
 import DsButton from '../../../components/DsButton';
 import Drawer from '../../../components/Drawer';
 import {
@@ -579,11 +579,15 @@ function PropertyPanel({
                     </>
                 )}
             </div>
-            {!readOnly && (
+            {!readOnly ? (
                 <DsButton onClick={onEdit} className="w-full">
                     <HiOutlinePencilSquare size={14}/> 编辑节点
                 </DsButton>
-            )}
+            ) : !executionId ? (
+                <DsButton variant="secondary" onClick={onEdit} className="w-full">
+                    <HiOutlineEye size={14}/> 查看节点
+                </DsButton>
+            ) : null}
         </div>
     );
 }
@@ -608,7 +612,9 @@ function DagEditorInner() {
     const userCanEdit = useCanEdit();
     // 执行详情画布强制只读，无论用户角色
     const isRunView = !!executionId;
-    const canEdit = userCanEdit && !isRunView;
+    // URL 显式 mode=view 时为只读查看模式（来自 DAG 列表「详情」入口）
+    const viewOnly = searchParams.get('mode') === 'view';
+    const canEdit = userCanEdit && !isRunView && !viewOnly;
     const isNew = !id || id === 'new';
     // projectId 是 Snowflake id，保留 string 不转 number（避免 19 位精度丢失）
     const projectId = searchParams.get('projectId') || '';
@@ -744,7 +750,7 @@ function DagEditorInner() {
                         timeoutMinutes: cfg.timeoutMinutes,
                         memoryLimitMb: cfg.memoryLimitMb,
                         lastTestStatus: cfg.lastTestStatus,
-                        onEditRequest: canEdit ? handleEditRequest : undefined,
+                        onEditRequest: handleEditRequest,
                     },
                 };
             });
@@ -759,7 +765,7 @@ function DagEditorInner() {
             nodeIdRef.current = rfnodes.length;
             edgeIdRef.current = rfedges.length;
         });
-    }, [id, isNew, canEdit, handleEditRequest, setRfNodes, setRfEdges]);
+    }, [id, isNew, handleEditRequest, setRfNodes, setRfEdges]);
 
     // 加载已有 DAG（编辑模式）或 DAG + execution（执行详情模式）
     useEffect(() => {
@@ -896,9 +902,9 @@ function DagEditorInner() {
         setSelectedNodeId(node.id);
     }, []);
 
-    // 双击节点 → 与铅笔图标走同一入口（只读模式禁用）
+    // 双击节点 → 与铅笔图标走同一入口（运行视图禁用，查看/只读模式仍可打开配置弹窗）
     const handleNodeDoubleClick = (_: React.MouseEvent, node: Node<RFNodeData>) => {
-        if (!canEdit) return;
+        if (isRunView) return;
         handleEditRequest(node.id, node.data);
     };
 
@@ -1196,7 +1202,11 @@ function DagEditorInner() {
                     onClick={handleBack}
                     className="text-ds-small text-ds-text-secondary hover:text-ds-text-primary flex items-center gap-ds-1 px-ds-3 py-1.5 rounded-lg hover:bg-ds-bg-hover transition-colors"
                 >
-                    <span>←</span> {isRunView ? '返回执行历史' : (fromPath ? '返回' : '返回项目 DAG 列表')}
+                    <span>←</span> {isRunView
+                    ? '返回执行历史'
+                    : (fromPath
+                        ? '返回'
+                        : (viewOnly ? '返回 DAG 列表' : '返回项目 DAG 列表'))}
                 </button>
                 {isRunView ? (
                     <>
@@ -1230,9 +1240,11 @@ function DagEditorInner() {
                 ) : (
                     <>
                         <input
-                            className="h-[34px] px-ds-3 text-ds-body font-semibold text-ds-text-primary bg-ds-bg-root border border-ds-border-subtle rounded-lg outline-none focus:border-ds-accent w-[220px]"
+                            className="h-[34px] px-ds-3 text-ds-body font-semibold text-ds-text-primary bg-ds-bg-root border border-ds-border-subtle rounded-lg outline-none focus:border-ds-accent w-[220px] disabled:bg-ds-bg-hover disabled:text-ds-text-muted"
                             placeholder="DAG 名称"
                             value={dag.name}
+                            readOnly={!canEdit}
+                            disabled={!canEdit}
                             onChange={e => {
                                 setDag({...dag, name: e.target.value});
                                 setIsDirty(true);
@@ -1242,6 +1254,7 @@ function DagEditorInner() {
                             <span className="text-ds-small text-ds-text-secondary">触发方式</span>
                             <Select
                                 value={dag.triggerType}
+                                disabled={!canEdit}
                                 onChange={v => {
                                     setDag({...dag, triggerType: v});
                                     setIsDirty(true);
@@ -1429,7 +1442,7 @@ function DagEditorInner() {
                 </div>
 
                 {/* 右侧：属性面板（260px） */}
-                <PropertyPanel node={selectedNode} onEdit={handleEditFromPanel} readOnly={isRunView}
+                <PropertyPanel node={selectedNode} onEdit={handleEditFromPanel} readOnly={isRunView || !canEdit}
                                onViewLogs={handleViewNodeLogs} executionId={executionId}/>
             </div>
 

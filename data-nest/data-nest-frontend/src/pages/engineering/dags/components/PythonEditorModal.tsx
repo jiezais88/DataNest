@@ -56,6 +56,7 @@ export default function PythonEditorModal({
                                               onClose,
                                               dagId,
                                               nodeId,
+                                              // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                               hasUnsavedChanges = false,
                                               initialScript = '',
                                               initialNodeName = '',

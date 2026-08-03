@@ -169,6 +169,7 @@ export interface DagVersion {
     snapshot?: string;
     changeSummary?: string;
     createdBy?: string | number;
+    createdByName?: string;
     createdAt?: string;
 }
 

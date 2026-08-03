@@ -17,17 +17,17 @@ public class CorsConfig {
      * 该配置在 yaml 中为逗号分隔字符串（支持环境变量 CORS_ORIGINS 覆盖），
      * 未配置时回退到本地前端地址，绝不使用 "*"（与 allowCredentials 搭配存在安全风险）。
      */
-    @Value("${datanest.security.cors.allowed-origins:http://localhost:3000}")
+    @Value("${datanest.security.cors.allowed-origins:*}")
     private List<String> allowedOrigins;
 
     @Bean
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration config = new CorsConfiguration();
-        // 显式枚举来源，配合 allowCredentials(true) 时不能用 "*"
+        // 使用 origin pattern，支持 "*" 通配的同时仍允许携带 credentials
         allowedOrigins.stream()
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .forEach(config::addAllowedOrigin);
+                .forEach(config::addAllowedOriginPattern);
         config.addAllowedMethod("*");
         config.addAllowedHeader("*");
         config.setAllowCredentials(true);

@@ -15,6 +15,7 @@ import com.datanest.task.core.mapper.DagEdgeMapper;
 import com.datanest.task.core.mapper.DagNodeMapper;
 import com.datanest.task.core.mapper.DagParameterMapper;
 import com.datanest.task.core.mapper.DagVersionMapper;
+import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,13 +38,16 @@ public class DagVersionService {
     private final DagNodeMapper dagNodeMapper;
     private final DagEdgeMapper dagEdgeMapper;
     private final DagParameterMapper dagParameterMapper;
+    private final SysUserService sysUserService;
 
     public DagVersionService(DagVersionMapper dagVersionMapper, DagNodeMapper dagNodeMapper,
-                             DagEdgeMapper dagEdgeMapper, DagParameterMapper dagParameterMapper) {
+                             DagEdgeMapper dagEdgeMapper, DagParameterMapper dagParameterMapper,
+                             SysUserService sysUserService) {
         this.dagVersionMapper = dagVersionMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
         this.dagParameterMapper = dagParameterMapper;
+        this.sysUserService = sysUserService;
     }
 
     /**
@@ -79,9 +83,11 @@ public class DagVersionService {
     }
 
     public List<DagVersionPayload> listVersions(Long dagId) {
-        return dagVersionMapper.selectByDagId(dagId).stream()
+        List<DagVersionPayload> payloads = dagVersionMapper.selectByDagId(dagId).stream()
                 .map(this::toPayload)
                 .toList();
+        fillCreatedByNames(payloads);
+        return payloads;
     }
 
     public DagVersionPayload getVersion(Long dagId, Integer versionNo) {
@@ -275,6 +281,24 @@ public class DagVersionService {
         p.setCreatedBy(v.getCreatedBy());
         p.setCreatedAt(v.getCreatedAt());
         return p;
+    }
+
+    private void fillCreatedByNames(List<DagVersionPayload> payloads) {
+        if (payloads == null || payloads.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = payloads.stream()
+                .map(DagVersionPayload::getCreatedBy)
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        for (DagVersionPayload p : payloads) {
+            if (p.getCreatedBy() != null && p.getCreatedBy() > 0) {
+                p.setCreatedByName(usernameMap.getOrDefault(p.getCreatedBy(), "-"));
+            }
+        }
     }
 
     private long currentUserId() {
