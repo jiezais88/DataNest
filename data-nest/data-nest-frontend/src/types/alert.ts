@@ -23,6 +23,8 @@ export interface AlertRuleDTO {
     enabled: boolean;
     /** 接收用户 ID 列表 */
     userIds: string[];
+    createdByName?: string;
+    updatedByName?: string;
     createdAt?: string;
     updatedAt?: string;
 }

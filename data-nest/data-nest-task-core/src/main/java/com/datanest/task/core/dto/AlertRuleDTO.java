@@ -31,6 +31,10 @@ public class AlertRuleDTO {
     /** 接收用户 ID 列表 */
     private List<Long> userIds;
 
+    private String createdByName;
+
+    private String updatedByName;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

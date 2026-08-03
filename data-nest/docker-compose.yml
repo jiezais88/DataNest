@@ -296,27 +296,28 @@ services:
   # 持久化：test-oracle-data 卷
   # 启动慢（start_period=120s），需等 initdb 完成
   # ============================================
-  middleware-test-oracle:
-    image: gvenzl/oracle-free:23-slim
-    container_name: datanest-middleware-test-oracle
-    environment:
-      ORACLE_PASSWORD: root123
-      APP_USER: testuser
-      APP_USER_PASSWORD: testpass123
-      TZ: Asia/Shanghai
-    ports:
-      - "1521:1521"
-    volumes:
-      - test-oracle-data:/opt/oracle/oradata
-      - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
-    healthcheck:
-      test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 120s
-    networks:
-      - datanest-net
+  # Sprint 5 临时注释：本机资源不足，暂不启动 Oracle
+  # middleware-test-oracle:
+  #   image: gvenzl/oracle-free:23-slim
+  #   container_name: datanest-middleware-test-oracle
+  #   environment:
+  #     ORACLE_PASSWORD: root123
+  #     APP_USER: testuser
+  #     APP_USER_PASSWORD: testpass123
+  #     TZ: Asia/Shanghai
+  #   ports:
+  #     - "1521:1521"
+  #   volumes:
+  #     - test-oracle-data:/opt/oracle/oradata
+  #     - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 20
+  #     start_period: 120s
+  #   networks:
+  #     - datanest-net
 
   # ============================================
   # Test SQL Server 2022 — 数据源 E2E 测试目标库
@@ -324,28 +325,29 @@ services:
   # 镜像：mcr.microsoft.com/mssql/server:2022-latest
   # 必须 ACCEPT_EULA=Y；用 sqlserver-entrypoint.sh 跑 initdb/*.sql
   # ============================================
-  middleware-test-sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: datanest-middleware-test-sqlserver
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
-      MSSQL_PID: "Express"
-      TZ: Asia/Shanghai
-    ports:
-      - "1433:1433"
-    volumes:
-      - ./scripts/test-sqlserver-init.sql:/docker-entrypoint-initdb.d/01-test-sqlserver-init.sql:ro
-      - ./scripts/sqlserver-entrypoint.sh:/sqlserver-entrypoint.sh:ro
-    command: [ "/bin/bash", "/sqlserver-entrypoint.sh" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1' | grep -q '1'" ]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 60s
-    networks:
-      - datanest-net
+  # Sprint 5 临时注释：本机资源不足，暂不启动 SQL Server
+  # middleware-test-sqlserver:
+  #   image: mcr.microsoft.com/mssql/server:2022-latest
+  #   container_name: datanest-middleware-test-sqlserver
+  #   environment:
+  #     ACCEPT_EULA: "Y"
+  #     MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
+  #     MSSQL_PID: "Express"
+  #     TZ: Asia/Shanghai
+  #   ports:
+  #     - "1433:1433"
+  #   volumes:
+  #     - ./scripts/test-sqlserver-init.sql:/docker-entrypoint-initdb.d/01-test-sqlserver-init.sql:ro
+  #     - ./scripts/sqlserver-entrypoint.sh:/sqlserver-entrypoint.sh:ro
+  #   command: [ "/bin/bash", "/sqlserver-entrypoint.sh" ]
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1' | grep -q '1'" ]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 20
+  #     start_period: 60s
+  #   networks:
+  #     - datanest-net
 
   # ============================================
   # 应用层 (app-*) — 业务服务
@@ -820,7 +822,7 @@ volumes:
   redisdata:
   test-mysql-data:
   test-postgres-data:
-  test-oracle-data:
+  # test-oracle-data:  # Sprint 5 临时注释：Oracle 服务已停用
   xxl-job-admin-data:
   # 新增 — DS 日志+资源（4 个 DS 服务共享 /opt/dolphinscheduler/logs；master/worker 共享 /opt/soft）
   datanest-ds-logs:

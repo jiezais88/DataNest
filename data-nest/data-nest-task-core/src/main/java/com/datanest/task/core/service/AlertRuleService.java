@@ -38,19 +38,22 @@ public class AlertRuleService {
     private final DagMapper dagMapper;
     private final SyncJobMapper syncJobMapper;
     private final CollectTaskMapper collectTaskMapper;
+    private final SysUserService sysUserService;
 
     public AlertRuleService(AlertRuleMapper alertRuleMapper,
                             AlertRuleUserMapper alertRuleUserMapper,
                             AlertHistoryMapper alertHistoryMapper,
                             DagMapper dagMapper,
                             SyncJobMapper syncJobMapper,
-                            CollectTaskMapper collectTaskMapper) {
+                            CollectTaskMapper collectTaskMapper,
+                            SysUserService sysUserService) {
         this.alertRuleMapper = alertRuleMapper;
         this.alertRuleUserMapper = alertRuleUserMapper;
         this.alertHistoryMapper = alertHistoryMapper;
         this.dagMapper = dagMapper;
         this.syncJobMapper = syncJobMapper;
         this.collectTaskMapper = collectTaskMapper;
+        this.sysUserService = sysUserService;
     }
 
     // ==================== CRUD ====================
@@ -62,6 +65,7 @@ public class AlertRuleService {
         }
         AlertRuleDTO dto = toDTO(rule);
         dto.setUserIds(alertRuleUserMapper.selectUserIdsByRuleId(id));
+        applyUsernameNames(List.of(rule), List.of(dto));
         return dto;
     }
 
@@ -77,6 +81,7 @@ public class AlertRuleService {
                     return dto;
                 })
                 .toList();
+        applyUsernameNames(records, dtos);
         return new PageResult<>(dtos, p.getTotal(), page, pageSize);
     }
 
@@ -328,6 +333,30 @@ public class AlertRuleService {
             return task == null ? null : task.getName();
         }
         return null;
+    }
+
+    /**
+     * 批量回填规则的创建人/修改人用户名（避免 N+1：一次查全部 userId → username）。
+     */
+    private void applyUsernameNames(List<AlertRule> records, List<AlertRuleDTO> dtos) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        Set<Long> ids = new HashSet<>();
+        for (AlertRule rule : records) {
+            if (rule.getCreatedBy() != null) {
+                ids.add(rule.getCreatedBy());
+            }
+            if (rule.getUpdatedBy() != null) {
+                ids.add(rule.getUpdatedBy());
+            }
+        }
+        Map<Long, String> usernameMap = sysUserService.getUsernameMap(ids);
+        for (int i = 0; i < records.size(); i++) {
+            AlertRuleDTO dto = dtos.get(i);
+            dto.setCreatedByName(usernameMap.get(records.get(i).getCreatedBy()));
+            dto.setUpdatedByName(usernameMap.get(records.get(i).getUpdatedBy()));
+        }
     }
 
     private AlertRuleDTO toDTO(AlertRule rule) {

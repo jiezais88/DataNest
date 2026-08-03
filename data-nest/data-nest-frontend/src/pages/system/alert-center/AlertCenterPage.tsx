@@ -2,6 +2,7 @@
 // Tab：告警规则 / 告警历史
 // 权限：查看 = 超管/工程师/治理员；编辑 = 超管/工程师（PRD §8）
 import {useCallback, useEffect, useMemo, useState} from 'react';
+import type {IconType} from 'react-icons';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {useHasRole} from '../../../hooks/useHasRole';
@@ -29,7 +30,15 @@ import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsModal from '../../../components/DsModal';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import AlertRuleModal from '../../../components/AlertRuleModal';
-import {HiOutlineBell, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
+import {
+    HiOutlineBell,
+    HiOutlineBellAlert,
+    HiOutlineClock,
+    HiOutlineEye,
+    HiOutlinePencilSquare,
+    HiOutlinePlus,
+    HiOutlineTrash,
+} from 'react-icons/hi2';
 
 const OBJECT_TYPE_OPTIONS: { value: AlertObjectType | ''; label: string }[] = [
     {value: '', label: '全部类型'},
@@ -49,6 +58,12 @@ const SEND_STATUS_OPTIONS: { value: AlertSendStatus | ''; label: string }[] = [
     {value: '', label: '全部发送状态'},
     {value: 'SUCCESS', label: '发送成功'},
     {value: 'FAILED', label: '发送失败'},
+];
+
+/** 页签定义：与数据标准页一致的胶囊页签样式 */
+const ALERT_TABS: { key: 'rules' | 'history'; label: string; icon: IconType }[] = [
+    {key: 'rules', label: '告警规则', icon: HiOutlineBellAlert},
+    {key: 'history', label: '告警历史', icon: HiOutlineClock},
 ];
 
 const TRIGGER_LABEL: Record<AlertTriggerType, string> = {
@@ -318,6 +333,44 @@ export default function AlertCenterPage() {
             ),
         },
         {
+            title: '创建人',
+            dataIndex: 'createdByName',
+            width: COL.USERNAME,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '创建时间',
+            dataIndex: 'createdAt',
+            width: COL.DATETIME,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                    {v ? formatDateTime(v) : '—'}
+                </span>
+            ),
+        },
+        {
+            title: '修改人',
+            dataIndex: 'updatedByName',
+            width: COL.USERNAME,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
+            title: '修改时间',
+            dataIndex: 'updatedAt',
+            width: COL.DATETIME,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                    {v ? formatDateTime(v) : '—'}
+                </span>
+            ),
+        },
+        {
             title: '操作',
             align: 'center',
             width: COL.OPERATION_3,
@@ -452,34 +505,32 @@ export default function AlertCenterPage() {
                 )}
             </div>
 
-            <div className="flex gap-ds-6 border-b border-ds-border-subtle mb-ds-4 flex-shrink-0">
-                <button
-                    onClick={() => setActiveTab('rules')}
-                    className={`pb-ds-2 text-ds-body font-semibold transition-colors ${
-                        activeTab === 'rules'
-                            ? 'text-ds-accent border-b-2 border-ds-accent'
-                            : 'text-ds-text-muted hover:text-ds-text-primary'
-                    }`}
-                >
-                    告警规则
-                </button>
-                <button
-                    onClick={() => setActiveTab('history')}
-                    className={`pb-ds-2 text-ds-body font-semibold transition-colors ${
-                        activeTab === 'history'
-                            ? 'text-ds-accent border-b-2 border-ds-accent'
-                            : 'text-ds-text-muted hover:text-ds-text-primary'
-                    }`}
-                >
-                    告警历史
-                </button>
+            {/* 胶囊页签（对齐数据标准页） */}
+            <div className="flex gap-ds-2 mb-ds-4 flex-shrink-0">
+                {ALERT_TABS.map((t) => {
+                    const active = activeTab === t.key;
+                    return (
+                        <button
+                            key={t.key}
+                            onClick={() => setActiveTab(t.key)}
+                            className={`flex items-center gap-ds-2 px-ds-4 py-ds-2 rounded-ds-sm text-ds-small font-semibold transition-colors ${
+                                active
+                                    ? 'bg-ds-accent-light text-ds-accent'
+                                    : 'text-ds-text-secondary hover:bg-ds-bg-hover'
+                            }`}
+                        >
+                            <t.icon size={18}/>
+                            {t.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* ==================== 告警规则 ==================== */}
             {activeTab === 'rules' && (
-                <>
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
+                <div
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={
                                 <>
@@ -507,33 +558,30 @@ export default function AlertCenterPage() {
                         </DsToolbar>
                     </div>
 
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
-                        <div className="overflow-x-auto">
-                            <Table<AlertRuleDTO>
-                                dataSource={rules}
-                                rowKey="id"
-                                loading={rulesLoading}
-                                pagination={false}
-                                scroll={{x: 1100}}
-                                columns={ruleColumns}
-                                className="prototype-table prototype-table-flush"
-                                locale={{
-                                    emptyText: <DsTableEmpty description="暂无告警规则，点击右上角新增。"/>,
-                                }}
-                            />
-                        </div>
-                        <Pagination page={rulesPage} pageSize={rulesPageSize} total={rulesTotal}
-                                    onChange={handleRulePageChange}/>
+                    <div className="overflow-x-auto">
+                        <Table<AlertRuleDTO>
+                            dataSource={rules}
+                            rowKey="id"
+                            loading={rulesLoading}
+                            pagination={false}
+                            scroll={{x: 1460}}
+                            columns={ruleColumns}
+                            className="prototype-table prototype-table-flush"
+                            locale={{
+                                emptyText: <DsTableEmpty description="暂无告警规则，点击右上角新增。"/>,
+                            }}
+                        />
                     </div>
-                </>
+                    <Pagination page={rulesPage} pageSize={rulesPageSize} total={rulesTotal}
+                                onChange={handleRulePageChange}/>
+                </div>
             )}
 
             {/* ==================== 告警历史 ==================== */}
             {activeTab === 'history' && (
-                <>
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">
+                <div
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={
                                 <>
@@ -568,26 +616,23 @@ export default function AlertCenterPage() {
                         </DsToolbar>
                     </div>
 
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
-                        <div className="overflow-x-auto">
-                            <Table<AlertHistory>
-                                dataSource={history}
-                                rowKey="id"
-                                loading={historyLoading}
-                                pagination={false}
-                                scroll={{x: 1100}}
-                                columns={historyColumns}
-                                className="prototype-table prototype-table-flush"
-                                locale={{
-                                    emptyText: <DsTableEmpty description="暂无告警历史。"/>,
-                                }}
-                            />
-                        </div>
-                        <Pagination page={historyPage} pageSize={historyPageSize} total={historyTotal}
-                                    onChange={handleHistoryPageChange}/>
+                    <div className="overflow-x-auto">
+                        <Table<AlertHistory>
+                            dataSource={history}
+                            rowKey="id"
+                            loading={historyLoading}
+                            pagination={false}
+                            scroll={{x: 1100}}
+                            columns={historyColumns}
+                            className="prototype-table prototype-table-flush"
+                            locale={{
+                                emptyText: <DsTableEmpty description="暂无告警历史。"/>,
+                            }}
+                        />
                     </div>
-                </>
+                    <Pagination page={historyPage} pageSize={historyPageSize} total={historyTotal}
+                                onChange={handleHistoryPageChange}/>
+                </div>
             )}
 
             {/* 规则新增/编辑弹窗 */}
