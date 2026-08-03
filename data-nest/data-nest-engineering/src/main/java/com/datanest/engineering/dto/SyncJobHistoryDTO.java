@@ -1,6 +1,7 @@
 package com.datanest.engineering.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class SyncJobHistoryDTO {
 
@@ -28,6 +29,10 @@ public class SyncJobHistoryDTO {
     private String sourceTable;
     private String targetDatabase;
     private String targetTable;
+    /** 多表同步全量源表列表（单表时为单元素列表） */
+    private List<String> sourceTables;
+    /** 多表同步 per-table 明细（源表→目标表、状态、行数、耗时、错误） */
+    private List<SyncTableResultDTO> tableResults;
     private String syncMode;
     private String incrementalField;
     private Long parentHistoryId;
@@ -201,6 +206,22 @@ public class SyncJobHistoryDTO {
 
     public void setTargetTable(String targetTable) {
         this.targetTable = targetTable;
+    }
+
+    public List<String> getSourceTables() {
+        return sourceTables;
+    }
+
+    public void setSourceTables(List<String> sourceTables) {
+        this.sourceTables = sourceTables;
+    }
+
+    public List<SyncTableResultDTO> getTableResults() {
+        return tableResults;
+    }
+
+    public void setTableResults(List<SyncTableResultDTO> tableResults) {
+        this.tableResults = tableResults;
     }
 
     public String getSyncMode() {

@@ -65,13 +65,21 @@ export function formatSourceToTarget(item: SyncJob, dataSources: DataSource[]) {
 }
 
 export function formatSourceTable(item: SyncJobHistory) {
+    const tables = item.sourceTables?.length ? item.sourceTables : (item.sourceTable ? [item.sourceTable] : []);
+    if (tables.length > 1) {
+        return `${tables.length} 张表`;
+    }
     const db = item.sourceDatabase || '';
     const schema = item.sourceSchema && item.sourceSchema !== db ? item.sourceSchema : '';
-    const parts = [db, schema, item.sourceTable].filter(Boolean);
+    const parts = [db, schema, tables[0]].filter(Boolean);
     return parts.length ? parts.join('.') : '-';
 }
 
 export function formatTargetTable(item: SyncJobHistory) {
+    const tables = item.sourceTables?.length ? item.sourceTables : (item.sourceTable ? [item.sourceTable] : []);
+    if (tables.length > 1) {
+        return `${tables.length} 张目标表`;
+    }
     const db = item.targetDatabase || 'doris';
     return item.targetTable ? `doris.${db}.${item.targetTable}` : '-';
 }

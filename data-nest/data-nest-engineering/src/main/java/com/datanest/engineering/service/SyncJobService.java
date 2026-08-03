@@ -679,6 +679,8 @@ public class SyncJobService {
             dto.setSourceTable(job.getSourceTables() == null || job.getSourceTables().isEmpty() ? null : job.getSourceTables().get(0));
             dto.setTargetDatabase(job.getTargetDatabase());
             dto.setTargetTable(job.getTargetTable());
+            dto.setSourceTables(job.getSourceTables());
+            dto.setTableResults(parseTableResults(entity.getTableResults()));
             dto.setSyncMode(job.getSyncMode());
             dto.setIncrementalField(job.getIncrementalField());
         }
@@ -695,6 +697,18 @@ public class SyncJobService {
             }
         }
         return dto;
+    }
+
+    private List<SyncTableResultDTO> parseTableResults(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return JSON.parseArray(text, SyncTableResultDTO.class);
+        } catch (Exception e) {
+            logger.warn("解析 sync_job_history.table_results 失败: {}", e.getMessage());
+            return null;
+        }
     }
 
     private SyncJobLogDTO toLogDTO(SyncJobLog entity) {

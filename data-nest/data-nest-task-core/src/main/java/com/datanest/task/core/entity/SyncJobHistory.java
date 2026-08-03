@@ -35,6 +35,9 @@ public class SyncJobHistory {
 
     private String errorMessage;
 
+    /** 多表同步 per-table 明细：JSON 数组字符串（[{sourceTable,targetTable,status,readRows,writeRows,durationMs,errorMessage}]） */
+    private String tableResults;
+
     private Long parentHistoryId;
 
     private Integer retryCount;

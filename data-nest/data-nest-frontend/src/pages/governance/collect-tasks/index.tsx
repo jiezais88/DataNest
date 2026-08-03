@@ -1,6 +1,6 @@
 import type {HTMLAttributes} from 'react';
-import {useCallback, useMemo, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {nextRunTime} from '../../../utils/cron';
@@ -74,7 +74,7 @@ export default function CollectTasksPage() {
     const navigate = useNavigate();
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
-    const {list, total, page, pageSize, loading, setPage, setPageSize, applyQuery, reload} =
+    const {list, total, page, pageSize, loading, query, setPage, setPageSize, applyQuery, reload} =
         usePagedList<TaskListQuery, CollectTask>({
             fetcher: async (q) => {
                 const params: CollectTaskQueryParams = {
@@ -89,6 +89,39 @@ export default function CollectTasksPage() {
             initialQuery: INITIAL_QUERY,
             defaultPageSize: 10,
         });
+
+    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const keyword = p.get('keyword') || '';
+        const status = STATUS_OPTIONS.some(o => o.value === p.get('status'))
+            ? p.get('status') as TaskStatus | ''
+            : '';
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        setDraftKeyword(keyword);
+        setDraftStatus(status);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        applyQuery({keyword, status});
+        if (pageNum > 1) setPage(pageNum);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (query.keyword) next.set('keyword', query.keyword);
+        if (query.status) next.set('status', query.status);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, page, pageSize]);
 
     const [draftKeyword, setDraftKeyword] = useState('');
     const [draftStatus, setDraftStatus] = useState<TaskStatus | ''>('');

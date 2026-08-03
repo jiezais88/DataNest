@@ -123,9 +123,24 @@ export interface SyncJobHistory {
     sourceTable?: string;
     targetDatabase?: string;
     targetTable?: string;
+    /** 多表同步全量源表列表（单表时为单元素列表） */
+    sourceTables?: string[];
+    /** 多表同步 per-table 明细（源表→目标表、状态、行数、耗时、错误） */
+    tableResults?: SyncTableResult[];
     syncMode?: SyncMode;
     incrementalField?: string;
     createdAt?: string;
+}
+
+/** 多表同步 per-table 明细（对应后端 SyncTableResultDTO） */
+export interface SyncTableResult {
+    sourceTable?: string;
+    targetTable?: string;
+    status?: SyncHistoryStatus;
+    readRows?: number;
+    writeRows?: number;
+    durationMs?: number;
+    errorMessage?: string;
 }
 
 export interface SyncJobHistoryQueryParams {

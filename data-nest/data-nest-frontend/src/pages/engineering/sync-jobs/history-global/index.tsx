@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
@@ -101,6 +101,56 @@ export default function SyncJobHistoryGlobalPage() {
         applyQuery({...query, syncJobId: undefined});
     };
 
+    // L2：进页时从 URL 初始化筛选（状态/关键字/时间范围/分页），深层跳转返回后筛选不丢
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const hasSyncJobId = p.has('syncJobId');
+        const urlStatus = p.get('status');
+        const urlKeyword = p.get('keyword');
+        const urlFrom = p.get('startTimeFrom');
+        const urlTo = p.get('startTimeTo');
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        const status = STATUS_OPTIONS.some(o => o.value === urlStatus) ? urlStatus as SyncHistoryStatus | undefined : undefined;
+        const next: HistoryQuery = {
+            ...(hasSyncJobId ? {syncJobId: p.get('syncJobId')!} : {}),
+            status,
+            // syncJobId 场景下关键字搜索框仍可用，但避免与 chip 语义混淆，此处不做互斥限制
+            keyword: urlKeyword || undefined,
+            startTimeFrom: urlFrom || defaultRange.from,
+            startTimeTo: urlTo || defaultRange.to,
+        };
+        setDraftStatus(status || '');
+        setDraftKeyword(next.keyword || '');
+        setDraftStartTimeFrom(next.startTimeFrom);
+        setDraftStartTimeTo(next.startTimeTo);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        applyQuery(next);
+        if (pageNum > 1) setPage(pageNum);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL（replace 不产生多余历史记录），刷新/分享也能恢复
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (query.syncJobId) {
+            next.set('syncJobId', query.syncJobId);
+            next.set('jobName', urlJobName);
+        }
+        if (query.keyword) next.set('keyword', query.keyword);
+        if (query.status) next.set('status', query.status);
+        if (query.startTimeFrom) next.set('startTimeFrom', query.startTimeFrom);
+        if (query.startTimeTo) next.set('startTimeTo', query.startTimeTo);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, page, pageSize]);
+
     const [selectedHistory, setSelectedHistory] = useState<SyncJobHistory | null>(null);
     const [logs, setLogs] = useState<SyncJobLog[]>([]);
     const [logsLoading, setLogsLoading] = useState(false);
@@ -108,9 +158,10 @@ export default function SyncJobHistoryGlobalPage() {
     const [detailOpen, setDetailOpen] = useState(false);
 
     const handleSearch = () => {
-        clearSyncJobIdUrl();
+        // 从任务列表「历史」跳入时，精确过滤应随查询按钮保留（不要清除 syncJobId/jobName）
+        const hasSyncJobId = !!query.syncJobId;
         applyQuery({
-            syncJobId: undefined,
+            ...(hasSyncJobId ? {syncJobId: query.syncJobId} : {}),
             status: draftStatus || undefined,
             keyword: draftKeyword || undefined,
             startTimeFrom: draftStartTimeFrom,

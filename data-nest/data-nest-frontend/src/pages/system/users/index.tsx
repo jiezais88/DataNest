@@ -1,4 +1,5 @@
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import type {CreateUserParams, UpdateUserParams, UserVO} from '../../../api/auth';
@@ -68,6 +69,7 @@ export default function UsersPage() {
         page,
         pageSize,
         loading,
+        query,
         setPage,
         setPageSize,
         applyQuery,
@@ -86,6 +88,40 @@ export default function UsersPage() {
         initialQuery: {keyword: '', roleCode: '', status: ''},
         defaultPageSize: 10,
     });
+
+    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const keyword = p.get('keyword') || '';
+        const roleCode = ROLE_OPTIONS.some(o => o.value === p.get('roleCode')) ? p.get('roleCode') || '' : '';
+        const status = STATUS_OPTIONS.some(o => o.value === p.get('status')) ? p.get('status') || '' : '';
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        setDraftKeyword(keyword);
+        setDraftRoleCode(roleCode);
+        setDraftStatus(status);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        applyQuery({keyword, roleCode, status});
+        if (pageNum > 1) setPage(pageNum);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (query.keyword) next.set('keyword', query.keyword);
+        if (query.roleCode) next.set('roleCode', query.roleCode);
+        if (query.status) next.set('status', query.status);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, page, pageSize]);
 
     const handleSearch = () => {
         applyQuery({keyword: draftKeyword, roleCode: draftRoleCode, status: draftStatus});

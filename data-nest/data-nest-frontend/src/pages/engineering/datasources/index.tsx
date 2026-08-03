@@ -1,4 +1,5 @@
-import {type HTMLAttributes, useCallback, useMemo, useState} from 'react';
+import {type HTMLAttributes, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import {notify} from '../../../utils/notify';
 import type {ColumnsType} from 'antd/es/table';
@@ -67,7 +68,7 @@ export default function DataSourcesPage() {
     const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
 
     const {
-        list, total, page, pageSize, loading,
+        list, total, page, pageSize, loading, query,
         setPage, setPageSize, applyQuery, reload,
     } = usePagedList<DataSourceQuery, DataSource>({
         fetcher: async ({keyword, type, status, page, pageSize}) => {
@@ -83,6 +84,40 @@ export default function DataSourcesPage() {
         initialQuery: INITIAL_QUERY,
         defaultPageSize: 10,
     });
+
+    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const keyword = p.get('keyword') || '';
+        const type = TYPE_OPTIONS.some(o => o.value === p.get('type')) ? p.get('type') as DataSourceType | '' : '';
+        const status = STATUS_OPTIONS.some(o => o.value === p.get('status')) ? p.get('status') as DataSourceStatus | '' : '';
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        setDraftKeyword(keyword);
+        setDraftType(type);
+        setDraftStatus(status);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        applyQuery({keyword, type, status});
+        if (pageNum > 1) setPage(pageNum);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (query.keyword) next.set('keyword', query.keyword);
+        if (query.type) next.set('type', query.type);
+        if (query.status) next.set('status', query.status);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, page, pageSize]);
 
     const [draftKeyword, setDraftKeyword] = useState('');
     const [draftType, setDraftType] = useState<DataSourceType | ''>('');

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import {notify} from '../../../utils/notify';
@@ -60,7 +60,7 @@ const MATCH_TYPE_LABEL: Record<string, string> = {
 };
 
 export default function DataStandardsPage() {
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const fromCompliance = searchParams.get('from') === 'compliance';
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
@@ -182,6 +182,45 @@ export default function DataStandardsPage() {
     useEffect(() => {
         if (activeTab === 'field-type') loadFieldTypeStandards();
     }, [activeTab, loadFieldTypeStandards]);
+
+    // L2：进页时从 URL 初始化筛选（Tab/关键字/分页），深层跳转返回后筛选不丢
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const tab: Tab = p.get('tab') === 'field-type' ? 'field-type' : 'naming';
+        const appliesTo = p.get('nameAppliesTo');
+        const namingAppliesTo = (appliesTo === 'TABLE' || appliesTo === 'COLUMN' || appliesTo === 'DATABASE' || appliesTo === 'SCHEMA')
+            ? appliesTo as NamingStandardQueryParams['appliesTo']
+            : '';
+        const en = p.get('nameEnabled');
+        const namingEnabled = en === '1' ? 1 : en === '0' ? 0 : undefined;
+        setActiveTab(tab);
+        setNamingKeyword(p.get('nameKeyword') || '');
+        setNamingAppliesTo(namingAppliesTo);
+        setNamingEnabled(namingEnabled);
+        setFieldTypeKeyword(p.get('ftKeyword') || '');
+        setNamingPage(Number(p.get('namePage')) || 1);
+        setFieldTypePage(Number(p.get('ftPage')) || 1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL（保留 from=compliance 跳转语义）
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (searchParams.has('from')) next.set('from', searchParams.get('from')!);
+        next.set('tab', activeTab);
+        if (namingKeyword) next.set('nameKeyword', namingKeyword);
+        if (namingAppliesTo) next.set('nameAppliesTo', namingAppliesTo);
+        if (namingEnabled != null) next.set('nameEnabled', String(namingEnabled));
+        if (fieldTypeKeyword) next.set('ftKeyword', fieldTypeKeyword);
+        next.set('namePage', String(namingPage));
+        next.set('ftPage', String(fieldTypePage));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, namingKeyword, namingAppliesTo, namingEnabled, namingPage, fieldTypeKeyword, fieldTypePage]);
 
     const openComplianceModal = async () => {
         setComplianceModalOpen(true);

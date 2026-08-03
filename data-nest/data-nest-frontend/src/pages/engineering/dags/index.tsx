@@ -1,6 +1,6 @@
 // DAG 项目列表页（PRD §6.2）
 // 进入项目 → 跳到 /engineering/dags/:projectId 看 DAG 列表
-import {useCallback, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Form, Input, Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
@@ -10,7 +10,7 @@ import {
     HiOutlinePlus,
     HiOutlineTrash,
 } from 'react-icons/hi2';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {createDagProject, deleteDagProject, listDagProjects, listDags, updateDagProject} from './api';
 import type {DagProject} from './types';
 import usePagedList from '../../../hooks/usePagedList';
@@ -31,7 +31,7 @@ export default function DagsPage() {
     // 草稿查询条件（搜索框输入中、未点查询的值）由页面持有；点「查询」才 applyQuery
     const [searchName, setSearchName] = useState('');
     const {
-        list: projects, total, page, pageSize, loading,
+        list: projects, total, page, pageSize, loading, query,
         setPage, setPageSize, applyQuery, reload,
     } = usePagedList<{ name: string }, DagProject>({
         // 适配接口返回结构：records/total → {list, total}
@@ -42,6 +42,34 @@ export default function DagsPage() {
         initialQuery: {name: ''},
         defaultPageSize: 10,
     });
+
+    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const name = p.get('name') || '';
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        setSearchName(name);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        applyQuery({name});
+        if (pageNum > 1) setPage(pageNum);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (query.name) next.set('name', query.name);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, page, pageSize]);
     const [projectModalOpen, setProjectModalOpen] = useState(false);
     const [projectModalMode, setProjectModalMode] = useState<'create' | 'edit' | 'detail'>('create');
     const [editingProject, setEditingProject] = useState<DagProject | null>(null);

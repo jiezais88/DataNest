@@ -1,5 +1,6 @@
 package com.datanest.task.core.service;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.exception.BusinessException;
@@ -141,6 +142,9 @@ public class SyncJobExecutorService {
         if (result != null) {
             history.setSourceRows(result.readRows());
             history.setTargetRows(result.writeRows());
+            if (result.tableResults() != null && !result.tableResults().isEmpty()) {
+                history.setTableResults(JSON.toJSONString(result.tableResults()));
+            }
             if (!result.success() && result.errorMessage() != null) {
                 history.setErrorMessage(result.errorMessage());
             }

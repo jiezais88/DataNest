@@ -157,7 +157,8 @@ public class AddaxJobService {
         long totalWriteRows = 0L;
         long totalErrorRows = 0L;
         List<String> aggregatedLogLines = new ArrayList<>();
-        String firstErrorMessage = null;
+        List<String> failedTableMessages = new ArrayList<>();
+        List<TableResult> tableResults = new ArrayList<>();
         String lastLogPath = null;
 
         logger.info("开始逐表执行 Addax 同步: syncJobId={}, sourceTables={}, historyId={}",
@@ -167,6 +168,7 @@ public class AddaxJobService {
             String sourceTable = sourceTables.get(i);
             SourceTableDetail detail = detailMap.get(sourceTable);
             String tableLabel = sourceTable + "(" + (i + 1) + "/" + sourceTables.size() + ")";
+            String targetTableName = resolveTargetTableName(job, sourceTable, detail);
             String safeTableName = safeFileName(sourceTable);
             Path jobFilePath = Paths.get(jobPath, "job_sync_" + syncJobId + "_" + safeTableName + ".json");
             Path logFilePath = Paths.get(logPath, "sync_" + syncJobId + "_" + safeTableName + ".log");
@@ -185,7 +187,9 @@ public class AddaxJobService {
                         "写入 Addax 任务文件失败 [" + sourceTable + "]: " + e.getMessage());
             }
 
+            long tableStartMs = System.currentTimeMillis();
             AddaxExecutionResult tableResult = runAddax(syncJobId, historyId, jobFilePath, logFilePath, job, source, tableLabel);
+            long tableDurationMs = System.currentTimeMillis() - tableStartMs;
 
             aggregatedLogLines.add("===== Addax 执行: " + sourceTable + " =====");
             aggregatedLogLines.addAll(tableResult.logLines());
@@ -194,19 +198,23 @@ public class AddaxJobService {
             totalWriteRows += Math.max(0, tableResult.writeRows());
             totalErrorRows += Math.max(0, tableResult.errorRows());
 
+            tableResults.add(new TableResult(sourceTable, targetTableName,
+                    tableResult.success() ? ExecutionStatus.SUCCESS.getCode() : ExecutionStatus.FAILED.getCode(),
+                    tableResult.readRows(), tableResult.writeRows(), tableDurationMs,
+                    tableResult.success() ? null : tableResult.errorMessage()));
+
+            // 单表失败记录错误信息但继续执行后续表，保证多表同步不因一张表失败而中断其余表
             if (!tableResult.success()) {
-                if (firstErrorMessage == null) {
-                    firstErrorMessage = StringUtils.hasText(tableResult.errorMessage())
-                            ? "[" + sourceTable + "] " + tableResult.errorMessage()
-                            : "[" + sourceTable + "] Addax 执行失败";
-                }
-                logger.error("单表同步失败，停止后续表: syncJobId={}, failedTable={}, message={}",
+                failedTableMessages.add("[" + sourceTable + "] "
+                        + (StringUtils.hasText(tableResult.errorMessage()) ? tableResult.errorMessage() : "Addax 执行失败"));
+                logger.error("单表同步失败，继续执行后续表: syncJobId={}, failedTable={}, message={}",
                         syncJobId, sourceTable, tableResult.errorMessage());
-                break;
             }
         }
 
-        boolean overallSuccess = firstErrorMessage == null;
+        boolean overallSuccess = failedTableMessages.isEmpty();
+        String errorMessage = overallSuccess ? null
+                : failedTableMessages.size() + " 张表同步失败: " + String.join("；", failedTableMessages);
         // 将聚合日志写入最后一个 log 文件（或单独写一个聚合日志），便于历史日志查看
         if (lastLogPath != null) {
             Path aggregatedLogPath = Paths.get(lastLogPath).getParent().resolve("sync_" + syncJobId + "_aggregated.log");
@@ -219,7 +227,7 @@ public class AddaxJobService {
         }
 
         return new AddaxExecutionResult(overallSuccess, totalReadRows, totalWriteRows, totalErrorRows,
-                overallSuccess ? null : firstErrorMessage, lastLogPath, aggregatedLogLines);
+                errorMessage, lastLogPath, aggregatedLogLines, tableResults);
     }
 
     private String generateJobJson(SyncJob job, DataSourceConnection source,
@@ -545,7 +553,7 @@ public class AddaxJobService {
             return new AddaxExecutionResult(success,
                     parseResult.readRows(), parseResult.writeRows(), parseResult.errorRows(),
                     success ? null : buildErrorMessage(parseResult, exitCode),
-                    logFilePath.toString(), logLines);
+                    logFilePath.toString(), logLines, List.of());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             // 中断兜底：线程被打断时子进程仍在跑，必须强杀避免 Addax 孤儿进程
@@ -554,11 +562,11 @@ public class AddaxJobService {
             }
             logger.error("Addax 执行被中断: syncJobId={}, table={}", syncJobId, tableLabel, e);
             return new AddaxExecutionResult(false, 0, 0, 0,
-                    "Addax 执行被中断: " + e.getMessage(), logFilePath.toString(), logLines);
+                    "Addax 执行被中断: " + e.getMessage(), logFilePath.toString(), logLines, List.of());
         } catch (Exception e) {
             logger.error("Addax 执行异常: syncJobId={}, table={}", syncJobId, tableLabel, e);
             return new AddaxExecutionResult(false, 0, 0, 0,
-                    "Addax 执行异常: " + e.getMessage(), logFilePath.toString(), logLines);
+                    "Addax 执行异常: " + e.getMessage(), logFilePath.toString(), logLines, List.of());
         }
     }
 
@@ -612,6 +620,14 @@ public class AddaxJobService {
     }
 
     public record AddaxExecutionResult(boolean success, long readRows, long writeRows, long errorRows,
-                                       String errorMessage, String logPath, List<String> logLines) {
+                                       String errorMessage, String logPath, List<String> logLines,
+                                       List<TableResult> tableResults) {
+    }
+
+    /**
+     * 单表同步结果明细（多表同步按表记录，供历史详情按表展示）。
+     */
+    public record TableResult(String sourceTable, String targetTable, String status,
+                              long readRows, long writeRows, long durationMs, String errorMessage) {
     }
 }
