@@ -757,7 +757,7 @@ export default function MetadataPage() {
                                                          title={record.sourceTable || '—'}>
                                                         {record.sourceTable || '—'}
                                                     </div>
-                                                    <div className="text-ds-caption text-ds-text-muted mt-0.5">
+                                                    <div className="text-ds-caption text-ds-text-secondary mt-0.5">
                                                         → {record.targetTable}
                                                     </div>
                                                 </div>
