@@ -33,21 +33,23 @@ public class MailService {
     /**
      * 发送告警邮件。收件人以分号/逗号分隔。
      * 如果当前环境未配置 JavaMailSender，则只记日志不发送。
+     *
+     * @return true 表示邮件已提交发送成功；false 表示未配置 JavaMailSender / 无有效收件人 / 发送异常。
      */
-    public void send(String recipients, String subject, String body) {
+    public boolean send(String recipients, String subject, String body) {
         if (mailSender == null) {
             logger.warn("未配置 JavaMailSender，告警邮件无法发送: subject={}", subject);
-            return;
+            return false;
         }
         if (!StringUtils.hasText(recipients)) {
-            return;
+            return false;
         }
         String[] tos = Arrays.stream(recipients.split("[;；,，]"))
                 .map(String::trim)
                 .filter(StringUtils::hasText)
                 .toArray(String[]::new);
         if (tos.length == 0) {
-            return;
+            return false;
         }
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(StringUtils.hasText(from) ? from : tos[0]);
@@ -57,8 +59,10 @@ public class MailService {
         try {
             mailSender.send(message);
             logger.info("告警邮件已发送: recipients={}, subject={}", recipients, subject);
+            return true;
         } catch (MailException e) {
             logger.error("告警邮件发送失败: recipients={}, subject={}", recipients, subject, e);
+            return false;
         }
     }
 }

@@ -206,9 +206,9 @@ public class AlertRuleService {
     // ==================== 告警历史 ====================
 
     public PageResult<AlertHistory> listHistory(int page, int pageSize, String objectType,
-                                                Long objectId, String alertType) {
+                                                Long objectId, String alertType, String sendStatus) {
         IPage<AlertHistory> p = alertHistoryMapper.selectHistoryPage(new Page<>(page, pageSize),
-                objectType, objectId, alertType);
+                objectType, objectId, alertType, sendStatus);
         return new PageResult<>(p.getRecords(), p.getTotal(), page, pageSize);
     }
 

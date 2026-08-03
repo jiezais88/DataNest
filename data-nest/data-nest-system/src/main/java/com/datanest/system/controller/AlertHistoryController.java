@@ -31,7 +31,8 @@ public class AlertHistoryController {
                                                  @RequestParam(defaultValue = "10") int pageSize,
                                                  @RequestParam(required = false) String objectType,
                                                  @RequestParam(required = false) Long objectId,
-                                                 @RequestParam(required = false) String alertType) {
-        return Result.ok(alertRuleService.listHistory(page, pageSize, objectType, objectId, alertType));
+                                                 @RequestParam(required = false) String alertType,
+                                                 @RequestParam(required = false) String sendStatus) {
+        return Result.ok(alertRuleService.listHistory(page, pageSize, objectType, objectId, alertType, sendStatus));
     }
 }

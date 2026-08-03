@@ -1,7 +1,7 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../store/useAuthStore';
 import type {RoleCode} from '../constants/roles';
-import {ALL_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '../constants/roles';
+import {ALERT_VIEW_ROLES, ALL_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '../constants/roles';
 
 interface MenuItem {
     label: string;
@@ -95,6 +95,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         group: '系统管理',
         items: [
             {label: '用户管理', path: '/system/users', icon: '👥', roles: [ROLE.SUPER_ADMIN]},
+            {
+                label: '告警中心',
+                path: '/system/alert-center',
+                icon: '📢',
+                roles: ALERT_VIEW_ROLES,
+            },
         ],
     },
 ];

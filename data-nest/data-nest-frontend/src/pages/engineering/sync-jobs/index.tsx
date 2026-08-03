@@ -38,8 +38,10 @@ import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import SyncJobDrawer from './SyncJobDrawer';
+import AlertRuleModal from '../../../components/AlertRuleModal';
 import {triggerBadge} from './history-common-utils';
 import {
+    HiOutlineBell,
     HiOutlineCalendar,
     HiOutlineClock,
     HiOutlineEye,
@@ -173,6 +175,10 @@ export default function SyncJobsPage() {
     const [deleteTarget, setDeleteTarget] = useState<SyncJob | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    // Sprint 5：快捷告警配置
+    const [alertTarget, setAlertTarget] = useState<SyncJob | null>(null);
+    const [alertOpen, setAlertOpen] = useState(false);
 
     useEffect(() => {
         let mounted = true;
@@ -387,9 +393,22 @@ export default function SyncJobsPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: COL.OPERATION_5,
+            width: 280,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="告警配置">
+                        <DsIconButton
+                            tone="accent"
+                            data-testid={`sync-job-alert-${item.name}`}
+                            onClick={() => {
+                                setAlertTarget(item);
+                                setAlertOpen(true);
+                            }}
+                            aria-label="告警配置"
+                        >
+                            <HiOutlineBell size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     <Tooltip title="详情">
                         <DsIconButton
                             tone="accent"
@@ -585,6 +604,20 @@ export default function SyncJobsPage() {
                 }}
                 onSubmit={handleSubmit}
                 onExecute={handleExecute}
+            />
+
+            {/* Sprint 5：同步任务告警配置快捷入口（同一 alert_rule 数据源） */}
+            <AlertRuleModal
+                open={alertOpen}
+                onClose={() => {
+                    setAlertOpen(false);
+                    setAlertTarget(null);
+                }}
+                mode="quick"
+                quickObjectType="SYNC_JOB"
+                quickObjectId={alertTarget?.id}
+                quickObjectName={alertTarget?.name}
+                readOnly={!canWrite}
             />
 
             <ConfirmDialog

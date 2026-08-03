@@ -1,5 +1,6 @@
 // DAG 节点/边/请求类型
-export type NodeType = 'SQL' | 'SYNC' | 'PYTHON';
+// Sprint 5：节点类型扩展 CONDITION（条件分支）/ SUB_DAG（子 DAG）
+export type NodeType = 'SQL' | 'SYNC' | 'PYTHON' | 'CONDITION' | 'SUB_DAG';
 
 export interface DagNodeConfig {
     type: NodeType;
@@ -12,6 +13,36 @@ export interface DagNodeConfig {
     pythonScript?: string;
     timeoutMinutes?: number;
     memoryLimitMb?: number;
+    // CONDITION
+    branches?: ConditionBranch[];
+    // SUB_DAG
+    subDagId?: number | string;
+    subDagName?: string;
+    syncExecution?: boolean;
+}
+
+/** 条件分支（对齐后端 ConditionNodeConfig.ConditionBranch） */
+export interface ConditionBranch {
+    branchName: string;
+    /** 表达式，如 ${upstream.row_count} > 0 */
+    expression: string;
+    /** 满足条件时走向的下游节点 ID */
+    nextNodeId: string;
+}
+
+/** 条件分支节点配置：{"type":"CONDITION","branches":[...]}，branches[0] 为默认兜底分支 */
+export interface ConditionNodeConfig {
+    type: 'CONDITION';
+    branches: ConditionBranch[];
+}
+
+/** 子 DAG 节点配置：{"type":"SUB_DAG","subDagId":123,"subDagName":"xxx","syncExecution":true} */
+export interface SubDagNodeConfig {
+    type: 'SUB_DAG';
+    subDagId?: number | string;
+    subDagName?: string;
+    /** true=同步执行（等待子 DAG 完成后继续）；false=异步执行（触发后继续） */
+    syncExecution: boolean;
 }
 
 export interface DagNode {

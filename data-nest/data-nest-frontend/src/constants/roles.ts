@@ -26,5 +26,11 @@ export const ENGINEERING_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_
 /** 治理模块（采集任务/元数据/数据标准）写权限 */
 export const GOVERNANCE_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.GOVERNANCE_ADMIN];
 
+/** 告警中心查看权限（PRD §8：超管/工程师/治理员可查看，分析师不可） */
+export const ALERT_VIEW_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.GOVERNANCE_ADMIN];
+
+/** 告警规则编辑权限（新增/编辑/停用 = 超管/工程师） */
+export const ALERT_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER];
+
 /** 全部角色（元数据预览等人人可用的只读场景） */
 export const ALL_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.DATA_ANALYST, ROLE.GOVERNANCE_ADMIN];

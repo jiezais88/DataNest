@@ -36,11 +36,13 @@ public interface AlertHistoryMapper extends BaseMapper<AlertHistory> {
             "  <if test='objectType != null and objectType != \"\"'> AND ah.object_type = #{objectType} </if>" +
             "  <if test='objectId != null'> AND ah.object_id = #{objectId} </if>" +
             "  <if test='alertType != null and alertType != \"\"'> AND ah.alert_type = #{alertType} </if>" +
+            "  <if test='sendStatus != null and sendStatus != \"\"'> AND ah.send_status = #{sendStatus} </if>" +
             "</where>" +
             " ORDER BY ah.sent_at DESC" +
             "</script>")
     IPage<AlertHistory> selectHistoryPage(Page<AlertHistory> page,
                                           @Param("objectType") String objectType,
                                           @Param("objectId") Long objectId,
-                                          @Param("alertType") String alertType);
+                                          @Param("alertType") String alertType,
+                                          @Param("sendStatus") String sendStatus);
 }

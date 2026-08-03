@@ -17,7 +17,7 @@ export default function EmptyState({
                 <HiOutlineInbox size={28} className="text-ds-accent"/>
             </div>
             <h3 className="text-ds-body font-semibold text-ds-text-primary mb-ds-1">{title}</h3>
-            <p className="text-ds-small text-ds-text-muted max-w-[320px] mb-ds-4">{description}</p>
+            <p className="text-ds-small text-ds-text-muted max-w-[360px] mb-ds-4 whitespace-pre-line">{description}</p>
             {action && <div className="mb-ds-4">{action}</div>}
         </div>
     );

@@ -18,6 +18,10 @@ public final class AlertConstants {
     public static final String ALERT_TIMEOUT = "TIMEOUT";
     public static final String ALERT_SUCCESS = "SUCCESS";
 
+    /** 邮件发送状态 */
+    public static final String SEND_STATUS_SUCCESS = "SUCCESS";
+    public static final String SEND_STATUS_FAILED = "FAILED";
+
     /** 对象类型显示名 */
     public static final String DISPLAY_DAG = "DAG";
     public static final String DISPLAY_SYNC_JOB = "同步任务";

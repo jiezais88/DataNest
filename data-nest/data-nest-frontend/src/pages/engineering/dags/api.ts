@@ -4,6 +4,7 @@
 import request from '../../../api/request';
 import type {PageResult, Result} from '../../../types/common';
 import type {SyncJobLog} from '../../../types/sync';
+import type {AlertRuleDTO} from '../../../types/alert';
 import type {
     Dag,
     DagAlertConfig,
@@ -166,6 +167,14 @@ export const getDagAlertConfig = (dagId: string | number) =>
     request.get<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`).then(r => r.data);
 export const putDagAlertConfig = (dagId: string | number, data: DagAlertConfig) =>
     request.put<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`, data).then(r => r.data);
+
+// =================== 按 DAG 告警规则（Sprint 5，alert_rule 统一数据源） ===================
+// 与全局告警中心同一数据源，任何入口修改实时同步
+
+export const getDagAlertRule = (dagId: string | number) =>
+    request.get<Result<AlertRuleDTO>>(`/engineering/dev/dags/${dagId}/alert-rule`).then(r => r.data);
+export const putDagAlertRule = (dagId: string | number, data: AlertRuleDTO) =>
+    request.put<Result<AlertRuleDTO>>(`/engineering/dev/dags/${dagId}/alert-rule`, data).then(r => r.data);
 
 // =================== 节点实时日志（Sprint 4） ===================
 // 注意：节点日志统一走 /dag-executions/{executionId}/nodes/{nodeId}/logs

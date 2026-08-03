@@ -6,7 +6,7 @@ import type {ColumnsType} from 'antd/es/table';
 import {nextRunTime} from '../../../utils/cron';
 import {notify} from '../../../utils/notify';
 import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
+import {ALERT_WRITE_ROLES, GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
 import {COL} from '../../../constants/table';
 import {getDataSources} from '../../../api/datasource';
 import {
@@ -33,7 +33,9 @@ import SearchInput from '../../../components/SearchInput';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
 import TaskDrawer from './TaskDrawer';
+import AlertRuleModal from '../../../components/AlertRuleModal';
 import {
+    HiOutlineBell,
     HiOutlineCalendar,
     HiOutlineClock,
     HiOutlineEye,
@@ -73,6 +75,8 @@ const INITIAL_QUERY: TaskListQuery = {keyword: '', status: ''};
 export default function CollectTasksPage() {
     const navigate = useNavigate();
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    // 采集任务快捷告警：查看 = 超管/工程师/治理员，编辑 = 超管/工程师（PRD §8）
+    const canWriteAlert = useHasRole(...ALERT_WRITE_ROLES);
 
     const {list, total, page, pageSize, loading, query, setPage, setPageSize, applyQuery, reload} =
         usePagedList<TaskListQuery, CollectTask>({
@@ -136,6 +140,10 @@ export default function CollectTasksPage() {
     const [deleteTarget, setDeleteTarget] = useState<CollectTask | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    // Sprint 5：快捷告警配置
+    const [alertTarget, setAlertTarget] = useState<CollectTask | null>(null);
+    const [alertOpen, setAlertOpen] = useState(false);
 
     const loadDataSources = useCallback(async () => {
         try {
@@ -394,9 +402,22 @@ export default function CollectTasksPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: COL.OPERATION_5,
+            width: 280,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="告警配置">
+                        <DsIconButton
+                            tone="accent"
+                            data-testid={`collect-task-alert-${item.name}`}
+                            onClick={() => {
+                                setAlertTarget(item);
+                                setAlertOpen(true);
+                            }}
+                            aria-label="告警配置"
+                        >
+                            <HiOutlineBell size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     <Tooltip title="详情">
                         <DsIconButton
                             tone="accent"
@@ -588,6 +609,20 @@ export default function CollectTasksPage() {
                     setEditItem(null);
                 }}
                 onSubmit={handleSubmit}
+            />
+
+            {/* Sprint 5：采集任务告警配置快捷入口（同一 alert_rule 数据源） */}
+            <AlertRuleModal
+                open={alertOpen}
+                onClose={() => {
+                    setAlertOpen(false);
+                    setAlertTarget(null);
+                }}
+                mode="quick"
+                quickObjectType="COLLECT_TASK"
+                quickObjectId={alertTarget?.id}
+                quickObjectName={alertTarget?.name}
+                readOnly={!canWriteAlert}
             />
 
             <ConfirmDialog

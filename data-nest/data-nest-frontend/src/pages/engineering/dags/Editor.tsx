@@ -30,7 +30,8 @@ import {
     getDagExecution,
     getNodeExecutionLogs,
     listDagParameters,
-    putDagAlertConfig,
+    listDags,
+    putDagAlertRule,
     triggerDag,
     updateDag
 } from './api';
@@ -43,11 +44,14 @@ import CronPicker from '../../../components/CronPicker';
 import DagParameterDrawer from './components/DagParameterDrawer';
 import TriggerParamsModal from './components/TriggerParamsModal';
 import DagVersionModal from './components/DagVersionModal';
-import DagAlertConfigModal from './components/DagAlertConfigModal';
+import ConditionNodeModal from './components/ConditionNodeModal';
+import SubDagNodeModal from './components/SubDagNodeModal';
 import NodeRuntimeLogPanel from './components/NodeRuntimeLogPanel';
+import AlertRuleModal from '../../../components/AlertRuleModal';
 import {HistoryLogModal} from '../sync-jobs/history-common';
 import {describeCron} from '../../../utils/cron';
-import type {Dag, DagAlertConfig, DagExecution, DagParameter, NodeExecution, NodeType} from './types';
+import type {ConditionBranch, Dag, DagExecution, DagParameter, NodeExecution, NodeType} from './types';
+import type {AlertRuleDTO} from '../../../types/alert';
 import type {SyncJob, SyncJobLog} from '../../../types/sync';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import {usePollingWhile} from '../../../hooks/usePollingWhile';
@@ -78,6 +82,12 @@ type RFNodeData = {
     pythonScript?: string;
     timeoutMinutes?: number;
     memoryLimitMb?: number;
+    /** CONDITION 节点分支配置（Sprint 5） */
+    branches?: ConditionBranch[];
+    /** SUB_DAG 节点配置（Sprint 5） */
+    subDagId?: number | string;
+    subDagName?: string;
+    syncExecution?: boolean;
     status?: NodeStatus;
     /** 执行视图：节点运行信息 */
     durationMs?: number;
@@ -108,20 +118,42 @@ function extractOutputTable(sql?: string): string | null {
     return null;
 }
 
-// ─────────── 自定义 DAG 节点组件（统一 SQL/SYNC/PYTHON；运行视图带状态色/耗时） ───────────
-const NODE_TYPE_ICON: Record<NodeType, string> = {SQL: '📝', SYNC: '🔄', PYTHON: '🐍'};
-const NODE_TYPE_LABEL: Record<NodeType, string> = {SQL: 'SQL 任务', SYNC: '同步任务', PYTHON: 'Python 任务'};
+// ─────────── 自定义 DAG 节点组件（统一 SQL/SYNC/PYTHON/CONDITION/SUB_DAG；运行视图带状态色/耗时） ───────────
+const NODE_TYPE_ICON: Record<NodeType, string> = {SQL: '📝', SYNC: '🔄', PYTHON: '🐍', CONDITION: '🔀', SUB_DAG: '📦'};
+const NODE_TYPE_LABEL: Record<NodeType, string> = {
+    SQL: 'SQL 任务',
+    SYNC: '同步任务',
+    PYTHON: 'Python 任务',
+    CONDITION: '条件分支',
+    SUB_DAG: '子 DAG',
+};
 
 function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
     const icon = NODE_TYPE_ICON[data.nodeType] || '📝';
     const outputTable = data.nodeType === 'SQL' ? extractOutputTable(data.sqlContent) : null;
     const statusColor = data.status ? NODE_STATUS_COLOR[data.status] : undefined;
+    // 条件分支/子 DAG 节点专属配色（对齐原型 .rf-node.condition / .rf-node.subdag）
+    const typeAccent = data.nodeType === 'CONDITION'
+        ? 'border-[#c4b5fd] bg-[#f5f3ff]'
+        : data.nodeType === 'SUB_DAG'
+            ? 'border-[#5eead4] bg-[#f0fdfa]'
+            : 'border-ds-border-subtle bg-ds-bg-surface';
+    const iconTone = data.nodeType === 'CONDITION'
+        ? 'bg-[#ede9fe] text-[#7c3aed]'
+        : data.nodeType === 'SUB_DAG'
+            ? 'bg-[#ccfbf1] text-[#0d9488]'
+            : data.nodeType === 'SQL'
+                ? 'bg-ds-accent-light text-ds-accent'
+                : data.nodeType === 'PYTHON'
+                    ? 'bg-ds-warning-soft text-ds-warning'
+                    : 'bg-ds-info-light text-ds-info';
 
     return (
         <div
             className={[
                 'relative rounded-xl p-4 w-[220px] text-ds-small bg-ds-bg-surface font-sans shadow-sm',
-                'border border-ds-border-subtle',
+                'border',
+                typeAccent,
                 selected ? 'ring-4 ring-ds-accent-glow' : '',
                 // 重跑实例中复用上轮结果的节点置灰降噪，突出本次真正执行的节点
                 data.reused ? 'opacity-50 grayscale' : '',
@@ -155,7 +187,8 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                 </button>
             )}
             <div className="flex items-center gap-2 mb-2 pb-2 border-b border-ds-border-subtle">
-                <span className="text-ds-body">{icon}</span>
+                <span
+                    className={`w-6 h-6 rounded flex items-center justify-center text-ds-caption flex-shrink-0 ${iconTone}`}>{icon}</span>
                 <span className="font-semibold text-ds-text-primary truncate flex-1">{data.nodeName}</span>
                 {/* 重跑实例节点执行方式角标：复用上轮结果置灰「复用」，本次真正执行标「本次执行」 */}
                 {data.reused === true && (
@@ -181,6 +214,16 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                     <div className="truncate"
                          title={data.pythonScript ? data.pythonScript.split('\n')[0] : '（未配置脚本）'}>
                         脚本：{data.pythonScript ? data.pythonScript.split('\n')[0] : '—'}
+                    </div>
+                ) : data.nodeType === 'CONDITION' ? (
+                    <div className="truncate"
+                         title={data.branches?.length ? `分支数：${data.branches.length}` : '（未配置分支）'}>
+                        分支：{data.branches?.length ? `${data.branches.length} 个` : '—'}
+                    </div>
+                ) : data.nodeType === 'SUB_DAG' ? (
+                    <div className="truncate" title={data.subDagName || String(data.subDagId) || '（未选择）'}>
+                        {data.subDagName || data.subDagId || '（未选择）'}
+                        {data.syncExecution === false ? '（异步）' : ''}
                     </div>
                 ) : (
                     <div className="truncate" title={data.syncJobName || String(data.syncJobId) || '（未选择）'}>
@@ -214,7 +257,7 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
     );
 }
 
-const nodeTypes = {SQL: DagNode, SYNC: DagNode, PYTHON: DagNode};
+const nodeTypes = {SQL: DagNode, SYNC: DagNode, PYTHON: DagNode, CONDITION: DagNode, SUB_DAG: DagNode};
 
 // 画布点阵背景（与 DESIGN §4.24 canvas-area 对齐）
 const dotBackgroundStyle: React.CSSProperties = {
@@ -546,6 +589,14 @@ function PropertyPanel({
                         <PropertyRow label="超时" value={`${node.data.timeoutMinutes ?? 30} 分钟`}/>
                         <PropertyRow label="内存限制" value={`${node.data.memoryLimitMb ?? 2048} MB`}/>
                     </>
+                ) : node.data.nodeType === 'CONDITION' ? (
+                    <PropertyRow label="分支数" value={`${node.data.branches?.length ?? 0} 个`}/>
+                ) : node.data.nodeType === 'SUB_DAG' ? (
+                    <>
+                        <PropertyRow label="子 DAG" value={node.data.subDagName || node.data.subDagId || '—'}/>
+                        <PropertyRow label="执行方式"
+                                     value={node.data.syncExecution === false ? '异步执行' : '同步执行'}/>
+                    </>
                 ) : (
                     <PropertyRow label="同步任务" value={node.data.syncJobName || node.data.syncJobId || '—'}/>
                 )}
@@ -673,14 +724,19 @@ function DagEditorInner() {
     const [paramDrawerOpen, setParamDrawerOpen] = useState(false);
     // 新建 DAG 尚未保存时，参数草稿保存在本地，保存 DAG 后统一提交
     const [draftParams, setDraftParams] = useState<DagParameter[]>([]);
-    // 新建 DAG 尚未保存时，告警草稿保存在本地，保存 DAG 后统一提交
-    const [draftAlertConfig, setDraftAlertConfig] = useState<DagAlertConfig | undefined>(undefined);
+    // 新建 DAG 尚未保存时，告警草稿保存在本地，保存 DAG 后统一提交（Sprint 5 起走 alert_rule）
+    const [draftAlertConfig, setDraftAlertConfig] = useState<AlertRuleDTO | undefined>(undefined);
     const [triggerModalOpen, setTriggerModalOpen] = useState(false);
     const [dagParams, setDagParams] = useState<DagParameter[]>([]);
     const [triggering, setTriggering] = useState(false);
-    // Sprint 4：版本管理 / 按 DAG 告警配置弹窗
+    // Sprint 4：版本管理 / 按 DAG 告警规则弹窗（Sprint 5 起统一走 alert_rule）
     const [versionModalOpen, setVersionModalOpen] = useState(false);
     const [alertModalOpen, setAlertModalOpen] = useState(false);
+    // Sprint 5：条件分支 / 子 DAG 节点编辑弹窗
+    const [conditionModalOpen, setConditionModalOpen] = useState(false);
+    const [subDagModalOpen, setSubDagModalOpen] = useState(false);
+    // 子 DAG 节点选择器候选：已启用且非当前 DAG（循环引用由后端保存时阻断）
+    const [candidateDags, setCandidateDags] = useState<{ id: string | number; name: string }[]>([]);
     const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
     // 运行视图 SYNC 节点「查看日志」弹窗（复用同步任务的 HistoryLogModal）
     const [nodeLogOpen, setNodeLogOpen] = useState(false);
@@ -718,10 +774,24 @@ function DagEditorInner() {
         reactFlowInstance.setCenter(target.position.x + 90, target.position.y + 30, {zoom: 1.2, duration: 400});
     }, [isRunView, focusNodeId, rfNodes, reactFlowInstance]);
 
+    // 子 DAG 节点选择器候选：已启用且非当前 DAG（循环引用由后端保存时阻断）
+    const loadCandidateDags = useCallback(() => {
+        const currentId = String(id || '');
+        listDags().then(dags => {
+            setCandidateDags((dags || [])
+                .filter(d => d.status === 'ENABLED' && String(d.id) !== currentId)
+                .map(d => ({id: d.id!, name: d.name})));
+        }).catch(() => {
+            // 错误提示由拦截器统一弹出
+        });
+    }, [id]);
+
     // 统一节点编辑入口（铅笔图标 / 双击 / 属性面板「编辑节点」共用）：
     // - SQL 节点：打开 900x600 dark Monaco modal
     // - PYTHON 节点：打开 PythonEditorModal（Sprint 4）
     // - SYNC 节点：打开节点配置 Drawer
+    // - CONDITION 节点：打开条件分支配置弹窗（Sprint 5）
+    // - SUB_DAG 节点：打开子 DAG 配置弹窗（Sprint 5）
     // data 直接来自节点 props，不查 rfNodes，避免闭包拿到过期节点数据
     const handleEditRequest = useCallback((nodeId: string, nodeData: RFNodeData) => {
         setSelectedNodeId(nodeId);
@@ -733,13 +803,22 @@ function DagEditorInner() {
             setPythonModalOpen(true);
             return;
         }
+        if (nodeData.nodeType === 'CONDITION') {
+            setConditionModalOpen(true);
+            return;
+        }
+        if (nodeData.nodeType === 'SUB_DAG') {
+            loadCandidateDags();
+            setSubDagModalOpen(true);
+            return;
+        }
         form.setFieldsValue({
             nodeName: nodeData.nodeName,
             sqlContent: nodeData.sqlContent || '',
             syncJobId: nodeData.syncJobId,
         });
         setDrawerOpen(true);
-    }, [form]);
+    }, [form, loadCandidateDags]);
 
     // 拉取执行实例并重建画布：节点以 nodeExecutions 执行快照、边以 edgeSnapshot 边快照为准
     // （执行详情模式的初始加载与轮询共用），当前 DAG 定义只补充坐标 —— 已删除节点/连线的历史执行记录仍然可见
@@ -789,6 +868,10 @@ function DagEditorInner() {
                         pythonScript: cfg.pythonScript,
                         timeoutMinutes: cfg.timeoutMinutes,
                         memoryLimitMb: cfg.memoryLimitMb,
+                        branches: cfg.branches,
+                        subDagId: cfg.subDagId,
+                        subDagName: cfg.subDagName,
+                        syncExecution: cfg.syncExecution,
                         lastTestStatus: cfg.lastTestStatus,
                         onEditRequest: handleEditRequest,
                     },
@@ -840,13 +923,31 @@ function DagEditorInner() {
     }, [onNodesChangeRaw, canEdit]);
 
     // onEdgesChange 同理（连线删除/重置等也算内容变更）
+    // 条件节点出线被删除时同步删除对应分支，保证分支与连线一致
     const onEdgesChange = useCallback((changes: EdgeChange[]) => {
         if (canEdit) {
             const real = changes.some(c => c.type !== 'select' && c.type !== 'reset');
             if (real) setIsDirty(true);
+            const removed = changes.filter(c => c.type === 'remove');
+            if (removed.length > 0) {
+                const removedIds = new Set(removed.map(c => c.id));
+                const removedEdges = rfEdges.filter(e => removedIds.has(e.id));
+                const condRemovals = removedEdges.filter(e => {
+                    const src = rfNodes.find(n => n.id === e.source);
+                    return src?.data.nodeType === 'CONDITION';
+                });
+                if (condRemovals.length > 0) {
+                    const removedTargets = new Set(condRemovals.map(e => e.target));
+                    setRfNodes(ns => ns.map(n => {
+                        if (n.id !== condRemovals[0].source) return n;
+                        const branches = (n.data.branches || []).filter(b => !removedTargets.has(b.nextNodeId));
+                        return {...n, data: {...n.data, branches}};
+                    }));
+                }
+            }
         }
         onEdgesChangeRaw(changes);
-    }, [onEdgesChangeRaw, canEdit]);
+    }, [onEdgesChangeRaw, canEdit, rfEdges, rfNodes, setRfNodes]);
 
     const onConnect = useCallback((params: Connection) => {
         if (!canEdit) return;
@@ -860,6 +961,13 @@ function DagEditorInner() {
             notify.warning('两个节点之间已存在相同的连线');
             return;
         }
+        // 子 DAG 节点只能引出一条出线（PRD §6.4.4）：已有一条出线时拒绝
+        const sourceNode = rfNodes.find(n => n.id === params.source);
+        if (sourceNode?.data.nodeType === 'SUB_DAG' &&
+            rfEdges.some(e => e.source === params.source)) {
+            notify.warning('子 DAG 节点只能引出一条出线');
+            return;
+        }
         if (wouldCreateCycle(rfEdges, params.source, params.target)) {
             notify.warning('该连线会形成循环依赖，DAG 不允许成环');
             return;
@@ -871,12 +979,23 @@ function DagEditorInner() {
             animated: true,
         };
         setRfEdges(eds => addEdge(newEdge, eds));
+        // 条件节点连出线 → 自动补一个分支指向目标节点，保持分支与连线一致（分支名/表达式留空待配置）
+        if (sourceNode?.data.nodeType === 'CONDITION') {
+            setRfNodes(ns => ns.map(n => {
+                if (n.id !== params.source) return n;
+                const branches = [...(n.data.branches || [])];
+                if (!branches.some(b => b.nextNodeId === params.target)) {
+                    branches.push({branchName: '', expression: '', nextNodeId: params.target!});
+                }
+                return {...n, data: {...n.data, branches}};
+            }));
+        }
         setIsDirty(true);
-    }, [setRfEdges, rfEdges, canEdit]);
+    }, [setRfEdges, setRfNodes, rfEdges, rfNodes, canEdit]);
 
     /**
      * 在指定画布坐标添加一个节点（拖拽 / 自动布局复用）
-     * @param type SQL | SYNC | PYTHON
+     * @param type SQL | SYNC | PYTHON | CONDITION | SUB_DAG
      * @param position 画布坐标（来自 screenToFlowPosition）
      */
     const addNodeAt = useCallback((type: NodeType, position: { x: number; y: number }) => {
@@ -893,6 +1012,11 @@ function DagEditorInner() {
                 syncJobId: undefined,
                 syncJobName: undefined,
                 pythonScript: undefined,
+                // CONDITION 节点默认 2 个分支（含默认兜底），由用户配置
+                branches: type === 'CONDITION' ? [
+                    {branchName: '默认分支', expression: 'true', nextNodeId: ''},
+                    {branchName: '', expression: '', nextNodeId: ''},
+                ] : undefined,
                 onEditRequest: handleEditRequest,
             },
         };
@@ -924,7 +1048,7 @@ function DagEditorInner() {
         event.preventDefault();
         if (!canEdit) return;
         const type = event.dataTransfer.getData('application/reactflow') as NodeType;
-        if (type !== 'SQL' && type !== 'SYNC' && type !== 'PYTHON') return;
+        if (type !== 'SQL' && type !== 'SYNC' && type !== 'PYTHON' && type !== 'CONDITION' && type !== 'SUB_DAG') return;
         const position = reactFlowInstance.screenToFlowPosition({
             x: event.clientX,
             y: event.clientY,
@@ -1001,11 +1125,56 @@ function DagEditorInner() {
     };
 
     const handleDeleteNode = useCallback((nodeId: string) => {
-        setRfNodes(ns => ns.filter(n => n.id !== nodeId));
+        setRfNodes(ns => ns.map(n => {
+            // 删除节点时同步清理条件分支中指向该节点的分支，避免保存被后端「分支指向的节点不存在」拦截
+            if (n.data.nodeType !== 'CONDITION' || !n.data.branches) return n;
+            const branches = n.data.branches.filter(b => b.nextNodeId !== nodeId);
+            return branches.length === n.data.branches.length ? n : {...n, data: {...n.data, branches}};
+        }).filter(n => n.id !== nodeId));
         setRfEdges(es => es.filter(e => e.source !== nodeId && e.target !== nodeId));
         if (selectedNodeId === nodeId) setSelectedNodeId(null);
         setIsDirty(true);
     }, [setRfNodes, setRfEdges, selectedNodeId]);
+
+    // 条件分支节点保存：更新节点数据 + 同步画布连线（条件节点出线 = 各分支 nextNodeId）
+    const handleConditionNodeSave = useCallback((nodeName: string, branches: ConditionBranch[]) => {
+        if (!selectedNodeId) return;
+        setRfNodes(ns => ns.map(n => {
+            if (n.id !== selectedNodeId) return n;
+            return {...n, data: {...n.data, nodeName, branches}};
+        }));
+        setRfEdges(es => {
+            const other = es.filter(e => e.source !== selectedNodeId);
+            const branchTargets = branches.map(b => b.nextNodeId).filter(Boolean);
+            const newEdges = branchTargets.map((target, i) => ({
+                id: `e${++edgeIdRef.current}_${Date.now()}_${i}`,
+                source: selectedNodeId!,
+                target,
+                animated: true,
+            }));
+            return [...other, ...newEdges];
+        });
+        setConditionModalOpen(false);
+        setIsDirty(true);
+        notify.success('条件分支节点已更新');
+    }, [selectedNodeId, setRfNodes, setRfEdges]);
+
+    // 子 DAG 节点保存
+    const handleSubDagNodeSave = useCallback((
+        nodeName: string,
+        subDagId: string | number,
+        subDagName: string,
+        syncExecution: boolean,
+    ) => {
+        if (!selectedNodeId) return;
+        setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
+            ...n,
+            data: {...n.data, nodeName, subDagId, subDagName, syncExecution},
+        } : n));
+        setSubDagModalOpen(false);
+        setIsDirty(true);
+        notify.success('子 DAG 节点已更新');
+    }, [selectedNodeId, setRfNodes]);
 
     // 实际保存（通过校验后调用）
     const doSave = useCallback(async () => {
@@ -1014,6 +1183,31 @@ function DagEditorInner() {
             const paramError = validateDagParameters(draftParams);
             if (paramError) {
                 notify.error(paramError);
+                return;
+            }
+        }
+        // Sprint 5：条件分支 / 子 DAG 节点配置前置校验（后端同样校验，前端先拦截）
+        for (const n of rfNodes) {
+            if (n.data.nodeType === 'CONDITION') {
+                const branches = n.data.branches || [];
+                if (branches.length < 2) {
+                    notify.error(`条件分支「${n.data.nodeName}」至少需要 2 个分支（含默认分支）`);
+                    return;
+                }
+                for (const b of branches) {
+                    if (!b.branchName?.trim() || !b.expression?.trim() || !b.nextNodeId) {
+                        notify.error(`条件分支「${n.data.nodeName}」存在未完整配置的分支（分支名称/表达式/下游节点必填）`);
+                        return;
+                    }
+                }
+                const targets = branches.map(b => b.nextNodeId);
+                if (new Set(targets).size !== targets.length) {
+                    notify.error(`条件分支「${n.data.nodeName}」每个分支必须连接不同的下游节点`);
+                    return;
+                }
+            }
+            if (n.data.nodeType === 'SUB_DAG' && !n.data.subDagId) {
+                notify.error(`子 DAG 节点「${n.data.nodeName}」未选择子 DAG`);
                 return;
             }
         }
@@ -1045,7 +1239,7 @@ function DagEditorInner() {
                             await createDagParameter(savedId, p);
                         }
                         if (draftAlertConfig) {
-                            await putDagAlertConfig(savedId, draftAlertConfig);
+                            await putDagAlertRule(savedId, draftAlertConfig);
                         }
                         notify.success('DAG 与配置已创建');
                     } catch {
@@ -1472,6 +1666,44 @@ function DagEditorInner() {
                                 <span className="text-ds-heading">🔄</span>
                                 <span className="text-ds-small font-semibold text-ds-text-secondary">同步任务</span>
                             </div>
+                            {/* 拖拽源：条件分支节点（Sprint 5） */}
+                            <div
+                                draggable={canEdit}
+                                onDragStart={e => {
+                                    if (!canEdit) {
+                                        e.preventDefault();
+                                        return;
+                                    }
+                                    e.dataTransfer.setData('application/reactflow', 'CONDITION');
+                                    e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-[#c4b5fd] bg-[#f5f3ff] ${
+                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-[#7c3aed] hover:bg-[#ede9fe]' : 'cursor-not-allowed opacity-50'
+                                } transition-colors`}
+                                title={!canEdit ? '只读模式：您没有编辑权限' : '按表达式选择下游分支'}
+                            >
+                                <span className="text-ds-heading">🔀</span>
+                                <span className="text-ds-small font-semibold text-[#7c3aed]">条件分支</span>
+                            </div>
+                            {/* 拖拽源：子 DAG 节点（Sprint 5） */}
+                            <div
+                                draggable={canEdit}
+                                onDragStart={e => {
+                                    if (!canEdit) {
+                                        e.preventDefault();
+                                        return;
+                                    }
+                                    e.dataTransfer.setData('application/reactflow', 'SUB_DAG');
+                                    e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-[#5eead4] bg-[#f0fdfa] ${
+                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-[#0d9488] hover:bg-[#ccfbf1]' : 'cursor-not-allowed opacity-50'
+                                } transition-colors`}
+                                title={!canEdit ? '只读模式：您没有编辑权限' : '引用其他 DAG 作为节点'}
+                            >
+                                <span className="text-ds-heading">📦</span>
+                                <span className="text-ds-small font-semibold text-[#0d9488]">子 DAG</span>
+                            </div>
                         </div>
                         <div className="mt-ds-6 text-ds-caption text-ds-text-muted text-center">
                             拖拽节点到画布上添加
@@ -1645,15 +1877,44 @@ function DagEditorInner() {
                 }}
             />
 
-            {/* Sprint 4：按 DAG 告警配置 */}
-            <DagAlertConfigModal
+            {/* Sprint 5：按 DAG 告警规则（统一 alert_rule 数据源；新建未保存 DAG 走本地草稿） */}
+            <AlertRuleModal
                 open={alertModalOpen}
-                dagId={id}
-                dagName={dag.name}
-                readOnly={!canEdit}
                 onClose={() => setAlertModalOpen(false)}
-                draftConfig={draftAlertConfig}
-                onDraftChange={setDraftAlertConfig}
+                mode="quick"
+                quickObjectType="DAG"
+                quickObjectId={isNew ? undefined : id}
+                quickObjectName={dag.name}
+                readOnly={!canEdit}
+                draftRule={isNew ? draftAlertConfig : undefined}
+                onDraftChange={isNew ? setDraftAlertConfig : undefined}
+            />
+
+            {/* Sprint 5：条件分支节点配置 */}
+            <ConditionNodeModal
+                open={conditionModalOpen}
+                initialNodeName={selectedNode?.data.nodeName}
+                initialBranches={selectedNode?.data.branches}
+                availableNodes={rfNodes
+                    .filter(n => n.id !== selectedNodeId)
+                    // 排除会导致成环的下游节点（条件节点连向其祖先会形成环）
+                    .filter(n => selectedNodeId ? !wouldCreateCycle(rfEdges, selectedNodeId, n.id) : true)
+                    .map(n => ({id: n.id, nodeName: n.data.nodeName}))}
+                readOnly={!canEdit}
+                onClose={() => setConditionModalOpen(false)}
+                onSave={handleConditionNodeSave}
+            />
+
+            {/* Sprint 5：子 DAG 节点配置 */}
+            <SubDagNodeModal
+                open={subDagModalOpen}
+                initialNodeName={selectedNode?.data.nodeName}
+                initialSubDagId={selectedNode?.data.subDagId}
+                initialSyncExecution={selectedNode?.data.syncExecution}
+                candidateDags={candidateDags}
+                readOnly={!canEdit}
+                onClose={() => setSubDagModalOpen(false)}
+                onSave={handleSubDagNodeSave}
             />
         </div>
     );
@@ -1698,8 +1959,10 @@ function buildRunViewGraph(
     const defConfigByNodeId = new Map((dag.nodes || []).map(n => [n.nodeId, parseConfig(n.config)]));
 
     const nodes: Node<RFNodeData>[] = snapshot.map(ne => {
-        // nodeType 直通：PYTHON 节点在运行视图中保持原类型（Sprint 4），未知类型回退 SQL 展示
-        const nodeType: NodeType = ne.nodeType === 'SYNC' || ne.nodeType === 'PYTHON' ? ne.nodeType : 'SQL';
+        // nodeType 直通：SYNC/PYTHON/CONDITION/SUB_DAG 保持原类型（Sprint 4/5），未知类型回退 SQL 展示
+        const nodeType: NodeType = ne.nodeType === 'SYNC' || ne.nodeType === 'PYTHON' || ne.nodeType === 'CONDITION' || ne.nodeType === 'SUB_DAG'
+            ? ne.nodeType
+            : 'SQL';
         const cfg = defConfigByNodeId.get(ne.nodeId);
         return {
             id: ne.nodeId,
@@ -1723,6 +1986,10 @@ function buildRunViewGraph(
                 syncJobName: nodeType === 'SYNC' ? cfg?.syncJobName : undefined,
                 sqlContent: nodeType === 'SQL' ? cfg?.sqlContent : undefined,
                 pythonScript: nodeType === 'PYTHON' ? cfg?.pythonScript : undefined,
+                branches: nodeType === 'CONDITION' ? cfg?.branches : undefined,
+                subDagId: nodeType === 'SUB_DAG' ? cfg?.subDagId : undefined,
+                subDagName: nodeType === 'SUB_DAG' ? cfg?.subDagName : undefined,
+                syncExecution: nodeType === 'SUB_DAG' ? cfg?.syncExecution : undefined,
             },
         };
     });
@@ -1760,6 +2027,10 @@ function parseConfig(config?: string): {
     timeoutMinutes?: number;
     memoryLimitMb?: number;
     lastTestStatus?: 'PASSED' | 'FAILED';
+    branches?: ConditionBranch[];
+    subDagId?: number | string;
+    subDagName?: string;
+    syncExecution?: boolean;
 } {
     if (!config) return {};
     try {
@@ -1806,6 +2077,20 @@ function serializeConfig(data: RFNodeData): string {
             ...(data.timeoutMinutes != null ? {timeoutMinutes: data.timeoutMinutes} : {}),
             ...(data.memoryLimitMb != null ? {memoryLimitMb: data.memoryLimitMb} : {}),
             ...(data.lastTestStatus ? {lastTestStatus: data.lastTestStatus} : {}),
+        });
+    }
+    if (data.nodeType === 'CONDITION') {
+        return JSON.stringify({
+            type: 'CONDITION',
+            branches: data.branches || [],
+        });
+    }
+    if (data.nodeType === 'SUB_DAG') {
+        return JSON.stringify({
+            type: 'SUB_DAG',
+            subDagId: data.subDagId,
+            subDagName: data.subDagName,
+            syncExecution: data.syncExecution ?? true,
         });
     }
     return JSON.stringify({type: 'SYNC', syncJobId: data.syncJobId, syncJobName: data.syncJobName});

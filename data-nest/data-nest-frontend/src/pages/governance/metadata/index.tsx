@@ -22,7 +22,13 @@ import MetadataTree from './MetadataTree';
 import EmptyState from '../../../components/EmptyState';
 import {previewMetadataTable, type PreviewResult} from '../../../api/preview';
 import PreviewModal from '../../../components/PreviewModal';
-import {HiOutlineBookOpen, HiOutlineCircleStack, HiOutlineEye, HiOutlineTableCells} from 'react-icons/hi2';
+import {
+    HiOutlineBookOpen,
+    HiOutlineCircleStack,
+    HiOutlineEye,
+    HiOutlineShare,
+    HiOutlineTableCells
+} from 'react-icons/hi2';
 import {formatDateTime} from '../../../utils/format';
 import {COL} from '../../../constants/table';
 import {isWithoutSchema} from '../../../constants/datasource';
@@ -638,15 +644,27 @@ export default function MetadataPage() {
                         <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-0">
                             表信息
                         </h3>
-                        {canPreview && (
+                        <div className="flex items-center gap-ds-2">
+                            {/* Sprint 5：血缘图谱独立页面入口（表级图谱 + 字段级下钻 + 影响/溯源分析） */}
                             <DsButton
                                 variant="secondary"
-                                onClick={() => handlePreviewTable(selectedTable)}
+                                onClick={() => navigate(
+                                    `/governance/metadata/lineage?tableId=${selectedTable.id}&tableName=${encodeURIComponent(`${selectedTable.databaseName}.${selectedTable.tableName}`)}`,
+                                )}
                             >
-                                <HiOutlineEye size={16}/>
-                                预览
+                                <HiOutlineShare size={16}/>
+                                血缘图谱
                             </DsButton>
-                        )}
+                            {canPreview && (
+                                <DsButton
+                                    variant="secondary"
+                                    onClick={() => handlePreviewTable(selectedTable)}
+                                >
+                                    <HiOutlineEye size={16}/>
+                                    预览
+                                </DsButton>
+                            )}
+                        </div>
                     </div>
                     <div className="grid grid-cols-[100px_1fr] gap-y-ds-3 text-ds-small">
                         <span className="text-ds-text-muted">表名</span>

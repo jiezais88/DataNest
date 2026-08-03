@@ -2,7 +2,7 @@
 
 > 本文件用于 Sprint 5 内多个 Agent 会话之间的状态同步。每次会话结束时更新状态；新会话进入时先读此文件。
 >
-> **最后更新**：2026-08-03 — PRD、技术文档、UI 原型已确定；后端实现已完成并编译通过；待前端实现与联调。
+> **最后更新**：2026-08-03 — 后端实现已完成并编译通过；前端实现已完成（typecheck/lint/build 通过）；待后端部署后联调。
 
 ## Sprint 目标
 
@@ -106,31 +106,71 @@ DAG 流水线。
   `CONDITION_CONFIG_INVALID(7104)` /
   `ALERT_RULE_NOT_FOUND(7201)` / `ALERT_RULE_OBJECT_INVALID(7202)`
 
+## 变更清单（本会话：前端 + 后端补充字段）
+
+### 后端补充（用户要求：`alert_history` 增加发送状态字段）
+
+| 文件                                          | 内容                                                                             |
+|-----------------------------------------------|----------------------------------------------------------------------------------|
+| `V3.5.6__alert_history_send_status.sql`（新） | `alert_history` 加 `send_status VARCHAR(16) NOT NULL DEFAULT 'SUCCESS'`          |
+| `AlertConstants`                              | 加 `SEND_STATUS_SUCCESS` / `SEND_STATUS_FAILED`                                  |
+| `AlertHistory` 实体                           | 加 `sendStatus`                                                                  |
+| `MailService.send`                            | `void` → `boolean`（成功 true；未配置 sender/无收件人/异常 false），旧调用方兼容 |
+| `AlertFiringService.fire`                     | 发送后写 `sendStatus`；`saveHistory` 增加参数                                    |
+| `AlertHistoryMapper.selectHistoryPage`        | 加可选 `sendStatus` 过滤                                                         |
+| `AlertHistoryController.list`                 | 加 `@RequestParam sendStatus`                                                    |
+
+> 注：`task-core` 有改动，需重编并部署 engineering/worker/governance/system/job 全部服务。
+
+### 前端
+
+| 文件                                                                                 | 内容                                                                                                                                                                 |
+|--------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `src/api/lineage.ts` / `src/types/lineage.ts`                                        | 扩展血缘图谱/字段级/影响溯源接口与类型                                                                                                                               |
+| `src/api/alert.ts` / `src/types/alert.ts`（新）                                      | 告警规则 CRUD/toggle/object-options/history（含 sendStatus）/users/with-email + 三个快捷入口                                                                         |
+| `pages/governance/metadata/lineage/LineageGraphPage.tsx`（新）                       | 表级血缘 ReactFlow 图谱：影响/溯源高亮、展开层级、空状态、点击/双击跳转；路由 `/governance/metadata/lineage`                                                         |
+| `pages/governance/metadata/lineage/FieldLineagePanel.tsx`（新）                      | 字段级血缘下钻                                                                                                                                                       |
+| `pages/governance/metadata/index.tsx`                                                | 表详情加「血缘图谱」入口按钮                                                                                                                                         |
+| `pages/system/alert-center/AlertCenterPage.tsx`（新）                                | 告警规则/历史两个 Tab，历史含发送状态列+过滤+详情弹窗                                                                                                                |
+| `components/AlertRuleModal.tsx`（新，全局通用）                                      | create/edit/quick 三模式通用弹窗（DAG/同步任务/采集任务快捷入口复用）                                                                                                |
+| `components/UserSelect.tsx`（新）                                                    | 告警接收用户选择器（仅邮箱用户）                                                                                                                                     |
+| `pages/engineering/dags/*`                                                           | 节点面板/节点组件/解析序列化/连线校验（SUB_DAG 单出线、CONDITION 分支同步）/保存校验；`ConditionNodeModal`/`SubDagNodeModal`；告警按钮替换为 `AlertRuleModal(quick)` |
+| `pages/engineering/sync-jobs/index.tsx` / `pages/governance/collect-tasks/index.tsx` | 操作列加「🔔 告警配置」快捷入口                                                                                                                                      |
+| `router` / `Sidebar` / `breadcrumb` / `roles.ts`                                     | `/system/alert-center`、`/governance/metadata/lineage` 路由与菜单（告警中心仅超管/工程师/治理员可见）、`ALERT_VIEW_ROLES` / `ALERT_WRITE_ROLES`                      |
+
+### 前端关键交互决策（已与用户确认）
+
+- 血缘图谱 = 独立页面（元数据详情按钮进入），不做页签重构。
+- 条件分支 = 弹窗驱动（每分支选下游节点），保存时自动同步画布连线；删除条件节点出线同步删分支。
+- DAG 编辑器告警按钮 = 替换为新的 `alert_rule` 快捷入口（统一数据源），旧 `DagAlertConfigModal` 保留未删但已无引用。
+
 ## Blocker
 
 无。全量 `mvn clean package`（含 gateway）编译通过。
 
 ## 跨会话状态看板
 
-| 会话 | 负责人（Agent/人） | 状态   | 已完成                                    | 待办                                                                           | 备注                                                                                |
-|------|--------------------|--------|-------------------------------------------|--------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| 产品 | 当前 Agent         | 已完成 | Sprint 5 PRD、技术文档、UI 原型已确定     | —                                                                              | PRD/技术文档/原型范围已确认；技术栈版本已核对（ReactFlow 11.11.x、PostgreSQL 16）   |
-| 后端 | 当前 Agent         | 已完成 | 三大模块后端实现 + 编译通过 + 代码 review | 待部署到环境做接口自测                                                         | 改动涉及 task-core → 需重编并部署 engineering+worker+governance+system+job 全部服务 |
-| 前端 | -                  | 未开始 | UI 原型已就绪                             | 按原型与接口契约实现：血缘图谱页、告警中心页、条件分支/子DAG编辑器、用户选择器 | 后端接口契约已就绪；需同步 `/users/with-email`、`/lineage/*`、`/alert-rules` 等     |
-| 测试 | -                  | 未开始 | -                                         | 功能/集成/回归测试                                                             | 建议后端接口自测通过后再进入联调                                                    |
+| 会话 | 负责人（Agent/人） | 状态   | 已完成                                                | 待办                                                                    | 备注                                                                                |
+|------|--------------------|--------|-------------------------------------------------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| 产品 | 当前 Agent         | 已完成 | Sprint 5 PRD、技术文档、UI 原型已确定                 | —                                                                       | PRD/技术文档/原型范围已确认；技术栈版本已核对（ReactFlow 11.11.x、PostgreSQL 16）   |
+| 后端 | 当前 Agent         | 已完成 | 三大模块后端实现 + 编译通过 + 代码 review             | 待部署到环境做接口自测                                                  | 改动涉及 task-core → 需重编并部署 engineering+worker+governance+system+job 全部服务 |
+| 前端 | 当前 Agent         | 已完成 | 已按 PRD/技术文档/原型实现三大模块前端 + 后端补充字段 | 待后端部署后联调：血缘图谱接口、告警中心 CRUD、条件分支/子 DAG 保存触发 | 前端 typecheck/lint/build 通过；后端 task-core 改动需重编部署全部服务               |
+| 测试 | -                  | 未开始 | -                                                     | 功能/集成/回归测试                                                      | 建议后端接口自测通过后再进入联调                                                    |
 
 ## Next Action
 
-1. 部署后端：
+1. 部署后端（含本会话新增的 send_status 字段）：
    `mvn -pl data-nest-task-core,data-nest-engineering,data-nest-worker,data-nest-governance,data-nest-system,data-nest-job -am clean package -DskipTests`
    后 `docker compose build` / `up -d --no-deps` 对应服务，检查镜像时间戳确认新 jar。
 2. 后端接口自测（按 AGENTS.md 验证规范）：
     - 血缘：构造字段级 lineage_record 样例 → `/api/governance/lineage/graph`、`/columns`、`/impact`、`/source`；跑一次 SQL
       INSERT..SELECT 验证字段级落库
-    - 告警：建 alert_rule → 触发失败同步 → 查 `alert_history` + MailHog；DAG 告警兼容回退；`/users/with-email` 过滤
+   - 告警：建 alert_rule → 触发失败同步 → 查 `alert_history`（含 send_status）+ MailHog；DAG 告警兼容回退；
+     `/users/with-email` 过滤
     - 控制流：含 CONDITION（引用上游 row_count）+ SUB_DAG 的 DAG → 保存（验证循环引用阻断）→ 触发 → 验证命中分支执行、非命中分支
       SKIPPED、子 DAG 独立执行
-3. 前端会话启动：按已确定的 UI 原型实现血缘图谱页 / 告警中心页 / 条件分支与子 DAG 编辑器 / 用户选择器，接入上述接口。
+3. 前后端联调：前端已就绪（typecheck/lint/build 通过），联调路径：元数据表详情 → 血缘图谱（图谱/字段下钻/影响/溯源）→
+   系统管理 → 告警中心（规则 CRUD + 历史发送状态）→ 同步任务/采集任务「🔔 告警配置」→ DAG 编辑器（条件分支/子 DAG 保存与连线、告警按钮）。
 
 ## 参考链接
 

@@ -75,17 +75,18 @@ public class AlertFiringService {
             return false;
         }
         String recipients = String.join(";", emails);
+        boolean sent = false;
         try {
-            mailService.send(recipients, buildSubject(rule, alertType), buildBody(rule, alertType, detail));
+            sent = mailService.send(recipients, buildSubject(rule, alertType), buildBody(rule, alertType, detail));
         } catch (Exception e) {
             logger.error("告警邮件发送失败: objectType={}, objectId={}, alertType={}",
                     objectType, objectId, alertType, e);
         }
-        saveHistory(rule, alertType, recipients);
+        saveHistory(rule, alertType, recipients, sent ? AlertConstants.SEND_STATUS_SUCCESS : AlertConstants.SEND_STATUS_FAILED);
         return true;
     }
 
-    private void saveHistory(AlertRule rule, String alertType, String recipients) {
+    private void saveHistory(AlertRule rule, String alertType, String recipients, String sendStatus) {
         try {
             AlertHistory history = new AlertHistory();
             history.setId(IdWorker.getId());
@@ -94,6 +95,7 @@ public class AlertFiringService {
             history.setObjectId(rule.getObjectId());
             history.setAlertType(alertType);
             history.setRecipients(recipients);
+            history.setSendStatus(sendStatus);
             history.setSentAt(LocalDateTime.now());
             alertHistoryMapper.insert(history);
         } catch (Exception e) {

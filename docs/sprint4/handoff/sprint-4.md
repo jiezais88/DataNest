@@ -2,13 +2,10 @@
 
 > 本文件用于 Sprint 4 内多个 Agent 会话之间的状态同步。每次会话结束时更新状态；新会话进入时先读此文件。
 >
-> **最后更新**：2026-08-02 — 后端架构调整：DS 节点回调从 `data-nest-engineering` 迁移到 `data-nest-worker`，
-> `MybatisPlusInterceptor`、`DagAlertExecutionListener`、`DagEdgeSnapshot`、`GenericSqlExecutor`、`DataPreviewService`
-> 等公共能力统一下沉到 `data-nest-task-core`；删除 engineering 侧多余/死代码 `RetryService`、`SqlStatementSplitter`。
-> 已重新打包部署 app-engineering/app-worker/app-job/app-governance，
-> 迁移回归测试（DAG `regression-migration` 1 SQL + 1 SYNC，执行记录 2083822336429502465）通过，节点回调正常落到 worker。
-> 前端实现完成：全部 Sprint 4 功能已开发并通过 `tsc -b` + `vite build` 构建验证（0 lint error），
-> 代码 review 后 2 项 major、10 项 minor 修复已落地。未联调、未跑测试。
+> **最后更新**：2026-08-03 — Sprint 4 验收（多表同步+速率限流、重跑失败节点展示、列表筛选持久化、同步日志批量写+按表分页滚动加载）完成并验证通过；详见文末
+> 「2026-08-03 — Sprint 4 验收记录」。另：修了 `SysUserMapper` `@Select(<script>)` 内 `email <> ''`（非法 XML，改 `!=`）与迁移
+> `V3.5.5` `email` 列歧义（unnest 别名 `email`→`rcpt`），并豁免了 3.4.1/3.4.3 因行尾变化导致的 Flyway checksum 校验。
+> 注意：Sprint 5（另一 Agent 并行开发）已改动 `data-nest-common`/告警规则/SQL 血缘等，本文件不覆盖其内容。
 
 ## Sprint 目标
 
@@ -382,13 +379,72 @@ Sprint 4 在 Sprint 3 DAG 编排基础上，扩展任务类型、提升可复用
 - `s4_test.s4_orders` / `s4_test.s4_logs` 保留，Doris 端对应表已 `TRUNCATE`。
 - `app-engineering` 镜像已基于最新代码重建并健康运行。
 
+## 2026-08-03 — Sprint 4 验收记录
+
+### 验收结论（页面验收，用户确认通过）
+
+| 验收项                            | 结论 | 备注                                                                                                                                                     |
+|-----------------------------------|------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 多表同步 + 速率限流               | ✅   | 双源表（s4_test.s4_orders/s4_logs）→ 各自目标表；限流 5MB/s+100 行/s；`Addax job JSON` 含 `setting.speed.byte=655360/record=100/channel=3` + per-channel |
+| 失败继续跑完其余表                | ✅   | 删目标表重跑：两张表都执行，整体 FAILED，per-table 明细 1 成功 1 失败                                                                                    |
+| 重跑失败节点展示                  | ✅   | 复用节点置灰+「复用」角标、运行视图横幅、列表「重跑」徽标                                                                                                |
+| 列表筛选持久化（P0/P1）           | ✅   | 查询保留 URL 身份；7 个列表页筛选 URL 持久化，深层跳转返回不丢                                                                                           |
+| 同步日志批量写 + 按表分页滚动加载 | ✅   | 500/批 `insertBatch`；`table_name` 标记；概览+每表 Tab 各自无限滚动                                                                                      |
+
+### 产品设计决策
+
+- **重跑实例展示**：运行视图默认显示全部节点，复用节点置灰+「复用」角标、本次执行节点「本次执行」；顶部横幅
+  `重跑实例 · 本次重跑 n 个节点，其余 m 个复用上轮结果` + 「仅看本次执行」开关（隐藏复用节点）。判定规则前端推断：
+  `节点.startTime < 实例.startTime` ⇒ 复用（零后端改动）。
+- **同步日志分页**：`sync_job_log` 加 `table_name` 列（每行标记所属表，平台概要行为 NULL 归「概览」）；日志弹窗 「概览 + 每表」Tab
+  各自独立分页（pageSize=200）+ 滚动自动加载更多（无需点击）。`HistoryLogModal` 兼容平铺模式 （DAG SYNC 节点实时日志复用）。
+
+### 变更清单
+
+后端：
+
+- `V3.4.3__sync_job_history_table_results.sql` — `sync_job_history.table_results`（TEXT，per-table 明细）
+- `V3.4.4__sync_job_log_table_name.sql` — `sync_job_log.table_name` + 索引（按表分页前提）
+- `task-core`：`SyncJobHistory`/`SyncJobLog` 实体加字段；`LineageRecord`（Sprint 5 字段级血缘，另一 Agent）；
+  `AddaxJobService` 多表失败继续 + `TableResult(logLines)`；`SyncJobExecutorService` 按表批量写日志（500/批）；
+  `SyncJobLogMapper.insertBatch`
+- `engineering`：`SyncJobHistoryDTO` 透出 `sourceTables`/`tableResults`；`SyncJobController.logs` +
+  `SyncJobService.getLogs`
+  按 `scope=overview|all|表名` + `page/pageSize` 分页返回 `PageResult`
+- `data-nest-job`/`governance` 等 Sprint 5 改动：另一 Agent，未纳入本文档
+
+前端：
+
+- `api/sync.ts`（`getSyncJobLogs` 带 scope/page/pageSize）
+- `pages/engineering/dag-executions/index.tsx`（L1：失败节点跳画布带 from；L2：筛选 URL 持久化；重跑徽标/复用计数）
+- `pages/engineering/dags/Editor.tsx`（运行视图复用/本次执行角标、横幅+开关、NodeSummary 执行方式行）
+- `pages/engineering/dags/project.tsx`、`dags/index.tsx`、`datasources/index.tsx`、`sync-jobs/index.tsx`、
+  `collect-tasks/index.tsx`、`users/index.tsx`、`data-standards/index.tsx`（筛选 URL 持久化）
+- `pages/engineering/sync-jobs/history-global/index.tsx` + `history-common.tsx`（日志分页弹窗、P0 查询保留身份）
+- `pages/governance/collect-tasks/history-global/index.tsx`（P0 查询保留 taskId）
+- `pages/governance/metadata/index.tsx`：树导航，`tableId` 已 URL 持久化（已覆盖，未额外改动）
+
+### 期间修复的问题
+
+| # | 问题                                                                | 根因                                                  | 修复                                            |
+|---|---------------------------------------------------------------------|-------------------------------------------------------|-------------------------------------------------|
+| 1 | 多表同步任务 2084118527044341761 报 `Failed to flush data to Doris` | 目标表在 Doris 不存在（Addax doriswriter 不自动建表） | 预建两张目标表（`acc_mt_orders/logs_20260803`） |
+| 2 | `SyncTableResultDTO.java` 丢失                                      | 另一 Agent 提交后未包含该新文件                       | 重建恢复                                        |
+| 3 | `SysUserMapper` 启动报 XML 解析错误                                 | `@Select("<script>")` 内 `email <> ''` 的裸 `<` 非法  | 改 `!=`                                         |
+| 4 | 迁移 `V3.5.5` 报 `email is ambiguous`                               | unnest 列别名 `email` 与 `sys_user.email` 冲突        | 别名改 `rcpt`                                   |
+| 5 | Flyway 校验 3.4.1/3.4.3 checksum 不匹配                             | git 行尾转换（LF→CRLF）改文件字节                     | 对应 checksum 置 NULL 豁免                      |
+
+### 部署状态（2026-08-03）
+
+- `app-system` / `app-engineering` / `app-worker` / `app-frontend` 已重建并 healthy（task-core 15:28 打包含新代码）。
+- 迁移 `V3.4.3`/`V3.4.4` 及 Sprint 5 的 V3.5.x 全部应用成功。
+- 环境遗留：测试目标表 `datanest.acc_mt_orders_20260803`/`acc_mt_logs_20260803` 保留，供后续验收/复测。
+
 ## Next Action
 
-1. Sprint 4 前端血缘功能已实现并部署，等待用户验收。
-2. 如需继续覆盖邮件告警实际发送、Python 节点真实执行、节点超时告警等，可补充专项测试（当前 E2E
-   已覆盖配置与执行链路，但未断言邮件到达与超时扫描任务触发）。
-    - 节点实时日志轮询（路径带 /dag-executions 前缀）。
-    - 触发参数覆盖、版本回滚后画布刷新。
+1. Sprint 4 验收已完成（多表同步/限流/重跑展示/筛选持久化/日志分页）。
+2. 可继续补充：邮件告警实际发送（MailHog）、节点超时告警扫描、Python 节点大数据量执行等专项验证。
+3. Sprint 5（另一 Agent）与本次改动存在少量交集（`data-nest-common`、告警规则、SQL 血缘），协作时注意 merge 冲突。
 
 ## 参考链接
 

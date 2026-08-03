@@ -9,6 +9,8 @@ import CollectHistoryGlobalPage from '../pages/governance/collect-tasks/history-
 import SyncJobsPage from '../pages/engineering/sync-jobs';
 import SyncJobHistoryGlobalPage from '../pages/engineering/sync-jobs/history-global';
 import MetadataPage from '../pages/governance/metadata';
+import LineageGraphPage from '../pages/governance/metadata/lineage/LineageGraphPage';
+import AlertCenterPage from '../pages/system/alert-center/AlertCenterPage';
 import DataStandardsPage from '../pages/governance/data-standards';
 import DagsPage from '../pages/engineering/dags';
 import ProjectDagsPage from '../pages/engineering/dags/project';
@@ -74,6 +76,8 @@ export const router = createBrowserRouter([
             {path: 'governance/collect-tasks/:taskId/history', element: <CollectHistoryRedirect/>},
             {path: 'governance/collect-task-history', element: <CollectHistoryGlobalPage/>},
             {path: 'governance/metadata', element: <MetadataPage/>},
+            {path: 'governance/metadata/lineage', element: <LineageGraphPage/>},
+            {path: 'system/alert-center', element: <AlertCenterPage/>},
             {path: 'governance/data-standards', element: <DataStandardsPage/>},
         ],
     },
