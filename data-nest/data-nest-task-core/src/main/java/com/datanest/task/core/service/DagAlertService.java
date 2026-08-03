@@ -29,23 +29,38 @@ public class DagAlertService {
     private final DagMapper dagMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final MailService mailService;
+    private final AlertFiringService alertFiringService;
 
     public DagAlertService(DagAlertConfigMapper dagAlertConfigMapper,
                            DagAlertHistoryMapper dagAlertHistoryMapper,
                            DagMapper dagMapper,
                            DagExecutionMapper dagExecutionMapper,
-                           MailService mailService) {
+                           MailService mailService,
+                           AlertFiringService alertFiringService) {
         this.dagAlertConfigMapper = dagAlertConfigMapper;
         this.dagAlertHistoryMapper = dagAlertHistoryMapper;
         this.dagMapper = dagMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.mailService = mailService;
+        this.alertFiringService = alertFiringService;
     }
 
     /**
      * DAG 执行失败时触发。
+     * Sprint 5：优先走通用告警规则（alert_rule），未命中规则时回退 Sprint 4 的 dag_alert_config。
      */
     public void onDagFailed(DagExecution execution, List<NodeExecution> failedNodes) {
+        String firstError = failedNodes == null || failedNodes.isEmpty()
+                ? "-"
+                : failedNodes.stream()
+                .filter(n -> StringUtils.hasText(n.getErrorMessage()))
+                .findFirst()
+                .map(NodeExecution::getErrorMessage)
+                .orElse("-");
+        if (alertFiringService.fire("DAG", execution.getDagId(), "FAILURE", firstError)) {
+            return;
+        }
+
         DagAlertConfig config = resolveConfig(execution.getDagId());
         if (config == null || !isEnabled(config) || !contains(config, "FAILURE")) {
             return;
@@ -59,13 +74,6 @@ public class DagAlertService {
         String failedNodeNames = failedNodes == null || failedNodes.isEmpty()
                 ? "-"
                 : String.join("、", failedNodes.stream().map(NodeExecution::getNodeName).toList());
-        String firstError = failedNodes == null || failedNodes.isEmpty()
-                ? "-"
-                : failedNodes.stream()
-                .filter(n -> StringUtils.hasText(n.getErrorMessage()))
-                .findFirst()
-                .map(NodeExecution::getErrorMessage)
-                .orElse("-");
 
         String subject = String.format("[DataNest 告警] DAG「%s」执行失败", dagName);
         String body = String.join("\n",
@@ -83,6 +91,10 @@ public class DagAlertService {
      * 节点超时时触发。
      */
     public void onNodeTimeout(NodeExecution node, Long dagId) {
+        if (alertFiringService.fire("DAG", dagId, "TIMEOUT", "节点「" + node.getNodeName() + "」执行超时")) {
+            return;
+        }
+
         DagAlertConfig config = resolveConfig(dagId);
         if (config == null || !isEnabled(config) || !contains(config, "TIMEOUT")) {
             return;
@@ -114,6 +126,10 @@ public class DagAlertService {
      * DAG 执行成功时触发（如果配置了 SUCCESS）。
      */
     public void onDagSuccess(DagExecution execution) {
+        if (alertFiringService.fire("DAG", execution.getDagId(), "SUCCESS", "DAG 执行成功")) {
+            return;
+        }
+
         DagAlertConfig config = resolveConfig(execution.getDagId());
         if (config == null || !isEnabled(config) || !contains(config, "SUCCESS")) {
             return;

@@ -9,8 +9,6 @@ import com.datanest.engineering.service.SyncJobService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/sync-jobs")
 public class SyncJobController {
@@ -96,7 +94,10 @@ public class SyncJobController {
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @GetMapping("/{id}/history/{historyId}/logs")
-    public Result<List<SyncJobLogDTO>> logs(@PathVariable Long id, @PathVariable Long historyId) {
-        return Result.ok(syncJobService.getLogs(historyId));
+    public Result<PageResult<SyncJobLogDTO>> logs(@PathVariable Long id, @PathVariable Long historyId,
+                                                  @RequestParam(defaultValue = "all") String scope,
+                                                  @RequestParam(defaultValue = "1") int page,
+                                                  @RequestParam(defaultValue = "200") int pageSize) {
+        return Result.ok(syncJobService.getLogs(historyId, scope, page, pageSize));
     }
 }

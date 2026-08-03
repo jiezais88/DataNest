@@ -33,4 +33,10 @@ public interface DagNodeMapper extends BaseMapper<DagNode> {
      */
     @Select("SELECT DISTINCT dag_id FROM dag_node WHERE config ~ #{pattern}")
     List<Long> selectDagIdsReferencingSyncJob(@Param("pattern") String pattern);
+
+    /**
+     * Sprint 5：通过 dag_node.config 正则找引用了某 subDagId 的 DAG 列表（子 DAG 删除校验）。
+     */
+    @Select("SELECT DISTINCT dag_id FROM dag_node WHERE config ~ #{pattern}")
+    List<Long> selectDagIdsReferencingSubDag(@Param("pattern") String pattern);
 }

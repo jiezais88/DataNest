@@ -11,6 +11,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.engineering.dto.*;
+import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
@@ -52,13 +53,15 @@ public class SyncJobService {
     private final SyncJobTriggerService syncJobTriggerService;
     private final SyncNodeMutexService syncNodeMutexService;
     private final SysUserService sysUserService;
+    private final AlertRuleMapper alertRuleMapper;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
                           SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
                           DagNodeMapper dagNodeMapper, DagMapper dagMapper, DagExecutionMapper dagExecutionMapper,
                           SchedulerServiceForEngineering schedulerService,
                           SyncJobTriggerService syncJobTriggerService,
-                          SyncNodeMutexService syncNodeMutexService, SysUserService sysUserService) {
+                          SyncNodeMutexService syncNodeMutexService, SysUserService sysUserService,
+                          AlertRuleMapper alertRuleMapper) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
@@ -70,6 +73,7 @@ public class SyncJobService {
         this.syncJobTriggerService = syncJobTriggerService;
         this.syncNodeMutexService = syncNodeMutexService;
         this.sysUserService = sysUserService;
+        this.alertRuleMapper = alertRuleMapper;
     }
 
     @Transactional
@@ -209,6 +213,8 @@ public class SyncJobService {
         }
         syncJobLogMapper.delete(new QueryWrapper<SyncJobLog>().eq("sync_job_id", id));
         syncJobHistoryMapper.delete(new QueryWrapper<SyncJobHistory>().eq("sync_job_id", id));
+        // Sprint 5：删除同步任务时级联删除关联告警规则（PRD §7）
+        alertRuleMapper.deleteByObject(AlertConstants.OBJECT_TYPE_SYNC_JOB, id);
         syncJobMapper.deleteById(id);
 
         // XXL-JOB 注销放到事务提交后：避免 DB 回滚时调度任务已被误删
@@ -465,10 +471,29 @@ public class SyncJobService {
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
+    /**
+     * 按历史 ID 返回全部日志（SYNC 节点执行详情用，不分页）。
+     */
     public List<SyncJobLogDTO> getLogs(Long historyId) {
-        List<SyncJobLog> logs = syncJobLogMapper.selectList(
-                new QueryWrapper<SyncJobLog>().eq("history_id", historyId).orderByAsc("line_num", "created_at"));
-        return logs.stream().map(this::toLogDTO).toList();
+        QueryWrapper<SyncJobLog> wrapper = new QueryWrapper<SyncJobLog>()
+                .eq("history_id", historyId)
+                .orderByAsc("line_num", "created_at");
+        return syncJobLogMapper.selectList(wrapper).stream().map(this::toLogDTO).toList();
+    }
+
+    public PageResult<SyncJobLogDTO> getLogs(Long historyId, String scope, int page, int pageSize) {
+        QueryWrapper<SyncJobLog> wrapper = new QueryWrapper<SyncJobLog>()
+                .eq("history_id", historyId)
+                .orderByAsc("line_num", "created_at");
+        if ("overview".equalsIgnoreCase(scope)) {
+            // 平台概要行（开始/成功/失败），table_name 为 NULL
+            wrapper.isNull("table_name");
+        } else if (StringUtils.hasText(scope) && !"all".equalsIgnoreCase(scope)) {
+            wrapper.eq("table_name", scope);
+        }
+        Page<SyncJobLog> result = syncJobLogMapper.selectPage(Page.of(page, pageSize), wrapper);
+        List<SyncJobLogDTO> records = result.getRecords().stream().map(this::toLogDTO).toList();
+        return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
     private LocalDateTime computeNextExecutionTime(String triggerType, String cronExpression) {
@@ -719,6 +744,7 @@ public class SyncJobService {
         dto.setLevel(entity.getLevel());
         dto.setMessage(entity.getMessage());
         dto.setLineNum(entity.getLineNum());
+        dto.setTableName(entity.getTableName());
         dto.setCreatedAt(entity.getCreatedAt());
         return dto;
     }

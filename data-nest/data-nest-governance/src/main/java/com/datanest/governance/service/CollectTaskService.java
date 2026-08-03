@@ -15,14 +15,12 @@ import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
 import com.datanest.governance.dto.CollectTaskUpdateRequest;
+import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.entity.CollectChangeDetail;
 import com.datanest.task.core.entity.CollectExecutionLog;
 import com.datanest.task.core.entity.CollectHistory;
 import com.datanest.task.core.entity.CollectTask;
-import com.datanest.task.core.mapper.CollectChangeDetailMapper;
-import com.datanest.task.core.mapper.CollectExecutionLogMapper;
-import com.datanest.task.core.mapper.CollectHistoryMapper;
-import com.datanest.task.core.mapper.CollectTaskMapper;
+import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,18 +52,21 @@ public class CollectTaskService {
     private final CollectExecutionLogMapper collectExecutionLogMapper;
     private final CollectChangeDetailMapper changeDetailMapper;
     private final SysUserService sysUserService;
+    private final AlertRuleMapper alertRuleMapper;
 
     public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService,
                               CollectHistoryMapper collectHistoryMapper,
                               CollectExecutionLogMapper collectExecutionLogMapper,
                               CollectChangeDetailMapper changeDetailMapper,
-                              SysUserService sysUserService) {
+                              SysUserService sysUserService,
+                              AlertRuleMapper alertRuleMapper) {
         this.collectTaskMapper = collectTaskMapper;
         this.schedulerService = schedulerService;
         this.collectHistoryMapper = collectHistoryMapper;
         this.collectExecutionLogMapper = collectExecutionLogMapper;
         this.changeDetailMapper = changeDetailMapper;
         this.sysUserService = sysUserService;
+        this.alertRuleMapper = alertRuleMapper;
     }
 
     @Transactional
@@ -223,6 +224,8 @@ public class CollectTaskService {
         }
         collectExecutionLogMapper.delete(new QueryWrapper<CollectExecutionLog>().eq("task_id", id));
         collectHistoryMapper.delete(new QueryWrapper<CollectHistory>().eq("task_id", id));
+        // Sprint 5：删除采集任务时级联删除关联告警规则（PRD §7）
+        alertRuleMapper.deleteByObject(AlertConstants.OBJECT_TYPE_COLLECT_TASK, id);
         collectTaskMapper.deleteById(id);
 
         if (xxlJobId != null) {

@@ -48,6 +48,14 @@ public class DolphinSchedulerConfig {
      */
     private String callbackBaseUrl = "http://app-gateway:8080/api/worker";
 
+    /**
+     * Sprint 5：工程侧内部回调地址前缀（DS HTTP 任务 → engineering）。
+     * 子 DAG 异步执行模式用：DS 任务回调 engineering 内部端点触发子 DAG。
+     *   - Docker 内网：默认 {@code http://app-gateway:8080/api/engineering}
+     *   - Gateway 路由 {@code /api/engineering/**} + StripPrefix=1 → engineering
+     */
+    private String engineeringCallbackBaseUrl = "http://app-gateway:8080/api/engineering";
+
     @Bean(name = "dolphinSchedulerRestTemplate")
     public RestTemplate dolphinSchedulerRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();

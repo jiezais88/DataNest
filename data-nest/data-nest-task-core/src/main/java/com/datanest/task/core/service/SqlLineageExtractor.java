@@ -2,12 +2,18 @@ package com.datanest.task.core.service;
 
 import com.datanest.task.core.entity.LineageRecord;
 import com.datanest.task.core.mapper.LineageRecordMapper;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.view.CreateView;
 import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.update.Update;
 import net.sf.jsqlparser.util.TablesNamesFinder;
 import org.slf4j.Logger;
@@ -103,6 +109,9 @@ public class SqlLineageExtractor {
             r.setCreatedAt(now);
             records.add(r);
         }
+        // Sprint 5：字段级血缘提取（仅覆盖直接列映射场景，见 ADR-S5-005）
+        extractColumnMappings(stmt, targetTable, sourceTables, records, dagId, dagName, nodeId, nodeName,
+                executionId, now);
         if (records.isEmpty() && targetTable != null) {
             // 只有目标表、没有源表的情况（如 CREATE TABLE 无 CTAS）也记录一条
             LineageRecord r = new LineageRecord();
@@ -145,6 +154,101 @@ public class SqlLineageExtractor {
             records.add(r);
         }
         saveRecords(records);
+    }
+
+    /**
+     * Sprint 5：提取字段级血缘（source_column → target_column）。
+     * 覆盖范围（ADR-S5-005）：
+     *   - INSERT INTO t(a,b) SELECT x,y FROM s：直接列映射
+     *   - CREATE TABLE t AS SELECT ...：CTAS 列映射
+     * 规则：
+     *   - 仅当语句只有一个源表时生成字段级记录（列归属确定，避免多表 JOIN 时列归属错误）；
+     *     多源表语句仅保留表级血缘。
+     *   - 复杂表达式（如 x+y）以表达式字符串作为 sourceColumn，便于前端提示。
+     *   - 字段级记录与表级记录并存（表级血缘仍作为图谱锚点）。
+     */
+    private void extractColumnMappings(Statement stmt, String targetTable, Set<String> sourceTables,
+                                       List<LineageRecord> records, Long dagId, String dagName,
+                                       String nodeId, String nodeName, Long executionId, LocalDateTime now) {
+        if (targetTable == null || sourceTables.size() != 1) {
+            return;
+        }
+        Select select = null;
+        List<String> declaredTargetColumns = null;
+        if (stmt instanceof Insert insert) {
+            select = insert.getSelect();
+            if (insert.getColumns() != null && !insert.getColumns().isEmpty()) {
+                declaredTargetColumns = insert.getColumns().stream()
+                        .map(col -> col.getColumnName())
+                        .toList();
+            }
+        } else if (stmt instanceof CreateTable createTable) {
+            select = createTable.getSelect();
+            if (createTable.getColumnDefinitions() != null && !createTable.getColumnDefinitions().isEmpty()) {
+                declaredTargetColumns = createTable.getColumnDefinitions().stream()
+                        .map(ColumnDefinition::getColumnName)
+                        .toList();
+            }
+        }
+        if (select == null || select.getPlainSelect() == null) {
+            return;
+        }
+        PlainSelect plain = select.getPlainSelect();
+        List<SelectItem<?>> selectItems = plain.getSelectItems();
+        if (selectItems == null || selectItems.isEmpty()) {
+            return;
+        }
+
+        String singleSource = sourceTables.iterator().next();
+        for (int i = 0; i < selectItems.size(); i++) {
+            SelectItem<?> item = selectItems.get(i);
+            Expression expression = item.getExpression();
+            String sourceColumn = columnNameOf(expression);
+            String targetColumn = targetColumnAt(i, declaredTargetColumns, item);
+            if (sourceColumn == null || targetColumn == null) {
+                continue;
+            }
+            LineageRecord r = new LineageRecord();
+            r.setSourceTable(normalizeTable(singleSource));
+            r.setSourceColumn(sourceColumn);
+            r.setTargetTable(normalizeTable(targetTable));
+            r.setTargetColumn(targetColumn);
+            r.setDagId(dagId);
+            r.setDagName(dagName);
+            r.setNodeId(nodeId);
+            r.setNodeName(nodeName);
+            r.setExecutionId(executionId);
+            r.setLineageType("SQL");
+            r.setCreatedAt(now);
+            records.add(r);
+        }
+    }
+
+    /**
+     * 取 select 项的源列名：直接列引用取列名，复杂表达式取表达式原文。
+     */
+    private String columnNameOf(Expression expression) {
+        if (expression == null) {
+            return null;
+        }
+        if (expression instanceof Column column) {
+            return column.getColumnName();
+        }
+        return expression.toString();
+    }
+
+    /**
+     * 计算目标列名：优先取 INSERT/CTAS 声明的目标列，否则回退 select 项的别名。
+     */
+    private String targetColumnAt(int index, List<String> declaredTargetColumns, SelectItem<?> item) {
+        if (declaredTargetColumns != null && index < declaredTargetColumns.size()) {
+            return declaredTargetColumns.get(index);
+        }
+        if (item.getAlias() != null && item.getAlias().getName() != null) {
+            return item.getAlias().getName();
+        }
+        // 无别名且无声明列时无法确定目标列，跳过该字段级血缘
+        return null;
     }
 
     private void saveRecords(List<LineageRecord> records) {

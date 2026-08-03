@@ -36,11 +36,13 @@ public class CollectExecutor {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final ExtractorFactory extractorFactory;
+    private final AlertFiringService alertFiringService;
 
     public CollectExecutor(CollectTaskMapper collectTaskMapper, CollectHistoryMapper collectHistoryMapper,
                            CollectExecutionLogMapper logMapper, CollectChangeDetailMapper changeDetailMapper,
                            DataSourceConnectionMapper dataSourceConnectionMapper, MetadataTableMapper metadataTableMapper,
-                           MetadataColumnMapper metadataColumnMapper, ExtractorFactory extractorFactory) {
+                           MetadataColumnMapper metadataColumnMapper, ExtractorFactory extractorFactory,
+                           AlertFiringService alertFiringService) {
         this.collectTaskMapper = collectTaskMapper;
         this.collectHistoryMapper = collectHistoryMapper;
         this.logMapper = logMapper;
@@ -49,6 +51,7 @@ public class CollectExecutor {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.extractorFactory = extractorFactory;
+        this.alertFiringService = alertFiringService;
     }
 
     public void execute(String param) {
@@ -192,6 +195,14 @@ public class CollectExecutor {
         finishHistory(history, tableCount, columnCount, dbCount, addedTables, updatedTables, deletedTables,
                 addedColumns, updatedColumns, deletedColumns, errorMessage, lastStatus);
         updateTaskStatus(task, history, lastStatus);
+
+        // Sprint 5：采集任务成功/失败告警（按 alert_rule 配置；手动停止不发告警）
+        if (ExecutionStatus.SUCCESS.getCode().equals(lastStatus)) {
+            alertFiringService.fire("COLLECT_TASK", taskId, "SUCCESS",
+                    "采集完成：表 " + tableCount + "，字段 " + columnCount);
+        } else if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
+            alertFiringService.fire("COLLECT_TASK", taskId, "FAILURE", errorMessage);
+        }
 
         if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
             throw new RuntimeException(errorMessage);

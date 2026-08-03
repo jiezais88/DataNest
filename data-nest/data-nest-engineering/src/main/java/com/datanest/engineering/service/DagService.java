@@ -1,12 +1,16 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.engineering.config.DolphinSchedulerConfig;
 import com.datanest.engineering.dto.*;
+import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.task.core.dto.ConditionNodeConfig;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.DagTopologyService;
@@ -21,10 +25,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -50,12 +51,14 @@ public class DagService {
     private final DagProjectService dagProjectService;   // 用于校验项目存在（暂不直接调，留接口）
     private final DagVersionService dagVersionService;
     private final SysUserService sysUserService;
+    private final AlertRuleMapper alertRuleMapper;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                       DagTopologyService topologyService, DolphinSchedulerClient dolphinSchedulerClient,
                       DagDsConverter dagDsConverter, DagProjectService dagProjectService,
-                      DagVersionService dagVersionService, SysUserService sysUserService) {
+                      DagVersionService dagVersionService, SysUserService sysUserService,
+                      AlertRuleMapper alertRuleMapper) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -67,6 +70,7 @@ public class DagService {
         this.dagProjectService = dagProjectService;
         this.dagVersionService = dagVersionService;
         this.sysUserService = sysUserService;
+        this.alertRuleMapper = alertRuleMapper;
     }
 
     @Transactional
@@ -196,6 +200,13 @@ public class DagService {
         if (dag == null) {
             throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
         }
+        // Sprint 5：删除前校验是否被子 DAG 节点引用（PRD §7：被引用则禁止删除）
+        List<Long> referencing = dagNodeMapper.selectDagIdsReferencingSubDag(buildSubDagRefPattern(id));
+        referencing.removeIf(d -> Objects.equals(d, id));
+        if (!referencing.isEmpty()) {
+            throw new BusinessException(ErrorCode.DAG_REFERENCED,
+                    "该 DAG 被子 DAG 节点引用，无法删除: dagIds=" + referencing);
+        }
         // 先抓取 DS 侧信息，DB 提交后再做 DS 清理（HTTP 调用不能放在 DB 事务里）
         Long dsProjectCode = dag.getDsProjectCode();
         Long dsScheduleId = dag.getDsScheduleId();
@@ -214,6 +225,8 @@ public class DagService {
         }
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
+        // Sprint 5：删除 DAG 时级联删除关联告警规则（PRD §7）
+        alertRuleMapper.deleteByObject(AlertConstants.OBJECT_TYPE_DAG, id);
         dagMapper.deleteById(id);
 
         // 2. DS 清理：事务提交后执行（先删定时调度，否则 schedule 孤儿会继续触发已删除的工作流；再下线 + 删除工作流）
@@ -571,6 +584,162 @@ public class DagService {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Cron 表达式非法: " + e.getMessage());
             }
         }
+        // Sprint 5：节点类型与条件分支/子 DAG 配置校验
+        validateNodeConfigs(payload);
+    }
+
+    /**
+     * Sprint 5：校验节点类型白名单、CONDITION 分支配置、SUB_DAG 引用与循环引用。
+     */
+    private void validateNodeConfigs(DagPayload payload) {
+        if (payload.getNodes() == null) {
+            return;
+        }
+        Set<String> nodeIds = payload.getNodes().stream()
+                .map(DagNodePayload::getNodeId)
+                .collect(Collectors.toSet());
+        Set<String> validTypes = Set.of("SQL", "SYNC", "PYTHON", "CONDITION", "SUB_DAG");
+
+        for (DagNodePayload node : payload.getNodes()) {
+            String nodeType = node.getNodeType() == null ? "" : node.getNodeType().toUpperCase();
+            if (!validTypes.contains(nodeType)) {
+                throw new BusinessException(ErrorCode.DS_API_ERROR,
+                        "非法节点类型: " + node.getNodeType() + " (nodeId=" + node.getNodeId() + ")");
+            }
+            if (!StringUtils.hasText(node.getConfig())) {
+                continue;
+            }
+            try {
+                JSONObject cfg = JSON.parseObject(node.getConfig());
+                if ("CONDITION".equals(nodeType)) {
+                    validateConditionConfig(cfg, node, nodeIds);
+                } else if ("SUB_DAG".equals(nodeType)) {
+                    Long subDagId = cfg.getLong("subDagId");
+                    if (subDagId == null) {
+                        throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND,
+                                "子 DAG 节点缺少 subDagId (nodeId=" + node.getNodeId() + ")");
+                    }
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new BusinessException(ErrorCode.SQL_PARSE_FAILED,
+                        "节点 config JSON 解析失败 (nodeId=" + node.getNodeId() + "): " + e.getMessage());
+            }
+        }
+        // 循环引用检测：子 DAG 不能直接/间接引用父 DAG
+        validateSubDagCycle(payload);
+    }
+
+    private void validateConditionConfig(JSONObject cfg, DagNodePayload node, Set<String> nodeIds) {
+        ConditionNodeConfig config = cfg.toJavaObject(ConditionNodeConfig.class);
+        List<ConditionNodeConfig.ConditionBranch> branches =
+                config == null ? null : config.getBranches();
+        if (branches == null || branches.size() < 2) {
+            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
+                    "条件分支节点至少需要 2 个分支 (nodeId=" + node.getNodeId() + ")");
+        }
+        for (ConditionNodeConfig.ConditionBranch branch : branches) {
+            if (!StringUtils.hasText(branch.getBranchName())
+                    || !StringUtils.hasText(branch.getExpression())
+                    || !StringUtils.hasText(branch.getNextNodeId())) {
+                throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
+                        "条件分支的分支名称/表达式/下游节点不能为空 (nodeId=" + node.getNodeId() + ")");
+            }
+            if (!nodeIds.contains(branch.getNextNodeId())) {
+                throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
+                        "条件分支指向的节点不存在: " + branch.getNextNodeId() + " (nodeId=" + node.getNodeId() + ")");
+            }
+        }
+    }
+
+    /**
+     * 子 DAG 循环引用检测：从当前 DAG 的每个 SUB_DAG 引用出发 DFS，
+     * 若子图引用回当前 DAG 或路径上任意 DAG，则判定循环并阻断保存。
+     */
+    private void validateSubDagCycle(DagPayload payload) {
+        Long currentDagId = payload.getId();
+        Set<Long> directRefs = collectSubDagRefs(payload.getNodes());
+        for (Long ref : directRefs) {
+            Set<Long> path = new HashSet<>();
+            if (currentDagId != null) {
+                path.add(currentDagId);
+            }
+            dfsSubDagCycle(ref, path, currentDagId);
+        }
+    }
+
+    private void dfsSubDagCycle(Long subDagId, Set<Long> path, Long forbiddenDagId) {
+        if (path.contains(subDagId)) {
+            throw new BusinessException(ErrorCode.SUB_DAG_CYCLE_DETECTED,
+                    "子 DAG 存在循环引用: subDagId=" + subDagId);
+        }
+        Dag subDag = dagMapper.selectById(subDagId);
+        if (subDag == null) {
+            throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND, "引用的子 DAG 不存在: " + subDagId);
+        }
+        if (!"ENABLED".equalsIgnoreCase(subDag.getStatus())) {
+            throw new BusinessException(ErrorCode.SUB_DAG_DISABLED, "子 DAG 未启用: " + subDag.getName());
+        }
+        if (Objects.equals(subDagId, forbiddenDagId)) {
+            throw new BusinessException(ErrorCode.SUB_DAG_CYCLE_DETECTED,
+                    "子 DAG 不能引用父 DAG 自身: " + subDagId);
+        }
+        path.add(subDagId);
+        List<DagNode> nodes = dagNodeMapper.selectByDagId(subDagId);
+        Set<Long> refs = collectSubDagRefsFromNodes(nodes);
+        for (Long ref : refs) {
+            dfsSubDagCycle(ref, path, forbiddenDagId);
+        }
+        path.remove(subDagId);
+    }
+
+    private Set<Long> collectSubDagRefs(List<DagNodePayload> nodes) {
+        Set<Long> refs = new HashSet<>();
+        if (nodes == null) {
+            return refs;
+        }
+        for (DagNodePayload node : nodes) {
+            if (!"SUB_DAG".equalsIgnoreCase(node.getNodeType())) {
+                continue;
+            }
+            if (!StringUtils.hasText(node.getConfig())) {
+                continue;
+            }
+            try {
+                Long subDagId = JSON.parseObject(node.getConfig()).getLong("subDagId");
+                if (subDagId != null) {
+                    refs.add(subDagId);
+                }
+            } catch (Exception ignored) {
+                // 配置解析失败由 validateNodeConfigs 统一抛错
+            }
+        }
+        return refs;
+    }
+
+    private Set<Long> collectSubDagRefsFromNodes(List<DagNode> nodes) {
+        Set<Long> refs = new HashSet<>();
+        if (nodes == null) {
+            return refs;
+        }
+        for (DagNode node : nodes) {
+            if (!"SUB_DAG".equalsIgnoreCase(node.getNodeType())) {
+                continue;
+            }
+            if (!StringUtils.hasText(node.getConfig())) {
+                continue;
+            }
+            try {
+                Long subDagId = JSON.parseObject(node.getConfig()).getLong("subDagId");
+                if (subDagId != null) {
+                    refs.add(subDagId);
+                }
+            } catch (Exception ignored) {
+                // 配置解析失败由 validateNodeConfigs 统一抛错
+            }
+        }
+        return refs;
     }
 
     private void copyFromPayload(Dag dag, DagPayload payload) {
@@ -689,6 +858,14 @@ public class DagService {
         } catch (Exception e) {
             return 0L;
         }
+    }
+
+    /**
+     * Sprint 5：构造 dag_node.config 中 subDagId 的匹配正则。
+     * 兼容空格、数值/字符串格式；尾部用 (?=[,}]) 边界避免 1234 误匹配 12345。
+     */
+    private String buildSubDagRefPattern(Long subDagId) {
+        return "\"subDagId\"\\s*:\\s*\\\"?" + subDagId + "\\\"?(?=[,}])";
     }
 
     /**

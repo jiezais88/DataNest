@@ -44,6 +44,11 @@ public class DagNodeCallbackController {
         return dagNodeExecuteService.handlePythonNode(body);
     }
 
+    @PostMapping("/condition/callback")
+    public Result<Map<String, Object>> conditionCallback(@RequestBody Map<String, Object> body) {
+        return dagNodeExecuteService.handleConditionNode(body);
+    }
+
     @PostMapping("/unknown/callback")
     public Result<Map<String, Integer>> unknownCallback(@RequestBody Map<String, Object> body) {
         throw new BusinessException(ErrorCode.INTERNAL_ERROR, "未知节点类型");

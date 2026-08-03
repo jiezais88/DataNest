@@ -152,8 +152,6 @@ export default function SyncJobHistoryGlobalPage() {
     }, [query, page, pageSize]);
 
     const [selectedHistory, setSelectedHistory] = useState<SyncJobHistory | null>(null);
-    const [logs, setLogs] = useState<SyncJobLog[]>([]);
-    const [logsLoading, setLogsLoading] = useState(false);
     const [logOpen, setLogOpen] = useState(false);
     const [detailOpen, setDetailOpen] = useState(false);
 
@@ -198,14 +196,25 @@ export default function SyncJobHistoryGlobalPage() {
         setDetailOpen(true);
     };
 
-    const handleOpenLogs = async (item: SyncJobHistory) => {
+    const handleOpenLogs = (item: SyncJobHistory) => {
         setSelectedHistory(item);
         setLogOpen(true);
-        setLogsLoading(true);
-        const result = await getSyncJobLogs(item.syncJobId, item.id);
-        setLogs(result.data || []);
-        setLogsLoading(false);
     };
+
+    // 日志 Tab：概览 + 各源表（来自 tableResults）
+    const logTabs = useMemo(() => {
+        if (!selectedHistory?.tableResults?.length) return ['概览'];
+        const tables = Array.from(new Set(
+            selectedHistory.tableResults.map(tr => tr.sourceTable).filter(Boolean) as string[],
+        ));
+        return ['概览', ...tables];
+    }, [selectedHistory]);
+
+    const fetchLogs = useCallback(async (scope: string, page: number, pageSize: number) => {
+        if (!selectedHistory) return {records: [] as SyncJobLog[], total: 0};
+        const result = await getSyncJobLogs(selectedHistory.syncJobId, selectedHistory.id, scope, page, pageSize);
+        return {records: result.data.records, total: result.data.total};
+    }, [selectedHistory]);
 
     // 手动停止运行中的执行实例（停止后状态归一为 TERMINATED）
     const handleStop = useCallback((item: SyncJobHistory) => {
@@ -499,8 +508,8 @@ export default function SyncJobHistoryGlobalPage() {
             <HistoryLogModal
                 open={logOpen}
                 title={selectedHistory ? formatDateTime(selectedHistory.startTime) : undefined}
-                logs={logs}
-                loading={logsLoading}
+                tabs={logTabs}
+                fetchLogs={fetchLogs}
                 onClose={closeLogs}
             />
         </div>

@@ -9,6 +9,8 @@ import com.datanest.engineering.dto.DagEdgePayload;
 import com.datanest.engineering.dto.DagNodePayload;
 import com.datanest.engineering.dto.DagPayload;
 import com.datanest.engineering.dto.DsTaskDefinition;
+import com.datanest.task.core.entity.Dag;
+import com.datanest.task.core.mapper.DagMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,10 @@ import java.util.*;
  *   - SQL 节点 → DS HTTP 任务，回调 engineering 的内部接口
  *   - SYNC 节点 → DS HTTP 任务，回调 engineering 触发 SyncJob
  * 决策 ADR-S3-FJ：使用 fastjson2 替代 Jackson 解析 config JSON
+ * Sprint 5：
+ *   - CONDITION 节点 → DS HTTP 任务，回调 worker 求值分支（worker 全量求值 + 分支 gate）
+ *   - SUB_DAG 同步 → DS SUB_WORKFLOW 任务（原生等待子流程完成）
+ *   - SUB_DAG 异步 → DS HTTP 任务，回调 engineering 触发子 DAG
  */
 @Component
 public class DagDsConverter {
@@ -29,15 +35,20 @@ public class DagDsConverter {
     private static final Logger logger = LoggerFactory.getLogger(DagDsConverter.class);
 
     private final DolphinSchedulerConfig dsConfig;
+    private final DagMapper dagMapper;
 
-    public DagDsConverter(DolphinSchedulerConfig dsConfig) {
+    public DagDsConverter(DolphinSchedulerConfig dsConfig, DagMapper dagMapper) {
         this.dsConfig = dsConfig;
+        this.dagMapper = dagMapper;
     }
 
     /**
      * 把 DagNode 列表转为 DS TaskDefinition 列表
      * - SQL 节点 → DS HTTP 任务
      * - SYNC 节点 → DS HTTP 任务
+     * - PYTHON 节点 → DS HTTP 任务
+     * - CONDITION 节点 → DS HTTP 任务（worker 求值分支）
+     * - SUB_DAG 同步 → DS SUB_WORKFLOW 任务；异步 → DS HTTP 任务触发 engineering
      * config 解析失败抛 BusinessException
      */
     public List<DsTaskDefinition> toDsTaskDefinitions(DagPayload dag, Map<String, Long> codeMap) {
@@ -50,7 +61,6 @@ public class DagDsConverter {
             // 所以用“节点名_节点ID后8位”保证唯一性，同时保留可读性。
             task.setName(buildDsTaskName(node));
             task.setDescription(null);
-            task.setTaskType("HTTP");   // Sprint 3：所有节点用 HTTP 回调 engineering
             task.setWorkerGroup("default");
             task.setFlag("YES");
             task.setDelayTime(0);
@@ -60,94 +70,145 @@ public class DagDsConverter {
             task.setConditionType("NONE");
             task.setResourceList(Collections.emptyList());
 
-            // 构造 HTTP taskParams
-            String callbackUrl = buildCallbackUrl(node, dag);
-            String nodeType = node.getNodeType();
             String configJson = node.getConfig() == null ? "{}" : node.getConfig();
-
-            // 提取 type/sqlContent/syncJobId/pythonScript/timeoutMinutes
-            String type = null, sqlContent = null, syncJobId = null, syncJobName = null,
-                    pythonScript = null;
-            Integer timeoutMinutes = null;
+            JSONObject cfg;
+            String type;
             try {
-                JSONObject cfg = JSON.parseObject(configJson);
-                type = stringOrNull(cfg, "type");
-                if ("SQL".equalsIgnoreCase(type)) {
-                    sqlContent = stringOrNull(cfg, "sqlContent");
-                } else if ("SYNC".equalsIgnoreCase(type)) {
-                    syncJobId = stringOrNull(cfg, "syncJobId");
-                    syncJobName = stringOrNull(cfg, "syncJobName");
-                } else if ("PYTHON".equalsIgnoreCase(type)) {
-                    pythonScript = stringOrNull(cfg, "pythonScript");
-                    timeoutMinutes = cfg.getInteger("timeoutMinutes");
-                } else {
-                    throw new BusinessException(ErrorCode.DS_API_ERROR,
-                            "未知节点 type: " + type + " (nodeId=" + node.getNodeId() + ")");
-                }
-            } catch (BusinessException e) {
-                throw e;
+                cfg = JSON.parseObject(configJson);
+                type = cfg == null ? null : cfg.getString("type");
             } catch (Exception e) {
                 throw new BusinessException(ErrorCode.SQL_PARSE_FAILED,
                         "节点 config JSON 解析失败 (nodeId=" + node.getNodeId() + "): " + e.getMessage());
             }
-
-            // PYTHON 节点按配置的超时时间启用 DS 任务级超时
-            if ("PYTHON".equalsIgnoreCase(type)) {
-                task.setTimeoutFlag("OPEN");
-                int tm = timeoutMinutes == null || timeoutMinutes <= 0 ? 30 : timeoutMinutes;
-                task.setTimeout(tm * 60);
-            } else {
-                task.setTimeoutFlag("CLOSE");
-                task.setTimeout(0);
+            if (type == null || type.isBlank()) {
+                throw new BusinessException(ErrorCode.DS_API_ERROR,
+                        "节点缺少 type (nodeId=" + node.getNodeId() + ")");
             }
 
-            // DS 3.4.2 HTTP 任务参数类：org.apache.dolphinscheduler.plugin.task.http.HttpParameters
-            // 字段必须严格匹配，否则 checkParameters() 失败
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("nodeId", node.getNodeId());
-            requestBody.put("nodeType", nodeType);
-            requestBody.put("dagId", dag.getId());
-            requestBody.put("executionId", "${system.workflow.instance.id}");   // DS 内置变量：工作流实例 ID
-            if ("SQL".equalsIgnoreCase(type)) {
-                requestBody.put("sqlContent", sqlContent);
-            } else if ("SYNC".equalsIgnoreCase(type)) {
-                Map<String, Object> syncJob = new HashMap<>();
-                syncJob.put("id", syncJobId);
-                syncJob.put("name", syncJobName);
-                requestBody.put("syncJob", syncJob);
-            } else if ("PYTHON".equalsIgnoreCase(type)) {
-                requestBody.put("pythonScript", pythonScript);
+            switch (type.toUpperCase()) {
+                case "SQL" -> {
+                    String sqlContent = stringOrNull(cfg, "sqlContent");
+                    task.setTaskType("HTTP");
+                    Map<String, Object> requestBody = commonBody(node, dag);
+                    requestBody.put("sqlContent", sqlContent);
+                    buildHttpTask(task, buildCallbackUrl(node, dag), requestBody);
+                }
+                case "SYNC" -> {
+                    String syncJobId = stringOrNull(cfg, "syncJobId");
+                    String syncJobName = stringOrNull(cfg, "syncJobName");
+                    task.setTaskType("HTTP");
+                    Map<String, Object> requestBody = commonBody(node, dag);
+                    Map<String, Object> syncJob = new HashMap<>();
+                    syncJob.put("id", syncJobId);
+                    syncJob.put("name", syncJobName);
+                    requestBody.put("syncJob", syncJob);
+                    buildHttpTask(task, buildCallbackUrl(node, dag), requestBody);
+                }
+                case "PYTHON" -> {
+                    String pythonScript = stringOrNull(cfg, "pythonScript");
+                    Integer timeoutMinutes = cfg.getInteger("timeoutMinutes");
+                    // PYTHON 节点按配置的超时时间启用 DS 任务级超时
+                    task.setTimeoutFlag("OPEN");
+                    int tm = timeoutMinutes == null || timeoutMinutes <= 0 ? 30 : timeoutMinutes;
+                    task.setTimeout(tm * 60);
+                    task.setTaskType("HTTP");
+                    Map<String, Object> requestBody = commonBody(node, dag);
+                    requestBody.put("pythonScript", pythonScript);
+                    buildHttpTask(task, buildCallbackUrl(node, dag), requestBody);
+                }
+                case "CONDITION" -> {
+                    // worker 从 dag_node.config 读分支配置求值，DS 侧只需按普通 HTTP 任务回调
+                    task.setTaskType("HTTP");
+                    buildHttpTask(task, buildCallbackUrl(node, dag), commonBody(node, dag));
+                }
+                case "SUB_DAG" -> {
+                    Long subDagId = cfg.getLong("subDagId");
+                    boolean syncExecution = cfg.getBooleanValue("syncExecution", true);
+                    if (subDagId == null) {
+                        throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND,
+                                "子 DAG 节点缺少 subDagId (nodeId=" + node.getNodeId() + ")");
+                    }
+                    if (syncExecution) {
+                        buildSubWorkflowTask(task, subDagId);
+                    } else {
+                        // 异步：HTTP 触发 engineering 内部端点，立即返回，不等待子 DAG
+                        task.setTaskType("HTTP");
+                        Map<String, Object> requestBody = commonBody(node, dag);
+                        requestBody.put("subDagId", subDagId);
+                        requestBody.put("subDagName", cfg.getString("subDagName"));
+                        buildHttpTask(task, dsConfig.getEngineeringCallbackBaseUrl() + "/dev/internal/subdag/trigger",
+                                requestBody);
+                    }
+                }
+                default -> throw new BusinessException(ErrorCode.DS_API_ERROR,
+                        "未知节点 type: " + type + " (nodeId=" + node.getNodeId() + ")");
             }
-
-            // httpParams 是 List<HttpProperty>，字段：prop / httpParametersType / value
-            Map<String, Object> contentTypeProp = new HashMap<>();
-            contentTypeProp.put("prop", "Content-Type");
-            contentTypeProp.put("httpParametersType", "HEADERS");
-            contentTypeProp.put("value", "application/json");
-
-            // DS 3.4.2 HTTP taskParams 是平铺的 HttpParameters 对象：
-            // {"localParams":[],"httpParams":[],"url":"...","httpMethod":"POST",
-            //  "httpBody":"...","httpCheckCondition":"...","condition":"","connectTimeout":"5000"}
-            Map<String, Object> taskParams = new HashMap<>();
-            taskParams.put("localParams", Collections.emptyList());
-            taskParams.put("httpParams", java.util.List.of(contentTypeProp));
-            taskParams.put("url", callbackUrl);
-            taskParams.put("httpMethod", "POST");
-            taskParams.put("httpBody", JSON.toJSONString(requestBody));
-            taskParams.put("httpCheckCondition", "STATUS_CODE_DEFAULT");
-            taskParams.put("condition", "");
-            taskParams.put("connectTimeout", "5000");
-
-            task.setTaskParams(JSON.toJSONString(taskParams));
             tasks.add(task);
         }
         return tasks;
+    }
+
+    private Map<String, Object> commonBody(DagNodePayload node, DagPayload dag) {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("nodeId", node.getNodeId());
+        requestBody.put("nodeType", node.getNodeType());
+        requestBody.put("dagId", dag.getId());
+        requestBody.put("executionId", "${system.workflow.instance.id}");   // DS 内置变量：工作流实例 ID
+        return requestBody;
+    }
+
+    /**
+     * 子 DAG 同步执行：映射为 DS SUB_WORKFLOW 逻辑任务。
+     * DS 原生触发子工作流并等待完成，父节点状态跟随子流程（SUCCESS/FAILURE）。
+     */
+    private void buildSubWorkflowTask(DsTaskDefinition task, Long subDagId) {
+        Dag subDag = dagMapper.selectById(subDagId);
+        if (subDag == null || subDag.getDsProcessDefinitionCode() == null) {
+            throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND,
+                    "子 DAG 不存在或未同步到 DS: subDagId=" + subDagId);
+        }
+        if (!"ENABLED".equalsIgnoreCase(subDag.getStatus())) {
+            throw new BusinessException(ErrorCode.SUB_DAG_DISABLED, "子 DAG 未启用: " + subDag.getName());
+        }
+        task.setTaskType("SUB_WORKFLOW");
+        // SubWorkflowParameters：{"workflowDefinitionCode": N}
+        task.setTaskParams("{\"workflowDefinitionCode\":" + subDag.getDsProcessDefinitionCode() + "}");
+        task.setTimeoutFlag("CLOSE");
+        task.setTimeout(0);
+    }
+
+    /**
+     * 填充 DS 3.4.2 HTTP 任务参数（HttpParameters 平铺结构）。
+     */
+    private void buildHttpTask(DsTaskDefinition task, String url, Map<String, Object> requestBody) {
+        // httpParams 是 List<HttpProperty>，字段：prop / httpParametersType / value
+        Map<String, Object> contentTypeProp = new HashMap<>();
+        contentTypeProp.put("prop", "Content-Type");
+        contentTypeProp.put("httpParametersType", "HEADERS");
+        contentTypeProp.put("value", "application/json");
+
+        // DS 3.4.2 HTTP taskParams 是平铺的 HttpParameters 对象：
+        // {"localParams":[],"httpParams":[],"url":"...","httpMethod":"POST",
+        //  "httpBody":"...","httpCheckCondition":"...","condition":"","connectTimeout":"5000"}
+        Map<String, Object> taskParams = new HashMap<>();
+        taskParams.put("localParams", Collections.emptyList());
+        taskParams.put("httpParams", java.util.List.of(contentTypeProp));
+        taskParams.put("url", url);
+        taskParams.put("httpMethod", "POST");
+        taskParams.put("httpBody", JSON.toJSONString(requestBody));
+        taskParams.put("httpCheckCondition", "STATUS_CODE_DEFAULT");
+        taskParams.put("condition", "");
+        taskParams.put("connectTimeout", "5000");
+
+        task.setTaskParams(JSON.toJSONString(taskParams));
     }
 
     /**
      * 构造回调 URL
      * SQL 节点 → {callbackBaseUrl}/dev/internal/sql/callback
      * SYNC 节点 → {callbackBaseUrl}/dev/internal/sync/callback
+     * PYTHON 节点 → {callbackBaseUrl}/dev/internal/python/callback
+     * CONDITION 节点 → {callbackBaseUrl}/dev/internal/condition/callback
      * 决策 ADR-S3-012：回调走 gateway（默认 {@code http://app-gateway:8080/api/engineering}），
      * gateway 路由 StripPrefix=1 → engineering 收到 {@code /dev/internal/...}。
      * 决策 ADR-S3-008：内部接口不鉴权，依赖 Docker 网络隔离 + gateway 白名单。
@@ -158,6 +219,7 @@ public class DagDsConverter {
             case "SQL" -> "/dev/internal/sql/callback";
             case "SYNC" -> "/dev/internal/sync/callback";
             case "PYTHON" -> "/dev/internal/python/callback";
+            case "CONDITION" -> "/dev/internal/condition/callback";
             default -> "/dev/internal/unknown";
         };
         // 不带尾斜杠：base url 默认已含 /api/engineering，path 前缀 /dev/...

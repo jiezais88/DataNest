@@ -7,28 +7,27 @@ import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
+import com.datanest.task.core.dto.ConditionNodeConfig;
 import com.datanest.task.core.dto.PythonExecuteResult;
 import com.datanest.task.core.dto.PythonNodeConfig;
-import com.datanest.task.core.entity.Dag;
-import com.datanest.task.core.entity.DagExecution;
-import com.datanest.task.core.entity.DagNode;
-import com.datanest.task.core.entity.NodeExecution;
+import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Sprint 4 架构调整：DAG 节点执行服务。
@@ -105,6 +104,10 @@ public class DagNodeExecuteService {
                     "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
         }
         NodeExecution ne = lookup.nodeExecution;
+        // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行
+        if (skipIfConditionGated(ne, dagId)) {
+            return Result.ok(Map.of("affectedRows", 0));
+        }
         ne.setStatus("RUNNING");
         ne.setStartTime(LocalDateTime.now());
         nodeExecutionMapper.updateById(ne);
@@ -302,6 +305,11 @@ public class DagNodeExecuteService {
                         "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
             }
             NodeExecution ne = lookup.nodeExecution;
+            // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行（需释放锁）
+            if (skipIfConditionGated(ne, dagId)) {
+                syncNodeMutexService.unlock(syncJobId, lockToken);
+                return Result.ok(Map.of("affectedRows", 0));
+            }
             ne.setStatus("RUNNING");
             ne.setStartTime(LocalDateTime.now());
             ne.setSyncJobId(syncJobId);
@@ -349,6 +357,10 @@ public class DagNodeExecuteService {
         NodeExecution ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
+        }
+        // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行
+        if (skipIfConditionGated(ne, dagId)) {
+            return Result.ok(Map.of("outputTables", List.of(), "skipped", true));
         }
 
         ne.setStatus("RUNNING");
@@ -433,6 +445,236 @@ public class DagNodeExecuteService {
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Python 节点配置解析失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * CONDITION 节点执行（Sprint 5）。
+     * worker 读取分支配置，用上游节点输出构建 SpEL 求值上下文，
+     * 按顺序求值命中分支，把结果（branchIndex / nextNodeId）写入 node_execution.output_info，
+     * 供后续非命中分支下游节点的 gate 判断跳过。
+     */
+    public Result<Map<String, Object>> handleConditionNode(Map<String, Object> body) {
+        String nodeId = stringOf(body.get("nodeId"));
+        Long dagId = longOf(body.get("dagId"));
+        Long dsProcessInstanceId = longOf(body.get("executionId"));
+        if (nodeId == null || dagId == null || dsProcessInstanceId == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / dagId / executionId");
+        }
+
+        NodeExecution ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
+        if (ne == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
+        }
+        // 条件节点自身也可能处于非命中分支（条件嵌套），先过 gate
+        if (skipIfConditionGated(ne, dagId)) {
+            return Result.ok(Map.of("branchIndex", -1, "skipped", true));
+        }
+
+        ne.setStatus("RUNNING");
+        ne.setStartTime(LocalDateTime.now());
+        nodeExecutionMapper.updateById(ne);
+
+        DagNode node = dagNodeMapper.selectList(
+                        new QueryWrapper<DagNode>()
+                                .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
+                .stream().findFirst().orElse(null);
+        if (node == null || !StringUtils.hasText(node.getConfig())) {
+            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件节点配置缺失: " + nodeId);
+        }
+        ConditionNodeConfig config = parseConditionConfig(node.getConfig());
+        if (config.getBranches() == null || config.getBranches().size() < 2) {
+            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件分支至少 2 个: " + nodeId);
+        }
+
+        LocalDateTime startTime = LocalDateTime.now();
+        Map<String, Object> vars = buildConditionContext(ne.getExecutionId(), dagId, nodeId);
+        int branchIndex = evaluateBranches(config.getBranches(), vars);
+        ConditionNodeConfig.ConditionBranch selected = config.getBranches().get(branchIndex);
+
+        ne.setOutputInfo(JSON.toJSONString(Map.of(
+                "branchIndex", branchIndex,
+                "nextNodeId", selected.getNextNodeId(),
+                "branchName", selected.getBranchName())));
+        ne.setStatus("SUCCESS");
+        ne.setEndTime(LocalDateTime.now());
+        ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
+        nodeExecutionMapper.updateById(ne);
+
+        logger.info("条件分支求值: executionId={}, nodeId={}, branchIndex={}, nextNodeId={}",
+                ne.getExecutionId(), nodeId, branchIndex, selected.getNextNodeId());
+        finalizeExecutionQuietly(ne.getExecutionId());
+        return Result.ok(Map.of("branchIndex", branchIndex, "nextNodeId", selected.getNextNodeId()));
+    }
+
+    private ConditionNodeConfig parseConditionConfig(String configJson) {
+        try {
+            return JSON.parseObject(configJson, ConditionNodeConfig.class);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
+                    "条件节点配置解析失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 条件分支 gate：命中非命中分支（或上游全被跳过）的节点标记 SKIPPED 并收尾。
+     * @return true 表示本节点应被跳过（已标记 SKIPPED）
+     */
+    private boolean skipIfConditionGated(NodeExecution ne, Long dagId) {
+        if (ne == null) {
+            return false;
+        }
+        if (!shouldSkipNode(ne.getExecutionId(), ne.getNodeId(), dagId)) {
+            return false;
+        }
+        ne.setStatus("SKIPPED");
+        ne.setEndTime(LocalDateTime.now());
+        if (ne.getStartTime() != null) {
+            ne.setDurationMs(Duration.between(ne.getStartTime(), ne.getEndTime()).toMillis());
+        }
+        nodeExecutionMapper.updateById(ne);
+        finalizeExecutionQuietly(ne.getExecutionId());
+        logger.info("条件分支节点被跳过: executionId={}, nodeId={}", ne.getExecutionId(), ne.getNodeId());
+        return true;
+    }
+
+    /**
+     * 判断节点是否属于「非命中分支」：全部入边都不激活时跳过。
+     * - 条件节点入边：仅当条件节点选中的 nextNodeId 等于本节点时激活
+     * - 普通节点入边：前驱未被 SKIPPED 视为激活
+     * DAG 中没有 CONDITION 节点时走快速路径，不额外查询。
+     */
+    private boolean shouldSkipNode(Long executionId, String nodeId, Long dagId) {
+        try {
+            if (executionId == null || dagId == null) {
+                return false;
+            }
+            List<DagNode> nodes = dagNodeMapper.selectByDagId(dagId);
+            boolean hasCondition = nodes.stream()
+                    .anyMatch(n -> "CONDITION".equalsIgnoreCase(n.getNodeType()));
+            if (!hasCondition) {
+                return false;
+            }
+            Map<String, String> nodeTypeMap = nodes.stream()
+                    .collect(Collectors.toMap(DagNode::getNodeId, DagNode::getNodeType, (a, b) -> a));
+            List<DagEdge> incoming = dagEdgeMapper.selectByDagId(dagId).stream()
+                    .filter(e -> nodeId.equals(e.getTargetNodeId()))
+                    .toList();
+            if (incoming.isEmpty()) {
+                return false;
+            }
+            Map<String, NodeExecution> neByNodeId = nodeExecutionMapper.selectByExecutionId(executionId).stream()
+                    .collect(Collectors.toMap(NodeExecution::getNodeId, n -> n, (a, b) -> a));
+
+            boolean anyActive = false;
+            for (DagEdge edge : incoming) {
+                String srcNodeId = edge.getSourceNodeId();
+                NodeExecution srcNe = neByNodeId.get(srcNodeId);
+                if ("CONDITION".equalsIgnoreCase(nodeTypeMap.get(srcNodeId))) {
+                    // 条件前驱：命中本分支才激活
+                    if (srcNe != null && nodeId.equals(extractSelectedNextNodeId(srcNe.getOutputInfo()))) {
+                        anyActive = true;
+                    }
+                } else {
+                    // 普通前驱：未 SKIPPED 视为激活（DS 按依赖序执行，前驱已终态）
+                    if (srcNe == null || !"SKIPPED".equalsIgnoreCase(srcNe.getStatus())) {
+                        anyActive = true;
+                    }
+                }
+            }
+            return !anyActive;
+        } catch (Exception e) {
+            logger.warn("条件分支 gate 判断失败，按不跳过处理: executionId={}, nodeId={}", executionId, nodeId, e);
+            return false;
+        }
+    }
+
+    private String extractSelectedNextNodeId(String outputInfo) {
+        if (!StringUtils.hasText(outputInfo)) {
+            return null;
+        }
+        try {
+            return JSON.parseObject(outputInfo).getString("nextNodeId");
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 构建条件求值上下文：
+     * - upstream：直接前驱节点输出合并后的 map（并补充 row_count / status 归一化字段）
+     * - DAG 参数平铺（如 biz_date）
+     * - 系统变量：dag_id、current_time
+     */
+    private Map<String, Object> buildConditionContext(Long executionId, Long dagId, String nodeId) {
+        Map<String, Object> vars = new HashMap<>();
+        Map<String, Object> upstream = new HashMap<>();
+        List<String> predNodeIds = dagEdgeMapper.selectByDagId(dagId).stream()
+                .filter(e -> nodeId.equals(e.getTargetNodeId()))
+                .map(DagEdge::getSourceNodeId)
+                .toList();
+        if (!predNodeIds.isEmpty()) {
+            nodeExecutionMapper.selectByExecutionId(executionId).stream()
+                    .filter(n -> predNodeIds.contains(n.getNodeId()))
+                    .forEach(pred -> {
+                        Map<String, Object> out = parseJsonMap(pred.getOutputInfo());
+                        out.put("status", pred.getStatus());
+                        normalizeRowCount(out);
+                        upstream.putAll(out);
+                    });
+        }
+        vars.put("upstream", upstream);
+
+        DagExecution execution = dagExecutionMapper.selectById(executionId);
+        Map<String, Object> dagParams = dagParameterResolver.resolveParams(
+                dagId, execution != null ? parseJsonMap(execution.getResolvedParams()) : null);
+        dagParams.forEach(vars::put);
+
+        vars.put("dag_id", dagId);
+        vars.put("current_time", LocalDateTime.now().toString());
+        return vars;
+    }
+
+    /**
+     * 为上游输出补充 row_count 归一化字段（SQL DML 用 affectedRows，QUERY 用 returnedRows）。
+     */
+    private void normalizeRowCount(Map<String, Object> out) {
+        if (out.containsKey("row_count")) {
+            return;
+        }
+        Object rowCount = out.get("affectedRows");
+        if (!(rowCount instanceof Number)) {
+            rowCount = out.get("returnedRows");
+        }
+        if (rowCount instanceof Number) {
+            out.put("row_count", ((Number) rowCount).longValue());
+        }
+    }
+
+    /**
+     * 按顺序求值分支表达式（SpEL 只读数据绑定，禁止方法调用，防注入 R6），
+     * 第一个匹配的返回分支索引；均不匹配返回默认分支（0）。
+     */
+    private int evaluateBranches(List<ConditionNodeConfig.ConditionBranch> branches, Map<String, Object> vars) {
+        SpelExpressionParser parser = new SpelExpressionParser();
+        EvaluationContext ctx = SimpleEvaluationContext.forReadOnlyDataBinding().build();
+        vars.forEach(ctx::setVariable);
+        for (int i = 0; i < branches.size(); i++) {
+            String raw = branches.get(i).getExpression();
+            if (!StringUtils.hasText(raw)) {
+                continue;
+            }
+            try {
+                // ${upstream.row_count} → #upstream.row_count（SpEL 变量语法）
+                String expr = raw.replaceAll("\\$\\{([^}]+)\\}", "#$1");
+                Boolean matched = parser.parseExpression(expr).getValue(ctx, Boolean.class);
+                if (Boolean.TRUE.equals(matched)) {
+                    return i;
+                }
+            } catch (Exception e) {
+                logger.warn("条件分支求值失败，跳过该分支: expr={}, err={}", raw, e.getMessage());
+            }
+        }
+        return 0;
     }
 
 

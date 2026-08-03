@@ -201,7 +201,8 @@ public class AddaxJobService {
             tableResults.add(new TableResult(sourceTable, targetTableName,
                     tableResult.success() ? ExecutionStatus.SUCCESS.getCode() : ExecutionStatus.FAILED.getCode(),
                     tableResult.readRows(), tableResult.writeRows(), tableDurationMs,
-                    tableResult.success() ? null : tableResult.errorMessage()));
+                    tableResult.success() ? null : tableResult.errorMessage(),
+                    tableResult.logLines()));
 
             // 单表失败记录错误信息但继续执行后续表，保证多表同步不因一张表失败而中断其余表
             if (!tableResult.success()) {
@@ -628,6 +629,7 @@ public class AddaxJobService {
      * 单表同步结果明细（多表同步按表记录，供历史详情按表展示）。
      */
     public record TableResult(String sourceTable, String targetTable, String status,
-                              long readRows, long writeRows, long durationMs, String errorMessage) {
+                              long readRows, long writeRows, long durationMs, String errorMessage,
+                              List<String> logLines) {
     }
 }

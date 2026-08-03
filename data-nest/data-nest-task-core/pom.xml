@@ -49,7 +49,9 @@
             <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <scope>provided</scope>
         </dependency>
-        <!-- 分页/乐观锁等 jsqlparser 系拦截器（task-core 自动配置需要，消费方服务自身已引入） -->
+        <!-- 分页/乐观锁等 jsqlparser 系拦截器（task-core 自动配置需要，消费方服务自身已引入）。
+             该依赖传递引入 jsqlparser 5.2（net.sf.jsqlparser 包，与历史 4.9 API 兼容），
+             SQL 血缘/元数据解析直接复用，不再单独声明 jsqlparser，避免版本仲裁冲突。 -->
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-jsqlparser</artifactId>
@@ -102,13 +104,6 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
-        </dependency>
-
-        <!-- JSqlParser (解析 SQL 提取 CREATE TABLE 等结构) -->
-        <dependency>
-            <groupId>com.github.jsqlparser</groupId>
-            <artifactId>jsqlparser</artifactId>
-            <version>4.9</version>
         </dependency>
 
         <!-- Sprint 4：Python 节点、血缘等使用 fastjson2 -->

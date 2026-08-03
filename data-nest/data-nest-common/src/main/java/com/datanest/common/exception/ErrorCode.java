@@ -71,6 +71,16 @@ public enum ErrorCode {
     DAG_NAME_REQUIRED(7019, "DAG 名称不能为空"),
     DAG_VERSION_NOT_FOUND(7020, "DAG 版本不存在"),
 
+    // DAG / Data development errors — Sprint 5 控制流增强
+    SUB_DAG_CYCLE_DETECTED(7101, "子 DAG 存在循环引用，无法保存"),
+    SUB_DAG_NOT_FOUND(7102, "引用的子 DAG 不存在"),
+    SUB_DAG_DISABLED(7103, "引用的子 DAG 未启用"),
+    CONDITION_CONFIG_INVALID(7104, "条件分支节点配置非法"),
+
+    // Alert errors — Sprint 5 告警中心
+    ALERT_RULE_NOT_FOUND(7201, "告警规则不存在"),
+    ALERT_RULE_OBJECT_INVALID(7202, "告警规则对象类型非法"),
+
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");
 

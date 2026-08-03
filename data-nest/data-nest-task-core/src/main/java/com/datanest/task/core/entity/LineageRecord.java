@@ -8,8 +8,10 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 表级血缘记录
+ * 血缘记录（表级 + 字段级）
  * 对应表 lineage_record
+ * Sprint 5：新增 source_column / target_column 支持字段级血缘；
+ * 两者均为空时表示表级血缘。
  */
 @Data
 @TableName("lineage_record")
@@ -21,6 +23,12 @@ public class LineageRecord {
     private String sourceTable;
 
     private String targetTable;
+
+    /** 源字段，字段级血缘时使用 */
+    private String sourceColumn;
+
+    /** 目标字段，字段级血缘时使用 */
+    private String targetColumn;
 
     private Long dagId;
 

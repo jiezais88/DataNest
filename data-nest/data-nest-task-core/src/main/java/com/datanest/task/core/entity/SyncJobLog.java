@@ -24,5 +24,8 @@ public class SyncJobLog {
 
     private Integer lineNum;
 
+    /** 所属表名；平台概要行（开始/成功/失败）为 NULL，归「概览」 */
+    private String tableName;
+
     private LocalDateTime createdAt;
 }

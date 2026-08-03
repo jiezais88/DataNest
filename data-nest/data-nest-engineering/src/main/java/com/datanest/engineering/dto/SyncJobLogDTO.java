@@ -10,6 +10,8 @@ public class SyncJobLogDTO {
     private String level;
     private String message;
     private Integer lineNum;
+    /** 所属表名；平台概要行为 null（归「概览」） */
+    private String tableName;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -58,6 +60,14 @@ public class SyncJobLogDTO {
 
     public void setLineNum(Integer lineNum) {
         this.lineNum = lineNum;
+    }
+
+    public String getTableName() {
+        return tableName;
+    }
+
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
     }
 
     public LocalDateTime getCreatedAt() {

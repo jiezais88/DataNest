@@ -2,6 +2,7 @@ package com.datanest.task.core.service;
 
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -27,6 +29,8 @@ import java.util.List;
 public class SyncJobExecutorService {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncJobExecutorService.class);
+    /** 日志批量写入批次大小 */
+    private static final int LOG_BATCH_SIZE = 500;
 
     private final SyncJobMapper syncJobMapper;
     private final SyncJobHistoryMapper syncJobHistoryMapper;
@@ -34,19 +38,22 @@ public class SyncJobExecutorService {
     private final AddaxJobService addaxJobService;
     private final MetadataRegistrationService metadataRegistrationService;
     private final SyncJobRetryService syncJobRetryService;
+    private final AlertFiringService alertFiringService;
 
     public SyncJobExecutorService(SyncJobMapper syncJobMapper,
                                   SyncJobHistoryMapper syncJobHistoryMapper,
                                   SyncJobLogMapper syncJobLogMapper,
                                   AddaxJobService addaxJobService,
                                   MetadataRegistrationService metadataRegistrationService,
-                                  SyncJobRetryService syncJobRetryService) {
+                                  SyncJobRetryService syncJobRetryService,
+                                  AlertFiringService alertFiringService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
         this.addaxJobService = addaxJobService;
         this.metadataRegistrationService = metadataRegistrationService;
         this.syncJobRetryService = syncJobRetryService;
+        this.alertFiringService = alertFiringService;
     }
 
     /**
@@ -72,7 +79,7 @@ public class SyncJobExecutorService {
         logInfo(history, lineCounter, "开始 Addax 同步执行, syncJobId=" + syncJobId + ", triggerType=" + triggerType);
 
         AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId, historyId);
-        writeLogLines(history, lineCounter, result.logLines());
+        writeTableLogs(history, lineCounter, result);
 
         if (result.success()) {
             finishHistory(history, result, ExecutionStatus.SUCCESS.getCode());
@@ -86,6 +93,9 @@ public class SyncJobExecutorService {
                 logger.error("Doris 元数据注册失败（不影响本次同步结果）: syncJobId={}", syncJobId, e);
                 logError(history, lineCounter, "同步成功，但 Doris 元数据注册失败: " + e.getMessage());
             }
+            // Sprint 5：同步任务成功告警（按 alert_rule 配置）
+            alertFiringService.fire("SYNC_JOB", syncJobId, "SUCCESS", "同步任务执行成功，写入 "
+                    + result.writeRows() + " 行");
             return;
         }
 
@@ -103,6 +113,8 @@ public class SyncJobExecutorService {
         updateExecutionStatus(job, ExecutionStatus.FAILED.getCode());
         updateJobLastExecute(job, history.getId());
         logError(history, lineCounter, "同步任务最终失败");
+        // Sprint 5：同步任务失败告警（按 alert_rule 配置）
+        alertFiringService.fire("SYNC_JOB", syncJobId, "FAILURE", result.errorMessage());
         // 失败收尾：剩余重试次数 > 0 时在历史记录上登记 next_retry_at，由 job 模块周期扫描触发
         try {
             syncJobRetryService.registerRetryIfNeeded(job, history);
@@ -152,20 +164,41 @@ public class SyncJobExecutorService {
         syncJobHistoryMapper.updateById(history);
     }
 
-    private void writeLogLines(SyncJobHistory history, LogLineCounter lineCounter, List<String> lines) {
-        if (lines == null || lines.isEmpty()) {
+    /**
+     * 按表批量写入 Addax 日志（table_name=源表名），消除逐行 INSERT 写放大；
+     * 平台概要行（开始/成功/失败）由 insertLog 单条写入，table_name 为 NULL 归「概览」。
+     */
+    private void writeTableLogs(SyncJobHistory history, LogLineCounter lineCounter,
+                                AddaxJobService.AddaxExecutionResult result) {
+        if (result == null || result.tableResults() == null) {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        for (String line : lines) {
-            SyncJobLog log = new SyncJobLog();
-            log.setHistoryId(history.getId());
-            log.setSyncJobId(history.getSyncJobId());
-            log.setLevel(detectLevel(line));
-            log.setMessage(line);
-            log.setLineNum(lineCounter.next());
-            log.setCreatedAt(now);
-            syncJobLogMapper.insert(log);
+        for (AddaxJobService.TableResult tr : result.tableResults()) {
+            List<String> lines = tr.logLines();
+            if (lines == null || lines.isEmpty()) {
+                continue;
+            }
+            List<SyncJobLog> batch = new ArrayList<>(Math.min(lines.size(), LOG_BATCH_SIZE));
+            for (String line : lines) {
+                SyncJobLog log = new SyncJobLog();
+                log.setId(IdWorker.getId());
+                log.setHistoryId(history.getId());
+                log.setSyncJobId(history.getSyncJobId());
+                log.setLevel(detectLevel(line));
+                log.setMessage(line);
+                log.setLineNum(lineCounter.next());
+                log.setTableName(tr.sourceTable());
+                log.setCreatedAt(now);
+                batch.add(log);
+                if (batch.size() >= LOG_BATCH_SIZE) {
+                    syncJobLogMapper.insertBatch(batch);
+                    batch.clear();
+                }
+            }
+            if (!batch.isEmpty()) {
+                syncJobLogMapper.insertBatch(batch);
+            }
         }
     }
 

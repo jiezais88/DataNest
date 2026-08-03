@@ -1,4 +1,4 @@
-import {useMemo} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import {Tabs} from 'antd';
 import {Link} from 'react-router-dom';
 import type {SyncJobHistory, SyncJobLog} from '../../../types/sync';
@@ -146,49 +146,27 @@ export function HistoryDetailModal({open, item, onClose, onViewLogs}: HistoryDet
 interface HistoryLogModalProps {
     open: boolean;
     title?: string;
-    logs: SyncJobLog[];
-    loading: boolean;
     onClose: () => void;
+    /** 分页模式（同步历史日志）：提供 tabs + fetchLogs 时启用「概览 + 每表」Tab、各自滚动加载 */
+    tabs?: string[];
+    /** 拉取指定 scope 的一页日志；scope='overview' 为概览，否则为表名 */
+    fetchLogs?: (scope: string, page: number, pageSize: number) => Promise<{ records: SyncJobLog[]; total: number }>;
+    /** 平铺模式（DAG SYNC 节点日志等）：一次性展示全部日志 */
+    logs?: SyncJobLog[];
+    loading?: boolean;
 }
 
-// 聚合日志里按 "===== Addax 执行: {表} =====" 头切分，把日志按表分组
-const LOG_TABLE_HEADER_RE = /^===== Addax 执行: (.+?) =====$/;
-// 平台（worker SyncJobExecutorService）自打印的概要行：归到「概览」，不混进某张表的 Tab
-const PLATFORM_SUMMARY_RE = /^(开始 Addax 同步执行|同步成功|Addax 执行失败|同步任务最终失败|开始.*Addax)/;
+const LOG_PAGE_SIZE = 200;
 
-function splitLogsByTable(logs: SyncJobLog[]): { table: string; logs: SyncJobLog[] }[] {
-    const groups: { table: string; logs: SyncJobLog[] }[] = [];
-    let current: { table: string; logs: SyncJobLog[] } | null = null;
-    // 确保「概览」组存在且排在最前
-    const ensureOverview = () => {
-        if (!groups.length || groups[0].table !== '概览') {
-            groups.unshift({table: '概览', logs: []});
-        }
-    };
-    for (const log of logs) {
-        const msg = (log.message || '').trim();
-        const m = LOG_TABLE_HEADER_RE.exec(msg);
-        if (m) {
-            current = {table: m[1], logs: []};
-            groups.push(current);
-            continue;
-        }
-        if (PLATFORM_SUMMARY_RE.test(msg)) {
-            // 平台概要行（开始/成功/失败收尾）归「概览」
-            ensureOverview();
-            groups[0].logs.push(log);
-            continue;
-        }
-        if (current) {
-            current.logs.push(log);
-        } else {
-            // 首个表头之前的行（如 "开始 Addax 同步执行"）归到「概览」
-            ensureOverview();
-            groups[0].logs.push(log);
-        }
-    }
-    return groups;
+interface TabLogState {
+    page: number;
+    total: number;
+    logs: SyncJobLog[];
+    loaded: boolean;
+    loading: boolean;
 }
+
+const EMPTY_TAB: TabLogState = {page: 0, total: 0, logs: [], loaded: false, loading: false};
 
 function LogRows({logs}: { logs: SyncJobLog[] }) {
     return (
@@ -211,32 +189,121 @@ function LogRows({logs}: { logs: SyncJobLog[] }) {
     );
 }
 
-export function HistoryLogModal({open, title, logs, loading, onClose}: HistoryLogModalProps) {
-    const groups = useMemo(() => splitLogsByTable(logs), [logs]);
-    const hasTableSplit = groups.length > 1;
-    const items = hasTableSplit
-        ? [
-            {key: '__all', label: '全部', children: <LogRows logs={logs}/>},
-            ...groups.map((g, i) => ({key: `g-${i}`, label: g.table, children: <LogRows logs={g.logs}/>})),
-        ]
-        : undefined;
+export function HistoryLogModal({open, title, tabs, fetchLogs, logs, loading, onClose}: HistoryLogModalProps) {
+    const paginated = !!tabs && !!fetchLogs;
+
+    const [activeKey, setActiveKey] = useState<string>('概览');
+    const [tabStates, setTabStates] = useState<Record<string, TabLogState>>({});
+
+    const updateTab = useCallback((tab: string, patch: Partial<TabLogState>) => {
+        setTabStates(prev => ({...prev, [tab]: {...(prev[tab] || EMPTY_TAB), ...patch}}));
+    }, []);
+
+    const loadPage = useCallback((tab: string, append: boolean) => {
+        if (!fetchLogs) return;
+        const st = tabStates[tab] || EMPTY_TAB;
+        if (st.loading) return;
+        // 已加载完全部则不再请求
+        if (st.total > 0 && st.logs.length >= st.total) return;
+        const nextPage = append ? st.page + 1 : 1;
+        updateTab(tab, {loading: true});
+        const scope = tab === '概览' ? 'overview' : tab;
+        fetchLogs(scope, nextPage, LOG_PAGE_SIZE)
+            .then(res => {
+                updateTab(tab, {
+                    page: nextPage,
+                    total: res.total,
+                    logs: append ? [...st.logs, ...res.records] : res.records,
+                    loaded: true,
+                    loading: false,
+                });
+            })
+            .catch(() => updateTab(tab, {loading: false}));
+    }, [tabStates, fetchLogs, updateTab]);
+
+    // 打开时重置并加载第一个 Tab（仅分页模式）
+    useEffect(() => {
+        if (!open || !paginated) return;
+        setTabStates({});
+        const first = (tabs && tabs.length ? tabs : ['概览'])[0];
+        setActiveKey(first);
+        loadPage(first, false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    const handleTabChange = (key: string) => {
+        setActiveKey(key);
+        const st = tabStates[key];
+        if (!st || (!st.loaded && !st.loading)) loadPage(key, false);
+    };
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const el = e.currentTarget;
+        const st = tabStates[activeKey];
+        if (!st || st.loading) return;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
+            loadPage(activeKey, true);
+        }
+    };
+
+    // 平铺模式（DAG SYNC 节点日志等）：一次性展示全部日志
+    if (!paginated) {
+        return (
+            <DsModal
+                open={open}
+                onClose={onClose}
+                title={`执行日志${title ? ` - ${title}` : ''}`}
+                width="w-[720px]"
+                bordered
+            >
+                {loading ? (
+                    <div className="text-ds-small text-ds-text-secondary py-4">加载中...</div>
+                ) : !logs || logs.length === 0 ? (
+                    <div className="text-ds-small text-ds-text-muted py-4">暂无日志</div>
+                ) : (
+                    <div className="max-h-[420px] overflow-y-auto">
+                        <LogRows logs={logs}/>
+                    </div>
+                )}
+            </DsModal>
+        );
+    }
+
+    const items = (tabs && tabs.length ? tabs : ['概览']).map(tab => {
+        const st = tabStates[tab] || EMPTY_TAB;
+        return {
+            key: tab,
+            label: tab,
+            children: (
+                <div className="h-[420px] overflow-y-auto" onScroll={handleScroll}>
+                    {st.loading && st.logs.length === 0 ? (
+                        <div className="text-ds-small text-ds-text-secondary py-4">加载中...</div>
+                    ) : st.logs.length === 0 ? (
+                        <div className="text-ds-small text-ds-text-muted py-4">暂无日志</div>
+                    ) : (
+                        <>
+                            <LogRows logs={st.logs}/>
+                            <div className="text-ds-caption text-ds-text-muted py-2 text-center">
+                                {st.loading
+                                    ? '加载中...'
+                                    : `已显示 ${st.logs.length} / 共 ${st.total} 行${st.logs.length < st.total ? '（滚动加载更多）' : ''}`}
+                            </div>
+                        </>
+                    )}
+                </div>
+            ),
+        };
+    });
+
     return (
         <DsModal
             open={open}
             onClose={onClose}
             title={`执行日志${title ? ` - ${title}` : ''}`}
-            width="w-[720px]"
+            width="w-[760px]"
             bordered
         >
-            {loading ? (
-                <div className="text-ds-small text-ds-text-secondary">加载中...</div>
-            ) : logs.length === 0 ? (
-                <div className="text-ds-small text-ds-text-muted">暂无日志</div>
-            ) : hasTableSplit ? (
-                <Tabs size="small" items={items}/>
-            ) : (
-                <LogRows logs={logs}/>
-            )}
+            <Tabs size="small" activeKey={activeKey} onChange={handleTabChange} items={items}/>
         </DsModal>
     );
 }

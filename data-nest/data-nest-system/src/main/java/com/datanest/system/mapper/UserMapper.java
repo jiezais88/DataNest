@@ -50,4 +50,22 @@ public interface UserMapper extends BaseMapper<User> {
 
     @Insert("INSERT INTO sys_user_role (id, user_id, role_id) VALUES (#{id}, #{userId}, #{roleId})")
     void insertUserRole(@Param("id") Long id, @Param("userId") Long userId, @Param("roleId") Long roleId);
+
+    /**
+     * Sprint 5：查询已填写邮箱的用户（告警接收人选择器）。
+     * 支持按用户名/邮箱模糊搜索。
+     */
+    @Select("""
+                <script>
+                SELECT id, username, email FROM sys_user
+                WHERE email IS NOT NULL AND email &lt;&gt; ''
+                <if test='keyword != null and keyword != ""'>
+                    AND (username ILIKE CONCAT('%', #{keyword}, '%')
+                         OR email ILIKE CONCAT('%', #{keyword}, '%'))
+                </if>
+                ORDER BY username ASC
+                LIMIT 100
+                </script>
+            """)
+    List<User> selectUsersWithEmail(@Param("keyword") String keyword);
 }

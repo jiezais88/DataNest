@@ -20,4 +20,15 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>" +
             "</script>")
     List<SysUser> selectByIdList(@Param("ids") Collection<Long> ids);
+
+    /**
+     * Sprint 5：按 id 批量查询邮箱，用于告警收件人反查。
+     * 仅返回已填写邮箱的用户。
+     */
+    @Select("<script>" +
+            "SELECT id, username, email FROM sys_user WHERE id IN " +
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>" +
+            " AND email IS NOT NULL AND email != ''" +
+            "</script>")
+    List<SysUser> selectEmailsByIds(@Param("ids") Collection<Long> ids);
 }
