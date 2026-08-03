@@ -69,6 +69,18 @@ export function formatThroughput(value?: number | null): string {
     return `${value.toFixed(1)} 行/秒`;
 }
 
+/**
+ * 数字千分位（Phase 6-D）：1234567 -> "1,234,567"。
+ * 大数字（行数/字段数/资产数等）扫读更快，配合表格列的 tabular-nums 对齐。
+ * null / undefined / NaN -> "-"。
+ */
+export function formatNumber(value: number | string | null | undefined): string {
+    if (value === undefined || value === null || value === '') return '-';
+    const n = typeof value === 'string' ? Number(value) : value;
+    if (Number.isNaN(n)) return '-';
+    return n.toLocaleString('zh-CN');
+}
+
 /** ISO 字符串 -> "2026-07-31 22:36:00"（本地时区），空值/非法值 -> "-" */
 export function formatDateTime(value?: string): string {
     if (!value) return '-';

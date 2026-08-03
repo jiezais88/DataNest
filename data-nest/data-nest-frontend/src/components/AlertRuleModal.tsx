@@ -141,15 +141,21 @@ export default function AlertRuleModal({
     }, [open, mode, initialRule, quickObjectType, quickObjectId, isDraft, draftRule]);
 
     // 对象类型变化时加载可选对象（create/edit 模式；quick 模式锁定不加载）
+    // 注意：不能在打开时清空 objectId，否则 edit 模式会丢掉已加载的 initialRule.objectId
     useEffect(() => {
         if (!open || objectLocked) return;
         setObjectOptionsLoading(true);
-        setObjectId('');
         getAlertRuleObjectOptions(objectType)
             .then(list => setObjectOptions(list || []))
             .catch(() => setObjectOptions([]))
             .finally(() => setObjectOptionsLoading(false));
     }, [open, objectType, objectLocked]);
+
+    // 用户手动切换对象类型时，重置已选对象
+    const handleObjectTypeChange = (type: AlertObjectType) => {
+        setObjectType(type);
+        setObjectId('');
+    };
 
     const objectSelectOptions = useMemo(() => {
         if (objectLocked) {
@@ -249,7 +255,7 @@ export default function AlertRuleModal({
                         </label>
                         <Select
                             value={objectType}
-                            onChange={setObjectType}
+                            onChange={handleObjectTypeChange}
                             disabled={readOnly || typeLocked}
                             options={OBJECT_TYPE_OPTIONS}
                             className="w-full"

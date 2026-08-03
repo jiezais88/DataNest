@@ -4,6 +4,7 @@ import {login} from '../../api/auth';
 import {useAuthStore} from '../../store/useAuthStore';
 import ErrorCard from '../../components/ErrorCard';
 import DsButton from '../../components/DsButton';
+import LogoMark from '../../components/LogoMark';
 import {getErrorMessage} from '../../utils/error';
 
 export default function LoginPage() {
@@ -34,13 +35,21 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-ds-bg-root flex items-center justify-center p-ds-4">
-            <div className="bg-ds-bg-surface rounded-ds-md shadow-ds-lg p-ds-8 w-full max-w-[420px]">
+        <div className="relative min-h-screen bg-ds-bg-root flex items-center justify-center p-ds-4 overflow-hidden">
+            {/* 品牌背景母题：数据点阵（hexagon dot grid） */}
+            <div
+                aria-hidden="true"
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                    backgroundImage: 'radial-gradient(circle, rgb(79 70 229 / 0.14) 1px, transparent 1.4px)',
+                    backgroundSize: '26px 26px',
+                    maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 75%)',
+                }}
+            />
+            <div className="relative bg-ds-bg-surface rounded-ds-md shadow-ds-lg p-ds-8 w-full max-w-[420px]">
                 {/* Logo */}
                 <div className="flex flex-col items-center mb-ds-6">
-                    <div className="w-10 h-10 bg-ds-accent rounded-ds-sm flex items-center justify-center mb-ds-3">
-                        <span className="text-white font-extrabold text-sm">DN</span>
-                    </div>
+                    <LogoMark size={40} className="mb-ds-3"/>
                     <h1 className="text-ds-display text-ds-text-primary">DataNest</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">企业级数据中台</p>
                 </div>

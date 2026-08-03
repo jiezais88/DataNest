@@ -1,5 +1,6 @@
 import type {DataSource} from '../../../types/datasource';
 import type {SyncHistoryStatus, SyncJob, SyncJobHistory, SyncMode, SyncTriggerType} from '../../../types/sync';
+import TriggerBadge from '../../../components/TriggerBadge';
 
 export const STATUS_OPTIONS: { value: SyncHistoryStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
@@ -29,28 +30,8 @@ export function syncModeBadge(syncMode: SyncMode | string, incrementalField?: st
 }
 
 export function triggerBadge(triggerType: SyncTriggerType | string) {
-    if (triggerType === 'MANUAL') {
-        return (
-            <span
-                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-blue-50 text-blue-700">
-                手动触发
-            </span>
-        );
-    }
-    if (triggerType === 'DAG') {
-        return (
-            <span
-                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-violet-50 text-violet-700">
-                DAG 编排
-            </span>
-        );
-    }
-    return (
-        <span
-            className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-slate-100 text-blue-600">
-            定时触发
-        </span>
-    );
+    // 收敛实现：统一走 components/TriggerBadge（ds token 语义色，Phase 7-K2）
+    return <TriggerBadge type={triggerType}/>;
 }
 
 export function formatSourceToTarget(item: SyncJob, dataSources: DataSource[]) {

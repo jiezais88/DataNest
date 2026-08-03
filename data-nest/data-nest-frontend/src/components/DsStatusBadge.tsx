@@ -33,7 +33,7 @@ export default function DsStatusBadge({label, variant, pulse}: DsStatusBadgeProp
     const dotPulse = pulse ?? variant === 'running';
     return (
         <span
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap ${STYLES[variant]}`}>
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-ds-badge whitespace-nowrap ${STYLES[variant]}`}>
             {showDot && (
                 <span className={`w-1.5 h-1.5 rounded-full bg-current ${dotPulse ? 'animate-pulse' : ''}`}/>
             )}

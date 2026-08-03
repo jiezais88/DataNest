@@ -548,7 +548,7 @@ export default function DataStandardsPage() {
                 <div className="flex flex-wrap gap-ds-1">
                     {types.map((t) => (
                         <span key={t}
-                              className="px-2.5 py-1 bg-ds-accent-light text-ds-accent text-[11px] font-semibold rounded-full whitespace-nowrap">{t}</span>
+                              className="px-2.5 py-1 bg-ds-accent-light text-ds-accent text-ds-badge rounded-full whitespace-nowrap">{t}</span>
                     ))}
                 </div>
             ),
@@ -707,7 +707,7 @@ export default function DataStandardsPage() {
             <div className="flex flex-col">
                 {activeTab === 'naming' && (
                     <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                         <div
                             className="p-ds-3 border-b border-ds-border-subtle flex items-center gap-ds-3 flex-wrap flex-shrink-0">
                             <SearchInput
@@ -796,7 +796,7 @@ export default function DataStandardsPage() {
 
                 {activeTab === 'field-type' && (
                     <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                         <div
                             className="p-ds-3 border-b border-ds-border-subtle flex items-center gap-ds-3 flex-shrink-0">
                             <SearchInput

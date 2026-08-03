@@ -1,27 +1,30 @@
 import {createBrowserRouter} from 'react-router-dom';
 import LoginPage from '../pages/login';
 import Layout from '../components/Layout';
-import HomePage from '../pages/home';
-import UsersPage from '../pages/system/users';
-import DataSourcesPage from '../pages/engineering/datasources';
-import CollectTasksPage from '../pages/governance/collect-tasks';
-import CollectHistoryGlobalPage from '../pages/governance/collect-tasks/history-global';
-import SyncJobsPage from '../pages/engineering/sync-jobs';
-import SyncJobHistoryGlobalPage from '../pages/engineering/sync-jobs/history-global';
-import MetadataPage from '../pages/governance/metadata';
-import LineageGraphPage from '../pages/governance/metadata/lineage/LineageGraphPage';
-import AlertCenterPage from '../pages/system/alert-center/AlertCenterPage';
-import DataStandardsPage from '../pages/governance/data-standards';
-import DagsPage from '../pages/engineering/dags';
-import ProjectDagsPage from '../pages/engineering/dags/project';
-import DagExecutionsGlobalPage from '../pages/engineering/dag-executions';
 import {
     CollectHistoryRedirect,
     DagExecutionsRedirect,
     LazyDagEditor,
+    lazyPage,
     ProtectedRoute,
     SyncJobHistoryRedirect,
 } from './components';
+
+// 页面级 code-split（Phase 7-N）：除登录/布局外全部懒加载
+const HomePage = lazyPage(() => import('../pages/home'));
+const UsersPage = lazyPage(() => import('../pages/system/users'));
+const DataSourcesPage = lazyPage(() => import('../pages/engineering/datasources'));
+const CollectTasksPage = lazyPage(() => import('../pages/governance/collect-tasks'));
+const CollectHistoryGlobalPage = lazyPage(() => import('../pages/governance/collect-tasks/history-global'));
+const SyncJobsPage = lazyPage(() => import('../pages/engineering/sync-jobs'));
+const SyncJobHistoryGlobalPage = lazyPage(() => import('../pages/engineering/sync-jobs/history-global'));
+const MetadataPage = lazyPage(() => import('../pages/governance/metadata'));
+const LineageGraphPage = lazyPage(() => import('../pages/governance/metadata/lineage/LineageGraphPage'));
+const AlertCenterPage = lazyPage(() => import('../pages/system/alert-center/AlertCenterPage'));
+const DataStandardsPage = lazyPage(() => import('../pages/governance/data-standards'));
+const DagsPage = lazyPage(() => import('../pages/engineering/dags'));
+const ProjectDagsPage = lazyPage(() => import('../pages/engineering/dags/project'));
+const DagExecutionsGlobalPage = lazyPage(() => import('../pages/engineering/dag-executions'));
 
 export const router = createBrowserRouter([
     {

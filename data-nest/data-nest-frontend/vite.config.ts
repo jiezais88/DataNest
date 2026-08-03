@@ -2,6 +2,7 @@
 import {defineConfig, loadEnv} from 'vite'
 import react from '@vitejs/plugin-react'
 import {visualizer} from 'rollup-plugin-visualizer'
+import viteCompression from 'vite-plugin-compression'
 
 const isAnalyze = process.env.ANALYZE === 'true'
 
@@ -13,6 +14,14 @@ export default defineConfig(({mode}) => {
     return {
         plugins: [
             react(),
+            // 构建时预压缩 .gz（nginx gzip_static 直接吐预压缩文件，省去每次请求实时 gzip）
+            viteCompression({
+                verbose: false,
+                threshold: 10240, // 仅压缩 > 10KB 的资产
+                algorithm: 'gzip',
+                ext: '.gz',
+                deleteOriginFile: false,
+            }),
             ...(isAnalyze
                 ? [
                     visualizer({
@@ -35,12 +44,10 @@ export default defineConfig(({mode}) => {
             },
         },
         build: {
-            minify: 'terser',
-            terserOptions: {
-                compress: {
-                    drop_console: true,
-                    drop_debugger: true,
-                },
+            // esbuild 压缩：比 terser 快约 2 倍；drop 保留去除 console/debugger 的效果
+            minify: 'esbuild',
+            esbuild: {
+                drop: ['console', 'debugger'],
             },
             cssCodeSplit: true,
             chunkSizeWarningLimit: 500,
@@ -51,7 +58,7 @@ export default defineConfig(({mode}) => {
                             if (['/react/', '/react-dom/', '/react-router-dom/'].some(p => id.includes(p))) {
                                 return 'vendor-react';
                             }
-                            if (id.includes('/antd/')) {
+                            if (id.includes('/antd/') || id.includes('/@ant-design/icons/')) {
                                 return 'vendor-antd';
                             }
                             if (id.includes('/react-icons/')) {

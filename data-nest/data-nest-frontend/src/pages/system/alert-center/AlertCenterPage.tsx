@@ -84,7 +84,7 @@ function triggerBadges(conditions: AlertTriggerType[]) {
             {(conditions || []).map(c => (
                 <span
                     key={c}
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge ${
                         c === 'FAILURE'
                             ? 'bg-ds-danger-light text-ds-danger'
                             : c === 'TIMEOUT'
@@ -147,8 +147,7 @@ export default function AlertCenterPage() {
         initialQuery: INITIAL_RULE_QUERY,
         defaultPageSize: 10,
     });
-
-    // ==================== 告警历史 ====================
+// ==================== 告警历史 ====================
     const [draftHistoryType, setDraftHistoryType] = useState<AlertObjectType | ''>('');
     const [draftAlertType, setDraftAlertType] = useState<AlertTriggerType | ''>('');
     const [draftSendStatus, setDraftSendStatus] = useState<AlertSendStatus | ''>('');
@@ -176,8 +175,7 @@ export default function AlertCenterPage() {
         initialQuery: INITIAL_HISTORY_QUERY,
         defaultPageSize: 10,
     });
-
-    // 接收用户显示：加载全部有邮箱用户建 id→username 映射
+// 接收用户显示：加载全部有邮箱用户建 id→username 映射
     const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
     useEffect(() => {
         let cancelled = false;
@@ -374,6 +372,7 @@ export default function AlertCenterPage() {
             title: '操作',
             align: 'center',
             width: COL.OPERATION_3,
+            fixed: 'right' as const,
             render: (_, rule) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="编辑">
@@ -442,7 +441,7 @@ export default function AlertCenterPage() {
             width: COL.STATUS,
             render: (v: AlertTriggerType) => (
                 <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge ${
                         v === 'FAILURE'
                             ? 'bg-ds-danger-light text-ds-danger'
                             : v === 'TIMEOUT'
@@ -477,6 +476,7 @@ export default function AlertCenterPage() {
             title: '操作',
             align: 'center',
             width: COL.OPERATION_2,
+            fixed: 'right' as const,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -529,7 +529,7 @@ export default function AlertCenterPage() {
             {/* ==================== 告警规则 ==================== */}
             {activeTab === 'rules' && (
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={
@@ -580,7 +580,7 @@ export default function AlertCenterPage() {
             {/* ==================== 告警历史 ==================== */}
             {activeTab === 'history' && (
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={

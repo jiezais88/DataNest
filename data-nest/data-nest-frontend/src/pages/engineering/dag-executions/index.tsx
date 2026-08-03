@@ -20,7 +20,8 @@ import DsToolbar from '../../../components/DsToolbar';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import {executionStatusVariant} from '../../../utils/status';
 import {notify} from '../../../utils/notify';
-import {NODE_STATUS_LABEL} from '../../../constants/statusColors';
+import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '../../../constants/statusColors';
+import StatusSpine from '../../../components/StatusSpine';
 import {COL} from '../../../constants/table';
 
 // =================== 常量映射 ===================
@@ -130,8 +131,7 @@ export default function DagExecutionsGlobalPage() {
         initialQuery: buildDefaultApplied(),
         defaultPageSize: 10,
     });
-
-    // 从任务列表「历史」跳入：URL ?dagId=xxx&dagName=yyy → 精确过滤该 DAG
+// 从任务列表「历史」跳入：URL ?dagId=xxx&dagName=yyy → 精确过滤该 DAG
     const urlDagId = searchParams.get('dagId');
     const urlDagName = searchParams.get('dagName') || '';
     useEffect(() => {
@@ -331,6 +331,11 @@ export default function DagExecutionsGlobalPage() {
 
     const columns = useMemo<ColumnsType<DagExecution>>(() => [
         {
+            title: '',
+            width: 12,
+            render: (_, r) => <StatusSpine color={NODE_STATUS_COLOR[r.status]}/>,
+        },
+        {
             title: '所属 DAG',
             dataIndex: 'dagName',
             width: COL.NAME_COMPACT,
@@ -401,7 +406,8 @@ export default function DagExecutionsGlobalPage() {
             // 超宽截断 + title 悬浮提示（长耗时如 "72m 37s 737ms" 单行放不下）
             render: (v: number | undefined, r) => {
                 const text = formatExecutionDuration(v, r.startTime, r.endTime);
-                return <span title={text} className="text-ds-small text-ds-text-secondary">{text}</span>;
+                return <span title={text}
+                             className="text-ds-small text-ds-text-secondary font-mono tabular-nums">{text}</span>;
             },
         },
         {
@@ -460,6 +466,7 @@ export default function DagExecutionsGlobalPage() {
             title: '操作',
             width: COL.OPERATION_3,
             align: 'center',
+            fixed: 'right' as const,
             render: (_, r) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
@@ -603,11 +610,11 @@ export default function DagExecutionsGlobalPage() {
                 </DsToolbar>
             </div>
 
-            {/* 表格卡片 + 底部分页器：卡片随内容高度，分页器紧贴表格；内容超高时整页滚动 */}
+            {/* 表格卡片 + 底部分页器：卡片撑满剩余高度，分页器贴底，表格超高时内部滚动 */}
             <div className="flex flex-col">
                 <div
                     data-testid="dag-executions-table"
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table<DagExecution>
                             dataSource={data}

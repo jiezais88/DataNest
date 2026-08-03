@@ -1,7 +1,7 @@
 // Breadcrumb map + resolver. Shared by Layout (for document.title) and
 // Breadcrumb component (for rendering the nav).
 
-export type BreadcrumbEntry = { group?: string; label: string };
+export type BreadcrumbEntry = { group?: string; label: string; leaf?: boolean };
 
 export type BreadcrumbSegment = { label: string; path: string };
 
@@ -10,21 +10,25 @@ export type BreadcrumbSegment = { label: string; path: string };
  * `group` represents the parent group label (e.g. "数据工程") and is
  * prepended when rendering so that deep pages read as
  * "数据工程 / DAG 编排 / 编辑".
+ *
+ * `leaf`：一级列表页标记。精确匹配到 leaf 页时 `resolveBreadcrumb` 返回空数组，
+ * 页面只保留自身 h1 标题，避免"面包屑 + 大标题"双重标题（Phase 3）。
+ * 深层动态路由（前缀匹配）不受影响，仍走 breadcrumb 提供返回导航。
  */
 export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/': {label: '首页'},
-    '/system/users': {group: '系统管理', label: '用户管理'},
-    '/system/alert-center': {group: '系统管理', label: '告警中心'},
-    '/engineering/datasources': {group: '数据工程', label: '数据源管理'},
-    '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步任务'},
-    '/engineering/sync-job-history': {group: '数据工程', label: '同步任务历史'},
-    '/engineering/dags': {group: '数据开发', label: '项目管理'},
-    '/engineering/dag-executions': {group: '数据工程', label: 'DAG 执行历史'},
-    '/governance/collect-tasks': {group: '数据治理', label: '采集任务'},
-    '/governance/collect-task-history': {group: '数据治理', label: '采集任务历史'},
-    '/governance/metadata': {group: '数据治理', label: '元数据管理'},
+    '/system/users': {group: '系统管理', label: '用户管理', leaf: true},
+    '/system/alert-center': {group: '系统管理', label: '告警中心', leaf: true},
+    '/engineering/datasources': {group: '数据工程', label: '数据源管理', leaf: true},
+    '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步任务', leaf: true},
+    '/engineering/sync-job-history': {group: '数据工程', label: '同步任务历史', leaf: true},
+    '/engineering/dags': {group: '数据开发', label: '项目管理', leaf: true},
+    '/engineering/dag-executions': {group: '数据工程', label: 'DAG 执行历史', leaf: true},
+    '/governance/collect-tasks': {group: '数据治理', label: '采集任务', leaf: true},
+    '/governance/collect-task-history': {group: '数据治理', label: '采集任务历史', leaf: true},
+    '/governance/metadata': {group: '数据治理', label: '元数据管理', leaf: true},
     '/governance/metadata/lineage': {group: '数据治理', label: '血缘图谱'},
-    '/governance/data-standards': {group: '数据治理', label: '数据标准'},
+    '/governance/data-standards': {group: '数据治理', label: '数据标准', leaf: true},
 };
 
 /**
@@ -60,6 +64,10 @@ export function resolveBreadcrumb(pathname: string): BreadcrumbSegment[] {
     // Exact match
     const exact = breadcrumbMap[pathname];
     if (exact) {
+        // leaf 一级页只保留页面自身标题，不再渲染面包屑
+        if (exact.leaf) {
+            return [];
+        }
         return exact.group
             ? [
                 {label: exact.group, path: '/'},

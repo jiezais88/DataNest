@@ -12,6 +12,7 @@ import DsButton from '../../../../components/DsButton';
 import DsIconButton from '../../../../components/DsIconButton';
 import DsModal from '../../../../components/DsModal';
 import DsStatusBadge from '../../../../components/DsStatusBadge';
+import TriggerBadge from '../../../../components/TriggerBadge';
 import DsFilterSelect from '../../../../components/DsFilterSelect';
 import DsToolbar from '../../../../components/DsToolbar';
 import {formatDateTime, formatDuration, formatExecutionDuration, getDefaultTimeRange} from '../../../../utils/format';
@@ -41,20 +42,7 @@ const STATUS_LABELS: Record<ExecutionStatus, string> = {
 type HistoryQuery = Omit<CollectHistoryQueryParams, 'page' | 'pageSize'>;
 
 function triggerBadge(triggerType: string) {
-    if (triggerType === 'MANUAL') {
-        return (
-            <span
-                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-blue-50 text-blue-700">
-                手动触发
-            </span>
-        );
-    }
-    return (
-        <span
-            className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-slate-100 text-blue-600">
-            定时触发
-        </span>
-    );
+    return <TriggerBadge type={triggerType}/>;
 }
 
 export default function CollectHistoryGlobalPage() {
@@ -80,7 +68,6 @@ export default function CollectHistoryGlobalPage() {
             initialQuery: {startTimeFrom: defaultRange.from, startTimeTo: defaultRange.to},
             defaultPageSize: 10,
         });
-
     const urlTaskId = searchParams.get('taskId');
     const urlTaskName = searchParams.get('taskName') || '';
     // 从任务列表「历史」跳入：URL ?taskId=xxx&taskName=yyy → 精确过滤该任务
@@ -273,14 +260,16 @@ export default function CollectHistoryGlobalPage() {
             // 超宽截断 + title 悬浮提示
             render: (v: number | undefined, item) => {
                 const text = formatExecutionDuration(v, item.startedAt, item.endedAt);
-                return <span title={text} className="text-ds-small text-ds-text-secondary">{text}</span>;
+                return <span title={text}
+                             className="text-ds-small text-ds-text-secondary font-mono tabular-nums">{text}</span>;
             },
         },
         {
             title: '扫描库表字段',
             width: COL.COUNT,
+            align: 'right',
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap font-mono tabular-nums">
                     {item.dbCount ?? 0}/{item.tableCount ?? 0}/{item.columnCount ?? 0}
                 </span>
             ),
@@ -314,6 +303,7 @@ export default function CollectHistoryGlobalPage() {
             title: '操作',
             align: 'center',
             width: COL.OPERATION_3,
+            fixed: 'right' as const,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {item.status === 'RUNNING' && (
@@ -439,7 +429,7 @@ export default function CollectHistoryGlobalPage() {
 
             <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table<CollectTaskExecution>
                             dataSource={list}

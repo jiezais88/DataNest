@@ -1,6 +1,6 @@
 // DAG 编辑器（ReactFlow 画布 + 节点配置 + 右侧属性面板）
 // Sprint 3: 节点状态边框/端口/状态图标 + design token + 三栏布局 + 同步任务摘要
-import {Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation, useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import ReactFlow, {
     addEdge,
@@ -20,7 +20,17 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Form, Input, Modal, Popover, Select, Spin, Switch, Tag} from 'antd';
-import {HiOutlineDocumentText, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
+import {
+    HiOutlineArrowsRightLeft,
+    HiOutlineCodeBracket,
+    HiOutlineCodeBracketSquare,
+    HiOutlineDocumentText,
+    HiOutlineEye,
+    HiOutlinePencilSquare,
+    HiOutlinePlayCircle,
+    HiOutlineRectangleStack,
+    HiOutlineVariable,
+} from 'react-icons/hi2';
 import DsButton from '../../../components/DsButton';
 import Drawer from '../../../components/Drawer';
 import {
@@ -119,7 +129,13 @@ function extractOutputTable(sql?: string): string | null {
 }
 
 // ─────────── 自定义 DAG 节点组件（统一 SQL/SYNC/PYTHON/CONDITION/SUB_DAG；运行视图带状态色/耗时） ───────────
-const NODE_TYPE_ICON: Record<NodeType, string> = {SQL: '📝', SYNC: '🔄', PYTHON: '🐍', CONDITION: '🔀', SUB_DAG: '📦'};
+const NODE_TYPE_ICON: Record<NodeType, ReactNode> = {
+    SQL: <HiOutlineCodeBracket/>,
+    SYNC: <HiOutlineArrowsRightLeft/>,
+    PYTHON: <HiOutlineCodeBracketSquare/>,
+    CONDITION: <HiOutlineVariable/>,
+    SUB_DAG: <HiOutlineRectangleStack/>,
+};
 const NODE_TYPE_LABEL: Record<NodeType, string> = {
     SQL: 'SQL 任务',
     SYNC: '同步任务',
@@ -129,19 +145,19 @@ const NODE_TYPE_LABEL: Record<NodeType, string> = {
 };
 
 function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
-    const icon = NODE_TYPE_ICON[data.nodeType] || '📝';
+    const icon = NODE_TYPE_ICON[data.nodeType] || NODE_TYPE_ICON.SQL;
     const outputTable = data.nodeType === 'SQL' ? extractOutputTable(data.sqlContent) : null;
     const statusColor = data.status ? NODE_STATUS_COLOR[data.status] : undefined;
-    // 条件分支/子 DAG 节点专属配色（对齐原型 .rf-node.condition / .rf-node.subdag）
+    // 条件分支/子 DAG 节点专属配色（走 ds-type-* token，画布与节点面板共用）
     const typeAccent = data.nodeType === 'CONDITION'
-        ? 'border-[#c4b5fd] bg-[#f5f3ff]'
+        ? 'border-ds-type-condition-border bg-ds-type-condition-light'
         : data.nodeType === 'SUB_DAG'
-            ? 'border-[#5eead4] bg-[#f0fdfa]'
+            ? 'border-ds-type-subdag-border bg-ds-type-subdag-light'
             : 'border-ds-border-subtle bg-ds-bg-surface';
     const iconTone = data.nodeType === 'CONDITION'
-        ? 'bg-[#ede9fe] text-[#7c3aed]'
+        ? 'bg-ds-type-condition-soft text-ds-type-condition'
         : data.nodeType === 'SUB_DAG'
-            ? 'bg-[#ccfbf1] text-[#0d9488]'
+            ? 'bg-ds-type-subdag-soft text-ds-type-subdag'
             : data.nodeType === 'SQL'
                 ? 'bg-ds-accent-light text-ds-accent'
                 : data.nodeType === 'PYTHON'
@@ -1625,7 +1641,7 @@ function DagEditorInner() {
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : undefined}
                             >
-                                <span className="text-ds-heading">📝</span>
+                                <span className="text-ds-heading">{NODE_TYPE_ICON.SQL}</span>
                                 <span className="text-ds-small font-semibold text-ds-text-secondary">SQL 任务</span>
                             </div>
                             {/* 拖拽源：Python 节点（Sprint 4） */}
@@ -1644,7 +1660,7 @@ function DagEditorInner() {
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : '标准库 + pandas'}
                             >
-                                <span className="text-ds-heading">🐍</span>
+                                <span className="text-ds-heading">{NODE_TYPE_ICON.PYTHON}</span>
                                 <span className="text-ds-small font-semibold text-ds-text-secondary">Python 任务</span>
                             </div>
                             {/* 拖拽源：同步节点 */}
@@ -1663,7 +1679,7 @@ function DagEditorInner() {
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : undefined}
                             >
-                                <span className="text-ds-heading">🔄</span>
+                                <span className="text-ds-heading">{NODE_TYPE_ICON.SYNC}</span>
                                 <span className="text-ds-small font-semibold text-ds-text-secondary">同步任务</span>
                             </div>
                             {/* 拖拽源：条件分支节点（Sprint 5） */}
@@ -1677,13 +1693,13 @@ function DagEditorInner() {
                                     e.dataTransfer.setData('application/reactflow', 'CONDITION');
                                     e.dataTransfer.effectAllowed = 'move';
                                 }}
-                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-[#c4b5fd] bg-[#f5f3ff] ${
-                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-[#7c3aed] hover:bg-[#ede9fe]' : 'cursor-not-allowed opacity-50'
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-ds-type-condition-border bg-ds-type-condition-light ${
+                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-ds-type-condition hover:bg-ds-type-condition-soft' : 'cursor-not-allowed opacity-50'
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : '按表达式选择下游分支'}
                             >
-                                <span className="text-ds-heading">🔀</span>
-                                <span className="text-ds-small font-semibold text-[#7c3aed]">条件分支</span>
+                                <span className="text-ds-heading">{NODE_TYPE_ICON.CONDITION}</span>
+                                <span className="text-ds-small font-semibold text-ds-type-condition">条件分支</span>
                             </div>
                             {/* 拖拽源：子 DAG 节点（Sprint 5） */}
                             <div
@@ -1696,13 +1712,13 @@ function DagEditorInner() {
                                     e.dataTransfer.setData('application/reactflow', 'SUB_DAG');
                                     e.dataTransfer.effectAllowed = 'move';
                                 }}
-                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-[#5eead4] bg-[#f0fdfa] ${
-                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-[#0d9488] hover:bg-[#ccfbf1]' : 'cursor-not-allowed opacity-50'
+                                className={`flex flex-col items-center justify-center gap-ds-2 px-ds-3 py-ds-4 rounded-xl border-[1.5px] border-ds-type-subdag-border bg-ds-type-subdag-light ${
+                                    canEdit ? 'cursor-grab active:cursor-grabbing hover:border-ds-type-subdag hover:bg-ds-type-subdag-soft' : 'cursor-not-allowed opacity-50'
                                 } transition-colors`}
                                 title={!canEdit ? '只读模式：您没有编辑权限' : '引用其他 DAG 作为节点'}
                             >
-                                <span className="text-ds-heading">📦</span>
-                                <span className="text-ds-small font-semibold text-[#0d9488]">子 DAG</span>
+                                <span className="text-ds-heading">{NODE_TYPE_ICON.SUB_DAG}</span>
+                                <span className="text-ds-small font-semibold text-ds-type-subdag">子 DAG</span>
                             </div>
                         </div>
                         <div className="mt-ds-6 text-ds-caption text-ds-text-muted text-center">

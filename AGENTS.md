@@ -165,6 +165,15 @@ docker compose up -d --no-deps app-engineering app-worker
   （空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
 - **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**
   （`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
+- **ReactFlow 11 受控 edges/nodes 必须配 onEdgesChange/onNodesChange**：直接传 `edges`/`nodes` prop 而不传 change handler
+  时，内部 `setEdges`/`setNodes` 静默不执行，边不渲染（血缘图谱页曾踩此坑，节点正常但边为空且无报错）。改用
+  `useNodesState`/`useEdgesState` 或补 handler。排查"节点正常、边不渲染"先看此。
+- **SimpleEvaluationContext 不含 MapAccessor**：条件分支 SpEL 里 `#upstream.row_count` 属性语法必然抛
+  "Property cannot be found"。需把 `${a.b}` 转成 SpEL 索引语法 `#a['b']`（见 `DagNodeExecuteService.evaluateBranches`）。
+- **DagExecutionSyncService 匹配 DS 任务实例**：DS 任务名 = `节点名_节点ID后8位`（nodeId 可能含 `_`），不能简单按 nodeName 或
+  strip 末尾 `_` 段匹配；应按相同规则构建「DS 任务名→node」反向映射。SUB_DAG 等依赖 sync 更新状态的节点 匹配失败会落
+  WAITING→SKIPPED。
+- **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
 
 ## 7. 代码与提交约定
 

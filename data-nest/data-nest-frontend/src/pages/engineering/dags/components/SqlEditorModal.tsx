@@ -21,7 +21,7 @@
 
 import {useEffect, useRef, useState} from 'react';
 import {Select, Spin, Tabs} from 'antd';
-import {HiChevronRight} from 'react-icons/hi2';
+import {HiChevronRight, HiOutlineCheckCircle, HiOutlineXCircle} from 'react-icons/hi2';
 import DsButton from '../../../../components/DsButton';
 import DsModal from '../../../../components/DsModal';
 import '../../../../lib/monacoSetup';
@@ -304,9 +304,12 @@ export default function SqlEditorModal({
                         <div
                             className="px-ds-4 py-ds-2 bg-ds-bg-hover text-ds-caption font-semibold flex items-center gap-ds-3">
                             <span className="text-ds-text-primary">共 {results.length} 条语句</span>
-                            <span className="text-ds-success">✅ {successCount} 成功</span>
-                            <span className={failedCount > 0 ? 'text-ds-danger' : 'text-ds-text-muted'}>
-                                ❌ {failedCount} 失败
+                            <span className="text-ds-success flex items-center gap-ds-1">
+                                <HiOutlineCheckCircle size={14}/> {successCount} 成功
+                            </span>
+                            <span
+                                className={failedCount > 0 ? 'text-ds-danger flex items-center gap-ds-1' : 'text-ds-text-muted flex items-center gap-ds-1'}>
+                                <HiOutlineXCircle size={14}/> {failedCount} 失败
                             </span>
                             {totalDurationMs != null && (
                                 <span className="text-ds-text-muted font-normal">
@@ -336,8 +339,13 @@ export default function SqlEditorModal({
                                                         className="border-b border-ds-border-subtle last:border-b-0 py-ds-2"
                                                     >
                                                         <div className="flex items-center gap-ds-2">
-                                                            <span
-                                                                className="shrink-0">{r.status === 'SUCCESS' ? '✅' : '❌'}</span>
+                                                            <span className="shrink-0 flex items-center">
+                                                                {r.status === 'SUCCESS'
+                                                                    ? <HiOutlineCheckCircle size={14}
+                                                                                            className="text-ds-success"/>
+                                                                    : <HiOutlineXCircle size={14}
+                                                                                        className="text-ds-danger"/>}
+                                                            </span>
                                                             <span
                                                                 className="shrink-0 font-mono text-ds-caption font-semibold px-1.5 py-0.5 rounded bg-ds-bg-hover text-ds-text-secondary">
                                                                 {stmtType}

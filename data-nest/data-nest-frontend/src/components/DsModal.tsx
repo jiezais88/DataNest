@@ -1,6 +1,7 @@
-import {type ReactNode} from 'react';
+import {type ReactNode, useRef} from 'react';
 import {HiOutlineXMark} from 'react-icons/hi2';
 import DsIconButton from './DsIconButton';
+import {useModalA11y} from '../hooks/useModalA11y';
 
 /**
  * 全局统一弹窗基座。历史背景：项目里曾有 antd Modal / ConfirmDialog / 各页面手写
@@ -41,6 +42,9 @@ export default function DsModal({
                                     bodyMaxHeight = 'max-h-[70vh]',
                                     children,
                                 }: DsModalProps) {
+    const panelRef = useRef<HTMLDivElement>(null);
+    useModalA11y(open, onClose, panelRef);
+
     if (!open) return null;
 
     return (
@@ -50,7 +54,12 @@ export default function DsModal({
                 onClick={maskClosable ? onClose : undefined}
             />
             <div
-                className={`relative bg-ds-bg-surface rounded-ds-md shadow-ds-xl ${width} animate-in zoom-in-95 ${
+                ref={panelRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={typeof title === 'string' ? title : undefined}
+                tabIndex={-1}
+                className={`relative bg-ds-bg-surface rounded-ds-md shadow-ds-xl ${width} animate-in zoom-in-95 outline-none ${
                     bordered ? 'flex flex-col' : 'p-ds-6'
                 }`}
             >

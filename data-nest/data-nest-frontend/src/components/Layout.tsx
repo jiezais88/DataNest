@@ -2,6 +2,7 @@ import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {useEffect, useState} from 'react';
 import Sidebar from './Sidebar';
 import Breadcrumb from './Breadcrumb';
+import ErrorBoundary from './ErrorBoundary';
 import {useAuthStore} from '../store/useAuthStore';
 import ChangePasswordModal from './ChangePasswordModal';
 import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/hi2';
@@ -31,7 +32,7 @@ export default function Layout() {
             <Sidebar/>
 
             {/* Main content area */}
-            <div className="ml-[248px] flex flex-col h-screen">
+            <div className="ml-14 lg:ml-[248px] flex flex-col h-screen">
                 {/* Top bar */}
                 <header
                     className="flex-shrink-0 z-ds-elevated h-14 bg-ds-bg-surface/80 backdrop-blur-sm border-b border-ds-border-subtle flex items-center justify-end px-ds-6">
@@ -77,7 +78,9 @@ export default function Layout() {
                 {/* Page content */}
                 <main className="flex-1 min-h-0 overflow-y-auto p-ds-6">
                     <Breadcrumb pathname={location.pathname}/>
-                    <Outlet/>
+                    <ErrorBoundary>
+                        <Outlet/>
+                    </ErrorBoundary>
                 </main>
             </div>
 

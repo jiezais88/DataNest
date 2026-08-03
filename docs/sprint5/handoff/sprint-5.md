@@ -155,22 +155,57 @@ DAG 流水线。
 | 产品 | 当前 Agent         | 已完成 | Sprint 5 PRD、技术文档、UI 原型已确定                 | —                                                                       | PRD/技术文档/原型范围已确认；技术栈版本已核对（ReactFlow 11.11.x、PostgreSQL 16）   |
 | 后端 | 当前 Agent         | 已完成 | 三大模块后端实现 + 编译通过 + 代码 review             | 待部署到环境做接口自测                                                  | 改动涉及 task-core → 需重编并部署 engineering+worker+governance+system+job 全部服务 |
 | 前端 | 当前 Agent         | 已完成 | 已按 PRD/技术文档/原型实现三大模块前端 + 后端补充字段 | 待后端部署后联调：血缘图谱接口、告警中心 CRUD、条件分支/子 DAG 保存触发 | 前端 typecheck/lint/build 通过；后端 task-core 改动需重编部署全部服务               |
-| 测试 | -                  | 未开始 | -                                                     | 功能/集成/回归测试                                                      | 建议后端接口自测通过后再进入联调                                                    |
+| 测试 | 当前 Agent         | 已完成 | 见文末「Sprint 5 测试会话」                           | 见「待处理缺陷」                                                        | API+E2E 全量 85/85 通过；测试基建在 data-nest-frontend/e2e/sprint5                  |
 
 ## Next Action
 
-1. 部署后端（含本会话新增的 send_status 字段）：
-   `mvn -pl data-nest-task-core,data-nest-engineering,data-nest-worker,data-nest-governance,data-nest-system,data-nest-job -am clean package -DskipTests`
-   后 `docker compose build` / `up -d --no-deps` 对应服务，检查镜像时间戳确认新 jar。
-2. 后端接口自测（按 AGENTS.md 验证规范）：
-    - 血缘：构造字段级 lineage_record 样例 → `/api/governance/lineage/graph`、`/columns`、`/impact`、`/source`；跑一次 SQL
-      INSERT..SELECT 验证字段级落库
-   - 告警：建 alert_rule → 触发失败同步 → 查 `alert_history`（含 send_status）+ MailHog；DAG 告警兼容回退；
-     `/users/with-email` 过滤
-    - 控制流：含 CONDITION（引用上游 row_count）+ SUB_DAG 的 DAG → 保存（验证循环引用阻断）→ 触发 → 验证命中分支执行、非命中分支
-      SKIPPED、子 DAG 独立执行
-3. 前后端联调：前端已就绪（typecheck/lint/build 通过），联调路径：元数据表详情 → 血缘图谱（图谱/字段下钻/影响/溯源）→
-   系统管理 → 告警中心（规则 CRUD + 历史发送状态）→ 同步任务/采集任务「🔔 告警配置」→ DAG 编辑器（条件分支/子 DAG 保存与连线、告警按钮）。
+1. **处理遗留缺陷**（见文末「待处理缺陷」）：
+    - 血缘图谱 ReactFlow 边不渲染（P0）需前端专项排查
+    - 无血缘表空状态文案实际不可达（PRD AC-7 与实现差异）
+2. 回归：修改上述缺陷后重跑 `cd data-nest-frontend && npx playwright test --project=chromium`。
+3. 测试基建保留在 `data-nest-frontend/e2e/sprint5/`（globalSetup 播种 / globalTeardown 清理），可直接复用。
+
+## Sprint 5 测试会话
+
+> 2026-08-03：API 测试 + E2E 测试全量完成， **85/85 通过**。测试基建：`data-nest-frontend/e2e/sprint5/`（Playwright）。
+> 运行方式：`cd data-nest-frontend && npx playwright test --project=chromium --timeout=300000`。
+
+### 覆盖范围
+
+| 层  | 文件                         | 数量 | 说明                                                           |
+|-----|------------------------------|------|----------------------------------------------------------------|
+| API | `api/lineage.spec.ts`        | 16   | 图谱/字段/影响/溯源/权限/字段级写入真实执行                    |
+| API | `api/alert.spec.ts`          | 21   | 规则 CRUD/校验/快捷入口/真实告警触发+MailHog/60s 防重/兼容回退 |
+| API | `api/control-flow.spec.ts`   | 13   | CONDITION/SUB_DAG 保存与校验/循环引用/删除守卫/级联删告警      |
+| API | `api/permissions.spec.ts`    | 7    | 4 角色权限矩阵（血缘/告警/控制流）                             |
+| API | `api/real-execution.spec.ts` | 4    | 条件分支命中/默认、子 DAG 同步/异步真实执行                    |
+| E2E | `e2e/lineage.spec.ts`        | 7    | 入口按钮/图谱渲染/影响溯源/字段面板/空状态/权限                |
+| E2E | `e2e/alert-center.spec.ts`   | 11   | 菜单可见性/规则 CRUD/启停/删除/历史/快捷入口/权限              |
+| E2E | `e2e/control-flow.spec.ts`   | 6    | 节点面板/拖入条件分支与子DAG/配置弹窗/保存校验                 |
+
+### 已修复缺陷（测试驱动）
+
+| # | 缺陷                                                               | 根因                                                                                                                                                     | 修复                                                                     |
+|---|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| 1 | 采集任务告警快捷入口 500                                           | `data-nest-governance` 缺 fastjson2（task-core 中 provided）                                                                                             | governance pom 补 fastjson2 + fastjson2-extension                        |
+| 2 | system 服务 `@SaCheckRole` 全部失效（任何登录用户可建用户/改告警） | `data-nest-system` 缺 `sa-token-spring-aop`                                                                                                              | system pom 补 sa-token-spring-aop                                        |
+| 3 | 编辑告警规则时对象被清空、保存被拦截                               | `AlertRuleModal` 打开时对象选项 effect 无条件 `setObjectId('')`                                                                                          | 移除 effect 内清空，改为用户手动切对象类型时清空                         |
+| 4 | 条件分支恒命中默认分支（P1，真实执行确认）                         | ① `evaluateBranches` 从 index 0 求值，branches[0]="true" 恒真；② 默认 SimpleEvaluationContext 不含 MapAccessor，`#upstream.row_count` 属性语法必然抛异常 | ① 从分支 1 开始求值、index 0 兜底；② `${a.b}` 转 SpEL 索引语法 `#a['b']` |
+| 5 | 子 DAG 节点状态恒 SKIPPED（P1，真实执行确认）                      | `DagExecutionSyncService` 用 nodeName 匹配 DS 任务实例，但 DS 任务名=`节点名_节点ID后8位`（nodeId 含 `_`），永不匹配                                     | 按相同规则构建「DS 任务名→node」反向映射                                 |
+
+### 待处理缺陷 / 差异
+
+| # | 问题                                          | 说明                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|---|-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1 | **血缘图谱 ReactFlow 边不渲染（P0）**         | 节点正常、边为空（`.react-flow__edges` 内 `<g>` 空），无控制台错误，API 数据正确；同版本 ReactFlow 在 DAG 编辑器边渲染正常。已尝试 useEdgesState/去特殊字符 id/defaultEdges+key/去 nodesConnectable 均无效。疑与血缘页 ReactFlow 实例的受控 edges 处理有关，需前端专项排查（可参考 DAG 编辑器 useNodesState/useEdgesState 用法，但血缘页同样写法不生效，需深挖）。测试已回滚血缘页源码为原始状态，E2E 血缘用例只断言节点。 |
+| 2 | **无血缘表空状态文案不可达（PRD AC-7 差异）** | `GET /lineage/graph` 恒返回中心表节点（`buildTableGraph` 始终 `nodes.add(当前表)`），前端 `hasLineage = nodes.length>0` 恒 true →「暂无血缘数据」空状态实际不展示。仅 API 报错时才走空状态。需确认是改后端（空图返回 0 节点）还是改前端（按 edges 判断）。                                                                                                                                                                 |
+| 3 | DAG 更新接口循环引用检测依赖 body 带 `id`     | `validateSubDagCycle` 用 `payload.getId()` 作当前 DAG 锚点；若 PUT body 不带 `id`（后端 update 方法未 `payload.setId(id)`），A→B→A 循环无法在 A 更新时检测（B 引用 A 的已保存节点生效时仍可检测）。前端始终带 id，当前无实际影响，但后端应兜底 `payload.setId(id)`。                                                                                                                                                       |
+
+### 测试期间发现的环境/说明
+
+- MailHog 清空端点：`DELETE http://localhost:8025/api/v1/messages`（v2 端点 404）。
+- `alert_rule` 表中 `id=11~20` 的规则为 Sprint 4/5 既有数据（非测试数据），保留。
+- E2E 告警历史用例在完整套件运行时需先 `DELETE FROM alert_history`（同轮 API 测试会产生孤儿历史记录）。
 
 ## 参考链接
 

@@ -56,7 +56,7 @@ export default function ProjectDagsPage() {
     const [project, setProject] = useState<DagProject | null>(null);
     const [dags, setDags] = useState<Dag[]>([]);
     const [loading, setLoading] = useState(false);
-    // 删除确认弹框（对齐原型 md-dag-del）
+// 删除确认弹框（对齐原型 md-dag-del）
     const [deleteTarget, setDeleteTarget] = useState<Dag | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [schedulingId, setSchedulingId] = useState<string | number | null>(null);
@@ -238,7 +238,7 @@ export default function ProjectDagsPage() {
             dataIndex: 'name',
             width: COL.NAME,
             ellipsis: true,
-            render: (v: string) => <span className="text-ds-small font-semibold text-ds-text-primary">{v}</span>
+            render: (v: string) => <span className="text-ds-small font-medium text-ds-text-primary">{v}</span>
         },
         {
             title: '触发方式', width: COL.TRIGGER_TYPE,
@@ -458,7 +458,7 @@ export default function ProjectDagsPage() {
             {/* 表格卡片 + 底部分页器 */}
             <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table
                             dataSource={paged}

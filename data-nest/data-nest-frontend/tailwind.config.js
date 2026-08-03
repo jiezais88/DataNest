@@ -42,11 +42,44 @@ export default {
                 'ds-node-success': withAlpha('--color-node-success'),
                 'ds-node-failed': withAlpha('--color-node-failed'),
                 'ds-node-skipped': withAlpha('--color-node-skipped'),
+
+                // DAG 节点类型色（条件分支 / 子 DAG）
+                'ds-type-condition': {
+                    DEFAULT: withAlpha('--color-type-condition'),
+                    border: withAlpha('--color-type-condition-border'),
+                    light: withAlpha('--color-type-condition-light'),
+                    soft: withAlpha('--color-type-condition-soft'),
+                },
+                'ds-type-subdag': {
+                    DEFAULT: withAlpha('--color-type-subdag'),
+                    border: withAlpha('--color-type-subdag-border'),
+                    light: withAlpha('--color-type-subdag-light'),
+                    soft: withAlpha('--color-type-subdag-soft'),
+                },
+
+                // 数据源类型色（品牌色）
+                'ds-type-mysql': withAlpha('--color-type-mysql'),
+                'ds-type-postgresql': withAlpha('--color-type-postgresql'),
+                'ds-type-doris': withAlpha('--color-type-doris'),
+                'ds-type-oracle': withAlpha('--color-type-oracle'),
+                'ds-type-sqlserver': withAlpha('--color-type-sqlserver'),
             },
             fontFamily: {
-                sans: ["'Inter'", '-apple-system', 'BlinkMacSystemFont', "'Segoe UI'", 'sans-serif'],
+                sans: [
+                    '-apple-system',
+                    'BlinkMacSystemFont',
+                    "'Segoe UI'",
+                    "'PingFang SC'",
+                    "'Hiragino Sans GB'",
+                    "'Microsoft YaHei'",
+                    "'Helvetica Neue'",
+                    'Arial',
+                    'sans-serif',
+                ],
+                mono: ["'SFMono-Regular'", 'ui-monospace', 'Menlo', 'Consolas', "'Liberation Mono'", 'monospace'],
             },
             fontSize: {
+                'ds-badge': ['11px', {lineHeight: '1.4', fontWeight: '600'}],
                 'ds-display': ['1.5rem', {lineHeight: '1.35', fontWeight: '800', letterSpacing: '-0.5px'}],
                 'ds-heading': ['1.25rem', {lineHeight: '1.35', fontWeight: '700', letterSpacing: '-0.3px'}],
                 'ds-subhead': ['1.0625rem', {lineHeight: '1.4', fontWeight: '700'}],

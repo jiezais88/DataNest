@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -37,6 +38,9 @@ import java.util.stream.Collectors;
 public class DagNodeExecuteService {
 
     private static final Logger logger = LoggerFactory.getLogger(DagNodeExecuteService.class);
+
+    /** 条件分支表达式变量占位符：${a.b} */
+    private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{([^}]+)\\}");
 
     /** 按 DS processInstanceId 加锁，防止同一实例的并发回调重复创建 dag_execution */
     private static final ConcurrentHashMap<Long, Object> EXECUTION_LOCKS = new ConcurrentHashMap<>();
@@ -653,19 +657,23 @@ public class DagNodeExecuteService {
     /**
      * 按顺序求值分支表达式（SpEL 只读数据绑定，禁止方法调用，防注入 R6），
      * 第一个匹配的返回分支索引；均不匹配返回默认分支（0）。
+     * 约定 branches[0] 为默认兜底分支（表达式恒为 "true"，前端锁定），
+     * 因此从分支 1 开始求值真实条件，避免默认分支恒先命中导致其余分支永远不执行。
      */
     private int evaluateBranches(List<ConditionNodeConfig.ConditionBranch> branches, Map<String, Object> vars) {
         SpelExpressionParser parser = new SpelExpressionParser();
         EvaluationContext ctx = SimpleEvaluationContext.forReadOnlyDataBinding().build();
         vars.forEach(ctx::setVariable);
-        for (int i = 0; i < branches.size(); i++) {
+        for (int i = 1; i < branches.size(); i++) {
             String raw = branches.get(i).getExpression();
             if (!StringUtils.hasText(raw)) {
                 continue;
             }
             try {
-                // ${upstream.row_count} → #upstream.row_count（SpEL 变量语法）
-                String expr = raw.replaceAll("\\$\\{([^}]+)\\}", "#$1");
+                // ${upstream.row_count} → #upstream['row_count']（SpEL 索引语法）。
+                // 默认 SimpleEvaluationContext 不含 MapAccessor，`#upstream.row_count` 属性语法必然抛
+                // "Property ... cannot be found"，导致真实条件分支永不命中；索引语法可用。
+                String expr = VAR_PATTERN.matcher(raw).replaceAll(mr -> toSpelExpr(mr.group(1)));
                 Boolean matched = parser.parseExpression(expr).getValue(ctx, Boolean.class);
                 if (Boolean.TRUE.equals(matched)) {
                     return i;
@@ -675,6 +683,16 @@ public class DagNodeExecuteService {
             }
         }
         return 0;
+    }
+
+    /** ${a.b.c} → #a['b']['c']；${a} → #a */
+    private String toSpelExpr(String rawVar) {
+        String[] parts = rawVar.trim().split("\\.");
+        StringBuilder sb = new StringBuilder("#").append(parts[0].trim());
+        for (int i = 1; i < parts.length; i++) {
+            sb.append("['").append(parts[i].trim()).append("']");
+        }
+        return sb.toString();
     }
 
 

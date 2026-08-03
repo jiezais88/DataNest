@@ -77,7 +77,7 @@ export function HistoryDetailModal({open, item, onClose, onViewLogs}: HistoryDet
 
                     <span className="text-ds-text-muted">耗时</span>
                     <span
-                        className="text-ds-text-primary">{formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime)}</span>
+                        className="text-ds-text-primary font-mono tabular-nums">{formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime)}</span>
 
                     <span className="text-ds-text-muted">源表</span>
                     <span className="text-ds-text-primary font-mono">{formatSourceTable(item)}</span>
@@ -90,7 +90,7 @@ export function HistoryDetailModal({open, item, onClose, onViewLogs}: HistoryDet
                         className="text-ds-text-primary">{item.syncMode === 'INCREMENTAL' ? `增量同步${item.incrementalField ? ` (${item.incrementalField})` : ''}` : '全量同步'}</span>
 
                     <span className="text-ds-text-muted">同步行数</span>
-                    <span className="text-ds-text-primary">{item.targetRows ?? '—'}</span>
+                    <span className="text-ds-text-primary font-mono tabular-nums">{item.targetRows ?? '—'}</span>
 
                     <span className="text-ds-text-muted">吞吐量</span>
                     <span className="text-ds-text-primary">{formatThroughput(item.throughputRowsPerSecond)}</span>

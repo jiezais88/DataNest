@@ -172,8 +172,16 @@ public class DagExecutionSyncService {
         // 2. 用 nodeName 匹配本地 node_execution
         List<NodeExecution> nodeList = nodeExecutionMapper.selectByExecutionId(execution.getId());
         Map<String, NodeExecution> nodeByName = new HashMap<>();
+        // DS 任务名 = 节点名_节点ID后8位（DagDsConverter.buildDsTaskName），nodeId 本身可能含 `_`，
+        // 因此按相同规则生成「DS 任务名 → node」反向映射，供 SUB_DAG 等依赖 sync 同步状态的节点匹配。
+        Map<String, NodeExecution> nodeByDsTaskName = new HashMap<>();
         for (NodeExecution ne : nodeList) {
             nodeByName.put(ne.getNodeName(), ne);
+            if (ne.getNodeId() != null && ne.getNodeName() != null) {
+                String nodeId = ne.getNodeId();
+                String suffix = nodeId.length() > 8 ? nodeId.substring(nodeId.length() - 8) : nodeId;
+                nodeByDsTaskName.put(ne.getNodeName() + "_" + suffix, ne);
+            }
         }
 
         boolean changed = false;
@@ -182,6 +190,9 @@ public class DagExecutionSyncService {
 
         for (DsTaskInstance ti : tasks) {
             NodeExecution ne = nodeByName.get(ti.name());
+            if (ne == null) {
+                ne = nodeByDsTaskName.get(ti.name());
+            }
             if (ne == null) continue;
             if (ti.id() != null && !ti.id().equals(ne.getDsTaskInstanceId())) {
                 ne.setDsTaskInstanceId(ti.id());

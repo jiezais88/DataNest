@@ -75,8 +75,7 @@ export default function SyncJobHistoryGlobalPage() {
         },
         defaultPageSize: 10,
     });
-
-    // 从任务列表「历史」跳入：URL ?syncJobId=xxx&jobName=yyy → 精确过滤该任务
+// 从任务列表「历史」跳入：URL ?syncJobId=xxx&jobName=yyy → 精确过滤该任务
     const urlSyncJobId = searchParams.get('syncJobId');
     const urlJobName = searchParams.get('jobName') || '';
     useEffect(() => {
@@ -270,7 +269,7 @@ export default function SyncJobHistoryGlobalPage() {
                     return (
                         <Tooltip title={`查看 DAG「${item.dagName || item.dagId}」本次执行实例`}>
                             <button
-                                className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors"
+                                className="inline-flex items-center px-2.5 py-1 rounded-full text-ds-badge whitespace-nowrap bg-ds-type-condition-light text-ds-type-condition hover:bg-ds-type-condition-soft transition-colors"
                                 onClick={() => navigate(`/engineering/dags/${item.dagId}/executions/${item.dagExecutionId}`)}
                             >
                                 DAG 编排
@@ -313,7 +312,8 @@ export default function SyncJobHistoryGlobalPage() {
             // 超宽截断 + title 悬浮提示
             render: (_, item) => {
                 const text = formatExecutionDuration(item.durationMs ?? (item.durationSeconds != null ? item.durationSeconds * 1000 : undefined), item.startTime, item.endTime);
-                return <span title={text} className="text-ds-small text-ds-text-secondary">{text}</span>;
+                return <span title={text}
+                             className="text-ds-small text-ds-text-secondary font-mono tabular-nums">{text}</span>;
             },
         },
         {
@@ -322,7 +322,8 @@ export default function SyncJobHistoryGlobalPage() {
             width: COL.COUNT,
             align: 'right',
             render: (v?: number) => (
-                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ?? '—'}</span>
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap font-mono tabular-nums">{v ?? '—'}</span>
             ),
         },
         {
@@ -331,7 +332,8 @@ export default function SyncJobHistoryGlobalPage() {
             width: COL.COUNT,
             align: 'right',
             render: (v?: number) => (
-                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v ?? '—'}</span>
+                <span
+                    className="text-ds-small text-ds-text-secondary whitespace-nowrap font-mono tabular-nums">{v ?? '—'}</span>
             ),
         },
         {
@@ -349,6 +351,7 @@ export default function SyncJobHistoryGlobalPage() {
             title: '操作',
             width: COL.OPERATION_3,
             align: 'center',
+            fixed: 'right' as const,
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     {item.status === 'RUNNING' && (
@@ -476,7 +479,7 @@ export default function SyncJobHistoryGlobalPage() {
             <div className="flex flex-col">
                 <div
                     data-testid="sync-history-table"
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table<SyncJobHistory>
                             dataSource={list}

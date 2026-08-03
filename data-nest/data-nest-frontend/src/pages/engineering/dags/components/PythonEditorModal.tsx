@@ -9,6 +9,7 @@
 
 import {useEffect, useRef, useState} from 'react';
 import {Spin} from 'antd';
+import {HiOutlineCheckCircle, HiOutlineClock, HiOutlineXCircle} from 'react-icons/hi2';
 import DsButton from '../../../../components/DsButton';
 import DsModal from '../../../../components/DsModal';
 import '../../../../lib/monacoSetup';
@@ -317,11 +318,17 @@ export default function PythonEditorModal({
                         <div
                             className="px-ds-4 py-ds-2 bg-ds-bg-hover text-ds-caption font-semibold flex items-center gap-ds-3">
                             {result.success ? (
-                                <span className="text-ds-success">✅ 成功</span>
+                                <span className="text-ds-success flex items-center gap-ds-1">
+                                    <HiOutlineCheckCircle size={14}/> 成功
+                                </span>
                             ) : result.timeout ? (
-                                <span className="text-ds-danger">⏱ 超时被终止</span>
+                                <span className="text-ds-danger flex items-center gap-ds-1">
+                                    <HiOutlineClock size={14}/> 超时被终止
+                                </span>
                             ) : (
-                                <span className="text-ds-danger">❌ 失败</span>
+                                <span className="text-ds-danger flex items-center gap-ds-1">
+                                    <HiOutlineXCircle size={14}/> 失败
+                                </span>
                             )}
                             {result.durationMs != null && (
                                 <span className="text-ds-text-muted font-normal">

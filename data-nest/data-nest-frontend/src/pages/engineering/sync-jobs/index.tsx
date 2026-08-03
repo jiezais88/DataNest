@@ -27,12 +27,14 @@ import {notify} from '../../../utils/notify';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
 import {COL} from '../../../constants/table';
+import {NODE_STATUS_COLOR} from '../../../constants/statusColors';
 import usePagedList from '../../../hooks/usePagedList';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
 import DsStatusBadge from '../../../components/DsStatusBadge';
+import StatusSpine from '../../../components/StatusSpine';
 import SearchInput from '../../../components/SearchInput';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
@@ -126,8 +128,7 @@ export default function SyncJobsPage() {
         initialQuery: INITIAL_QUERY,
         defaultPageSize: 10,
     });
-
-    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+// L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
     const [searchParams, setSearchParams] = useSearchParams();
     const urlInitRef = useRef(false);
     useEffect(() => {
@@ -296,6 +297,21 @@ export default function SyncJobsPage() {
 
     const columns = useMemo<ColumnsType<SyncJob>>(() => [
         {
+            title: '',
+            width: 12,
+            render: (_, item) => {
+                const status = item.executionStatus;
+                const color = status === 'SUCCESS'
+                    ? NODE_STATUS_COLOR.SUCCESS
+                    : status === 'FAILED' || status === 'TERMINATED'
+                        ? NODE_STATUS_COLOR.FAILED
+                        : status === 'RUNNING'
+                            ? NODE_STATUS_COLOR.RUNNING
+                            : NODE_STATUS_COLOR.WAITING;
+                return <StatusSpine color={color}/>;
+            },
+        },
+        {
             title: '任务名称',
             dataIndex: 'name',
             width: COL.NAME,
@@ -314,7 +330,7 @@ export default function SyncJobsPage() {
             title: 'Cron 表达式',
             width: COL.CRON,
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary font-mono whitespace-nowrap">
+                <span className="text-ds-small text-ds-text-secondary font-mono tabular-nums whitespace-nowrap">
                     {item.triggerType === 'CRON' && item.cronExpression ? item.cronExpression : '—'}
                 </span>
             ),
@@ -551,7 +567,7 @@ export default function SyncJobsPage() {
 
             <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table<SyncJob>
                             dataSource={list}

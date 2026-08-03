@@ -37,8 +37,10 @@ import usePagedList from '../../../hooks/usePagedList';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {ENGINEERING_WRITE_ROLES, ROLE} from '../../../constants/roles';
 import {COL} from '../../../constants/table';
+import {NODE_STATUS_COLOR} from '../../../constants/statusColors';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsToolbar from '../../../components/DsToolbar';
+import StatusSpine from '../../../components/StatusSpine';
 import {HiOutlineBolt, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
 
 const STATUS_OPTIONS: { value: DataSourceStatus | ''; label: string }[] = [
@@ -84,8 +86,7 @@ export default function DataSourcesPage() {
         initialQuery: INITIAL_QUERY,
         defaultPageSize: 10,
     });
-
-    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+// L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
     const [searchParams, setSearchParams] = useSearchParams();
     const urlInitRef = useRef(false);
     useEffect(() => {
@@ -245,6 +246,18 @@ export default function DataSourcesPage() {
 
     const columns = useMemo<ColumnsType<DataSource>>(() => [
         {
+            title: '',
+            width: 12,
+            render: (_, item) => {
+                const color = item.status === DataSourceStatusEnum.NORMAL
+                    ? NODE_STATUS_COLOR.SUCCESS
+                    : item.status === DataSourceStatusEnum.ERROR
+                        ? NODE_STATUS_COLOR.FAILED
+                        : NODE_STATUS_COLOR.WAITING;
+                return <StatusSpine color={color}/>;
+            },
+        },
+        {
             title: '数据源名称',
             dataIndex: 'name',
             width: COL.NAME,
@@ -264,7 +277,7 @@ export default function DataSourcesPage() {
             width: 200,
             ellipsis: true,
             render: (_, item) => (
-                <span className="text-ds-small text-ds-text-secondary"
+                <span className="text-ds-small text-ds-text-secondary font-mono tabular-nums"
                       title={`${item.host}:${item.port}/${item.databaseName}`}>
                     {item.host}:{item.port}/{item.databaseName}
                 </span>
@@ -480,7 +493,7 @@ export default function DataSourcesPage() {
 
             <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table<DataSource>
                             dataSource={list}

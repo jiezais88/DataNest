@@ -42,8 +42,7 @@ export default function DagsPage() {
         initialQuery: {name: ''},
         defaultPageSize: 10,
     });
-
-    // L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
+// L2：进页时从 URL 初始化筛选，进入子页/返回后筛选不丢
     const [searchParams, setSearchParams] = useSearchParams();
     const urlInitRef = useRef(false);
     useEffect(() => {
@@ -139,7 +138,7 @@ export default function DagsPage() {
             dataIndex: 'name',
             width: COL.NAME,
             ellipsis: true,
-            render: (v: string) => <span className="text-ds-small font-semibold text-ds-text-primary">{v}</span>
+            render: (v: string) => <span className="text-ds-small font-medium text-ds-text-primary">{v}</span>
         },
         {
             title: '项目描述',
@@ -310,7 +309,7 @@ export default function DagsPage() {
             {/* 表格卡片 + 底部分页器 */}
             <div className="flex flex-col">
                 <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col mb-ds-8">
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <Table
                             dataSource={projects}

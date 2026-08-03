@@ -17,7 +17,9 @@
     --color-border-strong: 205 211 220;
     --color-text-primary: 15 23 42;
     --color-text-secondary: 71 85 105;
-    --color-text-muted: 148 163 184;
+    /* 2026-08 UI 改进：muted 由 #94a3b8 提亮到 #64748b（白底对比度 2.9:1 → 4.6:1），
+       占位符/辅助文字可读性达标 WCAG AA */
+    --color-text-muted: 100 116 139;
     --color-accent: 79 70 229;
     --color-accent-hover: 67 56 202;
     --color-accent-light: 238 242 255;
@@ -35,6 +37,23 @@
     --color-node-success: 22 163 74;
     --color-node-failed: 220 38 38;
     --color-node-skipped: 217 119 6;
+
+    /* DAG 节点类型色（条件分支 violet / 子 DAG teal），Editor 画布与节点面板共用（Phase 6-H） */
+    --color-type-condition: 124 58 237;
+    --color-type-condition-border: 196 181 253;
+    --color-type-condition-light: 245 243 255;
+    --color-type-condition-soft: 237 233 254;
+    --color-type-subdag: 13 148 136;
+    --color-type-subdag-border: 94 234 212;
+    --color-type-subdag-light: 240 253 250;
+    --color-type-subdag-soft: 204 251 241;
+
+    /* 数据源类型色（沿用 DatabaseTypeIcon 品牌色，Phase 7-K），TypeBadge / 首页快链共用 */
+    --color-type-mysql: 68 121 161;
+    --color-type-postgresql: 65 105 225;
+    --color-type-doris: 30 144 255;
+    --color-type-oracle: 248 0 0;
+    --color-type-sqlserver: 169 29 34;
 }
 
 body {
@@ -206,5 +225,44 @@ body {
 
     .prototype-table.prototype-table .ant-table-tbody > tr:hover > td {
         background: rgb(var(--color-bg-hover));
+    }
+}
+
+/* ══ 全局键盘焦点环（Phase 6-B）══
+   统一 :focus-visible，覆盖 DsButton/DsIconButton/Sidebar 等自定义按钮，
+   表单类（input/select 自带 focus 样式）不受影响。 */
+:focus-visible {
+    outline: 2px solid rgb(var(--color-accent));
+    outline-offset: 2px;
+}
+
+/* ══ 侧边栏响应式折叠（Phase 4，对齐 DESIGN.md §8）══
+   <1024px 时收窄为 56px 图标模式：隐藏文字，图标居中。 */
+@media (max-width: 1023px) {
+    .sb-sidebar {
+        width: 56px;
+    }
+
+    .sb-brand {
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .sb-brand-text,
+    .sb-group,
+    .sb-item-label {
+        display: none;
+    }
+
+    .sb-nav {
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+
+    .sb-item {
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
     }
 }
