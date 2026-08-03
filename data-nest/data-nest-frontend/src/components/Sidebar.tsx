@@ -134,11 +134,11 @@ export default function Sidebar() {
 
     return (
         <aside
-            className="sb-sidebar fixed left-0 top-0 h-full w-[248px] bg-ds-bg-surface border-r border-ds-border-subtle flex flex-col z-ds-elevated">
+            className="sb-sidebar fixed left-0 top-0 h-full w-[248px] bg-ds-sidebar-bg border-r border-ds-sidebar-border flex flex-col z-ds-elevated">
             {/* Logo */}
-            <div className="sb-brand h-14 flex items-center gap-2 px-ds-4 border-b border-ds-border-subtle">
+            <div className="sb-brand h-14 flex items-center gap-2 px-ds-4 border-b border-ds-sidebar-border">
                 <LogoMark size={28} className="flex-shrink-0"/>
-                <span className="sb-brand-text text-ds-text-primary font-bold text-sm tracking-tight">DataNest</span>
+                <span className="sb-brand-text text-white font-bold text-sm tracking-tight">DataNest</span>
             </div>
 
             {/* Menus */}
@@ -149,7 +149,7 @@ export default function Sidebar() {
 
                     return (
                         <div key={group.group} className="mb-ds-4">
-                            <p className="sb-group text-ds-nano font-bold text-ds-text-muted uppercase tracking-[0.8px] px-3 pt-4 pb-[6px]">
+                            <p className="sb-group text-ds-nano font-bold text-ds-sidebar-text uppercase tracking-[0.8px] px-3 pt-4 pb-[6px]">
                                 {group.group}
                             </p>
                             {visibleItems.map((item) => {
@@ -160,8 +160,8 @@ export default function Sidebar() {
                                         onClick={() => navigate(item.path)}
                                         className={`sb-item w-full flex items-center gap-[10px] px-4 py-[9px] rounded-lg text-ds-small font-medium transition-colors duration-150 text-left
                       ${active
-                                            ? 'bg-ds-accent-light text-ds-accent font-semibold'
-                                            : 'text-ds-text-secondary hover:bg-ds-bg-hover hover:text-ds-text-primary'
+                                            ? 'bg-ds-accent/25 text-white font-semibold'
+                                            : 'text-ds-sidebar-text hover:bg-ds-sidebar-hover hover:text-white'
                                         }`}
                                     >
                                         <span

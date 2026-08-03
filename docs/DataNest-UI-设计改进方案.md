@@ -58,6 +58,15 @@
 数据平台的本质是数字：Snowflake ID、cron、端口、行数、耗时、百分比。数据列统一 `font-mono + tabular-nums`，与既有 `font-mono`（41
 处，用于表名/SQL/日志）惯例合并，形成"数据即数字"的字符级签名。
 
+### 1.5 去白/层次刷新（用户反馈"平台太白"）
+
+- **页面底色加深**：`--color-bg-root` `#f7f8fa` → `#eef0f7`（带极淡 indigo 色温），配合 `body` 左上角极淡 indigo 径向光晕（
+  `rgb(79 70 229 / 0.08)`，`background-attachment: fixed`），品牌感但不抢镜。
+- **边框加深**：`--color-border-subtle` `#e2e6ed` → `#d8dee8`；`--color-border-strong` `#cdd3dc` → `#c6ceda`，卡片边界更清晰。
+- **深色侧边栏**：新增 `--color-sidebar-*`（bg `#0f172a`、text `#94a3b8`、hover `#1e293b`、active indigo `#4f46e5/25%`
+  ），侧边栏从纯白改为深石板蓝，与内容区强对比，成为平台"记忆点"。
+- **阴影加强**：`ds-xs`~`ds-xl` 阴影透明度上调约 50%，卡片从底色上浮起。
+
 ---
 
 ## 2. Phase 1 — 图标与品牌一致性

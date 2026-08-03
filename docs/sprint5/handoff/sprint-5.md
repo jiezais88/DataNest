@@ -159,10 +159,8 @@ DAG 流水线。
 
 ## Next Action
 
-1. **处理遗留缺陷**（见文末「待处理缺陷」）：
-    - 血缘图谱 ReactFlow 边不渲染（P0）需前端专项排查
-    - 无血缘表空状态文案实际不可达（PRD AC-7 与实现差异）
-2. 回归：修改上述缺陷后重跑 `cd data-nest-frontend && npx playwright test --project=chromium`。
+1. 测试会话发现的缺陷已全部修复并验证（含 P0 血缘边渲染，前端修复 + 血缘 E2E 验收通过）。
+2. 回归：后续改动后重跑 `cd data-nest-frontend && npx playwright test --project=chromium`。
 3. 测试基建保留在 `data-nest-frontend/e2e/sprint5/`（globalSetup 播种 / globalTeardown 清理），可直接复用。
 
 ## Sprint 5 测试会话
@@ -185,27 +183,28 @@ DAG 流水线。
 
 ### 已修复缺陷（测试驱动）
 
-| # | 缺陷                                                               | 根因                                                                                                                                                     | 修复                                                                     |
-|---|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| 1 | 采集任务告警快捷入口 500                                           | `data-nest-governance` 缺 fastjson2（task-core 中 provided）                                                                                             | governance pom 补 fastjson2 + fastjson2-extension                        |
-| 2 | system 服务 `@SaCheckRole` 全部失效（任何登录用户可建用户/改告警） | `data-nest-system` 缺 `sa-token-spring-aop`                                                                                                              | system pom 补 sa-token-spring-aop                                        |
-| 3 | 编辑告警规则时对象被清空、保存被拦截                               | `AlertRuleModal` 打开时对象选项 effect 无条件 `setObjectId('')`                                                                                          | 移除 effect 内清空，改为用户手动切对象类型时清空                         |
-| 4 | 条件分支恒命中默认分支（P1，真实执行确认）                         | ① `evaluateBranches` 从 index 0 求值，branches[0]="true" 恒真；② 默认 SimpleEvaluationContext 不含 MapAccessor，`#upstream.row_count` 属性语法必然抛异常 | ① 从分支 1 开始求值、index 0 兜底；② `${a.b}` 转 SpEL 索引语法 `#a['b']` |
-| 5 | 子 DAG 节点状态恒 SKIPPED（P1，真实执行确认）                      | `DagExecutionSyncService` 用 nodeName 匹配 DS 任务实例，但 DS 任务名=`节点名_节点ID后8位`（nodeId 含 `_`），永不匹配                                     | 按相同规则构建「DS 任务名→node」反向映射                                 |
+| # | 缺陷                                                               | 根因                                                                                                                                                     | 修复                                                                                                         |
+|---|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| 1 | 采集任务告警快捷入口 500                                           | `data-nest-governance` 缺 fastjson2（task-core 中 provided）                                                                                             | governance pom 补 fastjson2 + fastjson2-extension                                                            |
+| 2 | system 服务 `@SaCheckRole` 全部失效（任何登录用户可建用户/改告警） | `data-nest-system` 缺 `sa-token-spring-aop`                                                                                                              | system pom 补 sa-token-spring-aop                                                                            |
+| 3 | 编辑告警规则时对象被清空、保存被拦截                               | `AlertRuleModal` 打开时对象选项 effect 无条件 `setObjectId('')`                                                                                          | 移除 effect 内清空，改为用户手动切对象类型时清空                                                             |
+| 4 | 条件分支恒命中默认分支（P1，真实执行确认）                         | ① `evaluateBranches` 从 index 0 求值，branches[0]="true" 恒真；② 默认 SimpleEvaluationContext 不含 MapAccessor，`#upstream.row_count` 属性语法必然抛异常 | ① 从分支 1 开始求值、index 0 兜底；② `${a.b}` 转 SpEL 索引语法 `#a['b']`                                     |
+| 5 | 子 DAG 节点状态恒 SKIPPED（P1，真实执行确认）                      | `DagExecutionSyncService` 用 nodeName 匹配 DS 任务实例，但 DS 任务名=`节点名_节点ID后8位`（nodeId 含 `_`），永不匹配                                     | 按相同规则构建「DS 任务名→node」反向映射                                                                     |
+| 6 | 兼容回退告警不写入统一告警历史（告警中心历史缺回退记录）           | `DagAlertService` 回退路径只写 `dag_alert_history`，告警中心历史页查 `alert_history`                                                                     | 回退路径同步写 `alert_history`（alert_rule_id=NULL，send_status 按邮件结果）                                 |
+| 7 | 无血缘表空状态文案不可达（PRD AC-7 差异）                          | 后端 graph 恒返回中心节点，前端 `hasLineage=nodes.length>0` 恒 true                                                                                      | 前端 `hasLineage` 改为 `edges.length>0` 判断（方案 B）                                                       |
+| 8 | DAG 更新接口循环引用检测依赖请求体带 `id`                          | `DagService.update` 未回填 `payload.setId(id)`，无 body id 时 A→B→A 循环无法检测                                                                         | `update` 在 validateRequest 前 `payload.setId(id)`                                                           |
+| 9 | 血缘图谱 ReactFlow 边不渲染（P0，前端修复）                        | 自定义节点（TableNode/ColumnNode）未声明 `Handle`，且受控 edges 未配 change handler，边无法连接/渲染                                                     | 节点组件加 `Handle`（source/target）+ 改用 `useNodesState`/`useEdgesState` + `onNodesChange`/`onEdgesChange` |
 
 ### 待处理缺陷 / 差异
 
-| # | 问题                                          | 说明                                                                                                                                                                                                                                                                                                                                                                                                                       |
-|---|-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1 | **血缘图谱 ReactFlow 边不渲染（P0）**         | 节点正常、边为空（`.react-flow__edges` 内 `<g>` 空），无控制台错误，API 数据正确；同版本 ReactFlow 在 DAG 编辑器边渲染正常。已尝试 useEdgesState/去特殊字符 id/defaultEdges+key/去 nodesConnectable 均无效。疑与血缘页 ReactFlow 实例的受控 edges 处理有关，需前端专项排查（可参考 DAG 编辑器 useNodesState/useEdgesState 用法，但血缘页同样写法不生效，需深挖）。测试已回滚血缘页源码为原始状态，E2E 血缘用例只断言节点。 |
-| 2 | **无血缘表空状态文案不可达（PRD AC-7 差异）** | `GET /lineage/graph` 恒返回中心表节点（`buildTableGraph` 始终 `nodes.add(当前表)`），前端 `hasLineage = nodes.length>0` 恒 true →「暂无血缘数据」空状态实际不展示。仅 API 报错时才走空状态。需确认是改后端（空图返回 0 节点）还是改前端（按 edges 判断）。                                                                                                                                                                 |
-| 3 | DAG 更新接口循环引用检测依赖 body 带 `id`     | `validateSubDagCycle` 用 `payload.getId()` 作当前 DAG 锚点；若 PUT body 不带 `id`（后端 update 方法未 `payload.setId(id)`），A→B→A 循环无法在 A 更新时检测（B 引用 A 的已保存节点生效时仍可检测）。前端始终带 id，当前无实际影响，但后端应兜底 `payload.setId(id)`。                                                                                                                                                       |
+无（Sprint 5 测试发现的问题均已修复并验证）。
 
 ### 测试期间发现的环境/说明
 
 - MailHog 清空端点：`DELETE http://localhost:8025/api/v1/messages`（v2 端点 404）。
 - `alert_rule` 表中 `id=11~20` 的规则为 Sprint 4/5 既有数据（非测试数据），保留。
 - E2E 告警历史用例在完整套件运行时需先 `DELETE FROM alert_history`（同轮 API 测试会产生孤儿历史记录）。
+- 兼容回退告警历史（alert_rule_id=NULL）清理：teardown 需在删 DAG 前按 `object_type='DAG'` + e2e_s5 DAG 关联删除，否则成为孤儿记录。
 
 ## 参考链接
 

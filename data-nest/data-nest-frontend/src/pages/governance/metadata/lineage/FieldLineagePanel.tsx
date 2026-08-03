@@ -1,7 +1,16 @@
 // Sprint 5：字段级血缘面板
 // 字段下拉（来自元数据字段列表）→ GET /governance/lineage/columns → 渲染字段链路图
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import ReactFlow, {Background, type Edge, type Node, type NodeProps} from 'reactflow';
+import ReactFlow, {
+    Background,
+    type Edge,
+    Handle,
+    type Node,
+    type NodeProps,
+    Position,
+    useEdgesState,
+    useNodesState,
+} from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Select, Spin} from 'antd';
 import {getLineageColumns} from '../../../../api/lineage';
@@ -25,7 +34,7 @@ function ColumnNode({data}: NodeProps<FieldLineageData>) {
     return (
         <div
             className={[
-                'px-ds-4 py-ds-3 rounded-ds-md border bg-ds-bg-surface text-center shadow-sm',
+                'relative px-ds-4 py-ds-3 rounded-ds-md border bg-ds-bg-surface text-center shadow-sm',
                 data.current
                     ? 'border-ds-accent bg-ds-accent-light shadow-[0_0_0_3px_rgba(79,70,229,.12)]'
                     : data.upstream
@@ -34,13 +43,26 @@ function ColumnNode({data}: NodeProps<FieldLineageData>) {
                             ? 'border-ds-warning bg-ds-warning-light'
                             : 'border-ds-border-strong',
             ].join(' ')}
+            style={{width: NODE_WIDTH}}
         >
+            <Handle
+                type="target"
+                position={Position.Left}
+                className="!w-[8px] !h-[8px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface"
+                style={{left: -5}}
+            />
             <div className="text-ds-small font-semibold text-ds-text-primary truncate" title={data.label}>
                 {data.label}
             </div>
             <div className="text-ds-nano text-ds-text-muted mt-0.5">
                 {data.current ? '当前字段' : data.upstream ? '来源字段' : data.downstream ? '下游字段' : '中间字段'}
             </div>
+            <Handle
+                type="source"
+                position={Position.Right}
+                className="!w-[8px] !h-[8px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface"
+                style={{right: -5}}
+            />
         </div>
     );
 }
@@ -101,9 +123,9 @@ export default function FieldLineagePanel({tableId, tableName}: FieldLineagePane
         }
     }, [selectedColumn, loadFieldLineage]);
 
-    // 构建字段链路图：节点 = 唯一「表.字段」引用；边 = 链路
+    // 计算字段链路图：节点 = 唯一「表.字段」引用；边 = 链路
     // 中心字段高亮为「当前字段」；其直接来源标「来源字段」、直接下游标「下游字段」
-    const {rfNodes, rfEdges} = useMemo(() => {
+    const computed = useMemo(() => {
         const center = `${tableName}.${selectedColumn}`;
         const nodeById = new Map<string, FieldLineageData>();
         const edgeList: Edge[] = [];
@@ -145,8 +167,17 @@ export default function FieldLineagePanel({tableId, tableName}: FieldLineagePane
         }));
 
         const layouted = layoutWithDagre<FieldLineageData>(nodes, edgeList, 'LR');
-        return {rfNodes: layouted, rfEdges: edgeList};
+        return {nodes: layouted, edges: edgeList};
     }, [links, tableName, selectedColumn]);
+
+    // 使用 ReactFlow 推荐的受控状态 hook，并同步计算结果
+    const [rfNodes, setRfNodes, onNodesChange] = useNodesState<FieldLineageData>([]);
+    const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
+
+    useEffect(() => {
+        setRfNodes(computed.nodes);
+        setRfEdges(computed.edges);
+    }, [computed, setRfNodes, setRfEdges]);
 
     const hasLineage = links.length > 0;
 
@@ -175,10 +206,13 @@ export default function FieldLineagePanel({tableId, tableName}: FieldLineagePane
                     {selectedColumn ? `字段「${selectedColumn}」暂无字段级血缘记录` : '请选择字段查看字段级血缘'}
                 </div>
             ) : (
-                <div className="border border-ds-border-subtle rounded-ds-md overflow-hidden" style={{height: 420}}>
+                <div data-testid="field-lineage-flow"
+                     className="border border-ds-border-subtle rounded-ds-md overflow-hidden" style={{height: 420}}>
                     <ReactFlow
                         nodes={rfNodes}
                         edges={rfEdges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
                         nodeTypes={nodeTypes}
                         fitView
                         fitViewOptions={{padding: 0.25, maxZoom: 1}}

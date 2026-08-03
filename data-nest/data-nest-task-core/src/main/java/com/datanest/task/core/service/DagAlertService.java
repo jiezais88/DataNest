@@ -1,11 +1,10 @@
 package com.datanest.task.core.service;
 
 import com.alibaba.fastjson2.JSON;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.entity.*;
-import com.datanest.task.core.mapper.DagAlertConfigMapper;
-import com.datanest.task.core.mapper.DagAlertHistoryMapper;
-import com.datanest.task.core.mapper.DagExecutionMapper;
-import com.datanest.task.core.mapper.DagMapper;
+import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,6 +25,7 @@ public class DagAlertService {
 
     private final DagAlertConfigMapper dagAlertConfigMapper;
     private final DagAlertHistoryMapper dagAlertHistoryMapper;
+    private final AlertHistoryMapper alertHistoryMapper;
     private final DagMapper dagMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final MailService mailService;
@@ -33,12 +33,14 @@ public class DagAlertService {
 
     public DagAlertService(DagAlertConfigMapper dagAlertConfigMapper,
                            DagAlertHistoryMapper dagAlertHistoryMapper,
+                           AlertHistoryMapper alertHistoryMapper,
                            DagMapper dagMapper,
                            DagExecutionMapper dagExecutionMapper,
                            MailService mailService,
                            AlertFiringService alertFiringService) {
         this.dagAlertConfigMapper = dagAlertConfigMapper;
         this.dagAlertHistoryMapper = dagAlertHistoryMapper;
+        this.alertHistoryMapper = alertHistoryMapper;
         this.dagMapper = dagMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.mailService = mailService;
@@ -83,8 +85,8 @@ public class DagAlertService {
                 "错误摘要：" + firstError,
                 "查看详情：" + buildExecutionUrl(execution.getId()));
 
-        mailService.send(config.getRecipients(), subject, body);
-        saveHistory(execution.getId(), null, "FAILURE", config.getRecipients());
+        boolean sent = mailService.send(config.getRecipients(), subject, body);
+        saveHistory(execution.getId(), execution.getDagId(), null, "FAILURE", config.getRecipients(), sent);
     }
 
     /**
@@ -118,8 +120,8 @@ public class DagAlertService {
                 "当前状态：RUNNING",
                 "查看详情：" + buildExecutionUrl(node.getExecutionId()));
 
-        mailService.send(config.getRecipients(), subject, body);
-        saveHistory(node.getExecutionId(), node.getNodeId(), "TIMEOUT", config.getRecipients());
+        boolean sent = mailService.send(config.getRecipients(), subject, body);
+        saveHistory(node.getExecutionId(), dagId, node.getNodeId(), "TIMEOUT", config.getRecipients(), sent);
     }
 
     /**
@@ -147,8 +149,8 @@ public class DagAlertService {
                 "结束时间：" + format(execution.getEndTime()),
                 "查看详情：" + buildExecutionUrl(execution.getId()));
 
-        mailService.send(config.getRecipients(), subject, body);
-        saveHistory(execution.getId(), null, "SUCCESS", config.getRecipients());
+        boolean sent = mailService.send(config.getRecipients(), subject, body);
+        saveHistory(execution.getId(), execution.getDagId(), null, "SUCCESS", config.getRecipients(), sent);
     }
 
     /**
@@ -185,7 +187,8 @@ public class DagAlertService {
         return dagAlertHistoryMapper.countByExecutionAndType(executionId, nodeId, alertType) > 0;
     }
 
-    private void saveHistory(Long executionId, String nodeId, String alertType, String recipients) {
+    private void saveHistory(Long executionId, Long dagId, String nodeId, String alertType,
+                             String recipients, boolean sent) {
         DagAlertHistory history = new DagAlertHistory();
         history.setExecutionId(executionId);
         history.setNodeId(nodeId);
@@ -193,6 +196,22 @@ public class DagAlertService {
         history.setRecipients(recipients);
         history.setSentAt(LocalDateTime.now());
         dagAlertHistoryMapper.insert(history);
+
+        // Sprint 5 测试补充：兼容回退告警同步写入统一 alert_history，供告警中心历史页展示
+        // （alert_rule_id 为空，表示非 alert_rule 规则触发的回退告警）
+        try {
+            AlertHistory ah = new AlertHistory();
+            ah.setId(IdWorker.getId());
+            ah.setObjectType(AlertConstants.OBJECT_TYPE_DAG);
+            ah.setObjectId(dagId);
+            ah.setAlertType(alertType);
+            ah.setRecipients(recipients);
+            ah.setSendStatus(sent ? AlertConstants.SEND_STATUS_SUCCESS : AlertConstants.SEND_STATUS_FAILED);
+            ah.setSentAt(LocalDateTime.now());
+            alertHistoryMapper.insert(ah);
+        } catch (Exception e) {
+            logger.warn("兼容回退告警写入 alert_history 失败: dagId={}, alertType={}", dagId, alertType, e);
+        }
     }
 
     private String format(LocalDateTime time) {

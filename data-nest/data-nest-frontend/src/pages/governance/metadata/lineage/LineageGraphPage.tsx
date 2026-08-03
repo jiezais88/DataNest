@@ -3,7 +3,17 @@
 // 路由：/governance/metadata/lineage?tableId=xxx&tableName=db.table
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
-import ReactFlow, {Background, Controls, type Edge, type Node, type NodeProps} from 'reactflow';
+import ReactFlow, {
+    Background,
+    Controls,
+    type Edge,
+    Handle,
+    type Node,
+    type NodeProps,
+    Position,
+    useEdgesState,
+    useNodesState,
+} from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Spin} from 'antd';
 import DsButton from '../../../../components/DsButton';
@@ -49,7 +59,7 @@ function TableNode({data}: NodeProps<LineageNodeData>) {
     return (
         <div
             className={[
-                'px-ds-4 py-ds-3 rounded-ds-md border text-center shadow-sm bg-ds-bg-surface',
+                'relative px-ds-4 py-ds-3 rounded-ds-md border text-center shadow-sm bg-ds-bg-surface',
                 data.current
                     ? 'border-ds-accent bg-ds-accent-light shadow-[0_0_0_3px_rgba(79,70,229,.12)]'
                     : data.highlighted
@@ -58,12 +68,24 @@ function TableNode({data}: NodeProps<LineageNodeData>) {
             ].join(' ')}
             style={{width: 180}}
         >
+            <Handle
+                type="target"
+                position={Position.Left}
+                className="!w-[8px] !h-[8px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface"
+                style={{left: -5}}
+            />
             <div className="text-ds-small font-semibold text-ds-text-primary truncate" title={data.name}>
                 {data.name}
             </div>
             <div className="text-ds-nano text-ds-text-muted mt-0.5">
                 {data.current ? '当前表' : (data.type ? TYPE_LABEL[data.type] || data.type : data.database || '')}
             </div>
+            <Handle
+                type="source"
+                position={Position.Right}
+                className="!w-[8px] !h-[8px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface"
+                style={{right: -5}}
+            />
         </div>
     );
 }
@@ -131,9 +153,9 @@ export default function LineageGraphPage() {
         }
     }, [tableName, depth, loadGraph]);
 
-    // 构建 ReactFlow 图
-    const {rfNodes, rfEdges} = useMemo(() => {
-        if (!graph) return {rfNodes: [], rfEdges: []};
+    // 计算 ReactFlow 节点/边（用于受控状态同步）
+    const computed = useMemo(() => {
+        if (!graph) return {nodes: [] as Node<LineageNodeData>[], edges: [] as Edge[]};
         const nodes: Node<LineageNodeData>[] = (graph.nodes || []).map((n: LineageNodeDTO, index) => ({
             id: n.id,
             type: 'table',
@@ -156,8 +178,17 @@ export default function LineageGraphPage() {
                 : {stroke: '#cbd5e1', strokeWidth: 1.8},
         }));
         const layouted = layoutWithDagre<LineageNodeData>(nodes, edges, 'LR');
-        return {rfNodes: layouted, rfEdges: edges};
+        return {nodes: layouted, edges};
     }, [graph, highlightedNodes, highlightedEdges]);
+
+    // 使用 ReactFlow 推荐的受控状态 hook，并同步计算结果
+    const [rfNodes, setRfNodes, onNodesChange] = useNodesState<LineageNodeData>([]);
+    const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
+
+    useEffect(() => {
+        setRfNodes(computed.nodes);
+        setRfEdges(computed.edges);
+    }, [computed, setRfNodes, setRfEdges]);
 
     const resetHighlights = useCallback(() => {
         setHighlightedNodes(new Set());
@@ -230,7 +261,8 @@ export default function LineageGraphPage() {
         }
     };
 
-    const hasLineage = !!graph && (graph.nodes?.length || 0) > 0;
+    // 有无血缘以「是否有血缘边」判断：后端 graph 恒返回中心表节点，仅按 nodes 判断会导致空状态永不出现
+    const hasLineage = !!graph && (graph.edges?.length || 0) > 0;
 
     return (
         <div className="flex flex-col h-full">
@@ -294,6 +326,8 @@ export default function LineageGraphPage() {
                     <ReactFlow
                         nodes={rfNodes}
                         edges={rfEdges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
                         nodeTypes={nodeTypes}
                         onNodeClick={handleNodeClick}
                         onNodeDoubleClick={handleNodeDoubleClick}

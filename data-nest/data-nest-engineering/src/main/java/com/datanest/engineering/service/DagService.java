@@ -123,6 +123,9 @@ public class DagService {
 
     @Transactional
     public DagPayload update(Long id, DagPayload payload) {
+        // 回填当前 DAG id，使 validateSubDagCycle 能以当前 DAG 为锚点检测循环引用
+        //（即使请求体未带 id，A→B→A 这类循环也能被阻断）
+        payload.setId(id);
         validateRequest(payload);
         Dag existing = dagMapper.selectById(id);
         if (existing == null) {

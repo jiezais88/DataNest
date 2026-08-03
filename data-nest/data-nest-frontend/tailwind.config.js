@@ -63,6 +63,15 @@ export default {
                 'ds-type-doris': withAlpha('--color-type-doris'),
                 'ds-type-oracle': withAlpha('--color-type-oracle'),
                 'ds-type-sqlserver': withAlpha('--color-type-sqlserver'),
+
+                // 深色侧边栏
+                'ds-sidebar': {
+                    bg: withAlpha('--color-sidebar-bg'),
+                    border: withAlpha('--color-sidebar-border'),
+                    text: withAlpha('--color-sidebar-text'),
+                    hover: withAlpha('--color-sidebar-hover'),
+                    active: withAlpha('--color-sidebar-active'),
+                },
             },
             fontFamily: {
                 sans: [
@@ -99,11 +108,11 @@ export default {
                 'ds-xs': '6px',
             },
             boxShadow: {
-                'ds-xs': '0 1px 2px rgba(0,0,0,0.04)',
-                'ds-sm': '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-                'ds-md': '0 4px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.03)',
-                'ds-lg': '0 10px 15px rgba(0,0,0,0.05), 0 4px 6px rgba(0,0,0,0.03)',
-                'ds-xl': '0 20px 25px rgba(0,0,0,0.06), 0 10px 10px rgba(0,0,0,0.03)',
+                'ds-xs': '0 1px 2px rgba(0,0,0,0.06)',
+                'ds-sm': '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05)',
+                'ds-md': '0 4px 6px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.05)',
+                'ds-lg': '0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.05)',
+                'ds-xl': '0 20px 25px rgba(0,0,0,0.09), 0 10px 10px rgba(0,0,0,0.05)',
             },
             zIndex: {
                 'ds-elevated': '100', 'ds-overlay': '200', 'ds-dialog': '300',

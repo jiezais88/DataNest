@@ -9,12 +9,12 @@
      *   - 本文件手写 CSS / constants/statusColors.ts 内联样式：rgb(var(--x))
      * 改色只改这里。
      */
-    --color-bg-root: 247 248 250;
+    --color-bg-root: 238 240 247;
     --color-bg-surface: 255 255 255;
     --color-bg-elevated: 255 255 255;
-    --color-bg-hover: 241 243 246;
-    --color-border-subtle: 226 230 237;
-    --color-border-strong: 205 211 220;
+    --color-bg-hover: 235 239 246;
+    --color-border-subtle: 216 222 232;
+    --color-border-strong: 198 206 218;
     --color-text-primary: 15 23 42;
     --color-text-secondary: 71 85 105;
     /* 2026-08 UI 改进：muted 由 #94a3b8 提亮到 #64748b（白底对比度 2.9:1 → 4.6:1），
@@ -54,12 +54,22 @@
     --color-type-doris: 30 144 255;
     --color-type-oracle: 248 0 0;
     --color-type-sqlserver: 169 29 34;
+
+    /* 深色侧边栏（品牌差异化，打破全白；v2：中等深，避免过黑） */
+    --color-sidebar-bg: 51 65 85; /* #334155 slate-700 */
+    --color-sidebar-border: 71 85 105; /* #475569 slate-600 */
+    --color-sidebar-text: 203 213 225; /* #cbd5e1 slate-300 */
+    --color-sidebar-hover: 71 85 105; /* #475569 slate-600 */
+    --color-sidebar-active: 79 70 229; /* indigo accent */
 }
 
 body {
     @apply font-sans antialiased;
-    background: rgb(var(--color-bg-root));
+    background-color: rgb(var(--color-bg-root));
     color: rgb(var(--color-text-primary));
+    /* 品牌色温：左上角极淡 indigo 光晕，克制不抢镜 */
+    background-image: radial-gradient(ellipse 75% 45% at 18% -6%, rgb(79 70 229 / 0.08), transparent 62%);
+    background-attachment: fixed;
 }
 
 @layer components {
