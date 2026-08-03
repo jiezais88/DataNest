@@ -19,7 +19,7 @@ import ReactFlow, {
     useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import {Form, Input, Modal, Popover, Select, Spin, Tag} from 'antd';
+import {Form, Input, Modal, Popover, Select, Spin, Switch, Tag} from 'antd';
 import {HiOutlineDocumentText, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlayCircle} from 'react-icons/hi2';
 import DsButton from '../../../components/DsButton';
 import Drawer from '../../../components/Drawer';
@@ -85,6 +85,8 @@ type RFNodeData = {
     errorMessage?: string;
     nodeExecutionStartTime?: string;
     nodeExecutionEndTime?: string;
+    /** 重跑实例：该节点是否复用上轮结果（startTime 早于实例开始时间 ⇒ 复用，未重跑） */
+    reused?: boolean;
     /** 执行视图：节点执行记录 id（SYNC 节点「查看日志」用） */
     nodeExecutionId?: string;
     /** SQL 节点最近一次「运行测试」结果（随 dag config 持久化） */
@@ -121,6 +123,8 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                 'relative rounded-xl p-4 w-[220px] text-ds-small bg-ds-bg-surface font-sans shadow-sm',
                 'border border-ds-border-subtle',
                 selected ? 'ring-4 ring-ds-accent-glow' : '',
+                // 重跑实例中复用上轮结果的节点置灰降噪，突出本次真正执行的节点
+                data.reused ? 'opacity-50 grayscale' : '',
             ].filter(Boolean).join(' ')}
             style={statusColor ? {borderLeft: `4px solid ${statusColor}`} : undefined}
         >
@@ -153,6 +157,19 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
             <div className="flex items-center gap-2 mb-2 pb-2 border-b border-ds-border-subtle">
                 <span className="text-ds-body">{icon}</span>
                 <span className="font-semibold text-ds-text-primary truncate flex-1">{data.nodeName}</span>
+                {/* 重跑实例节点执行方式角标：复用上轮结果置灰「复用」，本次真正执行标「本次执行」 */}
+                {data.reused === true && (
+                    <span
+                        className="shrink-0 px-1.5 py-0.5 rounded-full text-ds-caption font-medium bg-ds-bg-hover text-ds-text-muted">
+                        复用
+                    </span>
+                )}
+                {data.reused === false && data.status && (
+                    <span
+                        className="shrink-0 px-1.5 py-0.5 rounded-full text-ds-caption font-medium bg-ds-accent-light text-ds-accent">
+                        本次执行
+                    </span>
+                )}
             </div>
             <div className="text-ds-text-secondary text-ds-caption leading-relaxed space-y-1">
                 <div>类型：{NODE_TYPE_LABEL[data.nodeType] || data.nodeType}</div>
@@ -534,6 +551,14 @@ function PropertyPanel({
                 )}
                 {readOnly && node.data.status && (
                     <>
+                        {node.data.reused != null && (
+                            <PropertyRow
+                                label="执行方式"
+                                value={node.data.reused
+                                    ? '复用上轮结果（未重跑）'
+                                    : '本次重新执行'}
+                            />
+                        )}
                         <PropertyRow
                             label="状态"
                             value={
@@ -636,6 +661,8 @@ function DagEditorInner() {
         edges: [],
     });
     const [execution, setExecution] = useState<DagExecution | null>(null);
+    // 重跑实例运行视图：仅显示本次执行的节点，隐藏复用上轮结果的节点
+    const [showOnlyRerun, setShowOnlyRerun] = useState(false);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
     // SQL 节点编辑 modal(Sprint 3 §6.5：900x600 dark Monaco modal,替代 Drawer)
@@ -722,14 +749,24 @@ function DagEditorInner() {
         return getDagExecution(id, executionId).then(ex => {
             setExecution(ex);
             const {nodes, edges} = buildRunViewGraph(ex, dagRef.current);
-            // 轮询重建会丢 selected 标志：按 id 保留选中态，避免选中高亮/属性面板闪断
+            // 轮询重建会丢 selected 标志：按 id 保留选中态，避免选中高亮/属性面板闪断；
+            // 「仅看本次执行」开启时隐藏复用上轮结果的节点
             setRfNodes(prev => {
                 const selectedIds = new Set(prev.filter(n => n.selected).map(n => n.id));
-                return nodes.map(n => (selectedIds.has(n.id) ? {...n, selected: true} : n));
+                return nodes.map(n => {
+                    const merged = selectedIds.has(n.id) ? {...n, selected: true} : n;
+                    return showOnlyRerun && n.data.reused === true ? {...merged, hidden: true} : merged;
+                });
             });
             setRfEdges(edges);
         });
-    }, [id, executionId, setRfNodes, setRfEdges]);
+    }, [id, executionId, setRfNodes, setRfEdges, showOnlyRerun]);
+
+    // 重跑实例「仅看本次执行」开关：立即在现有节点上应用/移除隐藏，避免等待轮询
+    const toggleShowOnlyRerun = useCallback((only: boolean) => {
+        setShowOnlyRerun(only);
+        setRfNodes(prev => prev.map(n => (n.data.reused === true ? {...n, hidden: only} : n)));
+    }, [setRfNodes]);
 
     // 加载已有 DAG 并重建画布（编辑模式初始加载 / 版本回滚后刷新共用）
     // 不转 Number()：19 位 Snowflake id 会被截断精度，reactflow 拿不到 nodes
@@ -1241,6 +1278,32 @@ function DagEditorInner() {
                                         失败原因：{execution.errorMessage}
                                     </div>
                                 )}
+                                {/* 重跑实例提示：本次重跑节点数 + 复用上轮结果节点数 + 「仅看本次执行」开关 */}
+                                {(() => {
+                                    const execNodes = execution.nodeExecutions || [];
+                                    const reusedCount = execNodes.filter(
+                                        ne => ne.startTime != null && execution.startTime != null && ne.startTime < execution.startTime,
+                                    ).length;
+                                    if (reusedCount <= 0) return null;
+                                    const runCount = execNodes.length - reusedCount;
+                                    return (
+                                        <div className="flex items-center gap-ds-3 text-ds-small">
+                                            <span className="text-ds-text-secondary">
+                                                重跑实例 · 本次重跑 <strong
+                                                className="text-ds-text-primary">{runCount}</strong> 个节点，
+                                                其余 <strong className="text-ds-text-primary">{reusedCount}</strong> 个复用上轮结果
+                                            </span>
+                                            <span className="flex items-center gap-ds-1 text-ds-text-muted">
+                                                <Switch
+                                                    size="small"
+                                                    checked={showOnlyRerun}
+                                                    onChange={toggleShowOnlyRerun}
+                                                />
+                                                仅看本次执行
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         )}
                     </>
@@ -1651,6 +1714,8 @@ function buildRunViewGraph(
                 errorMessage: ne.errorMessage,
                 nodeExecutionStartTime: ne.startTime,
                 nodeExecutionEndTime: ne.endTime,
+                // 重跑实例中复用上轮结果的节点：开始时间早于实例开始时间 ⇒ 未重跑
+                reused: ne.startTime != null && ex.startTime != null && ne.startTime < ex.startTime,
                 // 节点执行记录 id：SYNC 节点「查看日志」入口依赖它
                 nodeExecutionId: ne.id != null ? String(ne.id) : undefined,
                 // 同步任务名优先取当前定义；已删除节点回退到 execution 里的 syncJobId

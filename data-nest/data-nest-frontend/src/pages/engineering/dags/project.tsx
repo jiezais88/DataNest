@@ -1,5 +1,5 @@
 // 项目内的 DAG 列表页（PRD §6.3：8 列布局）
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
@@ -12,7 +12,7 @@ import {
     HiOutlinePlus,
     HiOutlineTrash
 } from 'react-icons/hi2';
-import {useNavigate, useParams} from 'react-router-dom';
+import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {
     deleteDag,
     getDagProject,
@@ -95,6 +95,40 @@ export default function ProjectDagsPage() {
     useEffect(() => {
         refresh();
     }, [refresh]);
+
+    // L2：DAG 列表筛选（名称/状态/分页）同步到 URL，进入执行详情/画布再返回时不丢失
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const name = p.get('name') || '';
+        const status = p.get('status');
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        const validStatus = STATUS_OPTIONS.some(o => o.value === status)
+            ? (status as DsStatusVariant | '')
+            : '';
+        setSearchName(name);
+        setAppliedName(name);
+        setStatusFilter(validStatus);
+        setAppliedStatus(validStatus);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        setPage(pageNum > 0 ? pageNum : 1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (appliedName) next.set('name', appliedName);
+        if (appliedStatus) next.set('status', appliedStatus);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [appliedName, appliedStatus, page, pageSize]);
 
     const handleDelete = async () => {
         if (!deleteTarget) return;

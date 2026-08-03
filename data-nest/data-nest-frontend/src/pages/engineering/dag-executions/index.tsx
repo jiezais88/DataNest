@@ -1,6 +1,6 @@
 // 全局 DAG 执行历史（PRD §6.7.3）
 // 跨 DAG 的运行实例列表，支持按名称/状态/触发方式/时间范围过滤
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation, useNavigate, useSearchParams} from 'react-router-dom';
 import {Modal, Table, Tooltip,} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
@@ -50,6 +50,18 @@ const NODE_TYPE_BREAKDOWN_LABEL: Record<string, string> = {SQL: 'SQL 节点', SY
 // datetime-local 用户手动编辑后可能只有分钟（YYYY-MM-DDTHH:mm），补秒保证后端 LocalDateTime 解析一致
 function normalizeDateTime(v: string): string {
     return v && v.length === 16 ? `${v}:00` : v;
+}
+
+// 重跑实例判定：存在某个节点开始时间早于实例开始时间 ⇒ 该节点复用上轮结果、实例为重跑产生
+function isRerunInstance(r: DagExecution): boolean {
+    return countReusedNodes(r) > 0;
+}
+
+function countReusedNodes(r: DagExecution): number {
+    const nodes = r.nodeExecutions || [];
+    const execStart = r.startTime;
+    if (!execStart) return 0;
+    return nodes.filter(ne => ne.startTime != null && ne.startTime < execStart).length;
 }
 
 // =================== 页面 ===================
@@ -128,6 +140,67 @@ export default function DagExecutionsGlobalPage() {
         // 仅在 urlDagId 变化时套用精确过滤，与原 setApplied(prev => ...) 语义一致
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlDagId]);
+
+    // L2：进页时从 URL 初始化筛选（名称/项目/状态/触发方式/时间范围/分页），深层跳转返回后筛选不丢
+    const urlInitRef = useRef(false);
+    useEffect(() => {
+        if (urlInitRef.current) return;
+        urlInitRef.current = true;
+        const p = searchParams;
+        const hasDagId = p.has('dagId');
+        const urlDagNameParam = p.get('dagName') || '';
+        const urlProjectName = p.get('projectName') || '';
+        const urlStatus = p.get('status');
+        const urlTriggerType = p.get('triggerType');
+        const urlFrom = p.get('startTimeFrom');
+        const urlTo = p.get('startTimeTo');
+        const pageNum = Number(p.get('page')) || 1;
+        const pageSizeNum = Number(p.get('pageSize')) || 10;
+        const status = STATUS_OPTIONS.some(o => o.value === urlStatus) ? urlStatus || undefined : undefined;
+        const triggerType = TRIGGER_OPTIONS.some(o => o.value === urlTriggerType) ? urlTriggerType || undefined : undefined;
+        // dagId 场景下 DAG 名称框被 chip 取代，URL dagName 是 chip 标签而非筛选词
+        const dagName = hasDagId ? '' : urlDagNameParam;
+        const next: AppliedFilters = {
+            dagName,
+            projectName: urlProjectName,
+            ...(hasDagId ? {dagId: p.get('dagId')!} : {}),
+            status,
+            triggerType,
+            startTimeFrom: urlFrom || defaultRange.from,
+            startTimeTo: urlTo || defaultRange.to,
+        };
+        setDraftDagName(dagName);
+        setDraftProjectName(urlProjectName);
+        setDraftStatus(urlStatus || '');
+        setDraftTriggerType(urlTriggerType || '');
+        setDraftStartTimeFrom(next.startTimeFrom);
+        setDraftStartTimeTo(next.startTimeTo);
+        if (pageSizeNum !== 10) setPageSize(pageSizeNum);
+        applyQuery(next);
+        if (pageNum > 1) setPage(pageNum);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // L2：筛选/分页变化时同步到 URL（replace 不产生多余历史记录），刷新/分享也能恢复
+    useEffect(() => {
+        const next = new URLSearchParams();
+        if (applied.dagId) {
+            next.set('dagId', applied.dagId);
+            next.set('dagName', urlDagName);
+        } else if (applied.dagName) {
+            next.set('dagName', applied.dagName);
+        }
+        if (applied.projectName) next.set('projectName', applied.projectName);
+        if (applied.status) next.set('status', applied.status);
+        if (applied.triggerType) next.set('triggerType', applied.triggerType);
+        if (applied.startTimeFrom) next.set('startTimeFrom', applied.startTimeFrom);
+        if (applied.startTimeTo) next.set('startTimeTo', applied.startTimeTo);
+        next.set('page', String(page));
+        if (pageSize !== 10) next.set('pageSize', String(pageSize));
+        if (next.toString() === searchParams.toString()) return;
+        setSearchParams(next, {replace: true});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [applied, page, pageSize]);
 
     // 清除 dagId 精确过滤（chip × 或手动查询/重置时）
     const clearDagIdFilter = useCallback(() => {
@@ -285,12 +358,22 @@ export default function DagExecutionsGlobalPage() {
         {
             title: '状态',
             dataIndex: 'status',
-            width: 90,
-            render: (v: string) => (
-                <DsStatusBadge
-                    label={NODE_STATUS_LABEL[v] || v || '-'}
-                    variant={executionStatusVariant(v)}
-                />
+            width: 130,
+            render: (v: string, r) => (
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                    <DsStatusBadge
+                        label={NODE_STATUS_LABEL[v] || v || '-'}
+                        variant={executionStatusVariant(v)}
+                    />
+                    {isRerunInstance(r) && (
+                        <span
+                            className="px-1.5 py-0.5 rounded-full text-ds-caption font-medium bg-ds-accent-light text-ds-accent"
+                            title="该实例为重跑失败节点产生，成功节点复用上轮结果"
+                        >
+                            重跑
+                        </span>
+                    )}
+                </div>
             ),
         },
         {
@@ -330,12 +413,15 @@ export default function DagExecutionsGlobalPage() {
                 if (nodes.length === 0) {
                     return <span className="text-ds-small text-ds-text-secondary">-</span>;
                 }
+                const reusedCount = countReusedNodes(r);
+                const reusedSuffix = reusedCount > 0 ? `，${reusedCount} 个复用` : '';
                 const success = nodes.filter(n => n.status === 'SUCCESS').length;
                 const failed = nodes.filter(n => n.status === 'FAILED');
-                // 失败节点名渲染为可点击链接（对齐 Sprint4 原型）：点击进执行详情并定位到该节点
+                // 失败节点名渲染为可点击链接（对齐 Sprint4 原型）：点击进执行详情并定位到该节点；
+                // 同时带上 from 当前页，返回时保留筛选（与「详情」按钮一致）
                 const goDetail = (nodeId?: string) => {
                     navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`,
-                        nodeId ? {state: {focusNodeId: nodeId}} : undefined);
+                        {state: {from: currentUrl, ...(nodeId ? {focusNodeId: nodeId} : {})}});
                 };
                 if (failed.length > 0) {
                     return (
@@ -352,7 +438,7 @@ export default function DagExecutionsGlobalPage() {
                                     </a>
                                 </span>
                             ))}
-                            ）
+                            ）{reusedSuffix}
                         </div>
                     );
                 }
@@ -365,7 +451,7 @@ export default function DagExecutionsGlobalPage() {
                     .join(' + ');
                 return (
                     <div className="text-ds-small text-ds-text-secondary whitespace-nowrap">
-                        {success}/{nodes.length} 成功{breakdown ? `（${breakdown}）` : ''}
+                        {success}/{nodes.length} 成功{breakdown ? `（${breakdown}）` : ''}{reusedSuffix}
                     </div>
                 );
             },
