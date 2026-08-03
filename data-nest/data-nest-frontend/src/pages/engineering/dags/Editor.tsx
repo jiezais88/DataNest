@@ -30,6 +30,7 @@ import {
     getDagExecution,
     getNodeExecutionLogs,
     listDagParameters,
+    putDagAlertConfig,
     triggerDag,
     updateDag
 } from './api';
@@ -46,7 +47,7 @@ import DagAlertConfigModal from './components/DagAlertConfigModal';
 import NodeRuntimeLogPanel from './components/NodeRuntimeLogPanel';
 import {HistoryLogModal} from '../sync-jobs/history-common';
 import {describeCron} from '../../../utils/cron';
-import type {Dag, DagExecution, DagParameter, NodeExecution, NodeType} from './types';
+import type {Dag, DagAlertConfig, DagExecution, DagParameter, NodeExecution, NodeType} from './types';
 import type {SyncJob, SyncJobLog} from '../../../types/sync';
 import {useCanEdit} from '../../../hooks/useCanEdit';
 import {usePollingWhile} from '../../../hooks/usePollingWhile';
@@ -645,6 +646,8 @@ function DagEditorInner() {
     const [paramDrawerOpen, setParamDrawerOpen] = useState(false);
     // 新建 DAG 尚未保存时，参数草稿保存在本地，保存 DAG 后统一提交
     const [draftParams, setDraftParams] = useState<DagParameter[]>([]);
+    // 新建 DAG 尚未保存时，告警草稿保存在本地，保存 DAG 后统一提交
+    const [draftAlertConfig, setDraftAlertConfig] = useState<DagAlertConfig | undefined>(undefined);
     const [triggerModalOpen, setTriggerModalOpen] = useState(false);
     const [dagParams, setDagParams] = useState<DagParameter[]>([]);
     const [triggering, setTriggering] = useState(false);
@@ -999,14 +1002,17 @@ function DagEditorInner() {
                 const created = await createDag(payload);
                 savedId = String(created.id);
                 // 创建参数：DAG 保存成功后统一提交，失败则提示但 DAG 已创建
-                if (draftParams.length > 0) {
+                if (draftParams.length > 0 || draftAlertConfig) {
                     try {
                         for (const p of draftParams) {
                             await createDagParameter(savedId, p);
                         }
-                        notify.success('DAG 与参数已创建');
+                        if (draftAlertConfig) {
+                            await putDagAlertConfig(savedId, draftAlertConfig);
+                        }
+                        notify.success('DAG 与配置已创建');
                     } catch {
-                        notify.error('DAG 已创建，但参数保存失败，请重新打开参数抽屉提交');
+                        notify.error('DAG 已创建，但参数/告警保存失败，请重新打开对应配置提交');
                     }
                 } else {
                     notify.success('DAG 已创建');
@@ -1016,14 +1022,15 @@ function DagEditorInner() {
                 await updateDag(id, payload);
                 notify.success('DAG 已更新');
             }
-            // 保存成功：清 dirty 标志与本地参数草稿（navigate 之前，避免 onBack 再次拦截）
+            // 保存成功：清 dirty 标志与本地草稿（navigate 之前，避免 onBack 再次拦截）
             setIsDirty(false);
             setDraftParams([]);
+            setDraftAlertConfig(undefined);
             navigate(`/engineering/dags/${savedId}/edit`);
         } catch {
             // 错误提示由 request 拦截器统一弹出
         }
-    }, [dag, rfNodes, rfEdges, id, isNew, navigate, draftParams]);
+    }, [dag, rfNodes, rfEdges, id, isNew, navigate, draftParams, draftAlertConfig]);
 
     const handleSave = useCallback(() => {
         if (!dag.name) {
@@ -1312,8 +1319,8 @@ function DagEditorInner() {
                             版本
                         </DsButton>
                         <DsButton variant="secondary" onClick={() => setAlertModalOpen(true)}
-                                  disabled={!canEdit || isNew}
-                                  title={!canEdit ? '只读模式：您没有编辑权限' : isNew ? '请先保存 DAG 后再配置告警' : undefined}>
+                                  disabled={!canEdit}
+                                  title={!canEdit ? '只读模式：您没有编辑权限' : undefined}>
                             告警
                         </DsButton>
                         <DsButton variant="secondary" onClick={handleAutoLayout}
@@ -1582,6 +1589,8 @@ function DagEditorInner() {
                 dagName={dag.name}
                 readOnly={!canEdit}
                 onClose={() => setAlertModalOpen(false)}
+                draftConfig={draftAlertConfig}
+                onDraftChange={setDraftAlertConfig}
             />
         </div>
     );

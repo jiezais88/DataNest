@@ -99,6 +99,12 @@
             <artifactId>fastjson2-extension</artifactId>
         </dependency>
 
+        <!-- Sprint 4：DAG 邮件告警（task-core 中为 provided 作用域，消费方需显式声明） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Sa-Token -->
         <dependency>
             <groupId>cn.dev33</groupId>

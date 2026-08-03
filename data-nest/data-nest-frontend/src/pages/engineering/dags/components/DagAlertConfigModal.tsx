@@ -1,12 +1,11 @@
 // Sprint 4 按 DAG 告警配置弹窗（PRD §6.5.2 / 技术文档 §8.2）
-// 范围说明：Sprint 4 前端只提供「按 DAG 覆盖」入口（全局默认配置仅 API 可用，无系统管理页面）。
-// 后端按 DAG 读取时会回退全局默认配置：响应 dagId == null 即表示当前继承全局配置，
-// 此时顶部提示「保存后将创建该 DAG 的专属配置」。
-import {useEffect, useState} from 'react';
-import {Spin, Switch} from 'antd';
+import {useEffect, useMemo, useState} from 'react';
+import {Select, Spin, Switch} from 'antd';
 import DsButton from '../../../../components/DsButton';
 import DsModal from '../../../../components/DsModal';
 import {getDagAlertConfig, putDagAlertConfig} from '../api';
+import type {UserVO} from '../../../../api/auth';
+import {getUsers} from '../../../../api/auth';
 import type {DagAlertConfig} from '../types';
 import {notify} from '../../../../utils/notify';
 import {getErrorMessage} from '../../../../utils/error';
@@ -17,6 +16,10 @@ interface DagAlertConfigModalProps {
     dagName?: string;
     readOnly?: boolean;
     onClose: () => void;
+    /** 新建 DAG 尚未保存时的本地告警草稿 */
+    draftConfig?: DagAlertConfig;
+    /** 草稿变化回调（新建 DAG 时使用） */
+    onDraftChange?: (config: DagAlertConfig) => void;
 }
 
 const TRIGGER_OPTIONS: { value: string; label: string }[] = [
@@ -38,32 +41,90 @@ export default function DagAlertConfigModal({
                                                 dagName,
                                                 readOnly = false,
                                                 onClose,
+                                                draftConfig,
+                                                onDraftChange,
                                             }: DagAlertConfigModalProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [enabled, setEnabled] = useState(false);
-    const [recipients, setRecipients] = useState('');
+    // 收件人以 email 数组维护
+    const [recipientEmails, setRecipientEmails] = useState<string[]>([]);
+    // 已加载的候选用户（搜索结果 + 已选用户）
+    const [candidateUsers, setCandidateUsers] = useState<UserVO[]>([]);
+    const [usersLoading, setUsersLoading] = useState(false);
     const [conditions, setConditions] = useState<string[]>(['FAILURE']);
     const [timeoutMinutes, setTimeoutMinutes] = useState<number>(30);
-    // 当前是否继承全局默认配置（响应 dagId 为 null）
-    const [inheritingGlobal, setInheritingGlobal] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const isDraft = !dagId;
+
+    const options = useMemo(() => {
+        // 候选用户 + 已选邮箱（避免已选用户不在当前候选列表时丢失标签）
+        const map = new Map<string, string>();
+        for (const email of recipientEmails) {
+            map.set(email, email);
+        }
+        for (const u of candidateUsers) {
+            if (u.email) map.set(u.email, `${u.username}（${u.email}）`);
+        }
+        return Array.from(map.entries()).map(([email, label]) => ({
+            value: email,
+            label,
+        }));
+    }, [candidateUsers, recipientEmails]);
+
     useEffect(() => {
-        if (!open || !dagId) return;
+        if (!open) return;
         setError(null);
+        const cfg = isDraft ? draftConfig : undefined;
+        const applyConfig = (loaded?: DagAlertConfig) => {
+            setEnabled(!!loaded?.enabled);
+            const emails = splitRecipients(loaded?.recipients || '');
+            setRecipientEmails(emails);
+            setConditions(loaded?.triggerConditions?.length ? loaded.triggerConditions : ['FAILURE']);
+            setTimeoutMinutes(loaded?.timeoutMinutes ?? 30);
+        };
+        if (isDraft) {
+            applyConfig(cfg);
+            return;
+        }
         setLoading(true);
         getDagAlertConfig(dagId)
-            .then(cfg => {
-                setEnabled(!!cfg?.enabled);
-                setRecipients(cfg?.recipients || '');
-                setConditions(cfg?.triggerConditions?.length ? cfg.triggerConditions : ['FAILURE']);
-                setTimeoutMinutes(cfg?.timeoutMinutes ?? 30);
-                setInheritingGlobal(cfg?.dagId == null);
-            })
+            .then(applyConfig)
             .catch(e => setError(getErrorMessage(e, '加载告警配置失败')))
             .finally(() => setLoading(false));
-    }, [open, dagId]);
+    }, [open, dagId, isDraft, draftConfig]);
+
+    // 弹窗打开时预加载一批用户作为候选
+    useEffect(() => {
+        if (!open) return;
+        setUsersLoading(true);
+        getUsers({page: 1, pageSize: 50, keyword: undefined})
+            .then(res => setCandidateUsers(res.data?.records || []))
+            .catch(() => {/* 静默失败，用户可继续搜索 */
+            })
+            .finally(() => setUsersLoading(false));
+    }, [open]);
+
+    const handleSearchUsers = async (keyword: string) => {
+        if (!keyword) return;
+        setUsersLoading(true);
+        try {
+            const res = await getUsers({page: 1, pageSize: 20, keyword});
+            const list = res.data?.records || [];
+            setCandidateUsers(prev => {
+                const map = new Map(prev.map(u => [u.email, u]));
+                for (const u of list) {
+                    if (u.email) map.set(u.email, u);
+                }
+                return Array.from(map.values());
+            });
+        } catch {
+            // 静默失败
+        } finally {
+            setUsersLoading(false);
+        }
+    };
 
     const toggleCondition = (value: string) => {
         setConditions(prev =>
@@ -73,9 +134,8 @@ export default function DagAlertConfigModal({
 
     const validate = (): string | null => {
         if (!enabled) return null;
-        const emails = splitRecipients(recipients);
-        if (emails.length === 0) return '启用告警时必须填写收件人';
-        const invalid = emails.filter(e => !EMAIL_PATTERN.test(e));
+        if (recipientEmails.length === 0) return '启用告警时必须选择收件人';
+        const invalid = recipientEmails.filter(e => !EMAIL_PATTERN.test(e));
         if (invalid.length > 0) return `邮箱格式不合法：${invalid.join('、')}`;
         if (conditions.length === 0) return '请至少选择一个触发条件';
         if (conditions.includes('TIMEOUT') && (!timeoutMinutes || timeoutMinutes <= 0)) {
@@ -85,23 +145,28 @@ export default function DagAlertConfigModal({
     };
 
     const handleSave = async () => {
-        if (!dagId) return;
         const invalid = validate();
         if (invalid) {
             setError(invalid);
             return;
         }
+        const payload: DagAlertConfig = {
+            enabled,
+            // 统一用分号分隔提交（后端存储格式）
+            recipients: recipientEmails.join(';'),
+            triggerConditions: conditions,
+            // 未勾选超时条件时不提交阈值，避免语义脏数据
+            timeoutMinutes: conditions.includes('TIMEOUT') ? timeoutMinutes : undefined,
+        };
+        if (isDraft) {
+            onDraftChange?.(payload);
+            notify.success('告警配置已暂存，保存 DAG 后生效');
+            onClose();
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
-            const payload: DagAlertConfig = {
-                enabled,
-                // 统一用分号分隔提交（后端存储格式）
-                recipients: splitRecipients(recipients).join(';'),
-                triggerConditions: conditions,
-                // 未勾选超时条件时不提交阈值，避免语义脏数据
-                timeoutMinutes: conditions.includes('TIMEOUT') ? timeoutMinutes : undefined,
-            };
             await putDagAlertConfig(dagId, payload);
             notify.success('告警配置已保存');
             onClose();
@@ -139,13 +204,6 @@ export default function DagAlertConfigModal({
                 </div>
             ) : (
                 <div className="space-y-ds-4">
-                    {inheritingGlobal && (
-                        <div
-                            className="border border-ds-accent/30 bg-ds-accent-light text-ds-accent rounded-ds-sm p-ds-3 text-ds-small">
-                            当前继承全局默认配置，保存后将创建该 DAG 的专属配置。
-                        </div>
-                    )}
-
                     <div className="flex items-center gap-ds-2">
                         <span data-testid="dag-alert-enabled">
                             <Switch
@@ -168,16 +226,21 @@ export default function DagAlertConfigModal({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             收件人 {enabled && <span className="text-ds-danger">*</span>}
                         </label>
-                        <textarea
-                            data-testid="dag-alert-recipients"
-                            value={recipients}
-                            onChange={e => setRecipients(e.target.value)}
-                            rows={2}
+                        <Select
+                            mode="multiple"
+                            showSearch
+                            filterOption={false}
+                            value={recipientEmails}
+                            onChange={setRecipientEmails}
+                            onSearch={handleSearchUsers}
                             disabled={readOnly || !enabled}
-                            placeholder="engineer@example.com; admin@example.com"
-                            className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors resize-none disabled:opacity-60 disabled:cursor-not-allowed"
+                            loading={usersLoading}
+                            placeholder="搜索用户名或邮箱"
+                            options={options}
+                            className="w-full"
+                            notFoundContent={usersLoading ? <Spin size="small"/> : '无匹配用户'}
                         />
-                        <p className="mt-ds-1 text-ds-nano text-ds-text-muted">多个收件人用分号分隔</p>
+                        <p className="mt-ds-1 text-ds-nano text-ds-text-muted">支持搜索用户名/邮箱并多选</p>
                     </div>
 
                     <div>

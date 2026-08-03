@@ -158,6 +158,13 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和生成的 job json
   `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
 - **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需要重启对应服务。
+- **DAG 告警邮件需要 worker/job 也配邮件**：`spring-boot-starter-mail` 在 task-core 是 `provided`，worker/job 必须在自己
+  pom 显式声明（compile），且 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则
+  `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。本地 MailHog 需非空 `MAIL_USERNAME`/
+  `MAIL_PASSWORD`
+  （空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
+- **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**
+  （`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
 
 ## 7. 代码与提交约定
 

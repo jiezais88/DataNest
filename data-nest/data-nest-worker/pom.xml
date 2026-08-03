@@ -40,6 +40,12 @@
             <artifactId>fastjson2</artifactId>
         </dependency>
 
+        <!-- Sprint 4：DAG 邮件告警（task-core 中为 provided 作用域，消费方需显式声明） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

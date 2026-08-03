@@ -16,6 +16,7 @@ spring:
       - optional:nacos:shared-addax.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-alert.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:
