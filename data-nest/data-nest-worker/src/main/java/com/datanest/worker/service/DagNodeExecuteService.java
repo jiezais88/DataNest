@@ -478,36 +478,52 @@ public class DagNodeExecuteService {
         ne.setStartTime(LocalDateTime.now());
         nodeExecutionMapper.updateById(ne);
 
-        DagNode node = dagNodeMapper.selectList(
-                        new QueryWrapper<DagNode>()
-                                .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
-                .stream().findFirst().orElse(null);
-        if (node == null || !StringUtils.hasText(node.getConfig())) {
-            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件节点配置缺失: " + nodeId);
-        }
-        ConditionNodeConfig config = parseConditionConfig(node.getConfig());
-        if (config.getBranches() == null || config.getBranches().size() < 2) {
-            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件分支至少 2 个: " + nodeId);
-        }
-
+        // 求值过程可能抛异常（配置缺失/表达式错误等），必须兜底回写终态，避免永久卡 RUNNING
         LocalDateTime startTime = LocalDateTime.now();
-        Map<String, Object> vars = buildConditionContext(ne.getExecutionId(), dagId, nodeId);
-        int branchIndex = evaluateBranches(config.getBranches(), vars);
-        ConditionNodeConfig.ConditionBranch selected = config.getBranches().get(branchIndex);
+        try {
+            DagNode node = dagNodeMapper.selectList(
+                            new QueryWrapper<DagNode>()
+                                    .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
+                    .stream().findFirst().orElse(null);
+            if (node == null || !StringUtils.hasText(node.getConfig())) {
+                throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件节点配置缺失: " + nodeId);
+            }
+            ConditionNodeConfig config = parseConditionConfig(node.getConfig());
+            if (config.getBranches() == null || config.getBranches().size() < 2) {
+                throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件分支至少 2 个: " + nodeId);
+            }
 
-        ne.setOutputInfo(JSON.toJSONString(Map.of(
-                "branchIndex", branchIndex,
-                "nextNodeId", selected.getNextNodeId(),
-                "branchName", selected.getBranchName())));
-        ne.setStatus("SUCCESS");
-        ne.setEndTime(LocalDateTime.now());
-        ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
-        nodeExecutionMapper.updateById(ne);
+            Map<String, Object> vars = buildConditionContext(ne.getExecutionId(), dagId, nodeId);
+            int branchIndex = evaluateBranches(config.getBranches(), vars);
+            ConditionNodeConfig.ConditionBranch selected = config.getBranches().get(branchIndex);
 
-        logger.info("条件分支求值: executionId={}, nodeId={}, branchIndex={}, nextNodeId={}",
-                ne.getExecutionId(), nodeId, branchIndex, selected.getNextNodeId());
-        finalizeExecutionQuietly(ne.getExecutionId());
-        return Result.ok(Map.of("branchIndex", branchIndex, "nextNodeId", selected.getNextNodeId()));
+            ne.setOutputInfo(JSON.toJSONString(Map.of(
+                    "branchIndex", branchIndex,
+                    "nextNodeId", selected.getNextNodeId(),
+                    "branchName", selected.getBranchName())));
+            ne.setStatus("SUCCESS");
+            ne.setEndTime(LocalDateTime.now());
+            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
+            nodeExecutionMapper.updateById(ne);
+
+            logger.info("条件分支求值: executionId={}, nodeId={}, branchIndex={}, nextNodeId={}",
+                    ne.getExecutionId(), nodeId, branchIndex, selected.getNextNodeId());
+            finalizeExecutionQuietly(ne.getExecutionId());
+            return Result.ok(Map.of("branchIndex", branchIndex, "nextNodeId", selected.getNextNodeId()));
+        } catch (Exception e) {
+            logger.error("条件节点求值失败: executionId={}, nodeId={}", ne.getExecutionId(), nodeId, e);
+            ne.setStatus("FAILED");
+            ne.setErrorMessage(e.getMessage());
+            ne.setEndTime(LocalDateTime.now());
+            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
+            nodeExecutionMapper.updateById(ne);
+            finalizeExecutionQuietly(ne.getExecutionId());
+            if (e instanceof BusinessException be) {
+                throw be;
+            }
+            throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
+                    "条件节点求值失败: " + e.getMessage(), e);
+        }
     }
 
     private ConditionNodeConfig parseConditionConfig(String configJson) {

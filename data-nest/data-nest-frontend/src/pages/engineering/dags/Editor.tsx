@@ -687,7 +687,7 @@ function ConditionOutputDisplay({
         <div className="space-y-ds-2">
             <div className="flex items-center gap-ds-2">
                 <span
-                    className="text-ds-caption font-semibold px-ds-2 py-0.5 rounded bg-ds-accent-light text-ds-accent">
+                    className="text-ds-small font-semibold px-ds-2 rounded bg-ds-accent-light text-ds-accent leading-none py-0.5">
                     条件分支
                 </span>
                 {info.branchIndex != null && (

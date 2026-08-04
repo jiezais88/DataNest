@@ -46,7 +46,12 @@ const TRIGGER_OPTIONS = [
 ];
 
 // =================== helpers ===================
-const NODE_TYPE_BREAKDOWN_LABEL: Record<string, string> = {SQL: 'SQL 节点', SYNC: '同步节点', PYTHON: 'Python 节点'};
+const NODE_TYPE_BREAKDOWN_LABEL: Record<string, string> = {
+    SQL: 'SQL 节点',
+    SYNC: '同步节点',
+    PYTHON: 'Python 节点',
+    CONDITION: '条件分支',
+};
 
 // datetime-local 用户手动编辑后可能只有分钟（YYYY-MM-DDTHH:mm），补秒保证后端 LocalDateTime 解析一致
 function normalizeDateTime(v: string): string {
@@ -432,7 +437,10 @@ export default function DagExecutionsGlobalPage() {
         {
             title: '节点执行情况',
             dataIndex: 'nodeExecutions',
-            width: COL.NODE_SUMMARY,
+            // 列宽按最坏情况（"4/5 成功（4 SQL 节点 + 1 条件分支），1 跳过（下游E_SQL）"）完整显示需要 ~340px；
+            // 保留 ellipsis=true 让偶尔超长时截断并通过 title 悬浮查看完整文本
+            width: 360,
+            ellipsis: true,
             render: (_, r) => {
                 const nodes = r.nodeExecutions || [];
                 if (nodes.length === 0) {
@@ -453,9 +461,24 @@ export default function DagExecutionsGlobalPage() {
                             }
                         });
                 };
+                const breakdown = Object.entries(NODE_TYPE_BREAKDOWN_LABEL)
+                    .map(([type, label]) => {
+                        const count = nodes.filter(n => n.nodeType === type).length;
+                        return count > 0 ? `${count} ${label}` : null;
+                    })
+                    .filter(Boolean)
+                    .join(' + ');
+                // 被条件分支跳过的节点：单独提示，避免与"成功"口径混淆
+                const skipped = nodes.filter(n => n.status === 'SKIPPED');
+                const skippedSuffix = skipped.length > 0
+                    ? `，${skipped.length} 跳过（${skipped.map(s => s.nodeName || s.nodeId || '?').join('、')}）`
+                    : '';
+                const head = `${success}/${nodes.length} 成功`;
+                const fullText = `${head}${breakdown ? `（${breakdown}）` : ''}${skippedSuffix}${reusedSuffix}`;
                 if (failed.length > 0) {
+                    const failedText = `${success}/${nodes.length} 成功，${failed.length} 失败（${failed.map(f => f.nodeName || f.nodeId || '?').join('、')}）${reusedSuffix}`;
                     return (
-                        <div className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                        <div className="text-ds-small text-ds-text-secondary whitespace-nowrap" title={failedText}>
                             {success}/{nodes.length} 成功，{failed.length} 失败（
                             {failed.map((f, idx) => (
                                 <span key={f.nodeId || String(f.id ?? idx)}>
@@ -472,16 +495,9 @@ export default function DagExecutionsGlobalPage() {
                         </div>
                     );
                 }
-                const breakdown = Object.entries(NODE_TYPE_BREAKDOWN_LABEL)
-                    .map(([type, label]) => {
-                        const count = nodes.filter(n => n.nodeType === type).length;
-                        return count > 0 ? `${count} ${label}` : null;
-                    })
-                    .filter(Boolean)
-                    .join(' + ');
                 return (
-                    <div className="text-ds-small text-ds-text-secondary whitespace-nowrap">
-                        {success}/{nodes.length} 成功{breakdown ? `（${breakdown}）` : ''}{reusedSuffix}
+                    <div className="text-ds-small text-ds-text-secondary whitespace-nowrap" title={fullText}>
+                        {head}{breakdown ? `（${breakdown}）` : ''}{skippedSuffix}{reusedSuffix}
                     </div>
                 );
             },
@@ -646,7 +662,8 @@ export default function DagExecutionsGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1350}}
+                            // 列总和（1502）> 期望宽度 → 强制触发横向滚动条；操作列 fixed right 始终贴右
+                            scroll={{x: 1500}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (
