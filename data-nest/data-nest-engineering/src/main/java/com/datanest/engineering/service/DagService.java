@@ -667,22 +667,23 @@ public class DagService {
     }
 
     /**
-     * 子 DAG 循环引用检测：从当前 DAG 的每个 SUB_DAG 引用出发 DFS，
-     * 若子图引用回当前 DAG 或路径上任意 DAG，则判定循环并阻断保存。
+     * 子 DAG 循环引用与项目一致性检测：从当前 DAG 的每个 SUB_DAG 引用出发 DFS，
+     * 若子图引用回当前 DAG、路径上任意 DAG，或子 DAG 与父 DAG 不属于同一项目，则阻断保存。
      */
     private void validateSubDagCycle(DagPayload payload) {
         Long currentDagId = payload.getId();
+        Long parentProjectId = payload.getProjectId();
         Set<Long> directRefs = collectSubDagRefs(payload.getNodes());
         for (Long ref : directRefs) {
             Set<Long> path = new HashSet<>();
             if (currentDagId != null) {
                 path.add(currentDagId);
             }
-            dfsSubDagCycle(ref, path, currentDagId);
+            dfsSubDagCycle(ref, path, currentDagId, parentProjectId);
         }
     }
 
-    private void dfsSubDagCycle(Long subDagId, Set<Long> path, Long forbiddenDagId) {
+    private void dfsSubDagCycle(Long subDagId, Set<Long> path, Long forbiddenDagId, Long parentProjectId) {
         if (path.contains(subDagId)) {
             throw new BusinessException(ErrorCode.SUB_DAG_CYCLE_DETECTED,
                     "子 DAG 存在循环引用: subDagId=" + subDagId);
@@ -698,11 +699,15 @@ public class DagService {
             throw new BusinessException(ErrorCode.SUB_DAG_CYCLE_DETECTED,
                     "子 DAG 不能引用父 DAG 自身: " + subDagId);
         }
+        if (parentProjectId != null && !Objects.equals(subDag.getProjectId(), parentProjectId)) {
+            throw new BusinessException(ErrorCode.SUB_DAG_PROJECT_MISMATCH,
+                    "子 DAG 必须与父 DAG 属于同一项目: " + subDag.getName());
+        }
         path.add(subDagId);
         List<DagNode> nodes = dagNodeMapper.selectByDagId(subDagId);
         Set<Long> refs = collectSubDagRefsFromNodes(nodes);
         for (Long ref : refs) {
-            dfsSubDagCycle(ref, path, forbiddenDagId);
+            dfsSubDagCycle(ref, path, forbiddenDagId, parentProjectId);
         }
         path.remove(subDagId);
     }

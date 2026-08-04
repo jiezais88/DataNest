@@ -751,7 +751,7 @@ function DagEditorInner() {
     // Sprint 5：条件分支 / 子 DAG 节点编辑弹窗
     const [conditionModalOpen, setConditionModalOpen] = useState(false);
     const [subDagModalOpen, setSubDagModalOpen] = useState(false);
-    // 子 DAG 节点选择器候选：已启用且非当前 DAG（循环引用由后端保存时阻断）
+    // 子 DAG 节点选择器候选：同项目、已启用且非当前 DAG（循环引用由后端保存时阻断）
     const [candidateDags, setCandidateDags] = useState<{ id: string | number; name: string }[]>([]);
     const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
     // 运行视图 SYNC 节点「查看日志」弹窗（复用同步任务的 HistoryLogModal）
@@ -790,17 +790,18 @@ function DagEditorInner() {
         reactFlowInstance.setCenter(target.position.x + 90, target.position.y + 30, {zoom: 1.2, duration: 400});
     }, [isRunView, focusNodeId, rfNodes, reactFlowInstance]);
 
-    // 子 DAG 节点选择器候选：已启用且非当前 DAG（循环引用由后端保存时阻断）
+    // 子 DAG 节点选择器候选：同项目、已启用且非当前 DAG（循环引用由后端保存时阻断）
     const loadCandidateDags = useCallback(() => {
         const currentId = String(id || '');
-        listDags().then(dags => {
+        const effectiveProjectId = dag.projectId || projectId;
+        listDags(effectiveProjectId).then(dags => {
             setCandidateDags((dags || [])
                 .filter(d => d.status === 'ENABLED' && String(d.id) !== currentId)
                 .map(d => ({id: d.id!, name: d.name})));
         }).catch(() => {
             // 错误提示由拦截器统一弹出
         });
-    }, [id]);
+    }, [id, dag.projectId, projectId]);
 
     // 统一节点编辑入口（铅笔图标 / 双击 / 属性面板「编辑节点」共用）：
     // - SQL 节点：打开 900x600 dark Monaco modal

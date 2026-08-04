@@ -101,7 +101,8 @@ export default function SubDagNodeModal({
                         options={candidateDags.map(d => ({value: d.id, label: d.name || String(d.id)}))}
                         className="w-full"
                     />
-                    <p className="mt-ds-1 text-ds-nano text-ds-text-muted">仅显示已启用、且不会造成循环引用的 DAG</p>
+                    <p className="mt-ds-1 text-ds-nano text-ds-text-muted">仅显示同项目、已启用、且不会造成循环引用的
+                        DAG</p>
                 </div>
 
                 <div>

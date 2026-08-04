@@ -2,7 +2,8 @@
 
 > 本文件用于 Sprint 5 内多个 Agent 会话之间的状态同步。每次会话结束时更新状态；新会话进入时先读此文件。
 >
-> **最后更新**：2026-08-04 — 告警规则多对象改造已部署；血缘记录/告警历史清理任务已上线；元数据详情页表级血缘去重已修复部署。
+> **最后更新**：2026-08-04 — 告警规则多对象改造已部署；血缘记录/告警历史清理任务已上线；元数据详情页表级血缘去重已修复部署；子
+> DAG 选择限制为同项目。
 
 ## Sprint 目标
 
@@ -89,7 +90,8 @@ DAG 流水线。
 - `DagDsConverter` 支持 CONDITION（HTTP 回调 worker）/ SUB_DAG（同步 SUB_WORKFLOW、异步 HTTP 调 engineering）；
   `DolphinSchedulerConfig` 加
   `engineeringCallbackBaseUrl`
-- `DagService` 节点配置校验 + 子 DAG 循环引用检测 + 删除引用守卫 + 告警级联（含 Sprint 4 `dag_alert_config` /
+- `DagService` 节点配置校验 + 子 DAG 循环引用检测 + **子 DAG 必须与父 DAG 同项目** + 删除引用守卫 + 告警级联（含 Sprint 4
+  `dag_alert_config` /
   `dag_alert_history`）；`DagNodeMapper` 引用查询
 - `DagProjectService.delete` 级联删除项目下所有 DAG 的 `alert_rule`（含关联表）、`dag_alert_config`、`dag_alert_history`
 - `SubDagTriggerController`（`/dev/internal/subdag/trigger` 内部端点，异常返回非 2xx）
