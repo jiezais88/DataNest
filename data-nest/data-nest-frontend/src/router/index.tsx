@@ -26,6 +26,7 @@ const DagsPage = lazyPage(() => import('../pages/engineering/dags'));
 const ProjectDagsPage = lazyPage(() => import('../pages/engineering/dags/project'));
 const DagExecutionsGlobalPage = lazyPage(() => import('../pages/engineering/dag-executions'));
 const QualityTemplatesPage = lazyPage(() => import('../pages/governance/quality-templates'));
+const DataQualityPage = lazyPage(() => import('../pages/governance/data-quality'));
 
 export const router = createBrowserRouter([
     {
@@ -84,6 +85,7 @@ export const router = createBrowserRouter([
             {path: 'system/alert-center', element: <AlertCenterPage/>},
             {path: 'governance/data-standards', element: <DataStandardsPage/>},
             {path: 'governance/quality-templates', element: <QualityTemplatesPage/>},
+            {path: 'governance/data-quality', element: <DataQualityPage/>},
         ],
     },
 ]);

@@ -2,6 +2,7 @@ package com.datanest.task.core.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
@@ -91,7 +92,10 @@ public class QualityJobService {
     public QualityJobDTO getById(Long id) {
         QualityJob entity = requireJob(id);
         QualityJobDTO dto = buildDTOs(List.of(entity), false).get(0);
-        dto.setRules(ruleService.listByJob(id));
+        List<QualityRuleDTO> rules = ruleService.listByJob(id);
+        dto.setRules(rules);
+        // 详情带规则列表，ruleCount 需与列表一致（buildDTOs(false) 时 ruleCount 恒 0，此处重算）
+        dto.setRuleCount((long) rules.size());
         return dto;
     }
 
@@ -146,24 +150,38 @@ public class QualityJobService {
             validateAlertLevel(request.getAlertLevel());
         }
 
-        entity.setName(name);
-        entity.setDescription(request.getDescription());
-        entity.setDatasourceId(request.getDatasourceId());
+        // 更新语义：可清空字段（description/datasource_id）无论是否 null 都更新（传 null 即清空）；
+        // 其余字段 null 不更新。
+        UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", id);
+        wrapper.set("name", name);
+        wrapper.set("description", request.getDescription());
+        wrapper.set("datasource_id", request.getDatasourceId());
         if (request.getEnabled() != null) {
-            entity.setEnabled(request.getEnabled());
+            wrapper.set("enabled", request.getEnabled());
         }
-        entity.setScheduledEnabled(request.getScheduledEnabled());
-        entity.setCron(request.getCron());
-        entity.setAutoTriggerEnabled(request.getAutoTriggerEnabled());
-        entity.setAutoTriggerObjectType(request.getAutoTriggerObjectType());
-        entity.setAutoTriggerObjectId(request.getAutoTriggerObjectId());
+        if (request.getScheduledEnabled() != null) {
+            wrapper.set("scheduled_enabled", request.getScheduledEnabled());
+        }
+        if (request.getCron() != null) {
+            wrapper.set("cron", request.getCron());
+        }
+        if (request.getAutoTriggerEnabled() != null) {
+            wrapper.set("auto_trigger_enabled", request.getAutoTriggerEnabled());
+        }
+        if (request.getAutoTriggerObjectType() != null) {
+            wrapper.set("auto_trigger_object_type", request.getAutoTriggerObjectType());
+        }
+        if (request.getAutoTriggerObjectId() != null) {
+            wrapper.set("auto_trigger_object_id", request.getAutoTriggerObjectId());
+        }
         if (request.getAlertLevel() != null) {
-            entity.setAlertLevel(request.getAlertLevel());
+            wrapper.set("alert_level", request.getAlertLevel());
         }
-        entity.setUpdatedBy(currentUserId());
-        entity.setUpdatedAt(LocalDateTime.now());
-        jobMapper.updateById(entity);
-        return buildDTOs(List.of(entity), false).get(0);
+        wrapper.set("updated_by", currentUserId());
+        wrapper.set("updated_at", LocalDateTime.now());
+        jobMapper.update(null, wrapper);
+        return getById(id);
     }
 
     /**
@@ -200,12 +218,16 @@ public class QualityJobService {
 
     /**
      * 记录最近触发时间（定时扫描 handler 调用）。
+     * 仅更新 last_trigger_at/updated_at，避免全字段 UPDATE（定时扫描可能每分钟命中）。
      */
     public void touchLastTriggerAt(Long id) {
-        QualityJob entity = requireJob(id);
-        entity.setLastTriggerAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
-        jobMapper.updateById(entity);
+        requireJob(id);
+        LocalDateTime now = LocalDateTime.now();
+        UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", id)
+                .set("last_trigger_at", now)
+                .set("updated_at", now);
+        jobMapper.update(null, wrapper);
     }
 
     // ==================== private ====================

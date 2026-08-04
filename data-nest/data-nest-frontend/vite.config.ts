@@ -22,6 +22,14 @@ export default defineConfig(({mode}) => {
                 ext: '.gz',
                 deleteOriginFile: false,
             }),
+            // 预压缩 .br（nginx brotli_static 直接吐，压缩率比 gzip 高 ~15-20%；nginx 需启用 ngx_brotli）
+            viteCompression({
+                verbose: false,
+                threshold: 10240,
+                algorithm: 'brotliCompress',
+                ext: '.br',
+                deleteOriginFile: false,
+            }),
             ...(isAnalyze
                 ? [
                     visualizer({
@@ -67,9 +75,9 @@ export default defineConfig(({mode}) => {
                             if (['/axios/', '/zustand/', '/cron-parser/', '/cronstrue/', '/tailwind-merge/'].some(p => id.includes(p))) {
                                 return 'vendor-utils';
                             }
-                            if (id.includes('/monaco-editor/') || id.includes('/@monaco-editor/react/')) {
-                                return 'vendor-monaco';
-                            }
+                            // NOTE: monaco-editor / @monaco-editor/react 不纳入同步 manualChunks。
+                            // 手动分组会强制 monaco 成为一个同步命名 chunk，并因副作用被主入口静态 import，
+                            // 导致首屏 modulepreload 下载 ~2.6MB（即使不用编辑器）。交由 Rollup 归入引用的懒加载 chunk。
                             if (id.includes('/reactflow/')) {
                                 return 'vendor-reactflow';
                             }

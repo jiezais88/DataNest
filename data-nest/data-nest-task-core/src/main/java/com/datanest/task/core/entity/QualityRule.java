@@ -52,6 +52,12 @@ public class QualityRule {
     /** 严重阈值（执行结果 ≥ 此值 → 严重） */
     private BigDecimal severeThreshold;
 
+    /** 值域下界（RANGE 类型专用，SQL 模板 {min} 来源；其余类型为 NULL） */
+    private BigDecimal rangeMin;
+
+    /** 值域上界（RANGE 类型专用，SQL 模板 {max} 来源；其余类型为 NULL） */
+    private BigDecimal rangeMax;
+
     /** 结果指标名 */
     private String resultMetric;
 

@@ -29,16 +29,16 @@ public final class RuleSqlGenerator {
     /**
      * 生成最终执行 SQL。
      *
-     * @param template   来源模板（其 sql_template 含占位符；CUSTOM_SQL 模板 sql_template 为 null）
-     * @param table      目标元数据表（用于拼 {@code {table}} 完整表名）
-     * @param columnName 检查字段（可空）
-     * @param min        值域下限（可空）
-     * @param max        值域上限（可空）
-     * @param customSql  自定义 SQL（模板为 CUSTOM_SQL 时使用，可为 null）
+     * @param template    来源模板（其 sql_template 含占位符；CUSTOM_SQL 模板 sql_template 为 null）
+     * @param table       目标元数据表（用于拼 {@code {table}} 完整表名）
+     * @param columnName  检查字段（可空）
+     * @param rangeMin    值域下界（RANGE 类型专用，{min} 来源；可空）
+     * @param rangeMax    值域上界（RANGE 类型专用，{max} 来源；可空）
+     * @param customSql   自定义 SQL（模板为 CUSTOM_SQL 时使用，可为 null）
      * @return 替换占位符后的最终 SQL；模板 SQL 为空且无自定义 SQL 时返回 null
      */
     public static String generate(QualityRuleTemplate template, MetadataTable table,
-                                  String columnName, BigDecimal min, BigDecimal max, String customSql) {
+                                  String columnName, BigDecimal rangeMin, BigDecimal rangeMax, String customSql) {
         if (template == null) {
             return customSql;
         }
@@ -52,8 +52,8 @@ public final class RuleSqlGenerator {
         String result = sqlTemplate;
         result = result.replace("{table}", buildFullTableName(table));
         result = result.replace("{column}", columnName == null ? "" : columnName);
-        result = result.replace("{min}", min == null ? "" : min.stripTrailingZeros().toPlainString());
-        result = result.replace("{max}", max == null ? "" : max.stripTrailingZeros().toPlainString());
+        result = result.replace("{min}", rangeMin == null ? "" : rangeMin.stripTrailingZeros().toPlainString());
+        result = result.replace("{max}", rangeMax == null ? "" : rangeMax.stripTrailingZeros().toPlainString());
         return result;
     }
 

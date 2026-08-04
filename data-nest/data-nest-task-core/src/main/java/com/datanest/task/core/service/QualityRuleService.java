@@ -89,6 +89,11 @@ public class QualityRuleService {
         Long jobId = request.getJobId();
         requireJob(jobId);
         validateType(request.getType());
+        // 防御：非 CUSTOM_SQL 必须选模板（DTO @AssertTrue 已拦，此处兜底保证 SQL 来源）
+        if (!"CUSTOM_SQL".equals(request.getType()) && request.getTemplateId() == null) {
+            throw new BusinessException(ErrorCode.QUALITY_RULE_BATCH_TEMPLATE_INVALID,
+                    "非自定义 SQL 规则必须选择模板");
+        }
         MetadataTable table = requireTable(request.getTableId());
         QualityRuleTemplate template = request.getTemplateId() == null
                 ? null : templateMapper.selectById(request.getTemplateId());
@@ -110,6 +115,11 @@ public class QualityRuleService {
         entity.setSqlExpression("CUSTOM_SQL".equals(request.getType()) ? request.getSqlExpression() : null);
         entity.setWarningThreshold(request.getWarningThreshold());
         entity.setSevereThreshold(request.getSevereThreshold());
+        // 值域边界：仅 RANGE 类型落库（DTO 已校验必填），其余类型为 null
+        if ("RANGE".equals(request.getType())) {
+            entity.setRangeMin(request.getRangeMin());
+            entity.setRangeMax(request.getRangeMax());
+        }
         // 结果指标名：优先取模板，其次取请求
         entity.setResultMetric(template != null && template.getResultMetric() != null
                 ? template.getResultMetric() : request.getResultMetric());
@@ -161,6 +171,11 @@ public class QualityRuleService {
             entity.setSqlExpression(RuleSqlGenerator.isCustomSql(template) ? item.getSqlExpression() : null);
             entity.setWarningThreshold(item.getWarningThreshold());
             entity.setSevereThreshold(item.getSevereThreshold());
+            // 值域边界：仅 RANGE 模板落库（validateItemForTemplate 已校验必填）
+            if ("RANGE".equals(template.getType())) {
+                entity.setRangeMin(item.getRangeMin());
+                entity.setRangeMax(item.getRangeMax());
+            }
             entity.setResultMetric(template.getResultMetric());
             entity.setWeight(item.getWeight() == null ? 1 : item.getWeight());
             entity.setEnabled(1);
@@ -184,6 +199,11 @@ public class QualityRuleService {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + id);
         }
         validateType(request.getType());
+        // 防御：非 CUSTOM_SQL 必须保留模板（SQL 来源）；无模板的规则不允许改成模板类类型
+        if (!"CUSTOM_SQL".equals(request.getType()) && entity.getTemplateId() == null) {
+            throw new BusinessException(ErrorCode.QUALITY_RULE_BATCH_TEMPLATE_INVALID,
+                    "非自定义 SQL 规则必须选择模板，无法编辑为模板类类型");
+        }
         String name = request.getName().trim();
         if (!entity.getName().equals(name) && countByJobAndName(entity.getJobId(), name) > 0) {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "任务下已存在同名规则: " + name);
@@ -192,6 +212,8 @@ public class QualityRuleService {
             requireTable(request.getTableId());
         }
 
+        // 更新语义：全量覆盖（规则编辑表单前端总是全量提交，DTO @AssertTrue 强校验完整数据；
+        // RANGE 必填 columnName/rangeMin/rangeMax，非 RANGE 清理值域）
         entity.setName(name);
         entity.setType(request.getType().trim().toUpperCase());
         if (request.getTableId() != null) {
@@ -202,6 +224,14 @@ public class QualityRuleService {
         entity.setSqlExpression("CUSTOM_SQL".equals(request.getType()) ? request.getSqlExpression() : null);
         entity.setWarningThreshold(request.getWarningThreshold());
         entity.setSevereThreshold(request.getSevereThreshold());
+        // 值域边界：RANGE 落库（DTO 已校验必填），非 RANGE 清空
+        if ("RANGE".equals(request.getType())) {
+            entity.setRangeMin(request.getRangeMin());
+            entity.setRangeMax(request.getRangeMax());
+        } else {
+            entity.setRangeMin(null);
+            entity.setRangeMax(null);
+        }
         entity.setResultMetric(request.getResultMetric());
         entity.setWeight(request.getWeight() == null ? 1 : request.getWeight());
         entity.setEnabled(request.getEnabled() == null ? entity.getEnabled() : request.getEnabled());
@@ -258,8 +288,9 @@ public class QualityRuleService {
         QualityRuleTemplate template = entity.getTemplateId() == null
                 ? null : templateMapper.selectById(entity.getTemplateId());
         MetadataTable table = entity.getTableId() == null ? null : tableMapper.selectById(entity.getTableId());
+        // {min}/{max} 占位符来自 RANGE 值域边界 range_min/range_max（与分级阈值无关）
         return RuleSqlGenerator.generate(template, table, entity.getColumnName(),
-                entity.getWarningThreshold(), entity.getSevereThreshold(), entity.getSqlExpression());
+                entity.getRangeMin(), entity.getRangeMax(), entity.getSqlExpression());
     }
 
     // ==================== 内部协作（供 QualityJobService 级联删除） ====================
@@ -343,6 +374,14 @@ public class QualityRuleService {
             throw new BusinessException(ErrorCode.QUALITY_RULE_BATCH_TEMPLATE_INVALID,
                     "模板类型 " + type + " 必须为每张表指定检查字段");
         }
+        // RANGE 模板必须为每张表指定值域边界（range_min ≤ range_max）
+        if ("RANGE".equals(type)) {
+            if (item.getRangeMin() == null || item.getRangeMax() == null
+                    || item.getRangeMin().compareTo(item.getRangeMax()) > 0) {
+                throw new BusinessException(ErrorCode.QUALITY_RULE_BATCH_TEMPLATE_INVALID,
+                        "模板类型 RANGE 必须为每张表指定值域边界 rangeMin/rangeMax，且 rangeMin ≤ rangeMax");
+            }
+        }
     }
 
     private String resolveBatchName(QualityRuleTemplate template, MetadataTable table,
@@ -420,6 +459,8 @@ public class QualityRuleService {
         dto.setSqlExpression(entity.getSqlExpression());
         dto.setWarningThreshold(entity.getWarningThreshold());
         dto.setSevereThreshold(entity.getSevereThreshold());
+        dto.setRangeMin(entity.getRangeMin());
+        dto.setRangeMax(entity.getRangeMax());
         dto.setResultMetric(entity.getResultMetric());
         dto.setWeight(entity.getWeight());
         dto.setEnabled(entity.getEnabled());

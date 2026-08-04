@@ -7,6 +7,7 @@ import LogoMark from './LogoMark';
 import {
     HiOutlineArrowsRightLeft,
     HiOutlineBellAlert,
+    HiOutlineCheckBadge,
     HiOutlineClipboardDocumentCheck,
     HiOutlineClipboardDocumentList,
     HiOutlineClock,
@@ -86,6 +87,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: '规则模板库',
                 path: '/governance/quality-templates',
                 icon: <HiOutlineClipboardDocumentCheck size={18}/>,
+                roles: GOVERNANCE_WRITE_ROLES
+            },
+            {
+                label: '数据质量',
+                path: '/governance/data-quality',
+                icon: <HiOutlineCheckBadge size={18}/>,
                 roles: GOVERNANCE_WRITE_ROLES
             },
         ],

@@ -63,6 +63,12 @@ public class QualityRuleBatchCreateRequest {
         /** 严重阈值（执行结果 ≥ 此值 → 严重） */
         private BigDecimal severeThreshold;
 
+        /** 值域下界（模板为 RANGE 时必填，SQL 模板 {min} 来源） */
+        private BigDecimal rangeMin;
+
+        /** 值域上界（模板为 RANGE 时必填，SQL 模板 {max} 来源） */
+        private BigDecimal rangeMax;
+
         /** 权重（评分加权，默认 1） */
         @Min(value = 1, message = "权重最小为 1")
         private Integer weight = 1;

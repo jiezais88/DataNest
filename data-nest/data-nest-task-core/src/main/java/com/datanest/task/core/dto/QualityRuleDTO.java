@@ -38,6 +38,12 @@ public class QualityRuleDTO {
 
     private BigDecimal severeThreshold;
 
+    /** 值域下界（RANGE 类型专用） */
+    private BigDecimal rangeMin;
+
+    /** 值域上界（RANGE 类型专用） */
+    private BigDecimal rangeMax;
+
     private String resultMetric;
 
     private Integer weight;

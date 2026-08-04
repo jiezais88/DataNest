@@ -40,6 +40,12 @@ public class QualityRuleUpdateRequest {
 
     private BigDecimal severeThreshold;
 
+    /** 值域下界（RANGE 类型必填，SQL 模板 {min} 来源） */
+    private BigDecimal rangeMin;
+
+    /** 值域上界（RANGE 类型必填，SQL 模板 {max} 来源） */
+    private BigDecimal rangeMax;
+
     @Size(max = 50, message = "结果指标名不能超过 50 字符")
     private String resultMetric;
 
@@ -62,5 +68,16 @@ public class QualityRuleUpdateRequest {
     @AssertTrue(message = "自定义 SQL 规则必须填写 SQL 表达式")
     public boolean isCustomSqlValid() {
         return !"CUSTOM_SQL".equals(type) || (sqlExpression != null && !sqlExpression.isBlank());
+    }
+
+    @AssertTrue(message = "值域范围检查必须填写值域边界 rangeMin/rangeMax，且 rangeMin ≤ rangeMax")
+    public boolean isRangeBoundsValid() {
+        if (!"RANGE".equals(type)) {
+            return true;
+        }
+        if (rangeMin == null || rangeMax == null) {
+            return false;
+        }
+        return rangeMin.compareTo(rangeMax) <= 0;
     }
 }

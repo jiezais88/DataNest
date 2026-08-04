@@ -30,6 +30,7 @@ export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/governance/metadata/lineage': {group: '数据治理', label: '血缘图谱'},
     '/governance/data-standards': {group: '数据治理', label: '数据标准', leaf: true},
     '/governance/quality-templates': {group: '数据治理', label: '规则模板库', leaf: true},
+    '/governance/data-quality': {group: '数据治理', label: '数据质量', leaf: true},
 };
 
 /**
