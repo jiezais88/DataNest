@@ -11,16 +11,17 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 /**
- * 质量规则新增请求（Sprint 6 配置层）。
+ * 质量规则新增请求（Sprint 7 规则独立化）。
  * <p>
  * 规则 = 来源模板 + 表 + 字段 + 阈值 + 权重。CUSTOM_SQL 由用户自带 sqlExpression。
+ * jobId 可选：规则可独立创建（不绑定任务），任务通过 quality_job_rule 关联表引用规则。
  * 校验：tableId 必填；RANGE 必填 columnName + min/max（经 min/max 占位符合成阈值区间，存 warning/severe 阈值）；
  * UNIQUENESS 必填 columnName；COMPLETENESS 可不填字段（整表）。
  */
 @Data
 public class QualityRuleCreateRequest {
 
-    @NotNull(message = "所属质量任务不能为空")
+    /** 所属质量任务（可选，规则独立创建时可空；任务引用规则经关联表） */
     private Long jobId;
 
     /** 来源模板（非 CUSTOM_SQL 必填；CUSTOM_SQL 可空，直接填自定义 SQL） */

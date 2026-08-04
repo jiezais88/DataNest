@@ -6,14 +6,18 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 质量规则 DTO（列表 / 详情响应，Sprint 6 配置层）。
+ * 质量规则 DTO（列表 / 详情响应，Sprint 7 规则独立化）。
  */
 @Data
 public class QualityRuleDTO {
 
     private Long id;
 
+    /** 所属质量任务（历史兼容字段，可空） */
     private Long jobId;
+
+    /** 所属任务名（经 quality_job_rule 关联回填，Sprint 7 新增） */
+    private String jobName;
 
     private Long templateId;
 

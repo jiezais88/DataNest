@@ -158,16 +158,6 @@ export default function DagsPage() {
             )
         },
         {
-            title: '创建时间',
-            width: COL.DATETIME,
-            dataIndex: 'createdAt',
-            render: (v?: string) => (
-                <Tooltip title={v || '无'}>
-                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
-                </Tooltip>
-            )
-        },
-        {
             title: '创建人',
             width: COL.USERNAME,
             dataIndex: 'createdByName',
@@ -180,9 +170,9 @@ export default function DagsPage() {
             )
         },
         {
-            title: '修改时间',
+            title: '创建时间',
             width: COL.DATETIME,
-            dataIndex: 'updatedAt',
+            dataIndex: 'createdAt',
             render: (v?: string) => (
                 <Tooltip title={v || '无'}>
                     <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
@@ -198,6 +188,16 @@ export default function DagsPage() {
                     {v
                         ? <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{v}</span>
                         : <span className="text-ds-small text-ds-text-muted whitespace-nowrap">—</span>}
+                </Tooltip>
+            )
+        },
+        {
+            title: '修改时间',
+            width: COL.DATETIME,
+            dataIndex: 'updatedAt',
+            render: (v?: string) => (
+                <Tooltip title={v || '无'}>
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
                 </Tooltip>
             )
         },

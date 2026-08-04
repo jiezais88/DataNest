@@ -92,6 +92,8 @@ export interface QualityJob {
     updatedAt?: string;
     /** 详情接口返回的任务下规则列表 */
     rules?: QualityRule[];
+    /** 任务引用的规则 ID 集合（详情返回，供前端编辑回显，Sprint 7） */
+    ruleIds?: string[];
 }
 
 /** 新增质量任务请求 */
@@ -106,6 +108,8 @@ export interface QualityJobCreateRequest {
     autoTriggerObjectType?: AutoTriggerObjectType;
     autoTriggerObjectId?: string;
     alertLevel?: QualityAlertLevel;
+    /** 引用的质量规则 ID 集合（Sprint 7） */
+    ruleIds?: string[];
 }
 
 /** 编辑质量任务请求 */
@@ -120,6 +124,8 @@ export interface QualityJobUpdateRequest {
     autoTriggerObjectType?: AutoTriggerObjectType;
     autoTriggerObjectId?: string;
     alertLevel?: QualityAlertLevel;
+    /** 引用的质量规则 ID 集合（全量覆盖，Sprint 7） */
+    ruleIds?: string[];
 }
 
 /** 分页查询质量任务 */
@@ -160,7 +166,10 @@ export type QualityResultMetric = string;
 /** 质量规则（列表 / 详情响应） */
 export interface QualityRule {
     id: string;
-    jobId: string;
+    /** 所属质量任务（历史兼容字段，可空） */
+    jobId?: string;
+    /** 所属任务名（经关联表回填，可多任务引用，Sprint 7） */
+    jobName?: string;
     /** 来源模板（可选） */
     templateId?: string;
     templateName?: string;
@@ -194,7 +203,8 @@ export interface QualityRule {
 
 /** 新增质量规则请求 */
 export interface QualityRuleCreateRequest {
-    jobId: string;
+    /** 所属质量任务（可选，规则可独立创建；任务引用经关联表，Sprint 7） */
+    jobId?: string;
     templateId?: string;
     name: string;
     type: QualityRuleType;
@@ -243,4 +253,15 @@ export interface QualityRuleBatchCreateRequest {
     jobId: string;
     templateId: string;
     items: RuleBatchItem[];
+}
+
+/** 质量规则分页查询请求（Sprint 7 规则独立菜单） */
+export interface QualityRuleQueryParams {
+    keyword?: string;
+    type?: QualityRuleType | '';
+    enabled?: number;
+    /** 所属任务过滤 */
+    jobId?: string;
+    page: number;
+    pageSize: number;
 }

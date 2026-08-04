@@ -95,6 +95,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 icon: <HiOutlineCheckBadge size={18}/>,
                 roles: GOVERNANCE_WRITE_ROLES
             },
+            {
+                label: '质量规则',
+                path: '/governance/quality-rules',
+                icon: <HiOutlineScale size={18}/>,
+                roles: GOVERNANCE_WRITE_ROLES
+            },
         ],
     },
     {

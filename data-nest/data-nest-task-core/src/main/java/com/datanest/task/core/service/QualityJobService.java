@@ -96,6 +96,8 @@ public class QualityJobService {
         dto.setRules(rules);
         // 详情带规则列表，ruleCount 需与列表一致（buildDTOs(false) 时 ruleCount 恒 0，此处重算）
         dto.setRuleCount((long) rules.size());
+        // 回填引用的规则 ID 集合（供前端编辑回显，Sprint 7）
+        dto.setRuleIds(rules.stream().map(QualityRuleDTO::getId).toList());
         return dto;
     }
 
@@ -136,6 +138,8 @@ public class QualityJobService {
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         jobMapper.insert(entity);
+        // 绑定引用的质量规则（多对多）
+        ruleService.setJobRules(entity.getId(), request.getRuleIds());
         return getById(entity.getId());
     }
 
@@ -181,16 +185,20 @@ public class QualityJobService {
         wrapper.set("updated_by", currentUserId());
         wrapper.set("updated_at", LocalDateTime.now());
         jobMapper.update(null, wrapper);
+        // 全量覆盖引用的质量规则关联（Sprint 7 多对多）
+        if (request.getRuleIds() != null) {
+            ruleService.setJobRules(id, request.getRuleIds());
+        }
         return getById(id);
     }
 
     /**
-     * 删除任务（级联删除其下所有规则）。
+     * 删除任务（Sprint 7：仅删任务的规则关联，规则本身保留可被其他任务引用）。
      */
     @Transactional
     public void delete(Long id) {
         requireJob(id);
-        ruleService.deleteByJob(id);
+        ruleService.deleteJobRules(id);
         jobMapper.deleteById(id);
     }
 

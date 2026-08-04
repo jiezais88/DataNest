@@ -2,7 +2,9 @@ import {useEffect, useState} from 'react';
 import Drawer from '../../../components/Drawer';
 import DsButton from '../../../components/DsButton';
 import {getDataSources} from '../../../api/datasource';
-import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType} from '../../../types/quality';
+import {queryQualityRules} from '../../../api/quality';
+import CronPicker from '../../../components/CronPicker';
+import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule} from '../../../types/quality';
 import AutoTriggerSelect from './AutoTriggerSelect';
 
 interface QualityJobFormData {
@@ -16,6 +18,8 @@ interface QualityJobFormData {
     autoTriggerObjectType: AutoTriggerObjectType | '';
     autoTriggerObjectId: string;
     alertLevel: QualityAlertLevel;
+    /** 引用的质量规则 ID 集合（Sprint 7 多对多） */
+    ruleIds: string[];
 }
 
 const EMPTY_FORM: QualityJobFormData = {
@@ -29,6 +33,7 @@ const EMPTY_FORM: QualityJobFormData = {
     autoTriggerObjectType: '',
     autoTriggerObjectId: '',
     alertLevel: 'SEVERE_WARNING',
+    ruleIds: [],
 };
 
 const ALERT_LEVEL_OPTIONS: { value: QualityAlertLevel; label: string }[] = [
@@ -55,6 +60,8 @@ export default function QualityJobDrawer({
     const [errors, setErrors] = useState<Partial<Record<keyof QualityJobFormData, string>>>({});
     const [submitting, setSubmitting] = useState(false);
     const [datasources, setDatasources] = useState<{ id: string; name: string }[]>([]);
+    // 规则库（供任务引用规则，Sprint 7）
+    const [ruleOptions, setRuleOptions] = useState<QualityRule[]>([]);
 
     const isEdit = mode === 'edit';
     const isView = mode === 'view';
@@ -74,6 +81,7 @@ export default function QualityJobDrawer({
                     autoTriggerObjectType: editItem.autoTriggerObjectType || '',
                     autoTriggerObjectId: editItem.autoTriggerObjectId || '',
                     alertLevel: editItem.alertLevel || 'SEVERE_WARNING',
+                    ruleIds: editItem.ruleIds || [],
                 });
             } else {
                 setForm(EMPTY_FORM);
@@ -85,6 +93,10 @@ export default function QualityJobDrawer({
                     setDatasources((res.data.records || []).map((d) => ({id: String(d.id), name: d.name})));
                 })
                 .catch(() => setDatasources([]));
+            // 加载规则库（供引用规则多选）
+            queryQualityRules({page: 1, pageSize: 1000})
+                .then((res) => setRuleOptions(res.data.records || []))
+                .catch(() => setRuleOptions([]));
         }
     }, [open, editItem]);
 
@@ -123,6 +135,8 @@ export default function QualityJobDrawer({
                 autoTriggerObjectType: form.autoTriggerEnabled === 1 ? form.autoTriggerObjectType || undefined : undefined,
                 autoTriggerObjectId: form.autoTriggerEnabled === 1 ? form.autoTriggerObjectId || undefined : undefined,
                 alertLevel: form.alertLevel,
+                // Sprint 7：任务引用的规则集合
+                ruleIds: form.ruleIds.length > 0 ? form.ruleIds : undefined,
             };
             await onSubmit(payload);
             onClose();
@@ -231,13 +245,17 @@ export default function QualityJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 Cron 表达式 <span className="text-ds-danger">*</span>
                             </label>
-                            <input
-                                value={form.cron}
-                                onChange={(e) => updateField('cron', e.target.value)}
-                                disabled={readOnly}
-                                className={`${inputClass} font-mono`}
-                                placeholder="例如：0 0 2 * * ?"
-                            />
+                            {readOnly ? (
+                                <div
+                                    className="px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary font-mono">
+                                    {form.cron || '-'}
+                                </div>
+                            ) : (
+                                <CronPicker
+                                    value={form.cron}
+                                    onChange={(v) => updateField('cron', v)}
+                                />
+                            )}
                             {errors.cron && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.cron}</p>}
                         </div>
                     )}
@@ -281,6 +299,49 @@ export default function QualityJobDrawer({
                             <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                     </select>
+                </div>
+
+                <div>
+                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                        引用质量规则 <span className="text-ds-nano text-ds-text-muted font-normal">（从规则库选择，可多选，Sprint 7）</span>
+                    </label>
+                    {ruleOptions.length === 0 ? (
+                        <p className="text-ds-nano text-ds-text-muted">暂无可用规则，可先到「质量规则」页面创建。</p>
+                    ) : (
+                        <div className="border border-ds-border-subtle rounded-ds-md p-ds-3 max-h-[200px] overflow-auto space-y-ds-1.5">
+                            {ruleOptions.map((r) => {
+                                const checked = form.ruleIds.some((id) => String(id) === String(r.id));
+                                return (
+                                    <label
+                                        key={String(r.id)}
+                                        className={`flex items-center gap-ds-2 px-ds-2 py-ds-1.5 rounded-ds-sm cursor-pointer transition-colors ${
+                                            checked ? 'bg-ds-accent-light' : 'hover:bg-ds-bg-hover'
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            disabled={readOnly}
+                                            onChange={(e) => {
+                                                const id = String(r.id);
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    ruleIds: e.target.checked
+                                                        ? [...prev.ruleIds, id]
+                                                        : prev.ruleIds.filter((x) => x !== id),
+                                                }));
+                                            }}
+                                            className="w-4 h-4 rounded border-ds-border-subtle text-ds-accent focus:ring-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
+                                        />
+                                        <div className="flex items-center justify-between flex-1 min-w-0">
+                                            <span className="text-ds-small text-ds-text-primary truncate" title={r.name}>{r.name}</span>
+                                            <span className="text-ds-nano text-ds-text-muted ml-ds-2 whitespace-nowrap">{r.type || ''}</span>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
         </Drawer>

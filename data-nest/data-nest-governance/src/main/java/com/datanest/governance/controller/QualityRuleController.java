@@ -2,10 +2,12 @@ package com.datanest.governance.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.task.core.dto.QualityRuleBatchCreateRequest;
 import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
+import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
 import com.datanest.task.core.service.QualityRuleService;
 import jakarta.validation.Valid;
@@ -27,6 +29,14 @@ public class QualityRuleController {
 
     public QualityRuleController(QualityRuleService ruleService) {
         this.ruleService = ruleService;
+    }
+
+    /**
+     * 分页查询规则（Sprint 7 规则独立菜单，支持关键字/类型/状态/所属任务筛选）。
+     */
+    @PostMapping("/page")
+    public Result<PageResult<QualityRuleDTO>> page(@RequestBody QualityRuleQueryRequest request) {
+        return Result.ok(ruleService.page(request));
     }
 
     /**

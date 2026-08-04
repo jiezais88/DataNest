@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+
 /**
  * 质量任务新增请求（Sprint 6 配置层）。
  * <p>
@@ -48,6 +50,9 @@ public class QualityJobCreateRequest {
     /** 告警触发等级：SEVERE_ONLY / SEVERE_WARNING */
     @Pattern(regexp = "^(SEVERE_ONLY|SEVERE_WARNING)$", message = "告警等级非法（仅支持 SEVERE_ONLY / SEVERE_WARNING）")
     private String alertLevel = "SEVERE_WARNING";
+
+    /** 引用的质量规则 ID 集合（从规则库多对多勾选，Sprint 7 新增） */
+    private List<Long> ruleIds;
 
     @AssertTrue(message = "开启定时调度时必须填写 cron")
     public boolean isScheduleConfigValid() {

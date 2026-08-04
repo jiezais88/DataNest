@@ -152,7 +152,8 @@ export default function QualityRuleDrawer({
         try {
             const effectiveJobId = editItem?.jobId || jobId;
             const payload: QualityRuleCreateRequest = {
-                jobId: effectiveJobId,
+                // Sprint 7：规则可独立创建，jobId 为空则不下发（避免后端按空串校验任务）
+                jobId: effectiveJobId || undefined,
                 templateId: editItem?.templateId,
                 name: form.name.trim(),
                 type: form.type,

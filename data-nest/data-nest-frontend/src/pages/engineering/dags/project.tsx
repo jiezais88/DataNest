@@ -269,6 +269,30 @@ export default function ProjectDagsPage() {
             }
         },
         {
+            title: '最近执行状态', width: COL.STATUS,
+            render: (_, r: Dag) => {
+                const status = r.latestExecution?.status;
+                const label = status === 'SUCCESS' ? '成功'
+                    : status === 'FAILED' ? '失败'
+                        : status === 'RUNNING' ? '运行中'
+                            : status === 'TERMINATED' ? '已终止'
+                                : '未执行';
+                return <DsStatusBadge label={label} variant={executionStatusVariant(status)}/>;
+            }
+        },
+        {
+            title: '最近执行', width: COL.DATETIME,
+            render: (_, r: Dag) => {
+                const t = r.latestExecution?.startTime;
+                return (
+                    <Tooltip title={t || '无'}>
+                        <span
+                            className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(t)}</span>
+                    </Tooltip>
+                );
+            }
+        },
+        {
             title: '创建人',
             width: COL.USERNAME,
             dataIndex: 'createdByName',
@@ -311,30 +335,6 @@ export default function ProjectDagsPage() {
                     <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(v)}</span>
                 </Tooltip>
             )
-        },
-        {
-            title: '最近执行状态', width: COL.STATUS,
-            render: (_, r: Dag) => {
-                const status = r.latestExecution?.status;
-                const label = status === 'SUCCESS' ? '成功'
-                    : status === 'FAILED' ? '失败'
-                        : status === 'RUNNING' ? '运行中'
-                            : status === 'TERMINATED' ? '已终止'
-                                : '未执行';
-                return <DsStatusBadge label={label} variant={executionStatusVariant(status)}/>;
-            }
-        },
-        {
-            title: '最近执行', width: COL.DATETIME,
-            render: (_, r: Dag) => {
-                const t = r.latestExecution?.startTime;
-                return (
-                    <Tooltip title={t || '无'}>
-                        <span
-                            className="text-ds-small text-ds-text-secondary whitespace-nowrap">{formatDateTime(t)}</span>
-                    </Tooltip>
-                );
-            }
         },
         {
             title: '操作', width: COL.OPERATION_5, align: 'center', fixed: 'right' as const,

@@ -63,4 +63,7 @@ public class QualityJobDTO {
 
     /** 详情时返回的任务下规则列表 */
     private List<QualityRuleDTO> rules;
+
+    /** 任务引用的规则 ID 集合（详情返回，供前端编辑回显，Sprint 7） */
+    private List<Long> ruleIds;
 }

@@ -3,6 +3,7 @@ import type {
     QualityRule,
     QualityRuleBatchCreateRequest,
     QualityRuleCreateRequest,
+    QualityRuleQueryParams,
     QualityRuleTemplate,
     QualityRuleTemplateCreateRequest,
     QualityRuleTemplateQueryParams,
@@ -88,6 +89,11 @@ export function executeQualityJob(id: string) {
 }
 
 // ============ 质量规则 ============
+
+/** 分页查询规则（Sprint 7 规则独立菜单，支持关键字/类型/状态/所属任务筛选） */
+export function queryQualityRules(params: QualityRuleQueryParams) {
+    return request.post<Result<PageResult<QualityRule>>>('/governance/quality/rules/page', params);
+}
 
 /** 按任务查询规则 */
 export function listQualityRulesByJob(jobId: string) {

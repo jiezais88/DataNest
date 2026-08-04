@@ -2,18 +2,24 @@ package com.datanest.task.core.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.model.PageResult;
 import com.datanest.task.core.dto.QualityRuleBatchCreateRequest;
 import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
+import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.QualityJob;
+import com.datanest.task.core.entity.QualityJobRule;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
+import com.datanest.task.core.mapper.QualityJobRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleTemplateMapper;
 import org.springframework.stereotype.Service;
@@ -21,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,9 +38,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * 质量规则服务（Sprint 6 配置层）。
+ * 质量规则服务（Sprint 7 规则独立化）。
  * <p>
- * 规则 CRUD + 模板批量应用（选模板 + 多表，逐表可微调）+ 启停 + 单条执行预留。
+ * 规则可独立创建（jobId 可空），任务通过 {@code quality_job_rule} 关联表多对多引用规则。
+ * 规则 CRUD + 模板批量应用（选模板 + 多表，逐表可微调）+ 启停 + 分页查询 + 单条执行预留。
  * {@code sql_expression} 执行时动态生成（{@link RuleSqlGenerator}），配置层不落库。
  */
 @Service
@@ -44,17 +53,20 @@ public class QualityRuleService {
 
     private final QualityRuleMapper ruleMapper;
     private final QualityJobMapper jobMapper;
+    private final QualityJobRuleMapper jobRuleMapper;
     private final QualityRuleTemplateMapper templateMapper;
     private final MetadataTableMapper tableMapper;
     private final SysUserService sysUserService;
 
     public QualityRuleService(QualityRuleMapper ruleMapper,
                               QualityJobMapper jobMapper,
+                              QualityJobRuleMapper jobRuleMapper,
                               QualityRuleTemplateMapper templateMapper,
                               MetadataTableMapper tableMapper,
                               SysUserService sysUserService) {
         this.ruleMapper = ruleMapper;
         this.jobMapper = jobMapper;
+        this.jobRuleMapper = jobRuleMapper;
         this.templateMapper = templateMapper;
         this.tableMapper = tableMapper;
         this.sysUserService = sysUserService;
@@ -63,11 +75,15 @@ public class QualityRuleService {
     // ==================== 查询 ====================
 
     /**
-     * 按任务查规则列表（含冗余回填表名/模板名/数据源名，避免 N+1）。
+     * 按任务查规则列表（Sprint 7 经 quality_job_rule 关联表查询）。
      */
     public List<QualityRuleDTO> listByJob(Long jobId) {
+        List<Long> ruleIds = listRuleIdsByJob(jobId);
+        if (ruleIds.isEmpty()) {
+            return List.of();
+        }
         List<QualityRule> records = ruleMapper.selectList(
-                new QueryWrapper<QualityRule>().eq("job_id", jobId).orderByAsc("id"));
+                new QueryWrapper<QualityRule>().in("id", ruleIds).orderByAsc("id"));
         return buildDTOs(records);
     }
 
@@ -79,23 +95,58 @@ public class QualityRuleService {
         return buildDTOs(List.of(entity)).get(0);
     }
 
+    /**
+     * 分页查询规则（Sprint 7 规则独立菜单）。
+     * 支持按规则名关键字、类型、启用状态、所属任务、目标表过滤；回填所属任务名。
+     */
+    public PageResult<QualityRuleDTO> page(QualityRuleQueryRequest request) {
+        IPage<QualityRule> page = new Page<>(request.getPage(), request.getPageSize());
+        QueryWrapper<QualityRule> wrapper = new QueryWrapper<>();
+        if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
+            wrapper.like("name", request.getKeyword().trim());
+        }
+        if (request.getType() != null && !request.getType().isBlank()) {
+            wrapper.eq("type", request.getType().trim().toUpperCase());
+        }
+        if (request.getEnabled() != null) {
+            wrapper.eq("enabled", request.getEnabled());
+        }
+        if (request.getTableId() != null) {
+            wrapper.eq("table_id", request.getTableId());
+        }
+        // 所属任务过滤：经 quality_job_rule 关联表（规则独立后 job_id 可能为空，不能直接按 job_id 过滤）
+        if (request.getJobId() != null) {
+            List<Long> ruleIds = listRuleIdsByJob(request.getJobId());
+            if (ruleIds.isEmpty()) {
+                return PageResult.of(List.of(), 0L, request.getPage(), request.getPageSize());
+            }
+            wrapper.in("id", ruleIds);
+        }
+        wrapper.orderByDesc("id");
+        IPage<QualityRule> result = ruleMapper.selectPage(page, wrapper);
+        List<QualityRuleDTO> dtos = buildDTOs(result.getRecords());
+        return PageResult.of(dtos, result.getTotal(), result.getCurrent(), result.getSize());
+    }
+
     // ==================== 写操作 ====================
 
     /**
-     * 任务下新增规则。
+     * 新增规则（Sprint 7 支持独立创建：jobId 可空；有值时校验任务存在）。
      */
     @Transactional
     public QualityRuleDTO create(QualityRuleCreateRequest request) {
         Long jobId = request.getJobId();
-        requireJob(jobId);
+        if (jobId != null) {
+            requireJob(jobId);
+        }
         validateType(request.getType());
         MetadataTable table = requireTable(request.getTableId());
         QualityRuleTemplate template = request.getTemplateId() == null
                 ? null : templateMapper.selectById(request.getTemplateId());
 
         String name = request.getName().trim();
-        if (countByJobAndName(jobId, name) > 0) {
-            throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "任务下已存在同名规则: " + name);
+        if (countByName(name) > 0) {
+            throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "已存在同名规则: " + name);
         }
 
         QualityRule entity = new QualityRule();
@@ -125,6 +176,10 @@ public class QualityRuleService {
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         ruleMapper.insert(entity);
+        // 创建时若指定任务，同时写入关联表（历史「任务下建规则」流程兼容）
+        if (jobId != null) {
+            bindJobRule(jobId, entity.getId());
+        }
         return getById(entity.getId());
     }
 
@@ -179,6 +234,8 @@ public class QualityRuleService {
             entity.setCreatedAt(now);
             entity.setUpdatedAt(now);
             ruleMapper.insert(entity);
+            // 批量应用在任务下进行，写入关联表
+            bindJobRule(request.getJobId(), entity.getId());
             created.add(entity);
         }
         return buildDTOs(created);
@@ -195,8 +252,8 @@ public class QualityRuleService {
         }
         validateType(request.getType());
         String name = request.getName().trim();
-        if (!entity.getName().equals(name) && countByJobAndName(entity.getJobId(), name) > 0) {
-            throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "任务下已存在同名规则: " + name);
+        if (!entity.getName().equals(name) && countByName(name) > 0) {
+            throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "已存在同名规则: " + name);
         }
         if (request.getTableId() != null) {
             requireTable(request.getTableId());
@@ -232,13 +289,14 @@ public class QualityRuleService {
     }
 
     /**
-     * 删除规则。
+     * 删除规则（级联删除 quality_job_rule 关联）。
      */
     @Transactional
     public void delete(Long id) {
         if (ruleMapper.selectById(id) == null) {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + id);
         }
+        jobRuleMapper.delete(new QueryWrapper<QualityJobRule>().eq("rule_id", id));
         ruleMapper.deleteById(id);
     }
 
@@ -283,35 +341,107 @@ public class QualityRuleService {
                 entity.getRangeMin(), entity.getRangeMax(), entity.getSqlExpression());
     }
 
-    // ==================== 内部协作（供 QualityJobService 级联删除） ====================
+    // ==================== 任务<->规则 关联（Sprint 7 多对多） ====================
 
     /**
-     * 删除任务下所有规则（任务删除级联调用）。
+     * 绑定一条规则到任务（幂等，已绑定则跳过）。
      */
-    public void deleteByJob(Long jobId) {
-        ruleMapper.delete(new QueryWrapper<QualityRule>().eq("job_id", jobId));
+    public void bindJobRule(Long jobId, Long ruleId) {
+        if (jobId == null || ruleId == null) {
+            return;
+        }
+        if (jobRuleMapper.selectCount(new QueryWrapper<QualityJobRule>()
+                .eq("job_id", jobId).eq("rule_id", ruleId)) > 0) {
+            return;
+        }
+        QualityJobRule link = new QualityJobRule();
+        link.setJobId(jobId);
+        link.setRuleId(ruleId);
+        link.setCreatedAt(LocalDateTime.now());
+        jobRuleMapper.insert(link);
     }
 
     /**
-     * 统计任务下规则数（任务列表冗余回填）。
+     * 全量覆盖任务引用的规则集合（先删后插）。
+     */
+    public void setJobRules(Long jobId, Collection<Long> ruleIds) {
+        jobRuleMapper.delete(new QueryWrapper<QualityJobRule>().eq("job_id", jobId));
+        if (ruleIds == null) {
+            return;
+        }
+        for (Long ruleId : ruleIds) {
+            if (ruleId != null) {
+                bindJobRule(jobId, ruleId);
+            }
+        }
+    }
+
+    /**
+     * 查询任务引用的规则 ID 集合。
+     */
+    public List<Long> listRuleIdsByJob(Long jobId) {
+        if (jobId == null) {
+            return List.of();
+        }
+        return jobRuleMapper.selectList(new QueryWrapper<QualityJobRule>()
+                        .eq("job_id", jobId).orderByAsc("id")).stream()
+                .map(QualityJobRule::getRuleId).toList();
+    }
+
+    /**
+     * 批量查询多条规则被哪些任务引用，返回 ruleId → 任务名列表（供规则列表回填所属任务）。
+     */
+    public Map<Long, List<String>> listJobNamesByRuleIds(Collection<Long> ruleIds) {
+        if (ruleIds == null || ruleIds.isEmpty()) {
+            return Map.of();
+        }
+        List<QualityJobRule> links = jobRuleMapper.selectList(new QueryWrapper<QualityJobRule>()
+                .in("rule_id", ruleIds));
+        if (links.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> jobIds = links.stream().map(QualityJobRule::getJobId).collect(Collectors.toSet());
+        Map<Long, String> jobNameMap = jobIds.isEmpty() ? Map.of()
+                : jobMapper.selectBatchIds(jobIds).stream()
+                .collect(Collectors.toMap(QualityJob::getId, QualityJob::getName));
+        Map<Long, List<String>> map = new HashMap<>();
+        for (QualityJobRule link : links) {
+            String jobName = jobNameMap.get(link.getJobId());
+            map.computeIfAbsent(link.getRuleId(), k -> new ArrayList<>())
+                    .add(jobName == null ? "" : jobName);
+        }
+        return map;
+    }
+
+    // ==================== 内部协作（供 QualityJobService 级联） ====================
+
+    /**
+     * 任务删除级联：删除任务的所有关联记录（规则本身保留，可被其他任务继续引用）。
+     */
+    public void deleteJobRules(Long jobId) {
+        jobRuleMapper.delete(new QueryWrapper<QualityJobRule>().eq("job_id", jobId));
+    }
+
+    /**
+     * 统计任务下规则数（任务列表冗余回填，经关联表统计）。
      */
     public long countByJob(Long jobId) {
-        return ruleMapper.selectCount(new QueryWrapper<QualityRule>().eq("job_id", jobId));
+        return jobRuleMapper.selectCount(new QueryWrapper<QualityJobRule>().eq("job_id", jobId));
     }
 
     /**
-     * 批量统计多个任务下规则数（避免 N+1：一次 GROUP BY 查询全部任务）。返回 jobId → 规则数。
+     * 批量统计多个任务下规则数（经关联表，避免 N+1）。返回 jobId → 规则数。
      */
     public Map<Long, Long> countByJobIds(List<Long> jobIds) {
         if (jobIds == null || jobIds.isEmpty()) {
             return Map.of();
         }
-        QueryWrapper<QualityRule> wrapper = new QueryWrapper<QualityRule>()
+        QueryWrapper<QualityJobRule> wrapper = new QueryWrapper<QualityJobRule>()
                 .select("job_id AS job_id, COUNT(*) AS cnt")
                 .in("job_id", jobIds)
                 .groupBy("job_id");
-        List<Map<String, Object>> rows = ruleMapper.selectMaps(wrapper);
-        Map<Long, Long> map = new java.util.HashMap<>();
+        List<Map<String, Object>> rows = jobRuleMapper.selectMaps(wrapper);
+        Map<Long, Long> map = new HashMap<>();
         for (Map<String, Object> row : rows) {
             Object jobId = row.get("job_id");
             Object cnt = row.get("cnt");
@@ -400,13 +530,12 @@ public class QualityRuleService {
         return table;
     }
 
-    private long countByJobAndName(Long jobId, String name) {
-        return ruleMapper.selectCount(new QueryWrapper<QualityRule>()
-                .eq("job_id", jobId).eq("name", name));
+    private long countByName(String name) {
+        return ruleMapper.selectCount(new QueryWrapper<QualityRule>().eq("name", name));
     }
 
     /**
-     * 批量构建 DTO，一次性回填表名/模板名/用户名，避免 N+1。
+     * 批量构建 DTO，一次性回填表名/模板名/用户名/所属任务名，避免 N+1。
      */
     private List<QualityRuleDTO> buildDTOs(List<QualityRule> records) {
         if (records == null || records.isEmpty()) {
@@ -426,16 +555,21 @@ public class QualityRuleService {
                 .collect(Collectors.toMap(QualityRuleTemplate::getId, Function.identity()));
         // 用户名映射
         Map<Long, String> usernameMap = loadUsernameMap(records);
+        // 所属任务名映射（经关联表，ruleId → 任务名列表）
+        Map<Long, List<String>> jobNameMap = listJobNamesByRuleIds(
+                records.stream().map(QualityRule::getId).collect(Collectors.toSet()));
 
-        return records.stream().map(e -> toDTO(e, tableMap, templateMap, usernameMap)).toList();
+        return records.stream().map(e -> toDTO(e, tableMap, templateMap, usernameMap, jobNameMap)).toList();
     }
 
     private QualityRuleDTO toDTO(QualityRule entity, Map<Long, MetadataTable> tableMap,
                                  Map<Long, QualityRuleTemplate> templateMap,
-                                 Map<Long, String> usernameMap) {
+                                 Map<Long, String> usernameMap,
+                                 Map<Long, List<String>> jobNameMap) {
         QualityRuleDTO dto = new QualityRuleDTO();
         dto.setId(entity.getId());
         dto.setJobId(entity.getJobId());
+        dto.setJobName(joinJobNames(jobNameMap.get(entity.getId())));
         dto.setTemplateId(entity.getTemplateId());
         QualityRuleTemplate template = entity.getTemplateId() == null ? null : templateMap.get(entity.getTemplateId());
         dto.setTemplateName(template == null ? null : template.getName());
@@ -461,6 +595,17 @@ public class QualityRuleService {
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         return dto;
+    }
+
+    /**
+     * 多个任务名以「、」拼接展示（规则可被多任务引用）。
+     */
+    private String joinJobNames(List<String> names) {
+        if (names == null || names.isEmpty()) {
+            return null;
+        }
+        return names.stream().filter(Objects::nonNull).filter(n -> !n.isBlank())
+                .distinct().collect(Collectors.joining("、"));
     }
 
     private Map<Long, String> loadUsernameMap(List<QualityRule> records) {

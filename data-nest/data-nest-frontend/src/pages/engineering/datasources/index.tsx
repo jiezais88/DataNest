@@ -284,7 +284,7 @@ export default function DataSourcesPage() {
             ),
         },
         {
-            title: '状态',
+            title: '连接状态',
             dataIndex: 'status',
             width: COL.STATUS,
             render: (v: DataSourceStatus, item) => {
