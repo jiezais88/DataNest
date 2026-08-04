@@ -605,9 +605,10 @@ public class DagNodeExecuteService {
 
     /**
      * 构建条件求值上下文：
-     * - upstream：直接前驱节点输出合并后的 map（并补充 row_count / status 归一化字段）
+     * - upstream：以「前驱节点名」为键的嵌套 map，每个前驱独立子 map（row_count / status / sql_type /
+     *   target_table 等），顶层同时保留最后一个遍历前驱的 row_count / status 兼容旧写法
      * - DAG 参数平铺（如 biz_date）
-     * - 系统变量：dag_id、current_time
+     * - 系统变量：current_time
      */
     private Map<String, Object> buildConditionContext(Long executionId, Long dagId, String nodeId) {
         Map<String, Object> vars = new HashMap<>();
@@ -623,6 +624,11 @@ public class DagNodeExecuteService {
                         Map<String, Object> out = parseJsonMap(pred.getOutputInfo());
                         out.put("status", pred.getStatus());
                         normalizeRowCount(out);
+                        // 嵌套结构：以节点名为键，支持 ${upstream['节点名'].row_count} 精确取值
+                        if (StringUtils.hasText(pred.getNodeName())) {
+                            upstream.put(pred.getNodeName(), out);
+                        }
+                        // 顶层兼容旧写法：取最后一个遍历前驱的值
                         upstream.putAll(out);
                     });
         }
@@ -633,7 +639,8 @@ public class DagNodeExecuteService {
                 dagId, execution != null ? parseJsonMap(execution.getResolvedParams()) : null);
         dagParams.forEach(vars::put);
 
-        vars.put("dag_id", dagId);
+        // dag_id 为内部主键，无业务语义，不在条件表达式中暴露（参数解析层仍保留供 SQL 占位符使用）
+        vars.remove("dag_id");
         vars.put("current_time", LocalDateTime.now().toString());
         return vars;
     }

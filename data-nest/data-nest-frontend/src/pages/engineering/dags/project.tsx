@@ -155,7 +155,10 @@ export default function ProjectDagsPage() {
                     已触发执行。
                     <a
                         className="text-ds-accent underline cursor-pointer ml-1"
-                        onClick={() => navigate(`/engineering/dag-executions?dagId=${dag.id}&dagName=${encodeURIComponent(dag.name || '')}`)}
+                        onClick={() => navigate(`/engineering/dag-executions?dagId=${dag.id}&dagName=${encodeURIComponent(dag.name || '')}`, {
+                            // 记录触发前页面（项目 DAG 列表），执行历史页「返回」回到原入口
+                            state: {from: projectId ? `/engineering/dags/${projectId}` : '/engineering/dags'},
+                        })}
                     >
                         查看执行 →
                     </a>
@@ -169,7 +172,7 @@ export default function ProjectDagsPage() {
             setTriggerModalOpen(false);
             setTriggerDagId(null);
         }
-    }, [navigate]);
+    }, [navigate, projectId]);
 
     const handleTrigger = useCallback(async (dag: Dag) => {
         if (!dag.id) return;

@@ -170,6 +170,11 @@ docker compose up -d --no-deps app-engineering app-worker
   `useNodesState`/`useEdgesState` 或补 handler。排查"节点正常、边不渲染"先看此。
 - **SimpleEvaluationContext 不含 MapAccessor**：条件分支 SpEL 里 `#upstream.row_count` 属性语法必然抛
   "Property cannot be found"。需把 `${a.b}` 转成 SpEL 索引语法 `#a['b']`（见 `DagNodeExecuteService.evaluateBranches`）。
+- **条件节点 upstream 是嵌套结构**：`buildConditionContext` 以「前驱节点名」为 key 构造嵌套 map（支持
+  `${upstream['节点名'].row_count}` 按节点精确取值），顶层同时保留最后遍历前驱的 `row_count/status` 兼容旧写法
+  `${upstream.row_count}`。排查"多前驱条件分支取错值"时，先确认表达式用的是按节点名写法。
+- **条件表达式不再暴露 dag_id**：`buildConditionContext` 已 `vars.remove("dag_id")`；但 `DagParameterResolver` 的
+  `dag_id` 仍保留（供 SQL 占位符 `${dag_id}` 使用）。改动条件表达式变量时别动参数解析层的 `dag_id`。
 - **DagExecutionSyncService 匹配 DS 任务实例**：DS 任务名 = `节点名_节点ID后8位`（nodeId 可能含 `_`），不能简单按 nodeName 或
   strip 末尾 `_` 段匹配；应按相同规则构建「DS 任务名→node」反向映射。SUB_DAG 等依赖 sync 更新状态的节点 匹配失败会落
   WAITING→SKIPPED。

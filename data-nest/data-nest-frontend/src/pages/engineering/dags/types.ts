@@ -36,6 +36,13 @@ export interface ConditionNodeConfig {
     branches: ConditionBranch[];
 }
 
+/** 条件节点在画布上的直接前驱信息（用于按前驱节点名动态生成表达式变量下拉） */
+export interface UpstreamNodeInfo {
+    nodeId: string;
+    nodeName: string;
+    nodeType: NodeType;
+}
+
 /** 子 DAG 节点配置：{"type":"SUB_DAG","subDagId":123,"subDagName":"xxx","syncExecution":true} */
 export interface SubDagNodeConfig {
     type: 'SUB_DAG';

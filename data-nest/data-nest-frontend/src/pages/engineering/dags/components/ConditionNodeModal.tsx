@@ -3,9 +3,10 @@
 // 每个分支的 nextNodeId 必须指向一个下游节点，保存时由 Editor 同步画布连线。
 import {useEffect, useState} from 'react';
 import {Select} from 'antd';
+import {HiOutlineVariable} from 'react-icons/hi2';
 import DsButton from '../../../../components/DsButton';
 import DsModal from '../../../../components/DsModal';
-import type {ConditionBranch} from '../types';
+import type {ConditionBranch, DagParameter, NodeType, UpstreamNodeInfo} from '../types';
 
 interface ConditionNodeModalProps {
     open: boolean;
@@ -13,10 +14,45 @@ interface ConditionNodeModalProps {
     initialBranches?: ConditionBranch[];
     /** 可选下游节点（除条件节点自身外的所有节点） */
     availableNodes: { id: string; nodeName: string }[];
+    /** 当前条件节点在画布上的直接前驱节点（用于按节点名生成表达式变量下拉） */
+    upstreamNodes?: UpstreamNodeInfo[];
+    /** DAG 参数（用于表达式变量下拉），新建 DAG 传草稿、已保存传 dagParams */
+    dagParams?: DagParameter[];
     readOnly?: boolean;
     onClose: () => void;
     onSave: (nodeName: string, branches: ConditionBranch[]) => void;
 }
+
+/** 表达式可引用的固定系统变量（对齐后端 DagNodeExecuteService.buildConditionContext） */
+const SYSTEM_VARIABLES: { key: string; desc: string }[] = [
+    {key: 'upstream.row_count', desc: '上游影响行数（DML/查询归一化，兼容旧写法，取最后一个前驱）'},
+    {key: 'upstream.status', desc: '上游节点执行状态（兼容旧写法）'},
+    {key: 'current_time', desc: '当前时间'},
+];
+
+/** 各类型节点对外暴露的上游输出变量（对齐后端各节点 outputInfo） */
+const UPSTREAM_NODE_VARIABLES: Record<NodeType, { key: string; desc: string }[]> = {
+    SQL: [
+        {key: 'row_count', desc: 'SQL 影响/返回行数（DML/查询归一化）'},
+        {key: 'status', desc: '节点执行状态'},
+        {key: 'sql_type', desc: 'SQL 类型（QUERY/DML/DDL）'},
+        {key: 'target_table', desc: '目标表'},
+    ],
+    SYNC: [
+        {key: 'status', desc: '节点执行状态'},
+        {key: 'affectedRows', desc: '同步影响行数'},
+    ],
+    PYTHON: [
+        {key: 'status', desc: '节点执行状态'},
+        {key: 'outputTables', desc: '输出表列表'},
+    ],
+    CONDITION: [
+        {key: 'status', desc: '节点执行状态'},
+    ],
+    SUB_DAG: [
+        {key: 'status', desc: '节点执行状态'},
+    ],
+};
 
 const DEFAULT_BRANCH: ConditionBranch = {
     branchName: '默认分支',
@@ -29,6 +65,8 @@ export default function ConditionNodeModal({
                                                initialNodeName = '',
                                                initialBranches,
                                                availableNodes,
+                                               upstreamNodes = [],
+                                               dagParams,
                                                readOnly = false,
                                                onClose,
                                                onSave,
@@ -36,6 +74,8 @@ export default function ConditionNodeModal({
     const [nodeName, setNodeName] = useState(initialNodeName);
     const [branches, setBranches] = useState<ConditionBranch[]>([]);
     const [error, setError] = useState<string | null>(null);
+    // 当前正在编辑的分支下标，用于「插入变量」定位
+    const [activeBranchIndex, setActiveBranchIndex] = useState(0);
 
     useEffect(() => {
         if (!open) return;
@@ -49,6 +89,53 @@ export default function ConditionNodeModal({
 
     const updateBranch = (index: number, patch: Partial<ConditionBranch>) => {
         setBranches(prev => prev.map((b, i) => (i === index ? {...b, ...patch} : b)));
+    };
+
+    // 「插入变量」下拉选项，按「上游节点变量 / DAG 参数 / 系统变量」分组展示（每项带说明）
+    const variableOptions: { label: string; options: { value: string; label: string }[] }[] = [
+        {
+            label: '上游节点变量',
+            options: upstreamNodes.length > 0
+                ? upstreamNodes.flatMap(n =>
+                    (UPSTREAM_NODE_VARIABLES[n.nodeType] || []).map(v => {
+                        const expr = `\${upstream['${n.nodeName}'].${v.key}}`;
+                        return {
+                            value: expr,
+                            label: `${expr} — ${n.nodeName} 的${v.desc}`,
+                        };
+                    }))
+                : [{value: '', label: '无直接前驱节点，请先连线上游节点'}],
+        },
+        {
+            label: 'DAG 参数',
+            options: (dagParams || []).length > 0
+                ? (dagParams || []).map(p => ({
+                    value: `\${${p.paramName}}`,
+                    label: `\${${p.paramName}} — DAG 参数${p.description ? '：' + p.description : ''}`,
+                }))
+                : [{value: '', label: '暂无 DAG 参数'}],
+        },
+        {
+            label: '系统变量',
+            options: SYSTEM_VARIABLES.map(v => ({
+                value: `\${${v.key}}`,
+                label: `\${${v.key}} — ${v.desc}`,
+            })),
+        },
+    ];
+
+    // 展开为 antd Select 的扁平 options（含 optGroup 结构由 Select 直接渲染）
+    const flatVariableOptions = variableOptions.flatMap(g => g.options);
+
+    /** 把选中的变量追加到指定分支（默认当前编辑分支）的表达式末尾 */
+    const insertVariable = (varExpr: string | null, index?: number) => {
+        if (readOnly || !varExpr) return; // 空字符串/ null 为无前驱/无参数占位项，不可插入
+        const target = index ?? activeBranchIndex;
+        const current = branches[target];
+        if (!current || target === 0) return;
+        const prev = current.expression.trim();
+        const sep = prev && !prev.endsWith(' ') ? ' ' : '';
+        updateBranch(target, {expression: prev + sep + varExpr});
     };
 
     const addBranch = () => {
@@ -131,62 +218,85 @@ export default function ConditionNodeModal({
                         {branches.map((branch, index) => (
                             <div
                                 key={index}
-                                className="grid grid-cols-[1fr_1fr_1.2fr_auto] gap-ds-3 items-center p-ds-3 bg-ds-bg-subtle border border-ds-border-subtle rounded-ds-sm"
+                                className="p-ds-3 bg-ds-bg-subtle border border-ds-border-subtle rounded-ds-sm space-y-ds-3"
                             >
-                                <div>
-                                    <label className="block text-ds-nano font-semibold text-ds-text-muted mb-ds-1">
-                                        分支名称
-                                    </label>
-                                    <div className="flex items-center gap-ds-1">
-                                        <input
-                                            value={branch.branchName}
-                                            onChange={e => updateBranch(index, {branchName: e.target.value})}
-                                            disabled={readOnly}
-                                            className="w-full px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
-                                        />
-                                        {index === 0 && (
-                                            <span
-                                                className="shrink-0 px-ds-1.5 py-0.5 rounded bg-ds-accent-soft text-ds-accent text-ds-nano font-bold uppercase">
-                                                DEFAULT
-                                            </span>
-                                        )}
+                                {/* 第一行：分支名称 + 下游节点 + 删除 */}
+                                <div className="grid grid-cols-[1fr_1.2fr_auto] gap-ds-3 items-end">
+                                    <div>
+                                        <label className="block text-ds-nano font-semibold text-ds-text-muted mb-ds-1">
+                                            分支名称
+                                        </label>
+                                        <div className="flex items-center gap-ds-1">
+                                            <input
+                                                value={branch.branchName}
+                                                onChange={e => updateBranch(index, {branchName: e.target.value})}
+                                                disabled={readOnly}
+                                                className="w-full px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
+                                            />
+                                            {index === 0 && (
+                                                <span
+                                                    className="shrink-0 px-ds-1.5 py-0.5 rounded bg-ds-accent-soft text-ds-accent text-ds-nano font-bold uppercase">
+                                                    DEFAULT
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
+                                    <div>
+                                        <label className="block text-ds-nano font-semibold text-ds-text-muted mb-ds-1">
+                                            下游节点
+                                        </label>
+                                        <Select
+                                            value={branch.nextNodeId || undefined}
+                                            onChange={v => updateBranch(index, {nextNodeId: v})}
+                                            disabled={readOnly}
+                                            placeholder="选择下游节点"
+                                            options={nodeOptions}
+                                            className="w-full"
+                                            showSearch
+                                            optionFilterProp="label"
+                                        />
+                                    </div>
+                                    <DsButton
+                                        variant="danger"
+                                        onClick={() => removeBranch(index)}
+                                        disabled={readOnly || branches.length <= 1}
+                                    >
+                                        删除
+                                    </DsButton>
                                 </div>
+
+                                {/* 第二行：条件表达式独占整行，左侧输入框占满、右侧「插入变量」下拉 */}
                                 <div>
                                     <label className="block text-ds-nano font-semibold text-ds-text-muted mb-ds-1">
                                         条件表达式
                                     </label>
-                                    <input
-                                        value={branch.expression}
-                                        onChange={e => updateBranch(index, {expression: e.target.value})}
-                                        disabled={readOnly || index === 0}
-                                        placeholder={index === 0 ? 'true' : '如 ${upstream.row_count} > 0'}
-                                        className="w-full px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small font-mono text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
-                                    />
+                                    <div className="flex items-center gap-ds-2">
+                                        <input
+                                            value={branch.expression}
+                                            onChange={e => updateBranch(index, {expression: e.target.value})}
+                                            onFocus={() => setActiveBranchIndex(index)}
+                                            disabled={readOnly || index === 0}
+                                            placeholder={index === 0 ? 'true' : '如 ${upstream.row_count} > 0'}
+                                            className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small font-mono text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
+                                        />
+                                        <Select
+                                            value={null}
+                                            onChange={(v) => {
+                                                // 选中即追加到当前分支表达式；Select 自身保持占位（插入的是占位符而非最终值）
+                                                setActiveBranchIndex(index);
+                                                insertVariable(v, index);
+                                            }}
+                                            disabled={readOnly || index === 0}
+                                            placeholder="插入变量"
+                                            suffixIcon={<HiOutlineVariable size={14}/>}
+                                            className="flex-none w-[140px]"
+                                            popupMatchSelectWidth={false}
+                                            options={flatVariableOptions}
+                                            showSearch
+                                            optionFilterProp="label"
+                                        />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-ds-nano font-semibold text-ds-text-muted mb-ds-1">
-                                        下游节点
-                                    </label>
-                                    <Select
-                                        value={branch.nextNodeId || undefined}
-                                        onChange={v => updateBranch(index, {nextNodeId: v})}
-                                        disabled={readOnly}
-                                        placeholder="选择下游节点"
-                                        options={nodeOptions}
-                                        className="w-full"
-                                        showSearch
-                                        optionFilterProp="label"
-                                    />
-                                </div>
-                                <DsButton
-                                    variant="danger"
-                                    onClick={() => removeBranch(index)}
-                                    disabled={readOnly || branches.length <= 1}
-                                    className="mt-ds-5"
-                                >
-                                    删除
-                                </DsButton>
                             </div>
                         ))}
                     </div>
@@ -196,8 +306,10 @@ export default function ConditionNodeModal({
                 </div>
 
                 <p className="text-ds-nano text-ds-text-muted leading-relaxed">
-                    表达式可引用上游节点输出（如 <code>${'{upstream.nodeId.row_count}'}</code>）和 DAG
-                    参数。按分支顺序匹配，第一个满足条件的分支被执行；均不满足时执行默认分支。
+                    表达式可引用上游节点输出，如 <code>{`${'{upstream[\'节点名\'].row_count}'}`}</code>
+                    （按直接前驱节点名精确取值）、DAG 参数（如 <code>${'{biz_date}'}</code>）和系统变量
+                    （如 <code>${'{current_time}'}</code>），也可点击「插入变量」选择。按分支顺序匹配，
+                    第一个满足条件的分支被执行；均不满足时执行默认分支。默认分支表达式固定为 <code>true</code>。
                 </p>
 
                 {error && (

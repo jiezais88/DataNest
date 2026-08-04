@@ -207,6 +207,49 @@ DAG 流水线。
 | 8 | DAG 更新接口循环引用检测依赖请求体带 `id`                          | `DagService.update` 未回填 `payload.setId(id)`，无 body id 时 A→B→A 循环无法检测                                                                         | `update` 在 validateRequest 前 `payload.setId(id)`                                                           |
 | 9 | 血缘图谱 ReactFlow 边不渲染（P0，前端修复）                        | 自定义节点（TableNode/ColumnNode）未声明 `Handle`，且受控 edges 未配 change handler，边无法连接/渲染                                                     | 节点组件加 `Handle`（source/target）+ 改用 `useNodesState`/`useEdgesState` + `onNodesChange`/`onEdgesChange` |
 
+### 后续增强会话（条件节点变量按节点名精确取值）
+
+> 2026-08-04：Sprint 5 交付后对条件分支做了一轮产品化增强，已部署并 E2E 验证通过。
+
+#### 需求背景
+
+- 条件节点表达式变量暴露了无业务语义的 `dag_id`（内部主键），用户无法感知/预测。
+- 多前驱场景下旧实现把多个前驱 `outputInfo` 通过 `upstream.putAll(out)` 扁平合并，同名 key 互相覆盖，
+  `${upstream.row_count}`
+  语义模糊，无法按具体前驱精确判断。
+- 产品约束：嵌套结构的键 **必须用节点名**（不能用内部节点 ID），表达式形如 `${upstream['节点名'].row_count}`。
+
+#### 后端改动
+
+| 文件                                              | 内容                                                                                                                                                                                                                                                                                                            |
+|---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `data-nest-worker/.../DagNodeExecuteService.java` | `buildConditionContext` 的 `upstream` 改为**以节点名为键的嵌套 map**，每个前驱独立子 map（`row_count`/`status`/`sql_type`/`target_table` 等），顶层保留最后遍历前驱的 `row_count`/`status` 兼容旧写法；`vars.remove("dag_id")` 从条件表达式移除内部主键（`DagParameterResolver` 的 `dag_id` 保留供 SQL 占位符） |
+
+#### 前端改动
+
+| 文件                                                       | 内容                                                                                                                                          |
+|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `pages/engineering/dags/types.ts`                          | 新增 `UpstreamNodeInfo` 类型                                                                                                                  |
+| `pages/engineering/dags/Editor.tsx`                        | 从 `rfEdges` 推导条件节点的直接前驱（含 nodeName/nodeType）传给弹窗                                                                           |
+| `pages/engineering/dags/components/ConditionNodeModal.tsx` | 移除 `dag_id`；「插入变量」下拉按直接前驱动态生成 `${upstream['节点名'].xxx}`，并按「上游节点变量 / DAG 参数 / 系统变量」分组展示、每项带说明 |
+
+#### 部署
+
+- `mvn -pl data-nest-task-core,data-nest-worker -am clean package -DskipTests -q` + 重建 `app-worker`
+- 前端 `npm run build`（需先构建 `dist/`）+ 重建 `app-frontend`
+
+#### E2E 验证（真实执行）
+
+用 API 搭建「前驱A (1行) + 前驱B (3行) → 条件C → 下游D/E」的多前驱 DAG：
+
+| 表达式                                                  | 期望/实际                                    | 结果 |
+|---------------------------------------------------------|----------------------------------------------|------|
+| `${upstream['前驱A_SQL'].row_count} > 0`（A=1行,B=3行） | A=1 → true → 命中「按A取值」分支             | ✓   |
+| `${upstream['前驱A_SQL'].row_count} > 1`（A=1行,B=3行） | A=1 → false → 走默认分支（证明精确取A而非B） | ✓   |
+| `${upstream.row_count} > 1`（旧写法）                   | 顶层兼容字段仍可求值 → 命中「旧写法」分支    | ✓   |
+
+验证点：条件节点 `output_info.branchIndex` 与下游 SUCCESS/SKIPPED 均符合按节点名精确取值语义；旧写法未破坏。
+
 ### 待处理缺陷 / 差异
 
 无（Sprint 5 测试发现的问题均已修复并验证）。

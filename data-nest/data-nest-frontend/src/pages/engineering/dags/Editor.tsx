@@ -60,7 +60,15 @@ import NodeRuntimeLogPanel from './components/NodeRuntimeLogPanel';
 import AlertRuleModal from '../../../components/AlertRuleModal';
 import {HistoryLogModal} from '../sync-jobs/history-common';
 import {describeCron} from '../../../utils/cron';
-import type {ConditionBranch, Dag, DagExecution, DagParameter, NodeExecution, NodeType} from './types';
+import type {
+    ConditionBranch,
+    Dag,
+    DagExecution,
+    DagParameter,
+    NodeExecution,
+    NodeType,
+    UpstreamNodeInfo
+} from './types';
 import type {AlertRuleDTO} from '../../../types/alert';
 import type {SyncJob, SyncJobLog} from '../../../types/sync';
 import {useCanEdit} from '../../../hooks/useCanEdit';
@@ -1410,7 +1418,10 @@ function DagEditorInner() {
                     已触发执行。
                     <a
                         className="text-ds-accent underline cursor-pointer ml-1"
-                        onClick={() => navigate(`/engineering/dag-executions?dagId=${id}&dagName=${encodeURIComponent(dag.name || '')}`)}
+                        onClick={() => navigate(`/engineering/dag-executions?dagId=${id}&dagName=${encodeURIComponent(dag.name || '')}`, {
+                            // 记录触发前页面（详情画布 or 项目列表），执行历史页「返回」回到原入口
+                            state: {from: location.pathname + location.search},
+                        })}
                     >
                         查看执行 →
                     </a>
@@ -1422,7 +1433,7 @@ function DagEditorInner() {
         } finally {
             setTriggering(false);
         }
-    }, [id, dag.name, navigate]);
+    }, [id, dag.name, navigate, location]);
 
     const handleTrigger = async () => {
         if (!id) {
@@ -1917,6 +1928,20 @@ function DagEditorInner() {
                     // 排除会导致成环的下游节点（条件节点连向其祖先会形成环）
                     .filter(n => selectedNodeId ? !wouldCreateCycle(rfEdges, selectedNodeId, n.id) : true)
                     .map(n => ({id: n.id, nodeName: n.data.nodeName}))}
+                // 直接前驱：边 target 为当前条件节点的 source 节点（表达式变量按节点名精确取值）
+                upstreamNodes={selectedNodeId
+                    ? rfEdges
+                        .filter(e => e.target === selectedNodeId)
+                        .map(e => e.source)
+                        .map(srcId => rfNodes.find(n => n.id === srcId))
+                        .filter((n): n is NonNullable<typeof n> => !!n)
+                        .map((n): UpstreamNodeInfo => ({
+                            nodeId: n.id,
+                            nodeName: n.data.nodeName,
+                            nodeType: n.data.nodeType,
+                        }))
+                    : []}
+                dagParams={isNew ? draftParams : dagParams}
                 readOnly={!canEdit}
                 onClose={() => setConditionModalOpen(false)}
                 onSave={handleConditionNodeSave}

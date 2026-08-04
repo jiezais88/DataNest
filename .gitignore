@@ -63,3 +63,4 @@ dump.rdb
 *.pid.lock
 
 .codebuddy
+.workbuddy

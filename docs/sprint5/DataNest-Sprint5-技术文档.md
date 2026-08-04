@@ -440,11 +440,19 @@ public class ConditionNodeConfig {
 
 #### 8.2.3 表达式上下文
 
-表达式可引用：
+表达式可引用（对齐 `DagNodeExecuteService.buildConditionContext`）：
 
-- 上游节点输出：`${upstream.nodeId.row_count}`
+- 上游节点输出（ **按直接前驱节点名精确取值**）：`${upstream['前驱节点名'].row_count}`、`${upstream['前驱节点名'].status}`
+  - 后端 `upstream` 为以「节点名」为键的嵌套 map，每个前驱独立子 map（`row_count` / `status` / `sql_type` /
+    `target_table` / `affectedRows` / `returnedRows` 等），支持多前驱场景按具体节点精确判断。
+  - 顶层同时保留最后一个遍历前驱的 `row_count` / `status` 以兼容旧写法 `${upstream.row_count}`。
+  - `row_count` 归一化：SQL DML 取 `affectedRows`，QUERY 取 `returnedRows`（见 `normalizeRowCount`）。
 - DAG 参数：`${biz_date}`
-- 系统变量：`${dag_id}`、`${current_time}`
+- 系统变量：`${current_time}`
+
+> 变更说明：`dag_id` 为内部主键、无业务语义，已从条件表达式变量中移除（参数解析层仍保留供 SQL
+> 占位符 `${dag_id}` 使用）。前端「插入变量」下拉按条件节点在画布上的直接前驱动态生成，并按「上游节点
+> 变量 / DAG 参数 / 系统变量」分组展示、每项带说明。
 
 ### 8.3 子 DAG 节点
 
