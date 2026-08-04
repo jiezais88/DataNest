@@ -427,7 +427,12 @@ export default function DagExecutionsGlobalPage() {
                 // 同时带上 from 当前页，返回时保留筛选（与「详情」按钮一致）
                 const goDetail = (nodeId?: string) => {
                     navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`,
-                        {state: {from: currentUrl, ...(nodeId ? {focusNodeId: nodeId} : {})}});
+                        {
+                            state: {
+                                from: currentUrl,
+                                parentFrom: fromPath ?? null, ...(nodeId ? {focusNodeId: nodeId} : {})
+                            }
+                        });
                 };
                 if (failed.length > 0) {
                     return (
@@ -474,7 +479,7 @@ export default function DagExecutionsGlobalPage() {
                             tone="accent"
                             data-testid={`dag-execution-view-${r.id}`}
                             onClick={() => navigate(`/engineering/dags/${r.dagId}/executions/${r.id}`, {
-                                state: {from: currentUrl},
+                                state: {from: currentUrl, parentFrom: fromPath ?? null},
                             })}
                             aria-label="详情"
                         >

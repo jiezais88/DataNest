@@ -240,9 +240,65 @@ function DagNode({id, data, selected}: NodeProps<RFNodeData>) {
                         脚本：{data.pythonScript ? data.pythonScript.split('\n')[0] : '—'}
                     </div>
                 ) : data.nodeType === 'CONDITION' ? (
-                    <div className="truncate"
-                         title={data.branches?.length ? `分支数：${data.branches.length}` : '（未配置分支）'}>
-                        分支：{data.branches?.length ? `${data.branches.length} 个` : '—'}
+                    // 条件分支节点：展示分支摘要（序号=求值顺序，默认兜底分支展示在最后），
+                    // 体现「顺序短路、第一个命中生效，全不满足走默认」的计算关系
+                    <div className={data.branches?.length ? 'space-y-1' : ''}>
+                        <div className="truncate"
+                             title={data.branches?.length ? `分支数：${data.branches.length}（按顺序判断，第一个满足的执行）` : '（未配置分支）'}>
+                            分支：{data.branches?.length ? `${data.branches.length} 个` : '—'}
+                        </div>
+                        {data.branches && data.branches.length > 0 && (
+                            <div className="space-y-0.5"
+                                 title={(() => {
+                                     const realBranches = data.branches || [];
+                                     const order: {
+                                         realIndex: number;
+                                         b: typeof realBranches[number];
+                                         isDefault: boolean
+                                     }[] = [];
+                                     for (let i = 1; i < realBranches.length; i++) {
+                                         order.push({realIndex: i, b: realBranches[i], isDefault: false});
+                                     }
+                                     if (realBranches.length > 0) {
+                                         order.push({realIndex: 0, b: realBranches[0], isDefault: true});
+                                     }
+                                     return order.map(({b, isDefault}) =>
+                                         `${b.branchName || '(未命名)'}${isDefault ? '（默认兜底）' : ''}`).join('\n');
+                                 })()}>
+                                {(() => {
+                                    const realBranches = data.branches || [];
+                                    const order: {
+                                        realIndex: number;
+                                        b: typeof realBranches[number];
+                                        isDefault: boolean
+                                    }[] = [];
+                                    for (let i = 1; i < realBranches.length; i++) {
+                                        order.push({realIndex: i, b: realBranches[i], isDefault: false});
+                                    }
+                                    if (realBranches.length > 0) {
+                                        order.push({realIndex: 0, b: realBranches[0], isDefault: true});
+                                    }
+                                    return order.map(({realIndex, b, isDefault}) => (
+                                        <div key={realIndex} className="flex items-center gap-1 text-ds-caption">
+                                        <span
+                                            className={`shrink-0 w-3.5 h-3.5 rounded-full text-center leading-[14px] text-[9px] font-bold ${isDefault ? 'bg-ds-accent-soft text-ds-accent' : 'bg-ds-bg-hover text-ds-text-muted'}`}>
+                                            {realIndex + 1}
+                                        </span>
+                                            <span
+                                                className={`truncate flex-1 ${isDefault ? 'text-ds-text-primary font-medium' : 'text-ds-text-muted'}`}>
+                                            {b.branchName || '(未命名)'}
+                                        </span>
+                                            {isDefault && (
+                                                <span
+                                                    className="shrink-0 text-[9px] px-1 rounded bg-ds-accent-soft text-ds-accent font-bold uppercase">
+                                                DEFAULT
+                                            </span>
+                                            )}
+                                        </div>
+                                    ));
+                                })()}
+                            </div>
+                        )}
                     </div>
                 ) : data.nodeType === 'SUB_DAG' ? (
                     <div className="truncate" title={data.subDagName || String(data.subDagId) || '（未选择）'}>
@@ -1333,8 +1389,18 @@ function DagEditorInner() {
         const backTarget = isRunView
             ? (fromPath || '/engineering/dag-executions')
             : (fromPath || (dag.projectId ? `/engineering/dags/${dag.projectId}` : '/engineering/dags'));
+        // 从执行历史详情返回时，透传该页最初收到的 from（parentFrom），
+        // 保证执行历史页右上角「返回」按钮不因 state 丢失而消失。
+        const parentFrom = isRunView ? (location.state as { parentFrom?: string } | null)?.parentFrom : null;
+        const navBack = () => {
+            if (parentFrom) {
+                navigate(backTarget, {state: {from: parentFrom}});
+            } else {
+                navigate(backTarget);
+            }
+        };
         if (!isDirty) {
-            navigate(backTarget);
+            navBack();
             return;
         }
         Modal.confirm({
@@ -1347,10 +1413,10 @@ function DagEditorInner() {
             onOk: () => handleSave(),
             onCancel: () => {
                 setIsDirty(false);
-                navigate(backTarget);
+                navBack();
             },
         });
-    }, [isDirty, navigate, handleSave, dag.projectId, fromPath, isRunView]);
+    }, [isDirty, navigate, handleSave, dag.projectId, fromPath, isRunView, location.state]);
 
     /**
      * 离开页面前拦截：浏览器关闭/刷新时也提示（PRD §6.4.1）

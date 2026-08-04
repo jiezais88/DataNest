@@ -1,7 +1,7 @@
 // Sprint 5：条件分支节点配置弹窗
 // 约定（对齐后端 ConditionNodeConfig）：branches[0] 为默认兜底分支（表达式锁 "true"）；
 // 每个分支的 nextNodeId 必须指向一个下游节点，保存时由 Editor 同步画布连线。
-import {useEffect, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {Select} from 'antd';
 import {HiOutlineVariable} from 'react-icons/hi2';
 import DsButton from '../../../../components/DsButton';
@@ -138,6 +138,23 @@ export default function ConditionNodeModal({
         updateBranch(target, {expression: prev + sep + varExpr});
     };
 
+    /**
+     * 展示顺序：真实分支数组约定 branches[0] 为默认兜底分支（表达式锁 "true"，后端 evaluateBranches
+     * 从下标 1 开始求真实条件、全不满足才返回 0）。为避免"默认分支放第一行但最后才生效"的误导，
+     * 渲染时把默认分支（真实 index 0）挪到列表末尾，真实条件分支（index 1..n-1）按序在前。
+     * 所有操作仍基于 realIndex 映射回真实数组下标，保存顺序与后端约定保持一致。
+     */
+    const displayOrder: { realIndex: number; branch: ConditionBranch; isDefault: boolean }[] = useMemo(() => {
+        const order: { realIndex: number; branch: ConditionBranch; isDefault: boolean }[] = [];
+        for (let i = 1; i < branches.length; i++) {
+            order.push({realIndex: i, branch: branches[i], isDefault: false});
+        }
+        if (branches.length > 0) {
+            order.push({realIndex: 0, branch: branches[0], isDefault: true});
+        }
+        return order;
+    }, [branches]);
+
     const addBranch = () => {
         setBranches(prev => [...prev, {branchName: '', expression: '', nextNodeId: ''}]);
     };
@@ -215,9 +232,9 @@ export default function ConditionNodeModal({
                         分支 <span className="text-ds-danger">*</span>
                     </label>
                     <div className="space-y-ds-3">
-                        {branches.map((branch, index) => (
+                        {displayOrder.map(({realIndex, branch, isDefault}) => (
                             <div
-                                key={index}
+                                key={realIndex}
                                 className="p-ds-3 bg-ds-bg-subtle border border-ds-border-subtle rounded-ds-sm space-y-ds-3"
                             >
                                 {/* 第一行：分支名称 + 下游节点 + 删除 */}
@@ -229,11 +246,11 @@ export default function ConditionNodeModal({
                                         <div className="flex items-center gap-ds-1">
                                             <input
                                                 value={branch.branchName}
-                                                onChange={e => updateBranch(index, {branchName: e.target.value})}
+                                                onChange={e => updateBranch(realIndex, {branchName: e.target.value})}
                                                 disabled={readOnly}
                                                 className="w-full px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
                                             />
-                                            {index === 0 && (
+                                            {isDefault && (
                                                 <span
                                                     className="shrink-0 px-ds-1.5 py-0.5 rounded bg-ds-accent-soft text-ds-accent text-ds-nano font-bold uppercase">
                                                     DEFAULT
@@ -247,7 +264,7 @@ export default function ConditionNodeModal({
                                         </label>
                                         <Select
                                             value={branch.nextNodeId || undefined}
-                                            onChange={v => updateBranch(index, {nextNodeId: v})}
+                                            onChange={v => updateBranch(realIndex, {nextNodeId: v})}
                                             disabled={readOnly}
                                             placeholder="选择下游节点"
                                             options={nodeOptions}
@@ -258,7 +275,7 @@ export default function ConditionNodeModal({
                                     </div>
                                     <DsButton
                                         variant="danger"
-                                        onClick={() => removeBranch(index)}
+                                        onClick={() => removeBranch(realIndex)}
                                         disabled={readOnly || branches.length <= 1}
                                     >
                                         删除
@@ -273,20 +290,20 @@ export default function ConditionNodeModal({
                                     <div className="flex items-center gap-ds-2">
                                         <input
                                             value={branch.expression}
-                                            onChange={e => updateBranch(index, {expression: e.target.value})}
-                                            onFocus={() => setActiveBranchIndex(index)}
-                                            disabled={readOnly || index === 0}
-                                            placeholder={index === 0 ? 'true' : '如 ${upstream.row_count} > 0'}
+                                            onChange={e => updateBranch(realIndex, {expression: e.target.value})}
+                                            onFocus={() => setActiveBranchIndex(realIndex)}
+                                            disabled={readOnly || isDefault}
+                                            placeholder={isDefault ? 'true' : '如 ${upstream.row_count} > 0'}
                                             className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small font-mono text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
                                         <Select
                                             value={null}
                                             onChange={(v) => {
                                                 // 选中即追加到当前分支表达式；Select 自身保持占位（插入的是占位符而非最终值）
-                                                setActiveBranchIndex(index);
-                                                insertVariable(v, index);
+                                                setActiveBranchIndex(realIndex);
+                                                insertVariable(v, realIndex);
                                             }}
-                                            disabled={readOnly || index === 0}
+                                            disabled={readOnly || isDefault}
                                             placeholder="插入变量"
                                             suffixIcon={<HiOutlineVariable size={14}/>}
                                             className="flex-none w-[140px]"
@@ -305,12 +322,32 @@ export default function ConditionNodeModal({
                     </DsButton>
                 </div>
 
-                <p className="text-ds-nano text-ds-text-muted leading-relaxed">
-                    表达式可引用上游节点输出，如 <code>{`${'{upstream[\'节点名\'].row_count}'}`}</code>
-                    （按直接前驱节点名精确取值）、DAG 参数（如 <code>${'{biz_date}'}</code>）和系统变量
-                    （如 <code>${'{current_time}'}</code>），也可点击「插入变量」选择。按分支顺序匹配，
-                    第一个满足条件的分支被执行；均不满足时执行默认分支。默认分支表达式固定为 <code>true</code>。
-                </p>
+                <div className="rounded-ds-sm border border-ds-border-subtle bg-ds-bg-subtle p-ds-3 space-y-ds-2">
+                    <p className="text-ds-nano font-semibold text-ds-text-secondary">求值规则</p>
+                    <ul className="text-ds-nano text-ds-text-muted leading-relaxed list-disc pl-ds-4 space-y-ds-1">
+                        <li>
+                            <span className="text-ds-text-secondary">顺序短路（互斥）：</span>按分支从上到下依次判断，
+                            <span className="text-ds-text-primary">第一个满足条件的分支生效</span>，后续分支不再求值；
+                            每个执行只走一条分支。
+                        </li>
+                        <li>
+                            <span className="text-ds-text-secondary">默认兜底：</span>列表最后一行为默认分支
+                            （DEFAULT），表达式固定为 <code> true</code>，上面所有条件分支都不满足时执行它。
+                        </li>
+                        <li>
+                            <span className="text-ds-text-secondary">分支内「与」：</span>若需同一分支同时满足多个条件，
+                            用 <code> and </code>（或 <code> && </code>）连接，如
+                            <code> {'${upstream[\'节点名\'].row_count}'} &gt; 100
+                                and {'${upstream[\'节点名\'].status'} == 'SUCCESS'</code>。
+                        </li>
+                        <li>
+                            <span className="text-ds-text-secondary">变量引用：</span>可引用上游节点输出
+                            <code> {'${upstream[\'节点名\'].row_count}'}</code>（按直接前驱节点名精确取值）、DAG 参数
+                            （如 <code> {'${biz_date}'}</code>）和系统变量（如 <code> {'${current_time}'}</code>），
+                            也可点击「插入变量」选择。
+                        </li>
+                    </ul>
+                </div>
 
                 {error && (
                     <div
