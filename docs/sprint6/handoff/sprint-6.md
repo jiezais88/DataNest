@@ -21,6 +21,8 @@
 | 后端实现（质量任务/规则/检查/评分/合规） | 🔄 进行中 | 规则模板库（模板 CRUD）✅；质量任务 + 质量规则**配置层**后端 ✅（含模板批量生成/调度配置/QualityCheckHandler 扫描预留）；真实执行校验/评分/告警合并/worker 自动触发待做 |
 | 前端实现（规则模板库）                   | ✅ 完成   | 独立「规则模板库」页面已交付（列表/统计/筛选/新增/编辑/详情/启停/删除）；数据质量页与血缘联动待做 |
 | 前端实现（质量任务/规则）                | ✅ 完成   | 独立「数据质量」页（质量任务/质量规则双页签）已交付（任务 CRUD/启停/统计/筛选；规则按任务管理/新增/批量应用/启停/删除/预览SQL；自动触发对象按 项目-DAG-节点 三级树） |
+| Sprint 8 执行层后端                      | ✅ 完成   | 质量检查真实执行 + 批次/明细落库 + 三种触发（MANUAL/SCHEDULED/AUTO_TRIGGER），见 §8 |
+| Sprint 8 执行层前端                      | ✅ 完成   | 新增「质量检查历史」独立菜单页（批次列表+规则明细抽屉）+ 任务/规则执行按钮从占位改为真实触发，见 §8.5 |
 | 联调验证                                 | ✅ 完成   | 任务/规则全部接口经网关联调通过（见「质量任务/规则 · API 验证记录」）；E2E 全绿（36 用例，见「质量任务/规则 · E2E 测试记录」） |
 
 ## 3. 关键决策（用户已确认）
@@ -235,7 +237,7 @@
 3. 后端：`ScoreCalculator` 评分计算 + `AlertFiringService.fireBatch` 告警合并 + 扩展告警 object_type=QUALITY。
 4. 后端：job 新增 `StandardComplianceCheckHandler`/`QualityCheckHistoryCleanupHandler`。
 5. 后端：worker 终态回调接入自动触发（B1）；血缘节点 `LineageNodeDTO` 新增 qualityScore；标准合规忽略/取消忽略。
-6. 前端：数据质量页 **任务/规则页签已完成**；剩余：检查历史、质量评分页签、元数据详情页「质量」页签、血缘图谱节点评分徽章、标准合规页（待执行批接口就绪后接入）。
+6. 前端：数据质量页 **任务/规则页签已完成**；**检查历史已交付**（「质量检查历史」独立菜单页，见 §8.5）；剩余：质量评分页签、元数据详情页「质量」页签、血缘图谱节点评分徽章、标准合规页（待后续执行批接口就绪后接入）。
 7. 联调验证：真实数据校验、任务级定时触发、告警合并邮件、评分联动、合规扫描。
 
 ### 质量任务/规则配置层 · API 验证记录（2026-08-04）
@@ -385,6 +387,39 @@
 - **gateway 质量路由前缀**：质量接口经网关统一走 `/api/governance/quality/**`（gateway 只路由 `/api/governance/**` 到 governance）；直接调 `/api/quality/...` 得 `NoResourceFoundException` 404。
 - **改 task-core 质量执行代码必须重建 app-worker**（不只是 governance），否则 worker 跑旧 jar。
 - **PowerShell 联调**：`curl.exe` 在 PowerShell 传 JSON 会因引号转义报 9999；用 `Invoke-RestMethod`（登录/列表/执行等全用）。
+
+### 8.5 Sprint 8 前端（质量检查历史 + 执行按钮接线，2026-08-04）
+
+> 后端执行层（§8）落地到前端：新增「质量检查历史」菜单页展示批次与规则明细，并把任务/规则列表的手动执行按钮从占位改为真实触发。
+
+**变更清单（纯前端）：**
+
+| 产物 | 变更 |
+|------|------|
+| `src/types/quality.ts`（修改） | 追加执行层类型（对齐 `QualityCheckBatchDTO`/`QualityCheckDetailDTO`/`QualityCheckQueryRequest`）：`QualityCheckBatch`/`QualityCheckDetail`/`QualityCheckQueryParams` + 触发方式/状态中文映射 `QUALITY_CHECK_TRIGGER_LABEL`/`QUALITY_CHECK_STATUS_LABEL`（单一出处） |
+| `src/api/quality.ts`（修改） | 追加 `queryQualityChecks`（POST `/governance/quality/checks/page`）/ `getQualityCheckDetail`（GET `/governance/quality/checks/{id}`）；`executeQualityJob`/`executeQualityRule` 注释由"预留"改为真实触发语义 |
+| `src/pages/governance/quality-checks/index.tsx`（新增） | 质量检查历史页：批次列表（任务名/触发方式/状态徽章 RUNNING·SUCCESS·PARTIAL_FAILED·FAILED/规则数/成功失败/起止时间/耗时/错误信息）+ 按触发方式·状态筛选 + 分页 + URL 状态同步；详情抽屉（批次概览 + 规则明细卡片，含结果指标/结果值/成功失败/错误/执行 SQL 折叠展示）；`formatDuration`/`DsStatusBadge`/`Drawer`/`DsToolbar`/`DsFilterSelect`/`Pagination`/`DsTableEmpty` 全部复用既有组件 |
+| `src/components/Sidebar.tsx`（修改） | 「执行历史」分组 DAG 执行历史后新增「质量检查历史」菜单（`ALL_ROLES`，图标 `HiOutlineCheckCircle`），路径 `/governance/quality-checks` |
+| `src/router/index.tsx`（修改） | 新增 `/governance/quality-checks` 懒加载路由 |
+| `src/utils/breadcrumb.ts`（修改） | 新增 `/governance/quality-checks` leaf 面包屑条目 |
+| `src/pages/governance/data-quality/index.tsx`（修改） | `handleExecuteJob` 占位 → 真实调 `executeQualityJob(id)`，成功提示"已触发执行，请到「质量检查历史」查看结果"；执行按钮加 `executingId` loading 防重复点击 |
+| `src/pages/governance/quality-rules/index.tsx`（修改） | `handleExecute` 占位 → 真实调 `executeQualityRule(id)`，同样提示 + `executingId` loading |
+
+**设计决策（用户确认）：**
+- 结果页形态 = **独立菜单页**，挂在「执行历史」一级分组下，命名「质量检查历史」。
+- 任务/规则执行按钮**本轮一并接入**；规则级执行定位"单条试跑/即时校验"，触发后用户去「质量检查历史」页查看结果（不做规则页内嵌结果列）。
+
+**架构/权限对齐：**
+- 菜单角色 `ALL_ROLES` ↔ 后端 `QualityCheckController` `@SaCheckRole`（SUPER_ADMIN/GOVERNANCE_ADMIN/DATA_ENGINEER/DATA_ANALYST）一致。
+- 批次查询接口走 gateway 前缀 `/api/governance/quality/checks/**`；`queryQualityChecks` 用 `res.data.records/total`（与 `queryQualityJobs` 一致的 PageResult 结构）。
+
+**Review 结论（按 功能×架构×效率 三维度）：**
+- 架构融洽：类型/API/常量全部收敛到 `types/quality.ts` + `api/quality.ts` 单一出处；页面复用项目收敛组件，无手写漂移。
+- 业务正确：批次/明细接口路径与后端 controller、状态/触发方式枚举值、角色权限均逐一对齐；执行按钮路径与后端 `QualityJobController`/`QualityRuleController` 的 `/{id}/execute` 一致（后端均已实现，非预留）。
+- 实现高效：URL 状态同步（`urlInitRef` 单 init + 单 sync，对齐 data-quality）；`useCallback`/`useMemo` 防抖；执行按钮 `executingId` 防重复；耗时复用 `formatDuration`。
+- `npm run typecheck` + `npm run build` 通过，lint 0 错误。
+
+**部署：** `npm run build` → `docker compose build app-frontend` → `up -d --no-deps app-frontend`，容器 `Up`，`/governance/quality-checks` STATUS=200。
 
 ## 7. 备注
 - **定时扫描命中判断**：`QualityCheckHandler` 用 `CronExpression.next(minuteStart.minusNanos(1)) == minuteStart` 判断 cron 是否命中当前分钟整点，兼容秒级 cron（普通 `matches()` 无法精确匹配分钟级任务）。

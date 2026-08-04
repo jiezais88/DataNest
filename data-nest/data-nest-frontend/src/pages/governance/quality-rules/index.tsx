@@ -10,6 +10,7 @@ import {
     batchCreateQualityRules,
     createQualityRule,
     deleteQualityRule,
+    executeQualityRule,
     previewQualityRuleSql,
     queryQualityJobs,
     queryQualityRules,
@@ -74,6 +75,8 @@ export default function QualityRulesPage() {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewSql, setPreviewSql] = useState('');
     const [previewLoading, setPreviewLoading] = useState(false);
+    /** 执行按钮 loading（记录当前正在触发的规则 ID） */
+    const [executingId, setExecutingId] = useState<string>('');
 
     const loadRules = useCallback(async () => {
         setLoading(true);
@@ -155,8 +158,14 @@ export default function QualityRulesPage() {
         loadRules();
     };
 
-    const handleExecute = () => {
-        notify.info('执行功能待实现（下一批交付）');
+    const handleExecute = async (item: QualityRule) => {
+        setExecutingId(item.id);
+        try {
+            await executeQualityRule(item.id);
+            notify.success('已触发执行，请到「质量检查历史」查看结果');
+        } finally {
+            setExecutingId('');
+        }
     };
 
     const handlePreviewSql = async (item: QualityRule) => {
@@ -318,7 +327,12 @@ export default function QualityRulesPage() {
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="执行">
-                        <DsIconButton tone="accent" onClick={() => handleExecute()} aria-label="执行">
+                        <DsIconButton
+                            tone="accent"
+                            onClick={() => handleExecute(item)}
+                            disabled={executingId === item.id}
+                            aria-label="执行"
+                        >
                             <HiOutlinePlay size={14}/>
                         </DsIconButton>
                     </Tooltip>
@@ -366,7 +380,7 @@ export default function QualityRulesPage() {
                 </div>
             ),
         },
-    ], [canWrite, handleToggle, openEdit, openView]);
+    ], [canWrite, handleToggle, executingId, openEdit, openView]);
 
     return (
         <div className="flex flex-col">

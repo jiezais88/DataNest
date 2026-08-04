@@ -11,6 +11,7 @@ import {COL} from '../../../constants/table';
 import {
     createQualityJob,
     deleteQualityJob,
+    executeQualityJob,
     queryQualityJobs,
     startQualityJobSchedule,
     stopQualityJobSchedule,
@@ -67,6 +68,8 @@ export default function DataQualityPage() {
     const [jobLoading, setJobLoading] = useState(false);
     /** 调度开关 loading（记录当前正在切换调度的任务 ID） */
     const [schedulingId, setSchedulingId] = useState<string>('');
+    /** 执行按钮 loading（记录当前正在触发的任务 ID） */
+    const [executingId, setExecutingId] = useState<string>('');
     const [stats, setStats] = useState({all: 0, enabled: 0, disabled: 0});
     const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
     const [jobEditItem, setJobEditItem] = useState<QualityJob | null>(null);
@@ -199,9 +202,15 @@ export default function DataQualityPage() {
         }
     }, [loadJobs]);
 
-    const handleExecuteJob = () => {
-        notify.info('执行功能待实现（下一批交付）');
-    };
+    const handleExecuteJob = useCallback(async (item: QualityJob) => {
+        setExecutingId(item.id);
+        try {
+            await executeQualityJob(item.id);
+            notify.success('已触发执行，请到「质量检查历史」查看结果');
+        } finally {
+            setExecutingId('');
+        }
+    }, []);
 
     const handleDeleteJob = async () => {
         if (!deleteJobTarget) return;
@@ -381,7 +390,12 @@ export default function DataQualityPage() {
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="执行">
-                        <DsIconButton tone="accent" onClick={() => handleExecuteJob()} aria-label="执行">
+                        <DsIconButton
+                            tone="accent"
+                            onClick={() => handleExecuteJob(item)}
+                            disabled={executingId === item.id}
+                            aria-label="执行"
+                        >
                             <HiOutlinePlay size={14}/>
                         </DsIconButton>
                     </Tooltip>
@@ -438,7 +452,7 @@ export default function DataQualityPage() {
                 </div>
             ),
         },
-    ], [canWrite, handleToggleJob, handleToggleSchedule, schedulingId, openJobEdit, openJobView]);
+    ], [canWrite, handleToggleJob, handleToggleSchedule, handleExecuteJob, schedulingId, executingId, openJobEdit, openJobView]);
 
     const statCards = [
         {label: '全部任务', value: stats.all},

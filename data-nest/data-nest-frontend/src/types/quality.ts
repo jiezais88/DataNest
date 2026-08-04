@@ -263,3 +263,88 @@ export interface QualityRuleQueryParams {
     page: number;
     pageSize: number;
 }
+
+// ============ 质量检查执行历史（Sprint 8 执行层） ============
+
+/** 批次触发方式：手动 / 定时 / 自动触发 */
+export type QualityCheckTriggerType = 'MANUAL' | 'SCHEDULED' | 'AUTO_TRIGGER';
+
+/** 批次状态：运行中 / 成功 / 部分失败 / 失败 */
+export type QualityCheckStatus = 'RUNNING' | 'SUCCESS' | 'PARTIAL_FAILED' | 'FAILED';
+
+/** 质量检查批次（对齐后端 QualityCheckBatchDTO） */
+export interface QualityCheckBatch {
+    id: string;
+    /** 所属质量任务 ID（单规则执行为空） */
+    jobId?: string;
+    /** 任务名；单规则执行时显示"单规则执行" */
+    jobName?: string;
+    /** 触发方式 */
+    triggerType?: QualityCheckTriggerType;
+    /** 批次状态 */
+    status?: QualityCheckStatus;
+    startedAt?: string;
+    endedAt?: string;
+    /** 耗时（毫秒） */
+    durationMs?: number;
+    errorMessage?: string;
+    /** 规则总数 */
+    ruleCount?: number;
+    /** 成功规则数 */
+    successCount?: number;
+    /** 失败规则数 */
+    failedCount?: number;
+    /** 规则明细（仅详情接口回填） */
+    details?: QualityCheckDetail[];
+    createdAt?: string;
+}
+
+/** 质量检查规则明细（对齐后端 QualityCheckDetailDTO） */
+export interface QualityCheckDetail {
+    id: string;
+    batchId?: string;
+    ruleId?: string;
+    ruleName?: string;
+    /** 规则类型（COMPLETENESS/UNIQUENESS/RANGE/CUSTOM_SQL） */
+    ruleType?: QualityRuleType;
+    tableId?: string;
+    /** 目标表名（schema.table） */
+    tableName?: string;
+    /** 结果指标，如 null_rate / duplicate_count */
+    resultMetric?: string;
+    /** 结果值 */
+    resultValue?: number | string;
+    /** 1 成功，0 失败 */
+    success?: number;
+    errorMessage?: string;
+    /** 实际执行 SQL */
+    executedSql?: string;
+    createdAt?: string;
+}
+
+/** 批次分页查询请求（对齐后端 QualityCheckQueryRequest） */
+export interface QualityCheckQueryParams {
+    page: number;
+    pageSize: number;
+    /** 质量任务 ID 过滤 */
+    jobId?: string;
+    /** 触发方式过滤 */
+    triggerType?: QualityCheckTriggerType | '';
+    /** 批次状态过滤 */
+    status?: QualityCheckStatus | '';
+}
+
+/** 批次触发方式中文展示（单一出处） */
+export const QUALITY_CHECK_TRIGGER_LABEL: Record<QualityCheckTriggerType, string> = {
+    MANUAL: '手动触发',
+    SCHEDULED: '定时触发',
+    AUTO_TRIGGER: '自动触发',
+};
+
+/** 批次状态中文展示 + 徽章变体（单一出处） */
+export const QUALITY_CHECK_STATUS_LABEL: Record<QualityCheckStatus, string> = {
+    RUNNING: '运行中',
+    SUCCESS: '成功',
+    PARTIAL_FAILED: '部分失败',
+    FAILED: '失败',
+};

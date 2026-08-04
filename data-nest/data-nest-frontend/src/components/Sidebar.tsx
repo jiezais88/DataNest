@@ -8,6 +8,7 @@ import {
     HiOutlineArrowsRightLeft,
     HiOutlineBellAlert,
     HiOutlineCheckBadge,
+    HiOutlineCheckCircle,
     HiOutlineClipboardDocumentCheck,
     HiOutlineClipboardDocumentList,
     HiOutlineClock,
@@ -122,6 +123,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: 'DAG 执行历史',
                 path: '/engineering/dag-executions',
                 icon: <HiOutlineQueueList size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: '质量检查历史',
+                path: '/governance/quality-checks',
+                icon: <HiOutlineCheckCircle size={18}/>,
                 roles: ALL_ROLES
             },
         ],

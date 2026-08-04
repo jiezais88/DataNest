@@ -1,5 +1,7 @@
 import request from './request';
 import type {
+    QualityCheckBatch,
+    QualityCheckQueryParams,
     QualityRule,
     QualityRuleBatchCreateRequest,
     QualityRuleCreateRequest,
@@ -93,7 +95,7 @@ export function stopQualityJobSchedule(id: string) {
     return request.post<Result<null>>(`/governance/quality/jobs/${id}/schedule/stop`);
 }
 
-/** 立即执行质量任务（后端当前为预留实现） */
+/** 立即执行质量任务（异步跑其引用的全部启用规则，生成一个批次） */
 export function executeQualityJob(id: string) {
     return request.post<Result<null>>(`/governance/quality/jobs/${id}/execute`);
 }
@@ -142,9 +144,21 @@ export function toggleQualityRule(id: string, enabled?: number) {
     });
 }
 
-/** 立即执行质量规则（后端当前为预留实现） */
+/** 立即执行质量规则（单条试跑，生成独立批次，jobId 为空） */
 export function executeQualityRule(id: string) {
     return request.post<Result<null>>(`/governance/quality/rules/${id}/execute`);
+}
+
+// ============ 质量检查执行历史（Sprint 8 执行层） ============
+
+/** 批次分页查询（按任务/触发方式/状态过滤） */
+export function queryQualityChecks(params: QualityCheckQueryParams) {
+    return request.post<Result<PageResult<QualityCheckBatch>>>('/governance/quality/checks/page', params);
+}
+
+/** 批次详情（含规则明细） */
+export function getQualityCheckDetail(id: string) {
+    return request.get<Result<QualityCheckBatch>>(`/governance/quality/checks/${id}`);
 }
 
 /** 模板批量应用（1 模板 + 多表） */
