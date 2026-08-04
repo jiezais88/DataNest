@@ -421,6 +421,24 @@
 
 **部署：** `npm run build` → `docker compose build app-frontend` → `up -d --no-deps app-frontend`，容器 `Up`，`/governance/quality-checks` STATUS=200。
 
+### 8.6 执行层 E2E 测试（2026-08-04）
+
+> 为质量检查**执行 + 结果记录**（执行层）编写 E2E，覆盖成功/失败批次、MYSQL/PG 双类型、三种自动触发。
+> 新增文件：`e2e/sprint6/e2e/quality-checks.spec.ts`。
+
+- **helpers 新增**：
+  - `helpers/encrypt.ts`：Node crypto 复刻后端 `EncryptionConfig` 的 AES-256-GCM，生成可解密的数据源密码密文（密钥默认 `DataNestDefaultEncryptionKey2026`）。GCM tag 128-bit 须拼在密文后（对齐 Java `cipher.doFinal` 输出）。
+  - `helpers/exec-db.ts`：`mysqlExec`/`pgExec`（`docker exec` 进 middleware-test-mysql:3306 / middleware-test-postgres:5432 直连 testdb）、`mysqlScalar`/`pgScalar`、`doris`（经 middleware-mysql 容器连内置 Doris 192.168.119.135:9030）、`quiet`。
+  - `helpers/poll.ts`：`waitFor`/`sleep`。
+- **seed 扩展**：`seedExecTables`（MYSQL+PG 各建 `e2e_s6_orders` 含 4 行）+ `seedExecMetadata`（2 个执行数据源 `e2e_s6_exec_ds`/`e2e_s6_exec_pg_ds`，密码加密；4 张 metadata_table 各 2 张成功/失败表，成功表带 id/order_no/amount 字段）；挂接 `seedAll`/`cleanupAll`。
+- **用例覆盖（serial 模式）**：
+  - A 执行结果记录：页面加载+筛选控件；MYSQL 任务执行→PARTIAL_FAILED（成功规则 result_value=4 + 失败规则 errorMessage 非空、success=0）；PG 任务执行→PARTIAL_FAILED；历史页手动批次+状态筛选展示；批次详情抽屉（规则总数 2/成功 1/失败 1 + 成功结果值）；单规则执行成功→SUCCESS（job_id 空、jobName=单规则执行、result_value=4）；单规则执行失败→FAILED（success=0+errorMessage）；工程师可访问页面+API。
+  - B 自动触发：播种 AUTO_TRIGGER 批次+历史页筛选展示；**真实同步任务成功**触发绑定质量任务（MYSQL orders → Doris `datanest.e2e_s6_quality_target`）→ AUTO_TRIGGER 批次 SUCCESS；**真实 DAG 节点成功**触发（复用 sprint5 `createDag`/`runDag`，SQL 节点 `SELECT 1`，绑定 `dag_node.id`）→ AUTO_TRIGGER 批次 SUCCESS。
+- **断言方式**：执行异步（XXL-JOB 投递 app-worker），用 `waitFor` 轮询 `quality_check_batch`/`quality_check_detail` 至终态。
+- **验证记录**：执行层 11 用例全绿（约 45s）。执行前发现并处理：**app-governance / app-worker / app-engineering 为旧版代码**，手动触发批次落成 SCHEDULED（旧 trigger 服务未带 `jobId:MANUAL` 冒号 param）。按 AGENTS.md 重建
+  `data-nest-task-core/engineering/worker/governance` 并 `docker compose build/up` 三个容器后，手动执行批次正确落 MANUAL，MYSQL/PG 任务→PARTIAL_FAILED、单规则成功→SUCCESS/失败→FAILED、自动触发（同步任务/DAG节点/播种）均通过。
+- **已知残留**：`quality-jobs.spec.ts:119`（Tab 切换）与 `quality-rules.spec.ts:151`（选任务展示规则）引用 `选择质量任务` aria-label，但前端规则已独立成 `/governance/quality-rules` 菜单、筛选改名为 `按所属任务筛选`（既有重构），这两条旧用例与本次执行层无关、非本次改动引入，暂留待后续维护。
+
 ## 7. 备注
 - **定时扫描命中判断**：`QualityCheckHandler` 用 `CronExpression.next(minuteStart.minusNanos(1)) == minuteStart` 判断 cron 是否命中当前分钟整点，兼容秒级 cron（普通 `matches()` 无法精确匹配分钟级任务）。
 - **规则数批量统计**：任务列表的 `ruleCount` 用 `GROUP BY job_id` 一次查出全部任务规则数，避免 N+1（`QualityRuleService.countByJobIds`）。

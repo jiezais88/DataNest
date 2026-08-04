@@ -57,3 +57,37 @@ export const QUALITY_SYNC_JOB = 'e2e_s6_sync_job';
 
 /** 质量任务类型枚举（供断言用） */
 export const QUALITY_ALERT_LEVELS = ['SEVERE_WARNING', 'WARNING', 'DANGER'] as const;
+
+// ==================== 质量检查执行层（Sprint 8） ====================
+
+/** 执行层测试数据前缀 */
+export const EXEC_PREFIX = 'e2e_s6_exec';
+
+/** 执行层目标表名（MYSQL / PG 各建一张同名） */
+export const EXEC_TABLE = 'e2e_s6_orders';
+
+/** 失败批次指向的不存在表名 */
+export const EXEC_BAD_TABLE = 'e2e_s6_no_such_table';
+
+/** 执行数据源名称 */
+export const EXEC_DS_MYSQL_NAME = 'e2e_s6_exec_ds';
+export const EXEC_DS_PG_NAME = 'e2e_s6_exec_pg_ds';
+
+/** 测试数据源连接信息（worker 容器内经容器名直连） */
+export const EXEC_MYSQL = {
+    host: 'middleware-test-mysql',
+    port: 3306,
+    db: 'testdb',
+    schema: null as string | null,
+    user: 'testuser',
+    pass: 'testpass123',
+};
+export const EXEC_PG = {
+    host: 'middleware-test-postgres',
+    port: 5432,
+    db: 'testdb',
+    schema: 'public',
+    user: 'testuser',
+    pass: 'testpass123',
+};
+

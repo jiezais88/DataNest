@@ -208,6 +208,12 @@ docker compose up -d --no-deps app-engineering app-worker
   直接调 `/api/quality/...` 会得到 gateway 的 `NoResourceFoundException` 404。质量接口实际路径形如 `/api/governance/quality/jobs/page`。
 - **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细），本次只记录结果值（`result_value`），
   不做分级/评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`（无规则视为 SUCCESS）。
+- **质量执行层 E2E 测试（sprint6/quality-checks.spec.ts）**：用 `e2e_s6_exec_ds`（MYSQL）/`e2e_s6_exec_pg_ds`（POSTGRESQL）
+  两个真实执行数据源（middleware-test-mysql:3306 / middleware-test-postgres:5432），目标表 `e2e_s6_orders`。数据源密码需为
+  AES-256-GCM 可解密密文，helpers/encrypt.ts 复刻后端 EncryptionConfig 逻辑（密钥默认 `DataNestDefaultEncryptionKey2026`）。
+  执行是异步的（经 XXL-JOB 投递 app-worker），断言通过轮询 `quality_check_batch` 至终态；修改 seed/helpers 后不需要重启服务，
+  但若改了 task-core 执行逻辑需重建 **app-worker**。自动触发用 3 种方式覆盖：真实同步任务成功、真实 DAG 节点成功、播种
+  AUTO_TRIGGER 批次记录。
 
 ## 7. 代码与提交约定
 

@@ -1,5 +1,7 @@
 import {Api} from './api';
 import {psql, scalar} from './db';
+import {mysqlExec, pgExec, quiet} from './exec-db';
+import {encryptDataSourcePassword} from './encrypt';
 import {
     ADMIN,
     TEST_USERS,
@@ -9,6 +11,12 @@ import {
     QUALITY_DB,
     QUALITY_TABLE,
     QUALITY_SYNC_JOB,
+    EXEC_TABLE,
+    EXEC_BAD_TABLE,
+    EXEC_DS_MYSQL_NAME,
+    EXEC_DS_PG_NAME,
+    EXEC_MYSQL,
+    EXEC_PG,
 } from './data';
 
 /**
@@ -193,6 +201,127 @@ export function cleanupQualityData(): void {
     psql(`DELETE FROM sync_job WHERE name = '${QUALITY_SYNC_JOB}'`);
 }
 
+// ==================== 质量检查执行层（Sprint 8） ====================
+
+/** 执行数据源固定 ID（避免 snowflake 冲突） */
+const EXEC_DS_MYSQL_ID = '9000020000000000001';
+const EXEC_DS_PG_ID = '9000020000000000002';
+/** 执行目标表固定 ID（各数据源：成功表 + 失败表） */
+const EXEC_TABLE_MYSQL_OK_ID = '9000020000000000011';
+const EXEC_TABLE_MYSQL_BAD_ID = '9000020000000000012';
+const EXEC_TABLE_PG_OK_ID = '9000020000000000021';
+const EXEC_TABLE_PG_BAD_ID = '9000020000000000022';
+
+/**
+ * 播种执行层目标表：在 middleware-test-mysql / middleware-test-postgres 各建一张
+ * e2e_s6_orders（带 id/order_no/amount 三列 + 若干行），供成功规则执行。幂等。
+ */
+export function seedExecTables(): void {
+    // MYSQL
+    quiet(mysqlExec, `
+        CREATE TABLE IF NOT EXISTS ${EXEC_TABLE} (
+            id BIGINT PRIMARY KEY,
+            order_no VARCHAR(64),
+            amount DECIMAL(18,2)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    mysqlExec(`DELETE FROM ${EXEC_TABLE}`);
+    mysqlExec(`
+        INSERT INTO ${EXEC_TABLE} (id, order_no, amount) VALUES
+        (1, 'A001', 100.00), (2, 'A002', 200.50), (3, NULL, 50.00), (4, 'A003', NULL);
+    `);
+
+    // PG（schema public，元数据表 schema_name=public，执行 SQL 拼 public.表名）
+    quiet(pgExec, `
+        CREATE TABLE IF NOT EXISTS ${EXEC_TABLE} (
+            id BIGINT PRIMARY KEY,
+            order_no VARCHAR(64),
+            amount NUMERIC(18,2)
+        );
+    `);
+    pgExec(`DELETE FROM ${EXEC_TABLE}`);
+    pgExec(`
+        INSERT INTO ${EXEC_TABLE} (id, order_no, amount) VALUES
+        (1, 'P001', 10.00), (2, 'P002', 20.50), (3, NULL, 5.00), (4, 'P003', NULL);
+    `);
+}
+
+/**
+ * 播种执行层元数据（幂等）：
+ * - 2 个执行数据源：e2e_s6_exec_ds（MYSQL，无 schema）+ e2e_s6_exec_pg_ds（POSTGRESQL，schema=public）
+ *   密码用 AES-256-GCM 加密（密钥 DataNestDefaultEncryptionKey2026），确保 GenericSqlExecutor 可解密执行。
+ * - 4 张 metadata_table：每数据源各 1 张成功表（e2e_s6_orders）+ 1 张失败表（e2e_s6_no_such_table，源库不存在）。
+ * - 成功表带 id/order_no/amount 三列 metadata_column。
+ */
+export function seedExecMetadata(): void {
+    // 清理历史（先清外键引用，再清主表）
+    for (const id of [EXEC_TABLE_MYSQL_OK_ID, EXEC_TABLE_MYSQL_BAD_ID, EXEC_TABLE_PG_OK_ID, EXEC_TABLE_PG_BAD_ID]) {
+        psql(`DELETE FROM metadata_column WHERE table_id = ${id}`);
+        psql(`DELETE FROM metadata_table WHERE id = ${id}`);
+    }
+    psql(`DELETE FROM datasource_connection WHERE id IN (${EXEC_DS_MYSQL_ID}, ${EXEC_DS_PG_ID})`);
+
+    const mysqlPass = encryptDataSourcePassword(EXEC_MYSQL.pass);
+    const pgPass = encryptDataSourcePassword(EXEC_PG.pass);
+
+    // 数据源
+    psql(`
+        INSERT INTO datasource_connection
+        (id, name, type, host, port, database_name, schema_name, username, encrypted_password,
+         status, created_at, updated_at, auto_collect_on_save)
+        VALUES
+        (${EXEC_DS_MYSQL_ID}, '${EXEC_DS_MYSQL_NAME}', 'MYSQL', '${EXEC_MYSQL.host}', ${EXEC_MYSQL.port},
+         '${EXEC_MYSQL.db}', NULL, '${EXEC_MYSQL.user}', '${mysqlPass}', 'NORMAL', now(), now(), 0),
+        (${EXEC_DS_PG_ID}, '${EXEC_DS_PG_NAME}', 'POSTGRESQL', '${EXEC_PG.host}', ${EXEC_PG.port},
+         '${EXEC_PG.db}', '${EXEC_PG.schema}', '${EXEC_PG.user}', '${pgPass}', 'NORMAL', now(), now(), 0);
+    `);
+
+    // 元数据表
+    psql(`
+        INSERT INTO metadata_table
+        (id, datasource_id, database_name, schema_name, table_name, table_comment,
+         source_status, source_type, created_at, updated_at)
+        VALUES
+        (${EXEC_TABLE_MYSQL_OK_ID}, ${EXEC_DS_MYSQL_ID}, '${EXEC_MYSQL.db}', NULL, '${EXEC_TABLE}',
+         'e2e s6 mysql 成功表', 'ONLINE', 'EXTERNAL', now(), now()),
+        (${EXEC_TABLE_MYSQL_BAD_ID}, ${EXEC_DS_MYSQL_ID}, '${EXEC_MYSQL.db}', NULL, '${EXEC_BAD_TABLE}',
+         'e2e s6 mysql 失败表(不存在)', 'ONLINE', 'EXTERNAL', now(), now()),
+        (${EXEC_TABLE_PG_OK_ID}, ${EXEC_DS_PG_ID}, '${EXEC_PG.db}', '${EXEC_PG.schema}', '${EXEC_TABLE}',
+         'e2e s6 pg 成功表', 'ONLINE', 'EXTERNAL', now(), now()),
+        (${EXEC_TABLE_PG_BAD_ID}, ${EXEC_DS_PG_ID}, '${EXEC_PG.db}', '${EXEC_PG.schema}', '${EXEC_BAD_TABLE}',
+         'e2e s6 pg 失败表(不存在)', 'ONLINE', 'EXTERNAL', now(), now());
+    `);
+
+    // 成功表字段（供选字段类规则 / 明细表名展示）
+    psql(`
+        INSERT INTO metadata_column
+        (id, table_id, column_name, data_type, column_comment, nullable, ordinal_position,
+         source_type, source_status, created_at, updated_at)
+        VALUES
+        (9000020000000000111, ${EXEC_TABLE_MYSQL_OK_ID}, 'id', 'bigint', '主键', false, 1, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000020000000000112, ${EXEC_TABLE_MYSQL_OK_ID}, 'order_no', 'varchar', '订单号', true, 2, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000020000000000113, ${EXEC_TABLE_MYSQL_OK_ID}, 'amount', 'decimal', '金额', true, 3, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000020000000000211, ${EXEC_TABLE_PG_OK_ID}, 'id', 'bigint', '主键', false, 1, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000020000000000212, ${EXEC_TABLE_PG_OK_ID}, 'order_no', 'varchar', '订单号', true, 2, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000020000000000213, ${EXEC_TABLE_PG_OK_ID}, 'amount', 'numeric', '金额', true, 3, 'EXTERNAL', 'ONLINE', now(), now());
+    `);
+}
+
+/** 清理执行层目标表数据（保留表结构；幂等） */
+export function cleanupExecTables(): void {
+    quiet(mysqlExec, `DROP TABLE IF EXISTS ${EXEC_TABLE}`);
+    quiet(pgExec, `DROP TABLE IF EXISTS ${EXEC_TABLE}`);
+}
+
+/** 清理执行层元数据（数据源 / 元数据表 / 字段，幂等） */
+export function cleanupExecMetadata(): void {
+    for (const id of [EXEC_TABLE_MYSQL_OK_ID, EXEC_TABLE_MYSQL_BAD_ID, EXEC_TABLE_PG_OK_ID, EXEC_TABLE_PG_BAD_ID]) {
+        psql(`DELETE FROM metadata_column WHERE table_id = ${id}`);
+        psql(`DELETE FROM metadata_table WHERE id = ${id}`);
+    }
+    psql(`DELETE FROM datasource_connection WHERE id IN (${EXEC_DS_MYSQL_ID}, ${EXEC_DS_PG_ID})`);
+}
+
 // ==================== 清理 / 播种 ====================
 
 /** 清理全部 Sprint 6 测试数据（幂等） */
@@ -212,6 +341,16 @@ export async function cleanupAll(): Promise<void> {
     } catch (e) {
         console.warn('sprint6 cleanup quality:', ERR(e));
     }
+    try {
+        cleanupExecMetadata();
+    } catch (e) {
+        console.warn('sprint6 cleanup exec metadata:', ERR(e));
+    }
+    try {
+        cleanupExecTables();
+    } catch (e) {
+        console.warn('sprint6 cleanup exec tables:', ERR(e));
+    }
 }
 
 /** 全量播种（globalSetup 调用，幂等） */
@@ -220,4 +359,6 @@ export async function seedAll(): Promise<void> {
     seedTemplates();
     seedQualityMetadata();
     seedSyncJob();
+    seedExecTables();
+    seedExecMetadata();
 }
