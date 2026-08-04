@@ -16,8 +16,10 @@ public class AlertRuleDTO {
     /** DAG / SYNC_JOB / COLLECT_TASK */
     private String objectType;
 
-    private Long objectId;
+    /** 告警对象 ID 列表（多选） */
+    private List<Long> objectIds;
 
+    /** 对象名称冗余，便于列表展示；多对象时以「、」拼接 */
     private String objectName;
 
     /** FAILURE / TIMEOUT / SUCCESS */

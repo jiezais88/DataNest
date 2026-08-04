@@ -2,7 +2,7 @@
 
 > 本文件用于 Sprint 5 内多个 Agent 会话之间的状态同步。每次会话结束时更新状态；新会话进入时先读此文件。
 >
-> **最后更新**：2026-08-03 — 后端实现已完成并编译通过；前端实现已完成（typecheck/lint/build 通过）；待后端部署后联调。
+> **最后更新**：2026-08-04 — 告警规则多对象改造已部署；血缘记录/告警历史清理任务已上线；元数据详情页表级血缘去重已修复部署。
 
 ## Sprint 目标
 
@@ -89,7 +89,9 @@ DAG 流水线。
 - `DagDsConverter` 支持 CONDITION（HTTP 回调 worker）/ SUB_DAG（同步 SUB_WORKFLOW、异步 HTTP 调 engineering）；
   `DolphinSchedulerConfig` 加
   `engineeringCallbackBaseUrl`
-- `DagService` 节点配置校验 + 子 DAG 循环引用检测 + 删除引用守卫 + 告警级联；`DagNodeMapper` 引用查询
+- `DagService` 节点配置校验 + 子 DAG 循环引用检测 + 删除引用守卫 + 告警级联（含 Sprint 4 `dag_alert_config` /
+  `dag_alert_history`）；`DagNodeMapper` 引用查询
+- `DagProjectService.delete` 级联删除项目下所有 DAG 的 `alert_rule`（含关联表）、`dag_alert_config`、`dag_alert_history`
 - `SubDagTriggerController`（`/dev/internal/subdag/trigger` 内部端点，异常返回非 2xx）
 - `SyncJobAlertRuleController` / `DagAlertRuleController` 快捷入口；`SyncJobService` 删除级联告警
 - 修复用户既有编译问题：`SyncJobService.getLogs(Long)` 1 参重载（DagExecutionService.getNodeExecutionLogs 需要）
@@ -105,6 +107,14 @@ DAG 流水线。
 - `ErrorCode` 新增：`SUB_DAG_CYCLE_DETECTED(7101)` / `SUB_DAG_NOT_FOUND(7102)` / `SUB_DAG_DISABLED(7103)` /
   `CONDITION_CONFIG_INVALID(7104)` /
   `ALERT_RULE_NOT_FOUND(7201)` / `ALERT_RULE_OBJECT_INVALID(7202)`
+
+### data-nest-job
+
+- 新增 `LineageRecordCleanupHandler`：每天 03:30 清理 `lineage_record` 中超过保留天数（默认 90 天）的记录
+- 新增 `AlertHistoryCleanupHandler`：每天 04:00 清理 `alert_history` 中超过保留天数（默认 90 天）的记录
+- `JobRegistrar` 自动向 XXL-JOB 注册上述两个平台任务
+- `application.yml` 增加 `datanest.job.lineage-cleanup.retain-days` /
+  `datanest.job.alert-history-cleanup.retain-days` 配置项
 
 ## 变更清单（本会话：前端 + 后端补充字段）
 

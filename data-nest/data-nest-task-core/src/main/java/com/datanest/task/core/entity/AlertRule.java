@@ -22,9 +22,7 @@ public class AlertRule {
     /** 对象类型：DAG / SYNC_JOB / COLLECT_TASK */
     private String objectType;
 
-    private Long objectId;
-
-    /** 对象名称冗余，便于列表展示 */
+    /** 对象名称冗余，便于列表展示；多对象时以「、」拼接 */
     private String objectName;
 
     /** 触发条件 JSON 数组字符串，如 ["FAILURE","TIMEOUT"] */

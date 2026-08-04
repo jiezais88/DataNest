@@ -13,8 +13,9 @@ export interface AlertRuleDTO {
     id?: string;
     /** DAG / SYNC_JOB / COLLECT_TASK */
     objectType: AlertObjectType;
-    objectId: string;
-    /** 冗余名称，服务端解析 */
+    /** 告警对象 ID 列表（多选） */
+    objectIds: string[];
+    /** 冗余名称，服务端解析；多对象时以「、」拼接 */
     objectName?: string;
     /** FAILURE / TIMEOUT / SUCCESS */
     triggerConditions: AlertTriggerType[];
@@ -33,6 +34,8 @@ export interface AlertRuleDTO {
 export interface AlertObjectOption {
     id: string;
     name: string;
+    /** 树形子节点（仅 DAG 类型使用：项目 → DAG） */
+    children?: AlertObjectOption[];
 }
 
 /** 告警发送历史（含对象名联查与发送状态） */

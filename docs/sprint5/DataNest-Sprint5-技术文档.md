@@ -483,15 +483,18 @@ public class SubDagNodeConfig {
 
 ### 9.1 新增/变更表总览
 
-| 表名              | 变更类型 | 说明                                                 |
-|-------------------|----------|------------------------------------------------------|
-| `lineage_record`  | 扩展     | 新增 `source_column`、`target_column` 字段级血缘字段 |
-| `dag_node`        | 扩展     | `node_type` 扩展为 SQL/SYNC/PYTHON/CONDITION/SUB_DAG |
-| `node_execution`  | 扩展     | `node_type` 同步扩展                                 |
-| `alert_rule`      | 新增     | 通用告警规则表                                       |
-| `alert_rule_user` | 新增     | 告警规则与接收用户关联表                             |
-| `alert_history`   | 新增     | 告警发送历史                                         |
-| `sys_user`        | 不变     | 通过 `email` 字段校验用户是否可被选为接收人          |
+| 表名                | 变更类型 | 说明                                                   |
+|---------------------|----------|--------------------------------------------------------|
+| `lineage_record`    | 扩展     | 新增 `source_column`、`target_column` 字段级血缘字段   |
+| `dag_node`          | 扩展     | `node_type` 扩展为 SQL/SYNC/PYTHON/CONDITION/SUB_DAG   |
+| `node_execution`    | 扩展     | `node_type` 同步扩展                                   |
+| `alert_rule`        | 新增     | 通用告警规则表                                         |
+| `alert_rule_user`   | 新增     | 告警规则与接收用户关联表                               |
+| `alert_rule_object` | 新增     | 告警规则与对象（DAG/同步任务/采集任务）多对多关联表    |
+| `alert_history`     | 新增     | 告警发送历史（审计表，规则删除后保留）                 |
+| `dag_alert_config`  | 不变     | Sprint 4 DAG 告警配置；删除 DAG / DAG 项目时级联清理   |
+| `dag_alert_history` | 不变     | Sprint 4 DAG 告警发送记录；删除 DAG 执行历史时级联清理 |
+| `sys_user`          | 不变     | 通过 `email` 字段校验用户是否可被选为接收人            |
 
 ### 9.2 Flyway 迁移脚本
 
@@ -605,6 +608,23 @@ WHERE dag_id IS NOT NULL;
 -- 迁移接收人（按分号拆分邮箱反查 user_id，若找不到则不关联）
 -- 此处为示意，实际迁移脚本需根据项目邮箱唯一性处理
 ```
+
+### 9.3 级联删除与历史保留策略
+
+为保证数据一致性，删除业务对象时按以下规则级联清理：
+
+| 删除对象 | 级联清理内容                                                                                                                                                                |
+|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| DAG      | `dag_node` → `dag_edge` → `node_execution` → `dag_alert_history` → `dag_execution` → `alert_rule`（含 `alert_rule_user` / `alert_rule_object`）→ `dag_alert_config` → `dag` |
+| DAG 项目 | 项目下每个 DAG 按上表级联清理；再删除 `dag_project`                                                                                                                         |
+| 同步任务 | `sync_job_log` → `sync_job_history` → `alert_rule`（含关联表）→ `sync_job`                                                                                                  |
+| 采集任务 | `collect_change_detail` → `collect_execution_log` → `collect_history` → `alert_rule`（含关联表）→ `collect_task`                                                            |
+
+**历史记录保留策略**：
+
+- `alert_history` 为审计数据，删除 `alert_rule` 或业务对象时 **不级联删除**，仅通过 `data-nest-job` 的
+  `alertHistoryCleanupHandler` 按保留天数（默认 90 天）定时清理。
+- `dag_alert_history` 为 Sprint 4 防重发表，无审计要求，跟随 `dag_execution` 删除时级联清理。
 
 ---
 

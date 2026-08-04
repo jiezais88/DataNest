@@ -9,11 +9,10 @@ import com.datanest.common.model.PageResult;
 import com.datanest.engineering.dto.DagProjectCreateRequest;
 import com.datanest.engineering.dto.DagProjectDTO;
 import com.datanest.engineering.dto.DagProjectUpdateRequest;
-import com.datanest.task.core.entity.Dag;
-import com.datanest.task.core.entity.DagExecution;
-import com.datanest.task.core.entity.DagProject;
-import com.datanest.task.core.entity.NodeExecution;
+import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.AlertRuleService;
 import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,11 +46,17 @@ public class DagProjectService {
     private final NodeExecutionMapper nodeExecutionMapper;
     private final DolphinSchedulerClient dolphinSchedulerClient;
     private final SysUserService sysUserService;
+    private final AlertRuleService alertRuleService;
+    private final DagAlertConfigMapper dagAlertConfigMapper;
+    private final DagAlertHistoryMapper dagAlertHistoryMapper;
 
     public DagProjectService(DagProjectMapper dagProjectMapper, DagMapper dagMapper,
                              DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                              DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
-                             DolphinSchedulerClient dolphinSchedulerClient, SysUserService sysUserService) {
+                             DolphinSchedulerClient dolphinSchedulerClient, SysUserService sysUserService,
+                             AlertRuleService alertRuleService,
+                             DagAlertConfigMapper dagAlertConfigMapper,
+                             DagAlertHistoryMapper dagAlertHistoryMapper) {
         this.dagProjectMapper = dagProjectMapper;
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
@@ -60,6 +65,9 @@ public class DagProjectService {
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.dolphinSchedulerClient = dolphinSchedulerClient;
         this.sysUserService = sysUserService;
+        this.alertRuleService = alertRuleService;
+        this.dagAlertConfigMapper = dagAlertConfigMapper;
+        this.dagAlertHistoryMapper = dagAlertHistoryMapper;
     }
 
     /**
@@ -153,17 +161,22 @@ public class DagProjectService {
 
         // 2. 级联删除项目下所有 DAG 的 DB 数据
         for (Dag dag : dags) {
-            dagNodeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagNode>().eq("dag_id", dag.getId()));
-            dagEdgeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagEdge>().eq("dag_id", dag.getId()));
+            Long dagId = dag.getId();
+            dagNodeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagNode>().eq("dag_id", dagId));
+            dagEdgeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagEdge>().eq("dag_id", dagId));
             // 级联删除执行历史（与 DagService.delete 对齐：先删 node_execution 再删 dag_execution）
-            List<DagExecution> executions = dagExecutionMapper.selectByDagId(dag.getId());
+            List<DagExecution> executions = dagExecutionMapper.selectByDagId(dagId);
             if (executions != null && !executions.isEmpty()) {
-                for (DagExecution execution : executions) {
-                    nodeExecutionMapper.delete(new QueryWrapper<NodeExecution>().eq("execution_id", execution.getId()));
-                }
-                dagExecutionMapper.delete(new QueryWrapper<DagExecution>().eq("dag_id", dag.getId()));
+                List<Long> executionIds = executions.stream().map(DagExecution::getId).toList();
+                nodeExecutionMapper.delete(new QueryWrapper<NodeExecution>().in("execution_id", executionIds));
+                // Sprint 5 P0：级联删除 Sprint 4 DAG 告警发送历史（按 execution_id）
+                dagAlertHistoryMapper.delete(new QueryWrapper<DagAlertHistory>().in("execution_id", executionIds));
+                dagExecutionMapper.delete(new QueryWrapper<DagExecution>().eq("dag_id", dagId));
             }
-            dagMapper.deleteById(dag.getId());
+            // Sprint 5 P0：级联删除通用告警规则及 Sprint 4 DAG 告警配置
+            alertRuleService.deleteByObject(AlertConstants.OBJECT_TYPE_DAG, dagId);
+            dagAlertConfigMapper.delete(new QueryWrapper<DagAlertConfig>().eq("dag_id", dagId));
+            dagMapper.deleteById(dagId);
         }
 
         // 3. 删 DB 项目

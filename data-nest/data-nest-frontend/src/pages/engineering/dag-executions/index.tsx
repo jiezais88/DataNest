@@ -198,7 +198,7 @@ export default function DagExecutionsGlobalPage() {
         next.set('page', String(page));
         if (pageSize !== 10) next.set('pageSize', String(pageSize));
         if (next.toString() === searchParams.toString()) return;
-        setSearchParams(next, {replace: true});
+        setSearchParams(next, {replace: true, state: location.state});
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [applied, page, pageSize]);
 
@@ -208,7 +208,7 @@ export default function DagExecutionsGlobalPage() {
             const next = new URLSearchParams(searchParams);
             next.delete('dagId');
             next.delete('dagName');
-            setSearchParams(next, {replace: true});
+            setSearchParams(next, {replace: true, state: location.state});
         }
         if (applied.dagId) {
             const rest = {...applied};

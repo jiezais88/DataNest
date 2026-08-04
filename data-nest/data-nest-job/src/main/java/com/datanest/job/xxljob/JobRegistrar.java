@@ -50,6 +50,10 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("dagExecutionSyncHandler", dagSyncCron);
         // Sprint 3：DAG 执行历史清理（每天凌晨 3 点，保留 30 天）
         platformJobs.put("dagExecutionHistoryCleanupHandler", "0 0 3 * * ?");
+        // Sprint 5：血缘记录清理（默认每天凌晨 3 点 30 分，保留 90 天）
+        platformJobs.put("lineageRecordCleanupHandler", "0 30 3 * * ?");
+        // Sprint 5：告警发送历史清理（默认每天凌晨 4 点，保留 90 天）
+        platformJobs.put("alertHistoryCleanupHandler", "0 0 4 * * ?");
         // 卡死 RUNNING 收割（每小时，阈值 datanest.task.stuck-running-timeout-minutes 默认 120 分钟）
         platformJobs.put("stuckExecutionReaperHandler", "0 0 * * * ?");
         // 同步任务持久化重试扫描（每小时，实际触发时间 = next_retry_at 之后的第一个整点扫描周期）
@@ -103,6 +107,8 @@ public class JobRegistrar implements ApplicationRunner {
             case "collectHistoryCleanupHandler" -> "采集任务历史清理";
             case "dagExecutionSyncHandler" -> "DAG 执行状态同步";
             case "dagExecutionHistoryCleanupHandler" -> "DAG 执行历史清理";
+            case "lineageRecordCleanupHandler" -> "血缘记录清理";
+            case "alertHistoryCleanupHandler" -> "告警发送历史清理";
             case "stuckExecutionReaperHandler" -> "卡死 RUNNING 执行收割";
             case "syncJobRetryHandler" -> "同步任务失败重试扫描";
             case "dagNodeTimeoutAlertHandler" -> "DAG 节点超时告警扫描";

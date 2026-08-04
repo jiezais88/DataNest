@@ -12,7 +12,7 @@ import ReactFlow, {
     useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import {Select, Spin} from 'antd';
+import {Select, Spin, Tooltip} from 'antd';
 import {getLineageColumns} from '../../../../api/lineage';
 import {listMetadataColumns} from '../../../../api/metadata';
 import type {MetadataColumn} from '../../../../types/metadata';
@@ -51,9 +51,11 @@ function ColumnNode({data}: NodeProps<FieldLineageData>) {
                 className="!w-[8px] !h-[8px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface"
                 style={{left: -5}}
             />
-            <div className="text-ds-small font-semibold text-ds-text-primary truncate" title={data.label}>
-                {data.label}
-            </div>
+            <Tooltip title={data.label} placement="top">
+                <div className="text-ds-small font-semibold text-ds-text-primary truncate" title={data.label}>
+                    {data.label}
+                </div>
+            </Tooltip>
             <div className="text-ds-nano text-ds-text-muted mt-0.5">
                 {data.current ? '当前字段' : data.upstream ? '来源字段' : data.downstream ? '下游字段' : '中间字段'}
             </div>
@@ -220,6 +222,7 @@ export default function FieldLineagePanel({tableId, tableName}: FieldLineagePane
                         nodesConnectable={false}
                         nodesDraggable
                         panActivationKeyCode={null}
+                        proOptions={{hideAttribution: true}}
                     >
                         <Background gap={20} color="#e2e6ed"/>
                     </ReactFlow>

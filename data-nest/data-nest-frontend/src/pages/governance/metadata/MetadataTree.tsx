@@ -18,6 +18,7 @@ import type {MetadataDatasource, MetadataTable, MetadataTreeNode} from '../../..
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
 import DsSpinner from '../../../components/DsSpinner';
 import {isWithoutSchema, SourceTypeEnum} from '../../../constants/datasource';
+import {Tooltip} from 'antd';
 
 interface MetadataTreeProps {
     selectedNode: MetadataTreeNode | null;
@@ -358,11 +359,13 @@ export default function MetadataTree({
                     )}
                     {!hasChildren && <span className="w-4 flex-shrink-0"/>}
                     {renderIcon(node)}
-                    <span className="truncate">{node.name}</span>
-                    {node.count !== undefined && node.count > 0 && (
+                    <Tooltip title={node.name} placement="top">
+                        <span className="truncate min-w-0 flex-1" title={node.name}>{node.name}</span>
+                    </Tooltip>
+                    {node.count !== undefined && node.count > 0 && node.type !== 'table' && (
                         <span
-                            className="ml-auto px-ds-1.5 py-ds-0.5 text-ds-caption bg-ds-bg-hover text-ds-text-muted rounded-ds-xs">
-                            {node.type === 'table' ? `${node.count}列` : `${node.count}表`}
+                            className="ml-auto text-ds-nano text-ds-text-muted tabular-nums">
+                            {node.count}表
                         </span>
                     )}
                     {deletedFlag && (

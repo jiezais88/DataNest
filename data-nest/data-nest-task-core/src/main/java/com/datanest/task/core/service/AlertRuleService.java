@@ -23,6 +23,7 @@ import java.util.*;
 /**
  * 通用告警规则服务（CRUD + 历史 + 对象选择）。
  * Sprint 5 决策：收件人改为平台用户（alert_rule_user 存 user_id，发送时反查 sys_user.email）。
+ * Sprint 5 补充：一条规则支持绑定多个对象（alert_rule_object 关联表）。
  * 本服务不依赖 MailService，便于 system-service 通过 @Import 引入而无需邮件依赖；
  * 实际发邮件逻辑在 {@link AlertFiringService}。
  */
@@ -34,23 +35,29 @@ public class AlertRuleService {
 
     private final AlertRuleMapper alertRuleMapper;
     private final AlertRuleUserMapper alertRuleUserMapper;
+    private final AlertRuleObjectMapper alertRuleObjectMapper;
     private final AlertHistoryMapper alertHistoryMapper;
     private final DagMapper dagMapper;
+    private final DagProjectMapper dagProjectMapper;
     private final SyncJobMapper syncJobMapper;
     private final CollectTaskMapper collectTaskMapper;
     private final SysUserService sysUserService;
 
     public AlertRuleService(AlertRuleMapper alertRuleMapper,
                             AlertRuleUserMapper alertRuleUserMapper,
+                            AlertRuleObjectMapper alertRuleObjectMapper,
                             AlertHistoryMapper alertHistoryMapper,
                             DagMapper dagMapper,
+                            DagProjectMapper dagProjectMapper,
                             SyncJobMapper syncJobMapper,
                             CollectTaskMapper collectTaskMapper,
                             SysUserService sysUserService) {
         this.alertRuleMapper = alertRuleMapper;
         this.alertRuleUserMapper = alertRuleUserMapper;
+        this.alertRuleObjectMapper = alertRuleObjectMapper;
         this.alertHistoryMapper = alertHistoryMapper;
         this.dagMapper = dagMapper;
+        this.dagProjectMapper = dagProjectMapper;
         this.syncJobMapper = syncJobMapper;
         this.collectTaskMapper = collectTaskMapper;
         this.sysUserService = sysUserService;
@@ -65,6 +72,7 @@ public class AlertRuleService {
         }
         AlertRuleDTO dto = toDTO(rule);
         dto.setUserIds(alertRuleUserMapper.selectUserIdsByRuleId(id));
+        dto.setObjectIds(loadObjectIdsByRuleId(id));
         applyUsernameNames(List.of(rule), List.of(dto));
         return dto;
     }
@@ -72,12 +80,17 @@ public class AlertRuleService {
     public PageResult<AlertRuleDTO> listRules(int page, int pageSize, String objectType, String keyword) {
         IPage<AlertRule> p = alertRuleMapper.selectRulePage(new Page<>(page, pageSize), objectType, keyword);
         List<AlertRule> records = p.getRecords();
-        Map<Long, List<Long>> usersByRule = records.isEmpty()
-                ? Collections.emptyMap() : loadUserIdsByRuleIds(records.stream().map(AlertRule::getId).toList());
+        if (records.isEmpty()) {
+            return new PageResult<>(Collections.emptyList(), p.getTotal(), page, pageSize);
+        }
+        List<Long> ruleIds = records.stream().map(AlertRule::getId).toList();
+        Map<Long, List<Long>> usersByRule = loadUserIdsByRuleIds(ruleIds);
+        Map<Long, List<Long>> objectsByRule = loadObjectIdsByRuleIds(ruleIds);
         List<AlertRuleDTO> dtos = records.stream()
                 .map(rule -> {
                     AlertRuleDTO dto = toDTO(rule);
                     dto.setUserIds(usersByRule.getOrDefault(rule.getId(), Collections.emptyList()));
+                    dto.setObjectIds(objectsByRule.getOrDefault(rule.getId(), Collections.emptyList()));
                     return dto;
                 })
                 .toList();
@@ -91,11 +104,12 @@ public class AlertRuleService {
         LocalDateTime now = LocalDateTime.now();
         AlertRule rule = new AlertRule();
         applyFields(rule, dto);
-        rule.setObjectName(resolveObjectName(dto.getObjectType(), dto.getObjectId()));
+        rule.setObjectName(resolveObjectNames(dto.getObjectType(), dto.getObjectIds()));
         rule.setCreatedAt(now);
         rule.setUpdatedAt(now);
         alertRuleMapper.insert(rule);
         setRuleUsers(rule.getId(), dto.getUserIds());
+        saveRuleObjects(rule.getId(), dto.getObjectType(), dto.getObjectIds());
         return getRule(rule.getId());
     }
 
@@ -109,14 +123,16 @@ public class AlertRuleService {
             dto.setObjectType(dto.getObjectType().toUpperCase());
         }
         applyFields(rule, dto);
-        if (StringUtils.hasText(dto.getObjectType()) && dto.getObjectId() != null) {
-            // 对象变化时重新解析对象名，保证列表展示一致
-            rule.setObjectName(resolveObjectName(dto.getObjectType(), dto.getObjectId()));
+        if (StringUtils.hasText(dto.getObjectType()) && dto.getObjectIds() != null && !dto.getObjectIds().isEmpty()) {
+            rule.setObjectName(resolveObjectNames(dto.getObjectType(), dto.getObjectIds()));
         }
         rule.setUpdatedAt(LocalDateTime.now());
         alertRuleMapper.updateById(rule);
         if (dto.getUserIds() != null) {
             setRuleUsers(id, dto.getUserIds());
+        }
+        if (dto.getObjectIds() != null && !dto.getObjectIds().isEmpty()) {
+            saveRuleObjects(id, dto.getObjectType(), dto.getObjectIds());
         }
         return getRule(id);
     }
@@ -128,6 +144,7 @@ public class AlertRuleService {
         }
         alertRuleMapper.deleteById(id);
         alertRuleUserMapper.deleteByRuleId(id);
+        alertRuleObjectMapper.deleteByRuleId(id);
     }
 
     @Transactional
@@ -169,17 +186,32 @@ public class AlertRuleService {
 
     /**
      * 新增规则时可选对象下拉。
+     * DAG 类型按「项目 → DAG」树形返回；其他类型平铺返回。
      */
     public List<AlertObjectOptionDTO> listObjectOptions(String objectType) {
-        if (AlertConstants.OBJECT_TYPE_DAG.equalsIgnoreCase(objectType)) {
-            return dagMapper.selectList(new QueryWrapper<Dag>().select("id", "name"))
-                    .stream().map(d -> new AlertObjectOptionDTO(d.getId(), d.getName())).toList();
+        String type = objectType == null ? "" : objectType.toUpperCase();
+        if (AlertConstants.OBJECT_TYPE_DAG.equals(type)) {
+            List<DagProject> projects = dagProjectMapper.selectList(null);
+            List<Dag> dags = dagMapper.selectList(null);
+            Map<Long, List<Dag>> dagByProject = new HashMap<>();
+            for (Dag dag : dags) {
+                dagByProject.computeIfAbsent(dag.getProjectId(), k -> new ArrayList<>()).add(dag);
+            }
+            List<AlertObjectOptionDTO> tree = new ArrayList<>();
+            for (DagProject project : projects) {
+                List<AlertObjectOptionDTO> children = dagByProject.getOrDefault(project.getId(), Collections.emptyList())
+                        .stream()
+                        .map(d -> new AlertObjectOptionDTO(d.getId(), d.getName()))
+                        .toList();
+                tree.add(new AlertObjectOptionDTO(project.getId(), project.getName(), children));
+            }
+            return tree;
         }
-        if (AlertConstants.OBJECT_TYPE_SYNC_JOB.equalsIgnoreCase(objectType)) {
+        if (AlertConstants.OBJECT_TYPE_SYNC_JOB.equals(type)) {
             return syncJobMapper.selectList(new QueryWrapper<SyncJob>().select("id", "name"))
                     .stream().map(s -> new AlertObjectOptionDTO(s.getId(), s.getName())).toList();
         }
-        if (AlertConstants.OBJECT_TYPE_COLLECT_TASK.equalsIgnoreCase(objectType)) {
+        if (AlertConstants.OBJECT_TYPE_COLLECT_TASK.equals(type)) {
             return collectTaskMapper.selectList(new QueryWrapper<CollectTask>().select("id", "name"))
                     .stream().map(c -> new AlertObjectOptionDTO(c.getId(), c.getName())).toList();
         }
@@ -201,7 +233,7 @@ public class AlertRuleService {
     public AlertRuleDTO upsertRuleByObject(String objectType, Long objectId, AlertRuleDTO dto) {
         AlertRule existing = resolveRule(objectType, objectId);
         dto.setObjectType(objectType);
-        dto.setObjectId(objectId);
+        dto.setObjectIds(List.of(objectId));
         if (existing == null) {
             return createRule(dto);
         }
@@ -220,15 +252,17 @@ public class AlertRuleService {
     // ==================== 供触发侧使用 ====================
 
     /**
-     * 按对象解析告警规则（同一对象最多一条，uk_alert_rule_object 保证）。
+     * 按对象解析告警规则（多对象时返回包含该对象的规则）。
      */
     public AlertRule resolveRule(String objectType, Long objectId) {
         if (objectType == null || objectId == null) {
             return null;
         }
-        return alertRuleMapper.selectOne(new QueryWrapper<AlertRule>()
-                .eq("object_type", objectType.toUpperCase())
-                .eq("object_id", objectId));
+        List<AlertRuleObject> refs = alertRuleObjectMapper.selectByObject(objectType.toUpperCase(), objectId);
+        if (refs.isEmpty()) {
+            return null;
+        }
+        return alertRuleMapper.selectById(refs.get(0).getAlertRuleId());
     }
 
     public boolean isEnabled(AlertRule rule) {
@@ -247,6 +281,28 @@ public class AlertRuleService {
         }
     }
 
+    /**
+     * 按对象删除告警规则（删除 DAG/同步任务/采集任务时级联清理）。
+     * 仅移除该对象关联；若规则无其他对象则删除整条规则。
+     */
+    @Transactional
+    public void deleteByObject(String objectType, Long objectId) {
+        if (objectType == null || objectId == null) {
+            return;
+        }
+        String type = objectType.toUpperCase();
+        List<AlertRuleObject> refs = alertRuleObjectMapper.selectByObject(type, objectId);
+        for (AlertRuleObject ref : refs) {
+            Long ruleId = ref.getAlertRuleId();
+            alertRuleObjectMapper.deleteById(ref.getId());
+            List<AlertRuleObject> remaining = alertRuleObjectMapper.selectByRuleId(ruleId);
+            if (remaining.isEmpty()) {
+                alertRuleMapper.deleteById(ruleId);
+                alertRuleUserMapper.deleteByRuleId(ruleId);
+            }
+        }
+    }
+
     // ==================== private ====================
 
     private Map<Long, List<Long>> loadUserIdsByRuleIds(List<Long> ruleIds) {
@@ -260,6 +316,49 @@ public class AlertRuleService {
         return map;
     }
 
+    private List<Long> loadObjectIdsByRuleId(Long ruleId) {
+        if (ruleId == null) {
+            return Collections.emptyList();
+        }
+        return alertRuleObjectMapper.selectByRuleId(ruleId).stream()
+                .map(AlertRuleObject::getObjectId)
+                .toList();
+    }
+
+    private Map<Long, List<Long>> loadObjectIdsByRuleIds(List<Long> ruleIds) {
+        if (ruleIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, List<Long>> map = new HashMap<>();
+        // 批量查询避免 N+1
+        QueryWrapper<AlertRuleObject> wrapper = new QueryWrapper<>();
+        wrapper.in("alert_rule_id", ruleIds);
+        for (AlertRuleObject aro : alertRuleObjectMapper.selectList(wrapper)) {
+            map.computeIfAbsent(aro.getAlertRuleId(), k -> new ArrayList<>()).add(aro.getObjectId());
+        }
+        return map;
+    }
+
+    private void saveRuleObjects(Long ruleId, String objectType, List<Long> objectIds) {
+        alertRuleObjectMapper.deleteByRuleId(ruleId);
+        if (objectIds == null || objectIds.isEmpty()) {
+            return;
+        }
+        String type = objectType == null ? "" : objectType.toUpperCase();
+        LocalDateTime now = LocalDateTime.now();
+        List<AlertRuleObject> list = objectIds.stream().filter(Objects::nonNull).distinct().map(oid -> {
+            AlertRuleObject aro = new AlertRuleObject();
+            aro.setId(IdWorker.getId());
+            aro.setAlertRuleId(ruleId);
+            aro.setObjectType(type);
+            aro.setObjectId(oid);
+            aro.setObjectName(resolveObjectName(type, oid));
+            aro.setCreatedAt(now);
+            return aro;
+        }).toList();
+        alertRuleObjectMapper.insertBatch(list);
+    }
+
     private void validate(AlertRuleDTO dto) {
         String objectType = dto.getObjectType() == null ? null : dto.getObjectType().toUpperCase();
         if (!AlertConstants.OBJECT_TYPE_DAG.equals(objectType)
@@ -267,8 +366,8 @@ public class AlertRuleService {
                 && !AlertConstants.OBJECT_TYPE_COLLECT_TASK.equals(objectType)) {
             throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "对象类型非法: " + dto.getObjectType());
         }
-        if (dto.getObjectId() == null) {
-            throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "告警对象 ID 不能为空");
+        if (dto.getObjectIds() == null || dto.getObjectIds().isEmpty()) {
+            throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "至少选择一个告警对象");
         }
         if (dto.getTriggerConditions() == null || dto.getTriggerConditions().isEmpty()) {
             throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "至少选择一个触发条件");
@@ -291,11 +390,10 @@ public class AlertRuleService {
         if (dto.getObjectType() != null) {
             rule.setObjectType(dto.getObjectType().toUpperCase());
         }
-        if (dto.getObjectId() != null) {
-            rule.setObjectId(dto.getObjectId());
-        }
-        if (StringUtils.hasText(dto.getObjectName())) {
-            rule.setObjectName(dto.getObjectName());
+        if (dto.getEnabled() != null) {
+            rule.setEnabled(Boolean.TRUE.equals(dto.getEnabled()) ? 1 : 0);
+        } else if (rule.getEnabled() == null) {
+            rule.setEnabled(1);
         }
         if (dto.getTriggerConditions() != null) {
             rule.setTriggerConditions(JSON.toJSONString(dto.getTriggerConditions()));
@@ -305,17 +403,24 @@ public class AlertRuleService {
         } else if (rule.getTimeoutMinutes() == null) {
             rule.setTimeoutMinutes(30);
         }
-        if (dto.getEnabled() != null) {
-            rule.setEnabled(Boolean.TRUE.equals(dto.getEnabled()) ? 1 : 0);
-        } else if (rule.getEnabled() == null) {
-            rule.setEnabled(1);
+    }
+
+    private String resolveObjectNames(String objectType, List<Long> objectIds) {
+        if (objectType == null || objectIds == null || objectIds.isEmpty()) {
+            return null;
         }
+        String type = objectType.toUpperCase();
+        List<String> names = objectIds.stream()
+                .map(oid -> resolveObjectName(type, oid))
+                .filter(StringUtils::hasText)
+                .toList();
+        return names.isEmpty() ? null : String.join("、", names);
     }
 
     /**
-     * 服务端解析对象名，保证与对象表一致（避免前端传参不一致）。
+     * 按对象类型和 ID 解析对象名称（供触发侧构建邮件主题/正文使用）。
      */
-    private String resolveObjectName(String objectType, Long objectId) {
+    public String resolveObjectName(String objectType, Long objectId) {
         if (objectType == null || objectId == null) {
             return null;
         }
@@ -363,7 +468,6 @@ public class AlertRuleService {
         AlertRuleDTO dto = new AlertRuleDTO();
         dto.setId(rule.getId());
         dto.setObjectType(rule.getObjectType());
-        dto.setObjectId(rule.getObjectId());
         dto.setObjectName(rule.getObjectName());
         dto.setTriggerConditions(parseConditions(rule.getTriggerConditions()));
         dto.setTimeoutMinutes(rule.getTimeoutMinutes());

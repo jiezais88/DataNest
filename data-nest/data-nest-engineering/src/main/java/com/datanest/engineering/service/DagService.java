@@ -13,6 +13,7 @@ import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.ConditionNodeConfig;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.AlertRuleService;
 import com.datanest.task.core.service.DagTopologyService;
 import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
@@ -51,14 +52,18 @@ public class DagService {
     private final DagProjectService dagProjectService;   // 用于校验项目存在（暂不直接调，留接口）
     private final DagVersionService dagVersionService;
     private final SysUserService sysUserService;
-    private final AlertRuleMapper alertRuleMapper;
+    private final AlertRuleService alertRuleService;
+    private final DagAlertConfigMapper dagAlertConfigMapper;
+    private final DagAlertHistoryMapper dagAlertHistoryMapper;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                       DagTopologyService topologyService, DolphinSchedulerClient dolphinSchedulerClient,
                       DagDsConverter dagDsConverter, DagProjectService dagProjectService,
                       DagVersionService dagVersionService, SysUserService sysUserService,
-                      AlertRuleMapper alertRuleMapper) {
+                      AlertRuleService alertRuleService,
+                      DagAlertConfigMapper dagAlertConfigMapper,
+                      DagAlertHistoryMapper dagAlertHistoryMapper) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -70,7 +75,9 @@ public class DagService {
         this.dagProjectService = dagProjectService;
         this.dagVersionService = dagVersionService;
         this.sysUserService = sysUserService;
-        this.alertRuleMapper = alertRuleMapper;
+        this.alertRuleService = alertRuleService;
+        this.dagAlertConfigMapper = dagAlertConfigMapper;
+        this.dagAlertHistoryMapper = dagAlertHistoryMapper;
     }
 
     @Transactional
@@ -220,16 +227,19 @@ public class DagService {
         // 1. DB 清理：级联删除 execution 及 node_execution
         List<DagExecution> executions = dagExecutionMapper.selectByDagId(id);
         if (executions != null && !executions.isEmpty()) {
-            for (DagExecution execution : executions) {
-                nodeExecutionMapper.delete(new QueryWrapper<NodeExecution>().eq("execution_id", execution.getId()));
-            }
+            List<Long> executionIds = executions.stream().map(DagExecution::getId).toList();
+            nodeExecutionMapper.delete(new QueryWrapper<NodeExecution>().in("execution_id", executionIds));
+            // Sprint 5 P0：级联删除 Sprint 4 DAG 告警发送历史（按 execution_id）
+            dagAlertHistoryMapper.delete(new QueryWrapper<DagAlertHistory>().in("execution_id", executionIds));
             dagExecutionMapper.delete(new QueryWrapper<DagExecution>().eq("dag_id", id));
             logger.info("级联删除 DAG 执行历史: dagId={}, executions={}", id, executions.size());
         }
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
         // Sprint 5：删除 DAG 时级联删除关联告警规则（PRD §7）
-        alertRuleMapper.deleteByObject(AlertConstants.OBJECT_TYPE_DAG, id);
+        alertRuleService.deleteByObject(AlertConstants.OBJECT_TYPE_DAG, id);
+        // Sprint 5 P0：级联删除 Sprint 4 DAG 告警配置
+        dagAlertConfigMapper.delete(new QueryWrapper<DagAlertConfig>().eq("dag_id", id));
         dagMapper.deleteById(id);
 
         // 2. DS 清理：事务提交后执行（先删定时调度，否则 schedule 孤儿会继续触发已删除的工作流；再下线 + 删除工作流）

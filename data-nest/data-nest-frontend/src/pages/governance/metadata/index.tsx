@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
-import {Table} from 'antd';
+import {Table, Tabs, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {ALL_ROLES, GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
@@ -21,11 +21,13 @@ import type {LineageRecord} from '../../../types/lineage';
 import MetadataTree from './MetadataTree';
 import EmptyState from '../../../components/EmptyState';
 import {previewMetadataTable, type PreviewResult} from '../../../api/preview';
-import PreviewModal from '../../../components/PreviewModal';
 import {
+    HiOutlineArrowPath,
     HiOutlineBookOpen,
     HiOutlineCircleStack,
     HiOutlineEye,
+    HiOutlineInformationCircle,
+    HiOutlineQueueList,
     HiOutlineShare,
     HiOutlineTableCells
 } from 'react-icons/hi2';
@@ -71,10 +73,10 @@ export default function MetadataPage() {
     } | null>(null);
     const [hasRoots, setHasRoots] = useState(false);
 
-    const [previewOpen, setPreviewOpen] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
-    const [previewTitle, setPreviewTitle] = useState('');
+    const [previewError, setPreviewError] = useState<string | null>(null);
+    const [detailTab, setDetailTab] = useState('basic');
 
     const canPreview = useHasRole(...ALL_ROLES);
 
@@ -83,6 +85,8 @@ export default function MetadataPage() {
         setColumns([]);
         setHighlightedColumnId(null);
         setLineageRecords([]);
+        setPreviewResult(null);
+        setPreviewError(null);
     }, []);
 
     const resetLists = useCallback(() => {
@@ -203,10 +207,10 @@ export default function MetadataPage() {
                 try {
                     const lineageResult = await getLineageByTargetTable(tableName);
                     const records = lineageResult.data || [];
-                    // 同一 DAG/节点/源表/目标表/血缘类型会随每次执行重复落库，按 key 去重并保留最新记录
+                    // 同一源表/目标表/血缘类型会随不同 DAG/多次执行重复落库，按 key 去重并保留最新记录
                     const seen = new Map<string, LineageRecord>();
                     for (const r of records) {
-                        const key = [r.sourceTable, r.targetTable, r.dagId, r.lineageType, r.nodeId].join('|');
+                        const key = [r.sourceTable, r.targetTable, r.lineageType].join('|');
                         const existing = seen.get(key);
                         if (!existing || (r.createdAt && existing.createdAt && r.createdAt > existing.createdAt)) {
                             seen.set(key, r);
@@ -379,12 +383,11 @@ export default function MetadataPage() {
         );
     }, [editingCell, canWrite, startEdit]);
 
-    const handlePreviewTable = async (table: MetadataTable) => {
+    const handlePreviewTable = useCallback(async (table: MetadataTable) => {
         if (!table.id || !canPreview) return;
-        setPreviewOpen(true);
         setPreviewLoading(true);
-        setPreviewTitle(`${table.databaseName}${table.schemaName && table.schemaName !== table.databaseName ? ` / ${table.schemaName}` : ''} / ${table.tableName}`);
         setPreviewResult(null);
+        setPreviewError(null);
         try {
             const result = await previewMetadataTable(table.id);
             if (result.data) {
@@ -394,17 +397,28 @@ export default function MetadataPage() {
                     rowCount: result.data.rowCount,
                 });
             }
+        } catch (err) {
+            setPreviewError(err instanceof Error ? err.message : '预览数据加载失败');
         } finally {
             setPreviewLoading(false);
         }
-    };
+    }, [canPreview]);
+
+    // 切换到「数据预览」Tab 时自动加载预览数据（失败时不自动重试）
+    useEffect(() => {
+        if (detailTab === 'preview' && selectedTable?.id && canPreview && !previewResult && !previewLoading && !previewError) {
+            handlePreviewTable(selectedTable);
+        }
+    }, [detailTab, selectedTable, canPreview, previewResult, previewLoading, previewError, handlePreviewTable]);
 
     const databaseColumns = useMemo<ColumnsType<string>>(() => [
         {
             title: '库名',
             ellipsis: true,
             render: (db: string) => (
-                <span className="text-ds-small text-ds-accent font-medium" title={db}>{db}</span>
+                <Tooltip title={db} placement="top">
+                    <span className="text-ds-small text-ds-accent font-medium" title={db}>{db}</span>
+                </Tooltip>
             ),
         },
     ], []);
@@ -439,7 +453,9 @@ export default function MetadataPage() {
             title: 'Schema',
             ellipsis: true,
             render: (schema: string) => (
-                <span className="text-ds-small text-ds-accent font-medium" title={schema}>{schema}</span>
+                <Tooltip title={schema} placement="top">
+                    <span className="text-ds-small text-ds-accent font-medium" title={schema}>{schema}</span>
+                </Tooltip>
             ),
         },
     ], []);
@@ -476,7 +492,9 @@ export default function MetadataPage() {
             width: COL.NAME,
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-small text-ds-accent font-medium" title={v}>{v}</span>
+                <Tooltip title={v} placement="top">
+                    <span className="text-ds-small text-ds-accent font-medium" title={v}>{v}</span>
+                </Tooltip>
             ),
         },
         {
@@ -493,7 +511,9 @@ export default function MetadataPage() {
             width: COL.NAME,
             ellipsis: true,
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+                <Tooltip title={v || '-'} placement="top">
+                    <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+                </Tooltip>
             ),
         },
         {
@@ -502,7 +522,9 @@ export default function MetadataPage() {
             width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+                <Tooltip title={v || '-'} placement="top">
+                    <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+                </Tooltip>
             ),
         },
         {
@@ -520,7 +542,9 @@ export default function MetadataPage() {
             width: COL.USERNAME,
             ellipsis: true,
             render: (v?: string) => (
-                <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+                <Tooltip title={v || '-'} placement="top">
+                    <span className="text-ds-small text-ds-text-secondary" title={v || '-'}>{v || '-'}</span>
+                </Tooltip>
             ),
         },
         {
@@ -565,7 +589,9 @@ export default function MetadataPage() {
             dataIndex: 'columnName',
             ellipsis: true,
             render: (v: string) => (
-                <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
+                <Tooltip title={v} placement="top">
+                    <span className="text-ds-small text-ds-text-primary font-medium" title={v}>{v}</span>
+                </Tooltip>
             ),
         },
         {
@@ -610,7 +636,6 @@ export default function MetadataPage() {
 
     const renderTableDetail = () => {
         if (!selectedTable) return null;
-        // Sprint 4：由 SQL/Python/同步任务自动注册的表展示来源信息（PRD §6.6.3）
         const sourceType = selectedTable.taskSourceType || selectedTable.sourceType;
         const isTaskRegistered = ['SYNC', 'SQL', 'PYTHON'].includes(sourceType || '') || selectedTable.sourceDagId != null;
         const SOURCE_TYPE_LABEL: Record<string, string> = {
@@ -628,106 +653,160 @@ export default function MetadataPage() {
             SYNC: 'bg-ds-success-light text-ds-success',
             PYTHON: 'bg-ds-warning-light text-ds-warning',
         };
-        return (
-            <div>
-                <div className="text-ds-small text-ds-text-muted mb-ds-4">
-                    {selectedTable.databaseName}
-                    {selectedTable.schemaName && selectedTable.schemaName !== selectedTable.databaseName && (
-                        <span> / <span className="text-ds-text-primary font-semibold">{selectedTable.schemaName}</span></span>
-                    )}
-                    <span> / <span
-                        className="text-ds-text-primary font-semibold">{selectedTable.tableName}</span></span>
-                </div>
+        const fullTableName = `${selectedTable.databaseName}.${selectedTable.tableName}`;
 
-                <div className="mb-ds-6">
-                    <div className="flex items-center justify-between mb-ds-3">
-                        <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-0">
-                            表信息
+        const renderBasicInfo = () => (
+            <div className="space-y-ds-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-5">
+                    {/* 表基础信息 */}
+                    <div className="border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
+                        <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider mb-ds-4 flex items-center gap-ds-2">
+                            <HiOutlineTableCells size={16} className="text-ds-accent"/>
+                            表基础信息
                         </h3>
-                        <div className="flex items-center gap-ds-2">
-                            {/* Sprint 5：血缘图谱独立页面入口（表级图谱 + 字段级下钻 + 影响/溯源分析） */}
-                            <DsButton
-                                variant="secondary"
-                                onClick={() => navigate(
-                                    `/governance/metadata/lineage?tableId=${selectedTable.id}&tableName=${encodeURIComponent(`${selectedTable.databaseName}.${selectedTable.tableName}`)}`,
+                        <div className="grid grid-cols-[100px_1fr] gap-y-ds-3 text-ds-small">
+                            <span className="text-ds-text-muted">表全名</span>
+                            <Tooltip title={fullTableName} placement="top">
+                                <span className="text-ds-text-primary font-medium"
+                                      title={fullTableName}>{fullTableName}</span>
+                            </Tooltip>
+
+                            <span className="text-ds-text-muted">表名</span>
+                            <Tooltip title={selectedTable.tableName} placement="top">
+                                <span className="text-ds-text-primary font-medium"
+                                      title={selectedTable.tableName}>{selectedTable.tableName}</span>
+                            </Tooltip>
+
+                            <span className="text-ds-text-muted">注释</span>
+                            <div>
+                                {renderEditableCell('table-comment', selectedTable.id, selectedTable.manualComment || selectedTable.tableComment, handleSaveTableComment)}
+                            </div>
+
+                            <span className="text-ds-text-muted">字段数</span>
+                            <span className="text-ds-text-primary">{selectedTable.columnCount ?? '-'}</span>
+
+                            <span className="text-ds-text-muted">数据源</span>
+                            <span className="text-ds-text-primary inline-flex items-center gap-ds-1">
+                                {selectedTable.datasourceName || selectedTable.databaseName}
+                                {selectedTable.datasourceType && (
+                                    <DatabaseTypeIcon type={selectedTable.datasourceType} size={14} showLabel={false}/>
                                 )}
-                            >
-                                <HiOutlineShare size={16}/>
-                                血缘图谱
-                            </DsButton>
-                            {canPreview && (
-                                <DsButton
-                                    variant="secondary"
-                                    onClick={() => handlePreviewTable(selectedTable)}
-                                >
-                                    <HiOutlineEye size={16}/>
-                                    预览
-                                </DsButton>
+                            </span>
+
+                            {selectedTable.schemaName && selectedTable.schemaName !== selectedTable.databaseName && (
+                                <>
+                                    <span className="text-ds-text-muted">Schema</span>
+                                    <span className="text-ds-text-primary">{selectedTable.schemaName}</span>
+                                </>
                             )}
                         </div>
                     </div>
-                    <div className="grid grid-cols-[100px_1fr] gap-y-ds-3 text-ds-small">
-                        <span className="text-ds-text-muted">表名</span>
-                        <span className="text-ds-text-primary font-medium">{selectedTable.tableName}</span>
 
-                        <span className="text-ds-text-muted">注释</span>
-                        <div>
-                            {renderEditableCell('table-comment', selectedTable.id, selectedTable.manualComment || selectedTable.tableComment, handleSaveTableComment)}
-                        </div>
+                    {/* 血缘关系 */}
+                    <div className="border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
+                        <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider mb-ds-4 flex items-center gap-ds-2">
+                            <HiOutlineShare size={16} className="text-ds-accent"/>
+                            血缘关系
+                        </h3>
+                        {lineageLoading ? (
+                            <div className="flex items-center justify-center py-ds-6 text-ds-small text-ds-text-muted">
+                                加载中…
+                            </div>
+                        ) : lineageRecords.length === 0 ? (
+                            <div className="text-ds-small text-ds-text-muted py-ds-2">
+                                暂无血缘记录
+                            </div>
+                        ) : (
+                            <div className="space-y-ds-4">
+                                <div className="grid grid-cols-2 gap-ds-3">
+                                    <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 text-center">
+                                        <div className="text-ds-display font-semibold text-ds-accent">
+                                            {new Set(lineageRecords.filter(r => r.targetTable === fullTableName).map(r => r.sourceTable)).size}
+                                        </div>
+                                        <div className="text-ds-caption text-ds-text-muted mt-0.5">直接上游表</div>
+                                    </div>
+                                    <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 text-center">
+                                        <div className="text-ds-display font-semibold text-ds-accent">
+                                            {new Set(lineageRecords.filter(r => r.sourceTable === fullTableName).map(r => r.targetTable)).size}
+                                        </div>
+                                        <div className="text-ds-caption text-ds-text-muted mt-0.5">直接下游表</div>
+                                    </div>
+                                </div>
 
-                        <span className="text-ds-text-muted">字段数</span>
-                        <span className="text-ds-text-primary">{selectedTable.columnCount ?? '-'}</span>
+                                <div>
+                                    <h4 className="text-ds-caption text-ds-text-muted mb-ds-2">最近血缘记录</h4>
+                                    <div className="space-y-ds-2">
+                                        {lineageRecords.slice(0, 5).map((record, index) => (
+                                            <div key={record.id || index}
+                                                 className="flex items-center justify-between gap-ds-2 text-ds-small">
+                                                <div className="min-w-0 flex-1 truncate">
+                                                    <Tooltip title={record.sourceTable || '—'} placement="top">
+                                                        <span className="text-ds-text-primary"
+                                                              title={record.sourceTable || '—'}>{record.sourceTable || '—'}</span>
+                                                    </Tooltip>
+                                                    <span className="text-ds-text-muted mx-ds-1">→</span>
+                                                    <Tooltip title={record.targetTable || '—'} placement="top">
+                                                        <span className="text-ds-text-primary"
+                                                              title={record.targetTable || '—'}>{record.targetTable || '—'}</span>
+                                                    </Tooltip>
+                                                </div>
+                                                <span
+                                                    className={`px-2 py-0.5 rounded-full text-ds-caption font-medium whitespace-nowrap ${LINEAGE_TYPE_CLASS[record.lineageType] || LINEAGE_TYPE_CLASS.PYTHON}`}>
+                                                    {LINEAGE_TYPE_LABEL[record.lineageType] || record.lineageType}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
 
-                        <span className="text-ds-text-muted">最近采集</span>
-                        <span className="text-ds-text-primary">
-                            {formatDateTime(selectedTable.lastCollectTime)}
-                            {selectedTable.sourceTaskName ? `（${selectedTable.sourceTaskName}）` : ''}
-                        </span>
-
-                        <span className="text-ds-text-muted">数据源</span>
-                        <span className="text-ds-text-primary inline-flex items-center gap-ds-1">
-                            {selectedTable.datasourceName || selectedTable.databaseName}
-                            {selectedTable.datasourceType && (
-                                <DatabaseTypeIcon type={selectedTable.datasourceType} size={14} showLabel={false}/>
-                            )}
-                        </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Sprint 4：数据来源 + 表级血缘两栏卡片（SQL/Python/同步任务自动注册的表） */}
                 {isTaskRegistered && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-5 mb-ds-6">
-                        <div data-testid="metadata-source-card"
-                             className="border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
-                            <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider mb-ds-3">
-                                数据来源
-                            </h3>
-                            <div className="grid grid-cols-[100px_1fr] gap-y-ds-2 text-ds-small">
-                                <span className="text-ds-text-muted">来源类型</span>
-                                <span className="text-ds-text-primary">
-                                    {SOURCE_TYPE_LABEL[sourceType || ''] || sourceType || '—'}
-                                </span>
-                                {selectedTable.sourceDagName && (
-                                    <>
-                                        <span className="text-ds-text-muted">来源 DAG</span>
-                                        <span className="text-ds-text-primary">{selectedTable.sourceDagName}</span>
-                                    </>
-                                )}
-                                {selectedTable.sourceNodeName && (
-                                    <>
-                                        <span className="text-ds-text-muted">来源节点</span>
-                                        <span className="text-ds-text-primary">{selectedTable.sourceNodeName}</span>
-                                    </>
-                                )}
-                                {!selectedTable.sourceDagName && selectedTable.sourceTaskName && (
-                                    <>
-                                        <span className="text-ds-text-muted">来源任务</span>
-                                        <span className="text-ds-text-primary">{selectedTable.sourceTaskName}</span>
-                                    </>
-                                )}
-                            </div>
+                    <div data-testid="metadata-source-card"
+                         className="border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
+                        <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider mb-ds-4 flex items-center gap-ds-2">
+                            <HiOutlineCircleStack size={16} className="text-ds-accent"/>
+                            数据来源
+                        </h3>
+                        <div className="flex flex-col items-center text-center py-ds-2">
+                            <span
+                                className={`inline-flex items-center gap-ds-2 px-ds-4 py-ds-2 rounded-ds-md text-ds-subhead font-bold mb-ds-3 ${LINEAGE_TYPE_CLASS[sourceType || ''] || 'bg-ds-bg-hover text-ds-text-secondary'}`}>
+                                <HiOutlineCircleStack size={20}/>
+                                {SOURCE_TYPE_LABEL[sourceType || ''] || sourceType || '—'}
+                            </span>
+
+                            {selectedTable.sourceDagName ? (
+                                <>
+                                    <Tooltip title={selectedTable.sourceDagName} placement="top">
+                                        <div className="text-ds-title text-ds-text-primary font-semibold mb-ds-1"
+                                             title={selectedTable.sourceDagName}>
+                                            {selectedTable.sourceDagName}
+                                        </div>
+                                    </Tooltip>
+                                    {selectedTable.sourceNodeName && (
+                                        <div className="text-ds-small text-ds-text-muted mb-ds-4">
+                                            节点：{selectedTable.sourceNodeName}
+                                        </div>
+                                    )}
+                                </>
+                            ) : selectedTable.sourceTaskName ? (
+                                <Tooltip title={selectedTable.sourceTaskName} placement="top">
+                                    <div className="text-ds-title text-ds-text-primary font-semibold mb-ds-4"
+                                         title={selectedTable.sourceTaskName}>
+                                        {selectedTable.sourceTaskName}
+                                    </div>
+                                </Tooltip>
+                            ) : (
+                                <div className="text-ds-small text-ds-text-muted mb-ds-4">
+                                    未识别具体来源
+                                </div>
+                            )}
+
                             {selectedTable.sourceDagId != null && (
-                                <div className="flex items-center gap-ds-3 mt-ds-3">
+                                <div className="flex items-center gap-ds-3">
                                     <DsButton
                                         variant="secondary"
                                         onClick={() => navigate(`/engineering/dags/${selectedTable.sourceDagId}/edit`, {
@@ -747,103 +826,232 @@ export default function MetadataPage() {
                                 </div>
                             )}
                         </div>
-
-                        <div data-testid="metadata-lineage-card"
-                             className="border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
-                            <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider mb-ds-3">
-                                表级血缘
-                            </h3>
-                            {lineageLoading ? (
-                                <div
-                                    className="flex items-center justify-center py-ds-6 text-ds-small text-ds-text-muted">
-                                    加载中…
-                                </div>
-                            ) : lineageRecords.length === 0 ? (
-                                <div className="text-ds-small text-ds-text-muted py-ds-2">
-                                    暂无血缘记录
-                                </div>
-                            ) : (
-                                <div className="flex flex-col">
-                                    {lineageRecords.map((record, index) => (
-                                        <div
-                                            key={record.id}
-                                            className={`py-ds-3 text-ds-small ${index !== lineageRecords.length - 1 ? 'border-b border-ds-border-subtle' : ''}`}
-                                        >
-                                            <div className="flex items-start justify-between gap-ds-3">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="text-ds-text-primary font-medium break-all"
-                                                         title={record.sourceTable || '—'}>
-                                                        {record.sourceTable || '—'}
-                                                    </div>
-                                                    <div className="text-ds-caption text-ds-text-secondary mt-0.5">
-                                                        → {record.targetTable}
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end gap-ds-1 shrink-0">
-                                                    <span
-                                                        className={`px-2 py-0.5 rounded-full text-ds-caption font-medium ${LINEAGE_TYPE_CLASS[record.lineageType] || LINEAGE_TYPE_CLASS.PYTHON}`}>
-                                                        {LINEAGE_TYPE_LABEL[record.lineageType] || record.lineageType}
-                                                    </span>
-                                                    {record.dagId != null && (
-                                                        <div className="flex items-center gap-ds-1">
-                                                            <DsButton
-                                                                variant="ghost"
-                                                                className="h-6 px-1.5 py-0 text-ds-caption"
-                                                                onClick={() => navigate(`/engineering/dags/${record.dagId}/edit`, {
-                                                                    state: {from: `/governance/metadata?tableId=${selectedTable!.id}`},
-                                                                })}
-                                                            >
-                                                                查看 DAG
-                                                            </DsButton>
-                                                            <DsButton
-                                                                variant="ghost"
-                                                                className="h-6 px-1.5 py-0 text-ds-caption"
-                                                                onClick={() => navigate(`/engineering/dag-executions?dagId=${record.dagId}&dagName=${encodeURIComponent(record.dagName || '')}`, {
-                                                                    state: {from: `/governance/metadata?tableId=${selectedTable!.id}`},
-                                                                })}
-                                                            >
-                                                                执行历史
-                                                            </DsButton>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
                     </div>
                 )}
+            </div>
+        );
 
-                <div>
-                    <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider border-b border-ds-border-subtle pb-ds-2 mb-ds-3">
-                        字段列表
+        const renderColumnList = () => (
+            <div className="ds-table-card">
+                <div className="ds-table-scroll">
+                    <Table<MetadataColumn>
+                        dataSource={columns}
+                        rowKey={(column) => column.id || column.columnName}
+                        loading={columnsLoading}
+                        pagination={false}
+                        scroll={{x: 850}}
+                        columns={columnColumns}
+                        className="prototype-table prototype-table-flush"
+                        onRow={(column) => ({
+                            className: column.id && highlightedColumnId && column.id === highlightedColumnId
+                                ? 'bg-ds-warning/10'
+                                : '',
+                        })}
+                        locale={{
+                            emptyText: (
+                                <DsTableEmpty description="暂无字段"/>
+                            ),
+                        }}
+                    />
+                </div>
+            </div>
+        );
+
+        const renderLineage = () => (
+            <div className="space-y-ds-4">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-ds-small font-semibold text-ds-text-secondary uppercase tracking-wider">
+                        表级血缘
                     </h3>
-                    <div className="ds-table-card">
-                        <div className="ds-table-scroll">
-                            <Table<MetadataColumn>
-                                dataSource={columns}
-                                rowKey={(column) => column.id || column.columnName}
-                                loading={columnsLoading}
-                                pagination={false}
-                                scroll={{x: 850}}
-                                columns={columnColumns}
-                                className="prototype-table prototype-table-flush"
-                                onRow={(column) => ({
-                                    className: column.id && highlightedColumnId && column.id === highlightedColumnId
-                                        ? 'bg-ds-warning/10'
-                                        : '',
-                                })}
-                                locale={{
-                                    emptyText: (
-                                        <DsTableEmpty description="暂无字段"/>
-                                    ),
-                                }}
-                            />
+                    <DsButton
+                        variant="secondary"
+                        onClick={() => navigate(
+                            `/governance/metadata/lineage?tableId=${selectedTable.id}&tableName=${encodeURIComponent(fullTableName)}`,
+                        )}
+                    >
+                        <HiOutlineShare size={16}/>
+                        查看完整血缘图谱
+                    </DsButton>
+                </div>
+                {lineageLoading ? (
+                    <div className="flex items-center justify-center py-ds-6 text-ds-small text-ds-text-muted">
+                        加载中…
+                    </div>
+                ) : lineageRecords.length === 0 ? (
+                    <div className="text-ds-small text-ds-text-muted py-ds-2">
+                        暂无血缘记录
+                    </div>
+                ) : (
+                    <div className="flex flex-col border border-ds-border-subtle bg-ds-bg-surface rounded-ds-sm p-ds-4">
+                        {lineageRecords.map((record, index) => (
+                            <div
+                                key={record.id}
+                                className={`py-ds-3 text-ds-small ${index !== lineageRecords.length - 1 ? 'border-b border-ds-border-subtle' : ''}`}
+                            >
+                                <div className="flex items-start justify-between gap-ds-3">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-ds-text-primary font-medium break-all"
+                                             title={record.sourceTable || '—'}>
+                                            {record.sourceTable || '—'}
+                                        </div>
+                                        <div className="text-ds-caption text-ds-text-secondary mt-0.5">
+                                            → {record.targetTable}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-ds-1 shrink-0">
+                                        <span
+                                            className={`px-2 py-0.5 rounded-full text-ds-caption font-medium ${LINEAGE_TYPE_CLASS[record.lineageType] || LINEAGE_TYPE_CLASS.PYTHON}`}>
+                                            {LINEAGE_TYPE_LABEL[record.lineageType] || record.lineageType}
+                                        </span>
+                                        {record.dagId != null && (
+                                            <div className="flex items-center gap-ds-1">
+                                                <DsButton
+                                                    variant="ghost"
+                                                    className="h-6 px-1.5 py-0 text-ds-caption"
+                                                    onClick={() => navigate(`/engineering/dags/${record.dagId}/edit`, {
+                                                        state: {from: `/governance/metadata?tableId=${selectedTable!.id}`},
+                                                    })}
+                                                >
+                                                    查看 DAG
+                                                </DsButton>
+                                                <DsButton
+                                                    variant="ghost"
+                                                    className="h-6 px-1.5 py-0 text-ds-caption"
+                                                    onClick={() => navigate(`/engineering/dag-executions?dagId=${record.dagId}&dagName=${encodeURIComponent(record.dagName || '')}`, {
+                                                        state: {from: `/governance/metadata?tableId=${selectedTable!.id}`},
+                                                    })}
+                                                >
+                                                    执行历史
+                                                </DsButton>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+
+        const renderPreview = () => (
+            <div>
+                {previewLoading ? (
+                    <div className="flex items-center justify-center py-ds-10 text-ds-small text-ds-text-muted">
+                        加载预览数据中…
+                    </div>
+                ) : previewError ? (
+                    <div className="flex flex-col items-center justify-center py-ds-10 gap-ds-4">
+                        <span className="text-ds-small text-ds-danger">{previewError}</span>
+                        {canPreview && selectedTable && (
+                            <DsButton
+                                variant="secondary"
+                                onClick={() => handlePreviewTable(selectedTable)}
+                            >
+                                <HiOutlineArrowPath size={16}/>
+                                重新加载
+                            </DsButton>
+                        )}
+                    </div>
+                ) : previewResult ? (
+                    <div>
+                        <div className="text-ds-small text-ds-text-secondary mb-ds-2">
+                            共 {previewResult.rowCount} 行（最多展示 100 行）
+                        </div>
+                        <div className="border border-ds-border-subtle rounded-ds-sm overflow-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-ds-bg-hover sticky top-0">
+                                <tr>
+                                    {previewResult.columns.map((col) => (
+                                        <th key={col}
+                                            className="px-ds-3 py-ds-2 text-ds-caption text-ds-text-primary font-semibold whitespace-nowrap">
+                                            {col}
+                                        </th>
+                                    ))}
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {previewResult.rows.map((row, idx) => (
+                                    <tr key={idx} className="border-t border-ds-border-subtle">
+                                        {previewResult.columns.map((col) => (
+                                            <td key={col}
+                                                className="px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary whitespace-nowrap">
+                                                {row[col] === null || row[col] === undefined ? 'NULL' : String(row[col])}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
+                ) : (
+                    <div className="flex items-center justify-center py-ds-10 text-ds-small text-ds-text-muted">
+                        暂无预览数据
+                    </div>
+                )}
+            </div>
+        );
+
+        return (
+            <div>
+                <div className="text-ds-small text-ds-text-muted mb-ds-4">
+                    {selectedTable.databaseName}
+                    {selectedTable.schemaName && selectedTable.schemaName !== selectedTable.databaseName && (
+                        <span> / <span className="text-ds-text-primary font-semibold">{selectedTable.schemaName}</span></span>
+                    )}
+                    <span> / </span>
+                    <Tooltip title={selectedTable.tableName} placement="top">
+                        <span className="text-ds-text-primary font-semibold">{selectedTable.tableName}</span>
+                    </Tooltip>
                 </div>
+
+                <Tabs
+                    activeKey={detailTab}
+                    onChange={setDetailTab}
+                    items={[
+                        {
+                            key: 'basic',
+                            label: (
+                                <span className="flex items-center gap-ds-1">
+                                    <HiOutlineInformationCircle size={14}/>
+                                    基础信息
+                                </span>
+                            ),
+                            children: renderBasicInfo(),
+                        },
+                        {
+                            key: 'columns',
+                            label: (
+                                <span className="flex items-center gap-ds-1">
+                                    <HiOutlineQueueList size={14}/>
+                                    字段列表
+                                </span>
+                            ),
+                            children: renderColumnList(),
+                        },
+                        {
+                            key: 'lineage',
+                            label: (
+                                <span className="flex items-center gap-ds-1">
+                                    <HiOutlineShare size={14}/>
+                                    血缘图谱
+                                </span>
+                            ),
+                            children: renderLineage(),
+                        },
+                        {
+                            key: 'preview',
+                            label: (
+                                <span className="flex items-center gap-ds-1">
+                                    <HiOutlineEye size={14}/>
+                                    数据预览
+                                </span>
+                            ),
+                            children: renderPreview(),
+                        },
+                    ]}
+                />
             </div>
         );
     };
@@ -969,13 +1177,6 @@ export default function MetadataPage() {
                 </div>
             </div>
 
-            <PreviewModal
-                open={previewOpen}
-                loading={previewLoading}
-                title={previewTitle}
-                result={previewResult}
-                onClose={() => setPreviewOpen(false)}
-            />
         </div>
     );
 }

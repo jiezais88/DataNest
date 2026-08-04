@@ -52,3 +52,9 @@ datanest:
     dag-history-cleanup:
       # DAG 执行历史保留天数（终态记录保留多久后清理）。
       retain-days: ${DAG_HISTORY_RETAIN_DAYS:30}
+    lineage-cleanup:
+      # 血缘记录保留天数（lineage_record 按 created_at 清理）。
+      retain-days: ${LINEAGE_RETAIN_DAYS:90}
+    alert-history-cleanup:
+      # 告警发送历史保留天数（alert_history 按 sent_at 清理）。
+      retain-days: ${ALERT_HISTORY_RETAIN_DAYS:90}

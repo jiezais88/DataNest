@@ -15,8 +15,9 @@ import ReactFlow, {
     useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import {Spin} from 'antd';
+import {Spin, Tooltip} from 'antd';
 import DsButton from '../../../../components/DsButton';
+import Drawer from '../../../../components/Drawer';
 import EmptyState from '../../../../components/EmptyState';
 import {getLineageGraph, getLineageImpact, getLineageSource,} from '../../../../api/lineage';
 import {getMetadataTable, searchMetadataTree} from '../../../../api/metadata';
@@ -55,6 +56,9 @@ const TYPE_LABEL: Record<string, string> = {
     PYTHON: 'Python 节点',
 };
 
+const TABLE_NODE_WIDTH = 240;
+const TABLE_NODE_HEIGHT = 120;
+
 function TableNode({data}: NodeProps<LineageNodeData>) {
     return (
         <div
@@ -66,7 +70,7 @@ function TableNode({data}: NodeProps<LineageNodeData>) {
                         ? 'border-ds-success bg-ds-success-light'
                         : 'border-ds-border-strong',
             ].join(' ')}
-            style={{width: 180}}
+            style={{width: TABLE_NODE_WIDTH}}
         >
             <Handle
                 type="target"
@@ -74,9 +78,11 @@ function TableNode({data}: NodeProps<LineageNodeData>) {
                 className="!w-[8px] !h-[8px] !rounded-full !bg-ds-text-muted !border-2 !border-ds-bg-surface"
                 style={{left: -5}}
             />
-            <div className="text-ds-small font-semibold text-ds-text-primary truncate" title={data.name}>
-                {data.name}
-            </div>
+            <Tooltip title={data.name} placement="top">
+                <div className="text-ds-small font-semibold text-ds-text-primary truncate" title={data.name}>
+                    {data.name}
+                </div>
+            </Tooltip>
             <div className="text-ds-nano text-ds-text-muted mt-0.5">
                 {data.current ? '当前表' : (data.type ? TYPE_LABEL[data.type] || data.type : data.database || '')}
             </div>
@@ -177,7 +183,10 @@ export default function LineageGraphPage() {
                 ? {stroke: '#16a34a', strokeWidth: 2.5}
                 : {stroke: '#cbd5e1', strokeWidth: 1.8},
         }));
-        const layouted = layoutWithDagre<LineageNodeData>(nodes, edges, 'LR');
+        const layouted = layoutWithDagre<LineageNodeData>(nodes, edges, 'LR', {
+            nodeWidth: TABLE_NODE_WIDTH,
+            nodeHeight: TABLE_NODE_HEIGHT,
+        });
         return {nodes: layouted, edges};
     }, [graph, highlightedNodes, highlightedEdges]);
 
@@ -298,8 +307,8 @@ export default function LineageGraphPage() {
                     <DsButton variant="secondary" onClick={() => setDepth(d => d + 1)} disabled={depth >= 10}>
                         展开一层（当前 {depth} 层）
                     </DsButton>
-                    <DsButton variant="primary" onClick={() => setFieldOpen(v => !v)}>
-                        {fieldOpen ? '关闭字段血缘' : '字段血缘'}
+                    <DsButton variant="primary" onClick={() => setFieldOpen(true)}>
+                        字段血缘
                     </DsButton>
                 </div>
             </div>
@@ -336,6 +345,7 @@ export default function LineageGraphPage() {
                         minZoom={0.3}
                         nodesConnectable={false}
                         panActivationKeyCode={null}
+                        proOptions={{hideAttribution: true}}
                     >
                         <Background gap={20} color="#e2e6ed"/>
                         <Controls showInteractive={false}/>
@@ -351,13 +361,28 @@ export default function LineageGraphPage() {
                 </div>
             )}
 
-            {fieldOpen && tableName && (
-                <div
-                    className="flex-shrink-0 mt-ds-4 border border-ds-border-subtle rounded-ds-md bg-ds-bg-surface p-ds-4">
-                    <h3 className="text-ds-subhead text-ds-text-primary mb-ds-3">字段级血缘</h3>
+            <Drawer
+                open={fieldOpen}
+                title={
+                    <span className="flex items-center gap-ds-2">
+                        <span>字段级血缘</span>
+                        <span className="text-ds-caption text-ds-text-muted font-normal truncate max-w-[180px]"
+                              title={tableName}>
+                            {tableName}
+                        </span>
+                    </span>
+                }
+                width="max-w-[520px]"
+                onClose={() => setFieldOpen(false)}
+            >
+                {tableName ? (
                     <FieldLineagePanel tableId={tableId || undefined} tableName={tableName}/>
-                </div>
-            )}
+                ) : (
+                    <div className="flex items-center justify-center h-full text-ds-small text-ds-text-muted">
+                        未获取到表名，无法查看字段血缘
+                    </div>
+                )}
+            </Drawer>
         </div>
     );
 }

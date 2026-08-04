@@ -56,8 +56,9 @@ public class AlertFiringService {
         if (!alertRuleService.isEnabled(rule) || !alertRuleService.containsTrigger(rule, alertType)) {
             return false;
         }
+        String ruleObjectType = rule.getObjectType();
         // 防重：同一对象同类告警 60s 内已发过则跳过（终态并发回调可能重复触发）
-        if (alertHistoryMapper.countRecent(rule.getObjectType(), rule.getObjectId(), alertType) > 0) {
+        if (alertHistoryMapper.countRecent(ruleObjectType, objectId, alertType) > 0) {
             logger.info("告警已发送过，跳过: objectType={}, objectId={}, alertType={}",
                     objectType, objectId, alertType);
             return true;
@@ -75,24 +76,25 @@ public class AlertFiringService {
             return false;
         }
         String recipients = String.join(";", emails);
+        String objectName = alertRuleService.resolveObjectName(ruleObjectType, objectId);
         boolean sent = false;
         try {
-            sent = mailService.send(recipients, buildSubject(rule, alertType), buildBody(rule, alertType, detail));
+            sent = mailService.send(recipients, buildSubject(ruleObjectType, objectName, alertType), buildBody(ruleObjectType, objectName, alertType, detail, objectId));
         } catch (Exception e) {
             logger.error("告警邮件发送失败: objectType={}, objectId={}, alertType={}",
                     objectType, objectId, alertType, e);
         }
-        saveHistory(rule, alertType, recipients, sent ? AlertConstants.SEND_STATUS_SUCCESS : AlertConstants.SEND_STATUS_FAILED);
+        saveHistory(rule, objectId, objectName, alertType, recipients, sent ? AlertConstants.SEND_STATUS_SUCCESS : AlertConstants.SEND_STATUS_FAILED);
         return true;
     }
 
-    private void saveHistory(AlertRule rule, String alertType, String recipients, String sendStatus) {
+    private void saveHistory(AlertRule rule, Long objectId, String objectName, String alertType, String recipients, String sendStatus) {
         try {
             AlertHistory history = new AlertHistory();
             history.setId(IdWorker.getId());
             history.setAlertRuleId(rule.getId());
             history.setObjectType(rule.getObjectType());
-            history.setObjectId(rule.getObjectId());
+            history.setObjectId(objectId);
             history.setAlertType(alertType);
             history.setRecipients(recipients);
             history.setSendStatus(sendStatus);
@@ -103,22 +105,22 @@ public class AlertFiringService {
         }
     }
 
-    private String buildSubject(AlertRule rule, String alertType) {
+    private String buildSubject(String objectType, String objectName, String alertType) {
         String prefix = AlertConstants.ALERT_SUCCESS.equals(alertType) ? "[DataNest 通知]" : "[DataNest 告警]";
-        String displayType = displayObjectType(rule.getObjectType());
+        String displayType = displayObjectType(objectType);
         String displayAlert = displayAlertType(alertType);
-        return String.format("%s %s「%s」%s", prefix, displayType, safeName(rule.getObjectName()), displayAlert);
+        return String.format("%s %s「%s」%s", prefix, displayType, safeName(objectName), displayAlert);
     }
 
-    private String buildBody(AlertRule rule, String alertType, String detail) {
+    private String buildBody(String objectType, String objectName, String alertType, String detail, Long objectId) {
         String displayAlert = displayAlertType(alertType);
         String content = String.join("\n",
-                "对象类型：" + displayObjectType(rule.getObjectType()),
-                "对象名称：" + safeName(rule.getObjectName()),
+                "对象类型：" + displayObjectType(objectType),
+                "对象名称：" + safeName(objectName),
                 "告警类型：" + displayAlert,
                 "触发时间：" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                 "详情：" + buildDetail(detail));
-        String url = buildObjectUrl(rule.getObjectType(), rule.getObjectId());
+        String url = buildObjectUrl(objectType, objectId);
         if (StringUtils.hasText(url)) {
             content += "\n查看详情：" + url;
         }

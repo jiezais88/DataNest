@@ -15,6 +15,7 @@ import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.service.AlertRuleService;
 import com.datanest.task.core.service.SyncJobTriggerService;
 import com.datanest.task.core.service.SyncNodeMutexService;
 import com.datanest.task.core.service.SysUserService;
@@ -53,7 +54,7 @@ public class SyncJobService {
     private final SyncJobTriggerService syncJobTriggerService;
     private final SyncNodeMutexService syncNodeMutexService;
     private final SysUserService sysUserService;
-    private final AlertRuleMapper alertRuleMapper;
+    private final AlertRuleService alertRuleService;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
                           SyncJobLogMapper syncJobLogMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
@@ -61,7 +62,7 @@ public class SyncJobService {
                           SchedulerServiceForEngineering schedulerService,
                           SyncJobTriggerService syncJobTriggerService,
                           SyncNodeMutexService syncNodeMutexService, SysUserService sysUserService,
-                          AlertRuleMapper alertRuleMapper) {
+                          AlertRuleService alertRuleService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
@@ -73,7 +74,7 @@ public class SyncJobService {
         this.syncJobTriggerService = syncJobTriggerService;
         this.syncNodeMutexService = syncNodeMutexService;
         this.sysUserService = sysUserService;
-        this.alertRuleMapper = alertRuleMapper;
+        this.alertRuleService = alertRuleService;
     }
 
     @Transactional
@@ -214,7 +215,7 @@ public class SyncJobService {
         syncJobLogMapper.delete(new QueryWrapper<SyncJobLog>().eq("sync_job_id", id));
         syncJobHistoryMapper.delete(new QueryWrapper<SyncJobHistory>().eq("sync_job_id", id));
         // Sprint 5：删除同步任务时级联删除关联告警规则（PRD §7）
-        alertRuleMapper.deleteByObject(AlertConstants.OBJECT_TYPE_SYNC_JOB, id);
+        alertRuleService.deleteByObject(AlertConstants.OBJECT_TYPE_SYNC_JOB, id);
         syncJobMapper.deleteById(id);
 
         // XXL-JOB 注销放到事务提交后：避免 DB 回滚时调度任务已被误删

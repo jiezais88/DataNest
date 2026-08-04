@@ -5,7 +5,7 @@
 //  - quick：业务模块快捷入口（DAG/同步任务/采集任务），对象类型与对象锁定 →
 //           PUT /engineering/sync-jobs/{id}/alert-rule 等；新建未保存 DAG 走本地草稿
 import {useEffect, useMemo, useState} from 'react';
-import {Select, Spin, Switch} from 'antd';
+import {Select, Spin, Switch, TreeSelect} from 'antd';
 import DsButton from './DsButton';
 import DsModal from './DsModal';
 import UserSelect from './UserSelect';
@@ -75,7 +75,7 @@ export default function AlertRuleModal({
     const [error, setError] = useState<string | null>(null);
 
     const [objectType, setObjectType] = useState<AlertObjectType>('DAG');
-    const [objectId, setObjectId] = useState<string>('');
+    const [objectIds, setObjectIds] = useState<string[]>([]);
     const [objectOptions, setObjectOptions] = useState<AlertObjectOption[]>([]);
     const [objectOptionsLoading, setObjectOptionsLoading] = useState(false);
     const [conditions, setConditions] = useState<AlertTriggerType[]>(['FAILURE']);
@@ -99,7 +99,7 @@ export default function AlertRuleModal({
             if (!rule) {
                 // 无规则 → 默认值（quick 模式带对象）
                 setObjectType(quickObjectType || 'DAG');
-                setObjectId(quickObjectId || '');
+                setObjectIds(quickObjectId ? [quickObjectId] : []);
                 setConditions(['FAILURE']);
                 setUserIds([]);
                 setTimeoutMinutes(30);
@@ -107,7 +107,7 @@ export default function AlertRuleModal({
                 return;
             }
             setObjectType(rule.objectType || 'DAG');
-            setObjectId(rule.objectId || quickObjectId || '');
+            setObjectIds(rule.objectIds?.length ? rule.objectIds : (quickObjectId ? [quickObjectId] : []));
             setConditions(rule.triggerConditions?.length ? rule.triggerConditions : ['FAILURE']);
             setUserIds(rule.userIds || []);
             setTimeoutMinutes(rule.timeoutMinutes ?? 30);
@@ -141,7 +141,6 @@ export default function AlertRuleModal({
     }, [open, mode, initialRule, quickObjectType, quickObjectId, isDraft, draftRule]);
 
     // 对象类型变化时加载可选对象（create/edit 模式；quick 模式锁定不加载）
-    // 注意：不能在打开时清空 objectId，否则 edit 模式会丢掉已加载的 initialRule.objectId
     useEffect(() => {
         if (!open || objectLocked) return;
         setObjectOptionsLoading(true);
@@ -154,10 +153,23 @@ export default function AlertRuleModal({
     // 用户手动切换对象类型时，重置已选对象
     const handleObjectTypeChange = (type: AlertObjectType) => {
         setObjectType(type);
-        setObjectId('');
+        setObjectIds([]);
     };
 
-    const objectSelectOptions = useMemo(() => {
+    // DAG 选项：项目 → DAG 树形结构
+    const dagTreeData = useMemo(() => {
+        return objectOptions.map(project => ({
+            value: project.id,
+            title: project.name,
+            children: project.children?.map(dag => ({
+                value: dag.id,
+                title: dag.name,
+            })) || [],
+        }));
+    }, [objectOptions]);
+
+    // 平铺选项（同步任务/采集任务）
+    const flatSelectOptions = useMemo(() => {
         if (objectLocked) {
             return quickObjectId ? [{value: quickObjectId, label: quickObjectName || quickObjectId}] : [];
         }
@@ -169,7 +181,7 @@ export default function AlertRuleModal({
     };
 
     const validate = (): string | null => {
-        if (!objectId) return '请选择告警对象';
+        if (objectIds.length === 0) return '请选择告警对象';
         if (conditions.length === 0) return '请至少选择一个触发条件';
         if (conditions.includes('TIMEOUT') && (!timeoutMinutes || timeoutMinutes <= 0)) {
             return '勾选「超时」时必须填写大于 0 的超时阈值';
@@ -198,7 +210,7 @@ export default function AlertRuleModal({
         }
         const payload: AlertRuleDTO = {
             objectType,
-            objectId,
+            objectIds,
             triggerConditions: conditions,
             // 未勾选超时条件时不提交阈值，避免语义脏数据
             timeoutMinutes: conditions.includes('TIMEOUT') ? timeoutMinutes : undefined,
@@ -223,6 +235,52 @@ export default function AlertRuleModal({
         } finally {
             setSaving(false);
         }
+    };
+
+    const renderObjectSelector = () => {
+        if (objectLocked) {
+            return (
+                <Select
+                    value={objectIds[0] || undefined}
+                    disabled
+                    options={flatSelectOptions}
+                    className="w-full"
+                />
+            );
+        }
+        if (objectType === 'DAG') {
+            return (
+                <TreeSelect
+                    treeData={dagTreeData}
+                    treeCheckable
+                    showCheckedStrategy="SHOW_CHILD"
+                    placeholder={objectOptionsLoading ? '加载中...' : '请选择 DAG（支持多选）'}
+                    value={objectIds}
+                    onChange={setObjectIds}
+                    disabled={readOnly || objectOptionsLoading}
+                    loading={objectOptionsLoading}
+                    className="w-full"
+                    treeDefaultExpandAll={false}
+                    allowClear
+                />
+            );
+        }
+        return (
+            <Select
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                value={objectIds}
+                onChange={setObjectIds}
+                disabled={readOnly || objectOptionsLoading}
+                loading={objectOptionsLoading}
+                placeholder={objectOptionsLoading ? '加载中...' : '请选择对象（支持多选）'}
+                options={flatSelectOptions}
+                className="w-full"
+                notFoundContent={objectOptionsLoading ? <Spin size="small"/> : '无匹配对象'}
+                allowClear
+            />
+        );
     };
 
     return (
@@ -266,18 +324,7 @@ export default function AlertRuleModal({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             对象 <span className="text-ds-danger">*</span>
                         </label>
-                        <Select
-                            showSearch
-                            optionFilterProp="label"
-                            value={objectId || undefined}
-                            onChange={setObjectId}
-                            disabled={readOnly || objectLocked || objectOptionsLoading}
-                            loading={objectOptionsLoading}
-                            placeholder={objectLocked ? quickObjectName || '当前对象' : '请选择对象'}
-                            options={objectSelectOptions}
-                            className="w-full"
-                            notFoundContent={objectOptionsLoading ? <Spin size="small"/> : '无匹配对象'}
-                        />
+                        {renderObjectSelector()}
                     </div>
 
                     <div>

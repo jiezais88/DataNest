@@ -76,11 +76,13 @@ export default function Layout() {
                 </header>
 
                 {/* Page content */}
-                <main className="flex-1 min-h-0 overflow-y-auto p-ds-6">
+                <main className="flex-1 min-h-0 overflow-hidden p-ds-6 flex flex-col">
                     <Breadcrumb pathname={location.pathname}/>
-                    <ErrorBoundary>
-                        <Outlet/>
-                    </ErrorBoundary>
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                        <ErrorBoundary>
+                            <Outlet/>
+                        </ErrorBoundary>
+                    </div>
                 </main>
             </div>
 
