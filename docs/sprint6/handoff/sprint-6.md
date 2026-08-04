@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-04 | **阶段**：后端实现（规则模板库 CRUD 完成）
+> **更新时间**：2026-08-04 | **阶段**：规则模板库前后端完成（质量任务/规则/检查/评分/合规待做）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -10,17 +10,17 @@
 
 ## 2. 状态看板
 
-| 事项                                     | 状态      | 说明                                                                          |
-|------------------------------------------|-----------|-------------------------------------------------------------------------------|
-| Sprint 6 产品范围确认                    | ✅ 完成   | 用户确认：数据质量管理（规格文档 Sprint 7 前移）                              |
-| Sprint 6 产品决策澄清                    | ✅ 完成   | 见下方「关键决策」                                                            |
-| Sprint 6 代码现状调查                    | ✅ 完成   | 数据质量从零建；可复用 SQL 执行/告警/调度                                     |
-| Sprint 6 PRD                             | ✅ 完成   | `docs/sprint6/DataNest-Sprint6-PRD.md`（v1.1）                                |
-| Sprint 6 技术设计                        | ✅ 完成   | `docs/sprint6/DataNest-Sprint6-技术文档.md`（v1.0，含 6 个技术决策）          |
-| Sprint 6 UI 原型                         | ✅ 完成   | `docs/sprint6/DataNest-Sprint6-数据质量原型.html`（6 view，参照现有前端代码） |
-| 后端实现（质量任务/规则/检查/评分/合规） | 🔄 进行中 | 规则模板库（模板 CRUD）已交付并验证通过；任务/规则/检查/评分/合规待做         |
-| 前端实现（质量页/详情页页签/血缘联动）   | ⏳ 待办   | 未开始（本期先做后端，用户已确认）                                            |
-| 联调验证                                 | ⏳ 待办   | 未开始                                                                        |
+| 事项                                     | 状态      | 说明                                                                                              |
+|------------------------------------------|-----------|---------------------------------------------------------------------------------------------------|
+| Sprint 6 产品范围确认                    | ✅ 完成   | 用户确认：数据质量管理（规格文档 Sprint 7 前移）                                                  |
+| Sprint 6 产品决策澄清                    | ✅ 完成   | 见下方「关键决策」                                                                                |
+| Sprint 6 代码现状调查                    | ✅ 完成   | 数据质量从零建；可复用 SQL 执行/告警/调度                                                         |
+| Sprint 6 PRD                             | ✅ 完成   | `docs/sprint6/DataNest-Sprint6-PRD.md`（v1.1）                                                    |
+| Sprint 6 技术设计                        | ✅ 完成   | `docs/sprint6/DataNest-Sprint6-技术文档.md`（v1.0，含 6 个技术决策）                              |
+| Sprint 6 UI 原型                         | ✅ 完成   | `docs/sprint6/DataNest-Sprint6-数据质量原型.html`（6 view，参照现有前端代码）                     |
+| 后端实现（质量任务/规则/检查/评分/合规） | 🔄 进行中 | 规则模板库（模板 CRUD）已交付并验证通过；任务/规则/检查/评分/合规待做                             |
+| 前端实现（规则模板库）                   | ✅ 完成   | 独立「规则模板库」页面已交付（列表/统计/筛选/新增/编辑/详情/启停/删除）；数据质量页与血缘联动待做 |
+| 联调验证                                 | ⏳ 待办   | 未开始                                                                                            |
 
 ## 3. 关键决策（用户已确认）
 
@@ -73,6 +73,11 @@
 | `task-core`：`QualityRuleTemplate`(entity)/`QualityRuleTemplateMapper`/`QualityRuleTemplateService` + 4 个 DTO（新增） | 质量模板核心逻辑下沉 task-core（D-T1）；CRUD：全量列表/分页/详情/新增/编辑/删除/启停；类型白名单校验、名称唯一校验、内置模板禁删、用户名批量回填 |
 | `governance`：`QualityTemplateController`（新增）                                                                      | `/quality/templates` CRUD Controller；读接口全员角色可看、写接口仅治理员/超管；完整路径 `/api/governance/quality/templates`                      |
 | `data-nest-common`：`ErrorCode`（修改）                                                                                | 新增 4 个质量错误码：`QUALITY_TEMPLATE_NOT_FOUND(4201)/NAME_EXISTS(4202)/TYPE_INVALID(4203)/BUILTIN_NOT_DELETE(4204)`                            |
+| `data-nest-frontend`：`src/types/quality.ts`（新增）                                                                   | 质量模板类型定义（`QualityTemplateType`/`QualityRuleTemplate`/创建/更新/查询 DTO）                                                               |
+| `data-nest-frontend`：`src/api/quality.ts`（新增）                                                                     | 模板 6 个接口封装（列表/分页/新增/编辑/删除/启停），对接 `/governance/quality/templates`                                                         |
+| `data-nest-frontend`：`src/pages/governance/quality-templates/index.tsx` + `QualityTemplateDrawer.tsx`（新增）         | 规则模板库页面（统计卡片/搜索/类型·来源·状态筛选/表格/分页/详情·编辑 Drawer/删除 ConfirmDialog/启停/批量应用占位提示）                           |
+| `data-nest-frontend`：`Sidebar.tsx`（修改）                                                                            | 「数据治理」分组新增「规则模板库」菜单（`GOVERNANCE_WRITE_ROLES`），路由 `/governance/quality-templates`                                         |
+| `data-nest-frontend`：`router/index.tsx` + `utils/breadcrumb.ts`（修改）                                               | 新增 `/governance/quality-templates` 懒加载路由 + leaf 面包屑条目                                                                                |
 
 ## 5. Blocker
 
@@ -88,7 +93,7 @@
 
 ## 6. Next Action
 
-### ✅ 已完成（规则模板库 · 仅后端，CRUD 阶段）
+### ✅ 已完成（规则模板库 · 前后端，CRUD 阶段）
 
 - [x] Flyway `V3.6.0__sprint6_quality_rule_template.sql`：建 `quality_rule_template` 表 + 内置四类模板种子。
 - [x] task-core：`QualityRuleTemplate`(entity) / Mapper / `QualityRuleTemplateService` / 4 个
@@ -96,7 +101,12 @@
 - [x] governance：`QualityTemplateController`（`/api/governance/quality/templates`）。
 - [x] common：`ErrorCode` 新增 4201~4204。
 - [x] 部署 app-system（Flyway V3.6.0）+ app-governance，API 全量 CRUD 测试通过（含异常分支）。
-- [x] 清理：测试数据已删除（表内仅剩 4 条内置）、临时文件已清理、FlywayConfig 临时 repair 已还原。
+- [x] 前端：`src/types/quality.ts` + `src/api/quality.ts` + `src/pages/governance/quality-templates/`（index + Drawer）。
+- [x] 前端：`Sidebar`「数据治理」加「规则模板库」菜单、`router` 加 `/governance/quality-templates` 懒加载路由、`breadcrumb` 加
+  leaf 条目。
+- [x] 部署 app-frontend（build + `docker compose up -d --no-deps app-frontend`），页面经网关联调通过（分页/列表/创建/启停/删除均
+  200；内置删除返回 4204 被拒）。
+- [x] 清理：测试数据已删除（表内仅剩 4 条内置）、临时文件已清理。
 
 ### ⏳ 待办（后续按用户确认"做到后面补关联逻辑"）
 
@@ -106,7 +116,7 @@
 4. 后端：governance 其余质量 Controller；扩展告警 object_type=QUALITY + `AlertFiringService.fireBatch`。
 5. 后端：job 新增 `QualityCheckHandler`/`StandardComplianceCheckHandler`/`QualityCheckHistoryCleanupHandler`。
 6. 后端：worker 终态回调接入自动触发（B1）；血缘节点 `LineageNodeDTO` 新增 qualityScore；标准合规忽略/取消忽略。
-7. 前端：数据质量页（任务/规则/历史/评分）、元数据详情页「质量」页签、血缘图谱节点评分徽章、标准合规页。
+7. 前端：数据质量页（任务/规则/历史/评分）、元数据详情页「质量」页签、血缘图谱节点评分徽章、标准合规页（规则模板库页已交付）。
 8. 联调验证：真实数据校验、任务级定时触发、告警合并邮件、评分联动、合规扫描。
 
 ## 7. 备注

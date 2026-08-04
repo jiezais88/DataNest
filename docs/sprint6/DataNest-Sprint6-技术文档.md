@@ -478,8 +478,11 @@ result_value ≥ severe_threshold          → SEVERE
 
 ### 后端
 
-- [ ] Flyway：`V3.6.0__sprint6_data_quality.sql`（任务/规则/模板/批次/历史/评分/合规忽略字段）
-- [ ] task-core 实体 + Mapper：`QualityJob`/`QualityRule`/`QualityRuleTemplate`/`QualityCheckBatch`/
+- [x] 规则模板库（CRUD，已交付）：Flyway `V3.6.0__sprint6_quality_rule_template.sql` + task-core
+  `QualityRuleTemplate`(entity/Mapper/Service/DTO) + governance `QualityTemplateController`（
+  `/api/governance/quality/templates`）
+- [ ] Flyway：`V3.6.x__sprint6_data_quality.sql`（任务/规则/批次/历史/评分/合规忽略字段）
+- [ ] task-core 实体 + Mapper：`QualityJob`/`QualityRule`/`QualityCheckBatch`/
   `QualityCheckHistory`/`QualityScore`
 - [ ] task-core Service：`QualityCheckService`（执行/判定/评分）、`ScoreCalculator`、`QualityRuleTemplateService`、
   `QualityJobService`
@@ -493,9 +496,11 @@ result_value ≥ severe_threshold          → SEVERE
 
 ### 前端
 
+- [x] 规则模板库页（独立菜单 `数据治理/规则模板库`，`/governance/quality-templates`）：统计卡片 + 搜索/类型/来源/状态筛选 +
+  列表 + 新增/编辑/详情 Drawer + 启停/删除（内置禁删）+ 批量应用占位提示。已部署并联调通过。
 - [ ] 数据质量页（质量任务/质量规则/检查历史/质量评分 页签）
 - [ ] 质量任务配置表单（含调度 D1、告警等级）
-- [ ] 规则批量应用（选模板+多表，D3）
+- [ ] 规则批量应用（选模板+多表，D3）— 前端按钮已占位（提示"后端接口未就绪"），后端 `/batch` 就绪后接真逻辑
 - [ ] 检查历史列表 + 详情 + 趋势图
 - [ ] 元数据详情页「质量」页签
 - [ ] 血缘图谱节点质量徽章（`LineageNodeData` 扩展）

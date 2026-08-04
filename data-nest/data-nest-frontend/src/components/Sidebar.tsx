@@ -82,6 +82,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 icon: <HiOutlineScale size={18}/>,
                 roles: GOVERNANCE_WRITE_ROLES
             },
+            {
+                label: '规则模板库',
+                path: '/governance/quality-templates',
+                icon: <HiOutlineClipboardDocumentCheck size={18}/>,
+                roles: GOVERNANCE_WRITE_ROLES
+            },
         ],
     },
     {
