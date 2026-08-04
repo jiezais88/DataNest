@@ -95,6 +95,66 @@
 | `data-nest-frontend`：`Sidebar.tsx` + `router/index.tsx` + `utils/breadcrumb.ts`（修改）                                | 数据治理分组新增「数据质量」菜单（`GOVERNANCE_WRITE_ROLES`，路由 `/governance/data-quality`）+ 懒加载路由 + leaf 面包屑 |
 | `data-nest-frontend`：数据质量页面部署                                                                                  | `npm run build` + `docker compose build app-frontend` + `up -d`，SPA fallback 与懒加载 chunk 验证通过                 |
 
+### 📌 Sprint 7 方案A · 质量规则「先选数据源再选表」改造（2026-08-04 追加）
+
+> 用户确认方案A：**移除质量任务的「数据源范围」字段**，把「数据源」下放到规则层，规则成为「数据源 + 表 + 检查」完整对象；选表交互改为**表单级显式「数据源」下拉 + 锁定选表**。
+
+**变更清单：**
+- **后端 task-core**（需重建 engineering + worker）：
+  - `QualityJobService`：移除 `datasourceId` 筛选/写入/回填逻辑，移除 `dataSourceMapper` 依赖（构造函数 4→3 参）。
+  - DTO `QualityJobDTO`/`Create`/`Update`/`QueryRequest`：移除 `datasourceId`/`datasourceName` 字段。
+  - `QualityRuleDTO`：新增 `datasourceId`/`datasourceName`（经 `metadata_table.datasource_id` 反查，内置 Doris=-1 映射「Doris 数仓」）。
+  - `QualityRuleService`：注入 `DataSourceConnectionMapper`，`buildDTOs` 批量回填数据源名（`loadDatasourceNameMap`）。
+  - `quality_job.datasource_id` **列保留不删**，仅后端不再读写业务逻辑。
+- **前端**：
+  - `types/quality.ts`：`QualityJob*` 移除 `datasourceId`；`QualityRule` 新增 `datasourceId`/`datasourceName`。
+  - 任务列表 `data-quality/index.tsx`：移除「数据源范围」列、数据源筛选下拉、URL 同步、`loadJobDatasources`。
+  - `QualityJobDrawer`：移除「数据源范围」下拉与 `datasourceId` 字段。
+  - `QualityRuleDrawer`（核心）：表单新增「数据源」下拉（`listMetadataDatasourceIds`，仅已采集数据源），先选数据源再选表，选表弹窗**锁定该数据源**；切换数据源清空已选表；编辑回显规则 `datasourceId/datasourceName`。
+  - `TableSelectModal`：新增 `lockDatasource` prop（true 时数据源下拉禁用锁定）。
+  - `BatchApplyModal`：同样改为「先选数据源再选表」，选表锁定数据源。
+  - 规则列表 `quality-rules/index.tsx`：移除 `defaultDatasourceId` 继承，新增「数据源」列展示规则归属数据源。
+- **文档**：`docs/sprint6/DataNest-Sprint6-技术文档.md` §3.2 已标记 `quality_job.datasource_id` 为已废弃。
+- **验证**：task-core/engineering/worker `mvn compile` 通过，前端 `tsc` 通过。
+
+**注意**：规则数据源下拉只展示「已采集元数据的数据源」（`listMetadataDatasourceIds`），未采集的数据源选不到表，已在前端加提示文案（先到元数据管理执行采集）。
+
+### 📌 Sprint 7 追加 · 规则表单「目标表」改为行内级联选表（2026-08-04）
+
+> 需求：规则表单的目标表**参考同步任务**改为**行内直接级联选择**（数据源 → 数据库 → Schema → 表），去掉原来的「未选择表 + [选择表] 弹窗按钮」。
+
+**变更（仅前端）：**
+- `QualityRuleDrawer`：移除 `TableSelectModal` 弹窗交互，目标表改为**行内级联下拉**（`listMetadataDatabases` → `listMetadataSchemas`/`listMetadataTablesWithoutSchema` → `listMetadataTables`），与同步任务源表选择形态一致。
+  - 数据源（行内下拉，已有）→ 数据库 → Schema（无 Schema 类型跳过）→ 目标表（select 单选）。
+  - 切换数据源清空级联状态；编辑回显用 `tableName` 第一段预设 `selectedDatabase`/`selectedSchema`。
+- `TableSelectModal` **保留**（`BatchApplyModal` 批量应用多表仍用弹窗，不受影响）。
+- 后端无改动，仅重建 **app-frontend**（`--no-cache`）。
+
+### 📌 Sprint 7 追加 · 质量任务「触发方式」改为单选（2026-08-04）
+
+> 需求：质量任务的触发方式应是**单选**（手动 / 定时 / 自动触发），不允许"手动 + 定时"等组合（原实现是两个独立 checkbox 可同时开）。
+
+**变更（仅前端，后端字段不变）：**
+- `QualityJobDrawer`：把「定时调度」「任务完成自动触发」两个 checkbox 改为**三选一单选卡片**（手动触发 / Cron 定时 / 自动触发，参考同步任务 triggerType 单选 UI）。
+  - 选中某一项时 `scheduledEnabled`/`autoTriggerEnabled` **互斥置位**，并清空另一方式对应的 cron / autoTrigger 对象字段。
+- 任务列表 `data-quality/index.tsx`：「触发方式」列改为**单选显示**（自动触发 > 定时 > 手动，历史数据若同时开启按此优先级归一展示），不再拼接 "手动 + 定时"。
+- 后端无改动，仅重建 **app-frontend**（`--no-cache`）。
+
+## 5. Blocker
+
+> 需求：质量任务可在**列表直接开启/关闭定时调度**，参考同步任务操作列的调度开关。
+
+**变更清单：**
+- **后端 task-core**：
+  - `QualityJobService` 新增 `startSchedule(id)`（`scheduled_enabled=1`，cron 为空抛 `QUALITY_JOB_CRON_REQUIRED` 4206/4213）/ `stopSchedule(id)`（`scheduled_enabled=0`），仅更新调度开关不触碰其它字段。
+  - `ErrorCode` 新增 `QUALITY_JOB_CRON_REQUIRED(4213)`。
+- **后端 governance**：`QualityJobController` 新增 `POST /{id}/schedule/start`、`POST /{id}/schedule/stop`（治理员/超管）。
+- **前端**：
+  - `api/quality.ts` 新增 `startQualityJobSchedule`/`stopQualityJobSchedule`。
+  - 任务列表 `data-quality/index.tsx`：操作列新增**调度开关按钮**（`HiOutlineCalendar`，active 高亮 = 已开调度，含 `schedulingId` loading 态），仅**配置了 cron** 的任务显示（与同步任务仅 CRON 触发类型显示一致）。
+- **验证**：`schedule/stop` 使 `scheduled_enabled` 1→0，`schedule/start` 使 0→1，接口均 200；前端 tsc 通过。
+- **部署**：重建 app-governance（调度端点）+ app-engineering/app-worker（task-core 变更按约定）+ app-frontend（前端）。
+
 ## 5. Blocker
 
 - B1：worker 同步任务终态回调挂载点需定位（`SyncJobExecutorService` 执行完成回调的确切类/方法），用于自动触发接入。

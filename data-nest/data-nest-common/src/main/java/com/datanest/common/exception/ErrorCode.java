@@ -97,6 +97,7 @@ public enum ErrorCode {
     QUALITY_RULE_EXECUTE_NOT_IMPLEMENTED(4210, "执行功能待实现"),
     QUALITY_RULE_BATCH_TEMPLATE_INVALID(4211, "模板批量应用参数非法"),
     QUALITY_TABLE_NOT_FOUND(4212, "目标表不存在"),
+    QUALITY_JOB_CRON_REQUIRED(4213, "未配置 Cron 表达式"),
 
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");

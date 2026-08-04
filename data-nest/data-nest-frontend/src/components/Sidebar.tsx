@@ -153,7 +153,7 @@ export default function Sidebar() {
 
     return (
         <aside
-            className="sb-sidebar fixed left-0 top-0 h-full w-[248px] bg-ds-sidebar-bg border-r border-ds-sidebar-border flex flex-col z-ds-elevated">
+            className="sb-sidebar fixed left-0 top-0 h-full w-[248px] bg-ds-sidebar-bg border-r border-ds-sidebar-border flex flex-col overflow-hidden z-ds-elevated">
             {/* Logo */}
             <div className="sb-brand h-14 flex items-center gap-2 px-ds-4 border-b border-ds-sidebar-border">
                 <LogoMark size={28} className="flex-shrink-0"/>

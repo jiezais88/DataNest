@@ -12,11 +12,13 @@ import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
 import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
+import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityJobRule;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
+import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import com.datanest.task.core.mapper.QualityJobRuleMapper;
@@ -56,6 +58,7 @@ public class QualityRuleService {
     private final QualityJobRuleMapper jobRuleMapper;
     private final QualityRuleTemplateMapper templateMapper;
     private final MetadataTableMapper tableMapper;
+    private final DataSourceConnectionMapper dataSourceMapper;
     private final SysUserService sysUserService;
 
     public QualityRuleService(QualityRuleMapper ruleMapper,
@@ -63,12 +66,14 @@ public class QualityRuleService {
                               QualityJobRuleMapper jobRuleMapper,
                               QualityRuleTemplateMapper templateMapper,
                               MetadataTableMapper tableMapper,
+                              DataSourceConnectionMapper dataSourceMapper,
                               SysUserService sysUserService) {
         this.ruleMapper = ruleMapper;
         this.jobMapper = jobMapper;
         this.jobRuleMapper = jobRuleMapper;
         this.templateMapper = templateMapper;
         this.tableMapper = tableMapper;
+        this.dataSourceMapper = dataSourceMapper;
         this.sysUserService = sysUserService;
     }
 
@@ -535,7 +540,7 @@ public class QualityRuleService {
     }
 
     /**
-     * 批量构建 DTO，一次性回填表名/模板名/用户名/所属任务名，避免 N+1。
+     * 批量构建 DTO，一次性回填表名/数据源名/模板名/用户名/所属任务名，避免 N+1。
      */
     private List<QualityRuleDTO> buildDTOs(List<QualityRule> records) {
         if (records == null || records.isEmpty()) {
@@ -547,6 +552,8 @@ public class QualityRuleService {
         Map<Long, MetadataTable> tableMap = tableIds.isEmpty()
                 ? Map.of() : tableMapper.selectBatchIds(tableIds).stream()
                 .collect(Collectors.toMap(MetadataTable::getId, Function.identity()));
+        // 数据源名映射（经 datasource_connection 批量查；内置 Doris 特殊映射）
+        Map<Long, String> datasourceNameMap = loadDatasourceNameMap(tableMap.values());
         // 模板信息
         Set<Long> templateIds = records.stream()
                 .map(QualityRule::getTemplateId).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -559,10 +566,13 @@ public class QualityRuleService {
         Map<Long, List<String>> jobNameMap = listJobNamesByRuleIds(
                 records.stream().map(QualityRule::getId).collect(Collectors.toSet()));
 
-        return records.stream().map(e -> toDTO(e, tableMap, templateMap, usernameMap, jobNameMap)).toList();
+        return records.stream()
+                .map(e -> toDTO(e, tableMap, datasourceNameMap, templateMap, usernameMap, jobNameMap))
+                .toList();
     }
 
     private QualityRuleDTO toDTO(QualityRule entity, Map<Long, MetadataTable> tableMap,
+                                 Map<Long, String> datasourceNameMap,
                                  Map<Long, QualityRuleTemplate> templateMap,
                                  Map<Long, String> usernameMap,
                                  Map<Long, List<String>> jobNameMap) {
@@ -578,6 +588,8 @@ public class QualityRuleService {
         dto.setTableId(entity.getTableId());
         MetadataTable table = entity.getTableId() == null ? null : tableMap.get(entity.getTableId());
         dto.setTableName(table == null ? null : RuleSqlGenerator.buildFullTableName(table));
+        dto.setDatasourceId(table == null ? null : table.getDatasourceId());
+        dto.setDatasourceName(table == null ? null : datasourceNameMap.get(table.getDatasourceId()));
         dto.setColumnName(entity.getColumnName());
         dto.setCheckField(entity.getCheckField());
         dto.setSqlExpression(entity.getSqlExpression());
@@ -617,6 +629,26 @@ public class QualityRuleService {
             return Map.of();
         }
         return sysUserService.getUsernameMap(userIds);
+    }
+
+    /**
+     * 批量构建数据源名映射（datasourceId → 数据源名）。
+     * 内置 Doris 表（datasourceId = -1）在 datasource_connection 中不存在，特殊映射为 "Doris 数仓"。
+     */
+    private Map<Long, String> loadDatasourceNameMap(Collection<MetadataTable> tables) {
+        Set<Long> dsIds = tables.stream()
+                .map(MetadataTable::getDatasourceId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (dsIds.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> externalIds = dsIds.stream().filter(id -> id != -1L).collect(Collectors.toSet());
+        Map<Long, String> map = externalIds.isEmpty() ? new HashMap<>()
+                : dataSourceMapper.selectBatchIds(externalIds).stream()
+                .collect(Collectors.toMap(DataSourceConnection::getId, DataSourceConnection::getName, (a, b) -> a, HashMap::new));
+        if (dsIds.contains(-1L)) {
+            map.put(-1L, "Doris 数仓");
+        }
+        return map;
     }
 
     private Long currentUserId() {

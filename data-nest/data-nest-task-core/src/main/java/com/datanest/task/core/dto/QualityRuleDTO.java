@@ -32,6 +32,12 @@ public class QualityRuleDTO {
     /** 目标表名（schema.table，冗余回填，便于展示） */
     private String tableName;
 
+    /** 目标表归属数据源 ID（经 metadata_table 回填，Sprint 7 方案A） */
+    private Long datasourceId;
+
+    /** 目标表归属数据源名（经 datasource_connection 回填；内置 Doris 显示 "Doris 数仓"） */
+    private String datasourceName;
+
     private String columnName;
 
     private Integer checkField;

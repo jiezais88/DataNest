@@ -276,3 +276,41 @@ body {
         padding-right: 0;
     }
 }
+
+/* ============================================
+ * Sidebar 自定义滚动条（Sprint 7 修复）
+ * 目的：菜单项增多后 nav 出现原生滚动条，样式突兀；
+ *       改为窄滚动条 + 半透明 thumb，仅 hover 时显形。
+ * 注意：WebKit 内核滚动条样式；Firefox 使用 scrollbar-width/thumb。
+ * ============================================ */
+.sb-nav {
+    /* Firefox：使用细滚动条（auto=系统默认，thin=细），与 WebKit thumb 颜色对齐 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+/* WebKit (Chrome/Edge/Safari) 滚动条 */
+.sb-nav::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.sb-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sb-nav::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0);
+    border-radius: 3px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+/* hover nav 或滚动中显形 */
+.sb-nav:hover::-webkit-scrollbar-thumb,
+.sb-nav::-webkit-scrollbar-thumb:horizontal {
+    background-color: rgba(148, 163, 184, 0.45);
+}
+
+.sb-nav::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(148, 163, 184, 0.75);
+}

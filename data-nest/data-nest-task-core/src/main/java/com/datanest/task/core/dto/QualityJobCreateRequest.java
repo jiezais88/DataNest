@@ -25,9 +25,6 @@ public class QualityJobCreateRequest {
     @Size(max = 500, message = "任务描述不能超过 500 字符")
     private String description;
 
-    /** 可选，数据源范围（用于选表过滤） */
-    private Long datasourceId;
-
     /** 启用状态：默认 1 启用 */
     private Integer enabled = 1;
 

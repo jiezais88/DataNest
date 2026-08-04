@@ -12,10 +12,11 @@ import {
     createQualityJob,
     deleteQualityJob,
     queryQualityJobs,
+    startQualityJobSchedule,
+    stopQualityJobSchedule,
     toggleQualityJob,
     updateQualityJob,
 } from '../../../api/quality';
-import {getDataSources} from '../../../api/datasource';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
 import DsStatusBadge from '../../../components/DsStatusBadge';
@@ -26,6 +27,7 @@ import ConfirmDialog from '../../../components/ConfirmDialog';
 import Pagination from '../../../components/Pagination';
 import SearchInput from '../../../components/SearchInput';
 import {
+    HiOutlineCalendar,
     HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlay,
@@ -60,18 +62,16 @@ export default function DataQualityPage() {
 
     const [activeTab, setActiveTab] = useState<Tab>('jobs');
 
-    // ============ 数据源（筛选 + 统计卡片） ============
-    const [datasources, setDatasources] = useState<{ id: string; name: string }[]>([]);
-
     // ============ 质量任务 ============
     const [jobs, setJobs] = useState<QualityJob[]>([]);
     const [jobTotal, setJobTotal] = useState(0);
     const [jobPage, setJobPage] = useState(1);
     const [jobPageSize, setJobPageSize] = useState(10);
     const [jobKeyword, setJobKeyword] = useState('');
-    const [jobDatasourceId, setJobDatasourceId] = useState('');
     const [jobEnabled, setJobEnabled] = useState<string>('');
     const [jobLoading, setJobLoading] = useState(false);
+    /** 调度开关 loading（记录当前正在切换调度的任务 ID） */
+    const [schedulingId, setSchedulingId] = useState<string>('');
     const [stats, setStats] = useState({all: 0, enabled: 0, disabled: 0});
     const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
     const [jobEditItem, setJobEditItem] = useState<QualityJob | null>(null);
@@ -82,12 +82,6 @@ export default function DataQualityPage() {
 
     // ============ 质量规则（已独立为独立菜单 /governance/quality-rules） ============
 
-    const loadJobDatasources = useCallback(() => {
-        getDataSources({page: 1, pageSize: 1000})
-            .then((res) => setDatasources((res.data.records || []).map((d) => ({id: String(d.id), name: d.name}))))
-            .catch(() => setDatasources([]));
-    }, []);
-
     const loadJobs = useCallback(async () => {
         setJobLoading(true);
         try {
@@ -95,7 +89,6 @@ export default function DataQualityPage() {
                 page: jobPage,
                 pageSize: jobPageSize,
                 keyword: jobKeyword || undefined,
-                datasourceId: jobDatasourceId || undefined,
                 enabled: jobEnabled === '' ? undefined : Number(jobEnabled),
             });
             setJobs(res.data.records);
@@ -103,7 +96,7 @@ export default function DataQualityPage() {
         } finally {
             setJobLoading(false);
         }
-    }, [jobPage, jobPageSize, jobKeyword, jobDatasourceId, jobEnabled]);
+    }, [jobPage, jobPageSize, jobKeyword, jobEnabled]);
 
     const loadStats = useCallback(async () => {
         try {
@@ -126,12 +119,6 @@ export default function DataQualityPage() {
         loadStats();
     }, [loadStats]);
 
-    // 进页加载数据源（筛选下拉）
-    useEffect(() => {
-        loadJobDatasources();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
     // URL 状态同步（对齐 data-standards）：进页初始化一次 Tab/任务页筛选与分页，深层跳转返回后筛选不丢
     const urlInitRef = useRef(false);
     useEffect(() => {
@@ -142,7 +129,6 @@ export default function DataQualityPage() {
         const en = p.get('jobEnabled');
         setActiveTab(tab);
         setJobKeyword(p.get('jobKeyword') || '');
-        setJobDatasourceId(p.get('jobDatasourceId') || '');
         setJobEnabled(en === '1' || en === '0' ? en : '');
         setJobPage(Number(p.get('jobPage')) || 1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,17 +138,15 @@ export default function DataQualityPage() {
         const next = new URLSearchParams();
         next.set('tab', activeTab);
         if (jobKeyword) next.set('jobKeyword', jobKeyword);
-        if (jobDatasourceId) next.set('jobDatasourceId', jobDatasourceId);
         if (jobEnabled === '1' || jobEnabled === '0') next.set('jobEnabled', jobEnabled);
         if (jobPage > 1) next.set('jobPage', String(jobPage));
         if (next.toString() === searchParams.toString()) return;
         setSearchParams(next, {replace: true});
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, jobKeyword, jobDatasourceId, jobEnabled, jobPage]);
+    }, [activeTab, jobKeyword, jobEnabled, jobPage]);
 
     const resetJobFilters = () => {
         setJobKeyword('');
-        setJobDatasourceId('');
         setJobEnabled('');
         setJobPage(1);
     };
@@ -206,6 +190,23 @@ export default function DataQualityPage() {
         loadStats();
     }, [loadJobs, loadStats]);
 
+    /** 列表内直接开启/关闭调度（参考同步任务操作列调度开关） */
+    const handleToggleSchedule = useCallback(async (item: QualityJob) => {
+        const enabling = item.scheduledEnabled !== 1;
+        setSchedulingId(item.id);
+        try {
+            if (enabling) {
+                await startQualityJobSchedule(item.id);
+            } else {
+                await stopQualityJobSchedule(item.id);
+            }
+            notify.success(`已${enabling ? '开启' : '关闭'}定时调度`);
+            loadJobs();
+        } finally {
+            setSchedulingId('');
+        }
+    }, [loadJobs]);
+
     const handleExecuteJob = () => {
         notify.info('执行功能待实现（下一批交付）');
     };
@@ -246,24 +247,15 @@ export default function DataQualityPage() {
             ),
         },
         {
-            title: '数据源范围',
-            dataIndex: 'datasourceName',
-            width: COL.NAME,
-            ellipsis: true,
-            render: (v?: string) => (
-                <span title={v || '不限'} className="text-ds-small text-ds-text-secondary">{v || '不限'}</span>
-            ),
-        },
-        {
             title: '触发方式',
             dataIndex: 'scheduledEnabled',
             width: COL.TRIGGER_TYPE,
             render: (_, item) => {
-                const parts: string[] = ['手动'];
-                if (item.scheduledEnabled === 1) parts.push('定时');
-                if (item.autoTriggerEnabled === 1) parts.push('自动触发');
+                // 触发方式为单选：自动触发 > 定时 > 手动（历史数据若同时开启，按此优先级归一展示）
+                const mode = item.autoTriggerEnabled === 1 ? '自动触发'
+                    : (item.scheduledEnabled === 1 ? '定时' : '手动');
                 return (
-                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{parts.join(' + ')}</span>
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">{mode}</span>
                 );
             },
         },
@@ -418,6 +410,20 @@ export default function DataQualityPage() {
                                     <HiOutlineScale size={14}/>
                                 </DsIconButton>
                             </Tooltip>
+                            {item.cron && (
+                                <Tooltip title={item.scheduledEnabled === 1 ? '关闭定时调度' : '开启定时调度'}>
+                                    <DsIconButton
+                                        tone="success"
+                                        active={item.scheduledEnabled === 1}
+                                        data-testid={`quality-job-schedule-${item.name}`}
+                                        onClick={() => handleToggleSchedule(item)}
+                                        disabled={schedulingId === item.id}
+                                        aria-label={item.scheduledEnabled === 1 ? '关闭定时调度' : '开启定时调度'}
+                                    >
+                                        <HiOutlineCalendar size={14}/>
+                                    </DsIconButton>
+                                </Tooltip>
+                            )}
                             <Tooltip title="编辑">
                                 <DsIconButton tone="accent" onClick={() => openJobEdit(item)} aria-label="编辑">
                                     <HiOutlinePencilSquare size={14}/>
@@ -440,7 +446,7 @@ export default function DataQualityPage() {
                 </div>
             ),
         },
-    ], [canWrite, handleToggleJob, openJobEdit, openJobView]);
+    ], [canWrite, handleToggleJob, handleToggleSchedule, schedulingId, openJobEdit, openJobView]);
 
     const tabs = [
         {key: 'jobs' as Tab, label: '质量任务', icon: HiOutlineClipboardDocumentCheck},
@@ -520,15 +526,6 @@ export default function DataQualityPage() {
                                     value={jobKeyword}
                                     onChange={(e) => setJobKeyword(e.target.value)}
                                     placeholder="搜索任务名称..."
-                                />
-                                <DsFilterSelect
-                                    value={jobDatasourceId}
-                                    onChange={setJobDatasourceId}
-                                    aria-label="按数据源筛选"
-                                    options={[
-                                        {value: '', label: '全部数据源'},
-                                        ...datasources.map((d) => ({value: d.id, label: d.name})),
-                                    ]}
                                 />
                                 <DsFilterSelect
                                     value={jobEnabled}

@@ -13,9 +13,7 @@ import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.QualityJob;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -44,16 +41,13 @@ public class QualityJobService {
     private static final Set<String> ALERT_LEVELS = Set.of("SEVERE_ONLY", "SEVERE_WARNING");
 
     private final QualityJobMapper jobMapper;
-    private final DataSourceConnectionMapper dataSourceMapper;
     private final QualityRuleService ruleService;
     private final SysUserService sysUserService;
 
     public QualityJobService(QualityJobMapper jobMapper,
-                             DataSourceConnectionMapper dataSourceMapper,
                              QualityRuleService ruleService,
                              SysUserService sysUserService) {
         this.jobMapper = jobMapper;
-        this.dataSourceMapper = dataSourceMapper;
         this.ruleService = ruleService;
         this.sysUserService = sysUserService;
     }
@@ -69,9 +63,6 @@ public class QualityJobService {
         if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
             wrapper.and(w -> w.like("name", request.getKeyword().trim())
                     .or().like("description", request.getKeyword().trim()));
-        }
-        if (request.getDatasourceId() != null) {
-            wrapper.eq("datasource_id", request.getDatasourceId());
         }
         if (request.getEnabled() != null) {
             wrapper.eq("enabled", request.getEnabled());
@@ -125,7 +116,6 @@ public class QualityJobService {
         QualityJob entity = new QualityJob();
         entity.setName(name);
         entity.setDescription(request.getDescription());
-        entity.setDatasourceId(request.getDatasourceId());
         entity.setEnabled(request.getEnabled() == null ? 1 : request.getEnabled());
         entity.setScheduledEnabled(request.getScheduledEnabled() == null ? 0 : request.getScheduledEnabled());
         entity.setCron(request.getCron());
@@ -154,13 +144,11 @@ public class QualityJobService {
             validateAlertLevel(request.getAlertLevel());
         }
 
-        // 更新语义：可清空字段（description/datasource_id）无论是否 null 都更新（传 null 即清空）；
-        // 其余字段 null 不更新。
+        // 更新语义：description 可清空（传 null 即清空）；其余字段 null 不更新。
         UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", id);
         wrapper.set("name", name);
         wrapper.set("description", request.getDescription());
-        wrapper.set("datasource_id", request.getDatasourceId());
         if (request.getEnabled() != null) {
             wrapper.set("enabled", request.getEnabled());
         }
@@ -225,6 +213,38 @@ public class QualityJobService {
     }
 
     /**
+     * 开启调度（scheduled_enabled=1）。
+     * 仅更新调度开关，不触碰 cron 等其它字段；cron 为空时抛错（否则开启调度后无法定时执行）。
+     */
+    @Transactional
+    public void startSchedule(Long id) {
+        QualityJob entity = requireJob(id);
+        if (!StringUtils.hasText(entity.getCron())) {
+            throw new BusinessException(ErrorCode.QUALITY_JOB_CRON_REQUIRED, "未配置 Cron 表达式，无法开启调度");
+        }
+        UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", id)
+                .set("scheduled_enabled", 1)
+                .set("updated_by", currentUserId())
+                .set("updated_at", LocalDateTime.now());
+        jobMapper.update(null, wrapper);
+    }
+
+    /**
+     * 关闭调度（scheduled_enabled=0）。仅更新调度开关。
+     */
+    @Transactional
+    public void stopSchedule(Long id) {
+        requireJob(id);
+        UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", id)
+                .set("scheduled_enabled", 0)
+                .set("updated_by", currentUserId())
+                .set("updated_at", LocalDateTime.now());
+        jobMapper.update(null, wrapper);
+    }
+
+    /**
      * 记录最近触发时间（定时扫描 handler 调用）。
      * 仅更新 last_trigger_at/updated_at，避免全字段 UPDATE（定时扫描可能每分钟命中）。
      */
@@ -270,36 +290,26 @@ public class QualityJobService {
     }
 
     /**
-     * 批量构建 DTO，一次性回填数据源名/用户名/规则数，避免 N+1。
+     * 批量构建 DTO，一次性回填用户名/规则数，避免 N+1。
      */
     private List<QualityJobDTO> buildDTOs(List<QualityJob> records, boolean withRuleCount) {
         if (records == null || records.isEmpty()) {
             return List.of();
         }
-        // 数据源名
-        Set<Long> dsIds = records.stream()
-                .map(QualityJob::getDatasourceId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Map<Long, DataSourceConnection> dsMap = dsIds.isEmpty()
-                ? Map.of() : dataSourceMapper.selectBatchIds(dsIds).stream()
-                .collect(Collectors.toMap(DataSourceConnection::getId, Function.identity()));
         // 用户名
         Map<Long, String> usernameMap = loadUsernameMap(records);
         // 规则数（仅列表需要；详情单独查）
         Map<Long, Long> ruleCountMap = withRuleCount && !records.isEmpty()
                 ? loadRuleCounts(records) : Map.of();
 
-        return records.stream().map(e -> toDTO(e, dsMap, usernameMap, ruleCountMap)).toList();
+        return records.stream().map(e -> toDTO(e, usernameMap, ruleCountMap)).toList();
     }
 
-    private QualityJobDTO toDTO(QualityJob entity, Map<Long, DataSourceConnection> dsMap,
-                                Map<Long, String> usernameMap, Map<Long, Long> ruleCountMap) {
+    private QualityJobDTO toDTO(QualityJob entity, Map<Long, String> usernameMap, Map<Long, Long> ruleCountMap) {
         QualityJobDTO dto = new QualityJobDTO();
         dto.setId(entity.getId());
         dto.setName(entity.getName());
         dto.setDescription(entity.getDescription());
-        dto.setDatasourceId(entity.getDatasourceId());
-        DataSourceConnection ds = entity.getDatasourceId() == null ? null : dsMap.get(entity.getDatasourceId());
-        dto.setDatasourceName(ds == null ? null : ds.getName());
         dto.setEnabled(entity.getEnabled());
         dto.setScheduledEnabled(entity.getScheduledEnabled());
         dto.setCron(entity.getCron());

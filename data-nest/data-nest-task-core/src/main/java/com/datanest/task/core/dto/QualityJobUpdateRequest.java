@@ -13,7 +13,7 @@ import java.util.List;
  * 质量任务更新请求（Sprint 6 配置层）。
  * <p>
  * 更新语义：name/enabled/scheduled_enabled/cron/auto_trigger_object_type/alert_level 覆盖更新，
- * description/datasource_id 允许置空（传 null 即清空）。
+ * description 允许置空（传 null 即清空）。
  */
 @Data
 public class QualityJobUpdateRequest {
@@ -24,8 +24,6 @@ public class QualityJobUpdateRequest {
 
     @Size(max = 500, message = "任务描述不能超过 500 字符")
     private String description;
-
-    private Long datasourceId;
 
     private Integer enabled;
 

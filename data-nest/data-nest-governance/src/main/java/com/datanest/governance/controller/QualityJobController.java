@@ -92,4 +92,24 @@ public class QualityJobController {
         jobService.executeJob(id);
         return Result.ok(null);
     }
+
+    /**
+     * 开启调度（scheduled_enabled=1）。仅切调度开关，cron 为空时抛错。
+     */
+    @PostMapping("/{id}/schedule/start")
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    public Result<Void> startSchedule(@PathVariable Long id) {
+        jobService.startSchedule(id);
+        return Result.ok(null);
+    }
+
+    /**
+     * 关闭调度（scheduled_enabled=0）。仅切调度开关。
+     */
+    @PostMapping("/{id}/schedule/stop")
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    public Result<Void> stopSchedule(@PathVariable Long id) {
+        jobService.stopSchedule(id);
+        return Result.ok(null);
+    }
 }

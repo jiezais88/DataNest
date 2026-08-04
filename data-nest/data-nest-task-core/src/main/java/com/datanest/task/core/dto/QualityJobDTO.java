@@ -20,10 +20,6 @@ public class QualityJobDTO {
 
     private String description;
 
-    private Long datasourceId;
-
-    private String datasourceName;
-
     /** 启用状态：1 启用，0 停用 */
     private Integer enabled;
 

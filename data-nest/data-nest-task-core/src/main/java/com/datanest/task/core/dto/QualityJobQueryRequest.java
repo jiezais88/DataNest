@@ -17,9 +17,6 @@ public class QualityJobQueryRequest {
     /** 关键字（名称/描述模糊匹配） */
     private String keyword;
 
-    /** 数据源范围过滤 */
-    private Long datasourceId;
-
     /** 启用状态过滤 */
     private Integer enabled;
 

@@ -1,7 +1,6 @@
 import {useEffect, useState} from 'react';
 import Drawer from '../../../components/Drawer';
 import DsButton from '../../../components/DsButton';
-import {getDataSources} from '../../../api/datasource';
 import {queryQualityRules} from '../../../api/quality';
 import CronPicker from '../../../components/CronPicker';
 import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule} from '../../../types/quality';
@@ -10,7 +9,6 @@ import AutoTriggerSelect from './AutoTriggerSelect';
 interface QualityJobFormData {
     name: string;
     description: string;
-    datasourceId: string;
     enabled: number;
     scheduledEnabled: number;
     cron: string;
@@ -25,7 +23,6 @@ interface QualityJobFormData {
 const EMPTY_FORM: QualityJobFormData = {
     name: '',
     description: '',
-    datasourceId: '',
     enabled: 1,
     scheduledEnabled: 0,
     cron: '',
@@ -59,7 +56,6 @@ export default function QualityJobDrawer({
     const [form, setForm] = useState<QualityJobFormData>(EMPTY_FORM);
     const [errors, setErrors] = useState<Partial<Record<keyof QualityJobFormData, string>>>({});
     const [submitting, setSubmitting] = useState(false);
-    const [datasources, setDatasources] = useState<{ id: string; name: string }[]>([]);
     // 规则库（供任务引用规则，Sprint 7）
     const [ruleOptions, setRuleOptions] = useState<QualityRule[]>([]);
 
@@ -67,13 +63,32 @@ export default function QualityJobDrawer({
     const isView = mode === 'view';
     const readOnly = isView;
 
+    // 触发方式单选（手动 / 定时 / 自动触发 三选一，互斥）
+    type TriggerMode = 'MANUAL' | 'SCHEDULED' | 'AUTO_TRIGGER';
+    const TRIGGER_OPTIONS: { value: TriggerMode; label: string }[] = [
+        {value: 'MANUAL', label: '手动触发'},
+        {value: 'SCHEDULED', label: 'Cron 定时'},
+        {value: 'AUTO_TRIGGER', label: '自动触发'},
+    ];
+    // 由 scheduledEnabled/autoTriggerEnabled 派生当前选中
+    const triggerMode: TriggerMode = form.autoTriggerEnabled === 1 ? 'AUTO_TRIGGER'
+        : (form.scheduledEnabled === 1 ? 'SCHEDULED' : 'MANUAL');
+    const handleTriggerModeChange = (mode: TriggerMode) => {
+        updateField('scheduledEnabled', mode === 'SCHEDULED' ? 1 : 0);
+        updateField('autoTriggerEnabled', mode === 'AUTO_TRIGGER' ? 1 : 0);
+        if (mode !== 'SCHEDULED') updateField('cron', '');
+        if (mode !== 'AUTO_TRIGGER') {
+            updateField('autoTriggerObjectType', '');
+            updateField('autoTriggerObjectId', '');
+        }
+    };
+
     useEffect(() => {
         if (open) {
             if (editItem) {
                 setForm({
                     name: editItem.name,
                     description: editItem.description || '',
-                    datasourceId: editItem.datasourceId || '',
                     enabled: editItem.enabled ?? 1,
                     scheduledEnabled: editItem.scheduledEnabled ?? 0,
                     cron: editItem.cron || '',
@@ -87,12 +102,6 @@ export default function QualityJobDrawer({
                 setForm(EMPTY_FORM);
             }
             setErrors({});
-            // 加载数据源下拉（全量）
-            getDataSources({page: 1, pageSize: 1000})
-                .then((res) => {
-                    setDatasources((res.data.records || []).map((d) => ({id: String(d.id), name: d.name})));
-                })
-                .catch(() => setDatasources([]));
             // 加载规则库（供引用规则多选）
             queryQualityRules({page: 1, pageSize: 1000})
                 .then((res) => setRuleOptions(res.data.records || []))
@@ -127,7 +136,6 @@ export default function QualityJobDrawer({
             const payload: QualityJobCreateRequest = {
                 name: form.name.trim(),
                 description: form.description.trim() || undefined,
-                datasourceId: form.datasourceId || undefined,
                 enabled: form.enabled,
                 scheduledEnabled: form.scheduledEnabled,
                 cron: form.scheduledEnabled === 1 ? form.cron.trim() : undefined,
@@ -187,24 +195,6 @@ export default function QualityJobDrawer({
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                        数据源范围
-                    </label>
-                    <select
-                        value={form.datasourceId}
-                        onChange={(e) => updateField('datasourceId', e.target.value)}
-                        disabled={readOnly}
-                        className={selectClass}
-                    >
-                        <option value="">不限数据源</option>
-                        {datasources.map((d) => (
-                            <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                    <p className="mt-ds-1 text-ds-nano text-ds-text-muted">用于限定检查范围，规则选表时以此为默认数据源</p>
-                </div>
-
-                <div>
-                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         任务描述
                     </label>
                     <textarea
@@ -230,17 +220,27 @@ export default function QualityJobDrawer({
                         />
                     </label>
 
-                    <label className="flex items-center justify-between cursor-pointer">
-                        <span className="text-ds-small font-semibold text-ds-text-secondary">定时调度</span>
-                        <input
-                            type="checkbox"
-                            checked={form.scheduledEnabled === 1}
-                            onChange={(e) => updateField('scheduledEnabled', e.target.checked ? 1 : 0)}
-                            disabled={readOnly}
-                            className="w-4 h-4 rounded border-ds-border-subtle text-ds-accent focus:ring-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
+                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                        触发方式 <span className="text-ds-danger">*</span>
                     </label>
-                    {form.scheduledEnabled === 1 && (
+                    <div className="flex gap-ds-3">
+                        {TRIGGER_OPTIONS.map((o) => (
+                            <button
+                                key={o.value}
+                                type="button"
+                                onClick={() => handleTriggerModeChange(o.value)}
+                                disabled={readOnly}
+                                className={`flex-1 px-ds-3 py-ds-2.5 rounded-ds-sm border text-ds-small transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                                    triggerMode === o.value
+                                        ? 'border-ds-accent bg-ds-accent-light text-ds-accent font-semibold'
+                                        : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent hover:text-ds-accent'
+                                }`}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                    {triggerMode === 'SCHEDULED' && (
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 Cron 表达式 <span className="text-ds-danger">*</span>
@@ -259,30 +259,21 @@ export default function QualityJobDrawer({
                             {errors.cron && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.cron}</p>}
                         </div>
                     )}
-
-                    <label className="flex items-center justify-between cursor-pointer">
-                        <span className="text-ds-small font-semibold text-ds-text-secondary">任务完成自动触发</span>
-                        <input
-                            type="checkbox"
-                            checked={form.autoTriggerEnabled === 1}
-                            onChange={(e) => updateField('autoTriggerEnabled', e.target.checked ? 1 : 0)}
-                            disabled={readOnly}
-                            className="w-4 h-4 rounded border-ds-border-subtle text-ds-accent focus:ring-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                    </label>
-                    {form.autoTriggerEnabled === 1 && (
-                        <AutoTriggerSelect
-                            objectType={form.autoTriggerObjectType}
-                            objectId={form.autoTriggerObjectId}
-                            readOnly={readOnly}
-                            onChange={(type, id) => {
-                                updateField('autoTriggerObjectType', type);
-                                updateField('autoTriggerObjectId', id);
-                            }}
-                        />
+                    {triggerMode === 'AUTO_TRIGGER' && (
+                        <>
+                            <AutoTriggerSelect
+                                objectType={form.autoTriggerObjectType}
+                                objectId={form.autoTriggerObjectId}
+                                readOnly={readOnly}
+                                onChange={(type, id) => {
+                                    updateField('autoTriggerObjectType', type);
+                                    updateField('autoTriggerObjectId', id);
+                                }}
+                            />
+                            {errors.autoTriggerObjectType &&
+                                <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.autoTriggerObjectType}</p>}
+                        </>
                     )}
-                    {errors.autoTriggerObjectType &&
-                        <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.autoTriggerObjectType}</p>}
                 </div>
 
                 <div>

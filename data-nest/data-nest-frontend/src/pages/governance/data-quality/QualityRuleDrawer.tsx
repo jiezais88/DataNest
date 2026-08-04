@@ -1,15 +1,25 @@
 import {useEffect, useState} from 'react';
 import Drawer from '../../../components/Drawer';
 import DsButton from '../../../components/DsButton';
-import {listMetadataColumns} from '../../../api/metadata';
-import type {MetadataColumn, MetadataTable} from '../../../types/metadata';
+import {
+    listMetadataColumns,
+    listMetadataDatabases,
+    listMetadataDatasourceIds,
+    listMetadataSchemas,
+    listMetadataTables,
+    listMetadataTablesWithoutSchema,
+} from '../../../api/metadata';
+import {isWithoutSchema} from '../../../constants/datasource';
+import type {MetadataColumn, MetadataTable, MetadataDatasource} from '../../../types/metadata';
 import {QUALITY_TYPE_OPTIONS} from '../../../types/quality';
 import type {QualityRule, QualityRuleCreateRequest, QualityRuleType} from '../../../types/quality';
-import TableSelectModal from './TableSelectModal';
 
 interface QualityRuleFormData {
     name: string;
     type: QualityRuleType;
+    /** 目标表归属数据源（Sprint 7 方案A：表单级显式字段） */
+    datasourceId: string;
+    datasourceName: string;
     tableId: string;
     tableName: string;
     columnName: string;
@@ -25,6 +35,8 @@ interface QualityRuleFormData {
 const EMPTY_FORM: QualityRuleFormData = {
     name: '',
     type: 'COMPLETENESS',
+    datasourceId: '',
+    datasourceName: '',
     tableId: '',
     tableName: '',
     columnName: '',
@@ -43,8 +55,6 @@ interface QualityRuleDrawerProps {
     editItem: QualityRule | null;
     /** 所属任务 ID（创建必传；编辑从 editItem 取） */
     jobId: string;
-    /** 默认数据源（从任务继承，用于选表） */
-    defaultDatasourceId?: string;
     onClose: () => void;
     onSubmit: (payload: QualityRuleCreateRequest) => Promise<unknown>;
 }
@@ -54,7 +64,6 @@ export default function QualityRuleDrawer({
                                                mode = 'create',
                                                editItem,
                                                jobId,
-                                               defaultDatasourceId,
                                                onClose,
                                                onSubmit,
                                            }: QualityRuleDrawerProps) {
@@ -63,7 +72,20 @@ export default function QualityRuleDrawer({
     const [submitting, setSubmitting] = useState(false);
     const [columns, setColumns] = useState<MetadataColumn[]>([]);
     const [columnsLoading, setColumnsLoading] = useState(false);
-    const [tableSelectOpen, setTableSelectOpen] = useState(false);
+    /** 可选数据源（仅已采集元数据的数据源） */
+    const [datasourceOptions, setDatasourceOptions] = useState<MetadataDatasource[]>([]);
+    // 行内选表级联：数据库 / Schema / 表
+    const [databases, setDatabases] = useState<string[]>([]);
+    const [databaseLoading, setDatabaseLoading] = useState(false);
+    const [selectedDatabase, setSelectedDatabase] = useState('');
+    const [schemas, setSchemas] = useState<string[]>([]);
+    const [schemaLoading, setSchemaLoading] = useState(false);
+    const [selectedSchema, setSelectedSchema] = useState('');
+    const [tables, setTables] = useState<MetadataTable[]>([]);
+    const [tableLoading, setTableLoading] = useState(false);
+
+    const datasourceType = datasourceOptions.find((d) => String(d.id) === String(form.datasourceId))?.type;
+    const noSchema = isWithoutSchema(datasourceType);
 
     const isEdit = mode === 'edit';
     const isView = mode === 'view';
@@ -92,6 +114,8 @@ export default function QualityRuleDrawer({
                 setForm({
                     name: editItem.name,
                     type: editItem.type,
+                    datasourceId: editItem.datasourceId ? String(editItem.datasourceId) : '',
+                    datasourceName: editItem.datasourceName || '',
                     tableId: editItem.tableId || '',
                     tableName: editItem.tableName || '',
                     columnName: editItem.columnName || '',
@@ -103,10 +127,28 @@ export default function QualityRuleDrawer({
                     weight: editItem.weight != null ? String(editItem.weight) : '1',
                     enabled: editItem.enabled ?? 1,
                 });
+                // 编辑回显：tableName 形如 "schema.table"，第一段预设为数据库（有 schema 类型时同为 Schema）
+                const firstSeg = editItem.tableName?.split('.')[0];
+                if (firstSeg) {
+                    setSelectedDatabase(firstSeg);
+                    setSelectedSchema(firstSeg);
+                } else {
+                    setSelectedDatabase('');
+                    setSelectedSchema('');
+                }
             } else {
                 setForm({...EMPTY_FORM});
+                setSelectedDatabase('');
+                setSelectedSchema('');
+                setDatabases([]);
+                setSchemas([]);
+                setTables([]);
             }
             setErrors({});
+            // 加载可选数据源（仅已采集元数据的数据源）
+            listMetadataDatasourceIds()
+                .then((res) => setDatasourceOptions(res.data || []))
+                .catch(() => setDatasourceOptions([]));
         }
     }, [open, editItem]);
 
@@ -118,18 +160,76 @@ export default function QualityRuleDrawer({
         }
     };
 
-    const handleTableSelect = (tables: MetadataTable[]) => {
-        const table = tables[0];
-        if (table) {
-            updateField('tableId', String(table.id));
-            updateField('tableName', table.schemaName ? `${table.schemaName}.${table.tableName}` : table.tableName);
+    const handleDatasourceChange = (id: string) => {
+        updateField('datasourceId', id);
+        const ds = datasourceOptions.find((d) => String(d.id) === String(id));
+        updateField('datasourceName', ds?.name || '');
+        // 切换数据源时清空已选表及级联状态（表归属发生变化）
+        updateField('tableId', '');
+        updateField('tableName', '');
+        updateField('columnName', '');
+        setSelectedDatabase('');
+        setSelectedSchema('');
+        setDatabases([]);
+        setSchemas([]);
+        setTables([]);
+    };
+
+    // 数据源变化：加载数据库
+    useEffect(() => {
+        if (!open || !form.datasourceId) return;
+        setSelectedDatabase('');
+        setSelectedSchema('');
+        setSchemas([]);
+        setTables([]);
+        setDatabaseLoading(true);
+        listMetadataDatabases(form.datasourceId)
+            .then((res) => setDatabases(res.data || []))
+            .catch(() => setDatabases([]))
+            .finally(() => setDatabaseLoading(false));
+    }, [open, form.datasourceId]);
+
+    // 选数据库：无 Schema 类型直接加载表，否则加载 Schema
+    useEffect(() => {
+        if (!open || !form.datasourceId || !selectedDatabase) return;
+        setSelectedSchema('');
+        setSchemas([]);
+        setTables([]);
+        if (noSchema) {
+            setTableLoading(true);
+            listMetadataTablesWithoutSchema(form.datasourceId, selectedDatabase)
+                .then((res) => setTables(res.data || []))
+                .catch(() => setTables([]))
+                .finally(() => setTableLoading(false));
+        } else {
+            setSchemaLoading(true);
+            listMetadataSchemas(form.datasourceId, selectedDatabase)
+                .then((res) => setSchemas(res.data || []))
+                .catch(() => setSchemas([]))
+                .finally(() => setSchemaLoading(false));
         }
-        setTableSelectOpen(false);
+    }, [open, form.datasourceId, selectedDatabase, noSchema]);
+
+    // 选 Schema：加载表
+    useEffect(() => {
+        if (!open || !form.datasourceId || !selectedDatabase || !selectedSchema || noSchema) return;
+        setTableLoading(true);
+        listMetadataTables(form.datasourceId, selectedDatabase, selectedSchema)
+            .then((res) => setTables(res.data || []))
+            .catch(() => setTables([]))
+            .finally(() => setTableLoading(false));
+    }, [open, form.datasourceId, selectedDatabase, selectedSchema, noSchema]);
+
+    const handleTableChange = (tableId: string) => {
+        const table = tables.find((t) => String(t.id) === String(tableId));
+        updateField('tableId', tableId);
+        updateField('tableName', table ? (table.schemaName ? `${table.schemaName}.${table.tableName}` : table.tableName) : '');
     };
 
     const validate = (): boolean => {
         const nextErrors: Partial<Record<keyof QualityRuleFormData, string>> = {};
         if (!form.name.trim()) nextErrors.name = '请输入规则名称';
+        if (!form.datasourceId) nextErrors.datasourceId = '请选择数据源';
         if (!form.tableId) nextErrors.tableId = '请选择目标表';
         if (needsColumn && !form.columnName.trim()) nextErrors.columnName = '请选择检查字段';
         if (isCustomSql && !form.sqlExpression.trim()) nextErrors.sqlExpression = '请输入自定义校验 SQL';
@@ -236,24 +336,82 @@ export default function QualityRuleDrawer({
 
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                            数据源 <span className="text-ds-danger">*</span>
+                        </label>
+                        <select
+                            value={form.datasourceId}
+                            onChange={(e) => handleDatasourceChange(e.target.value)}
+                            disabled={readOnly}
+                            className={selectClass}
+                        >
+                            <option value="">请选择数据源</option>
+                            {datasourceOptions.map((d) => (
+                                <option key={String(d.id)} value={String(d.id)}>
+                                    {d.name || `数据源 ${d.id}`}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                            仅展示已采集元数据的数据源，未采集请先到「元数据管理」执行采集
+                        </p>
+                        {errors.datasourceId && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.datasourceId}</p>}
+                    </div>
+
+                    <div>
+                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                            数据库
+                        </label>
+                        <select
+                            value={selectedDatabase}
+                            onChange={(e) => setSelectedDatabase(e.target.value)}
+                            disabled={readOnly || !form.datasourceId}
+                            className={selectClass}
+                        >
+                            <option value="">{databaseLoading ? '加载中...' : '请选择数据库'}</option>
+                            {databases.map((db) => (
+                                <option key={db} value={db}>{db}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {selectedDatabase && !noSchema && (
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                Schema
+                            </label>
+                            <select
+                                value={selectedSchema}
+                                onChange={(e) => setSelectedSchema(e.target.value)}
+                                disabled={readOnly}
+                                className={selectClass}
+                            >
+                                <option value="">{schemaLoading ? '加载中...' : '请选择 Schema'}</option>
+                                {schemas.map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <div>
+                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             目标表 <span className="text-ds-danger">*</span>
                         </label>
-                        <div className="flex gap-ds-2">
-                            <div
-                                className={`flex-1 px-ds-3 py-ds-2 rounded-ds-sm border border-ds-border-subtle text-ds-small ${
-                                    form.tableName ? 'text-ds-text-primary' : 'text-ds-text-muted'
-                                }`}
-                            >
-                                {form.tableName || '未选择表'}
-                            </div>
-                            <DsButton
-                                variant="secondary"
-                                onClick={() => setTableSelectOpen(true)}
-                                disabled={readOnly}
-                            >
-                                选择表
-                            </DsButton>
-                        </div>
+                        <select
+                            value={form.tableId}
+                            onChange={(e) => handleTableChange(e.target.value)}
+                            disabled={readOnly || !form.datasourceId || !selectedDatabase || (!noSchema && !selectedSchema)}
+                            className={selectClass}
+                        >
+                            <option value="">
+                                {tableLoading ? '加载中...' : (form.datasourceId && selectedDatabase ? '请选择目标表' : '请先选择数据源 / 数据库')}
+                            </option>
+                            {tables.map((t) => (
+                                <option key={t.id} value={String(t.id)}>
+                                    {t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName}
+                                </option>
+                            ))}
+                        </select>
                         {errors.tableId && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.tableId}</p>}
                     </div>
 
@@ -410,15 +568,6 @@ export default function QualityRuleDrawer({
                     </div>
                 </div>
             </Drawer>
-
-            <TableSelectModal
-                open={tableSelectOpen}
-                onClose={() => setTableSelectOpen(false)}
-                defaultDatasourceId={defaultDatasourceId}
-                selectedTables={[]}
-                multiple={false}
-                onConfirm={handleTableSelect}
-            />
         </>
     );
 }

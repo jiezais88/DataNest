@@ -83,6 +83,16 @@ export function toggleQualityJob(id: string, enabled?: number) {
     });
 }
 
+/** 开启质量任务调度（scheduled_enabled=1，cron 为空时后端抛错） */
+export function startQualityJobSchedule(id: string) {
+    return request.post<Result<null>>(`/governance/quality/jobs/${id}/schedule/start`);
+}
+
+/** 关闭质量任务调度（scheduled_enabled=0） */
+export function stopQualityJobSchedule(id: string) {
+    return request.post<Result<null>>(`/governance/quality/jobs/${id}/schedule/stop`);
+}
+
 /** 立即执行质量任务（后端当前为预留实现） */
 export function executeQualityJob(id: string) {
     return request.post<Result<null>>(`/governance/quality/jobs/${id}/execute`);

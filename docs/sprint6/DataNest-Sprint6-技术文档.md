@@ -160,7 +160,7 @@ PRD 原「每条规则独立 Cron」已在三层模型下 **废除**（见 D1）
 | id                                                | BIGINT PK    | Snowflake                                                    |
 | name                                              | VARCHAR(100) | 任务名称                                                     |
 | description                                       | VARCHAR(500) | 描述                                                         |
-| datasource_id                                     | BIGINT       | 可选，数据源范围（用于选表过滤）                             |
+| datasource_id                                     | BIGINT       | ~~数据源范围~~ 已废弃（Sprint 7 方案A移除，数据源下放到规则层；列保留不删，后端不再读写） |
 | enabled                                           | SMALLINT     | 启用状态                                                     |
 | scheduled_enabled                                 | SMALLINT     | 是否开定时调度（D1）                                         |
 | cron                                              | VARCHAR(64)  | 定时 cron（scheduled_enabled=1 时必填）                      |

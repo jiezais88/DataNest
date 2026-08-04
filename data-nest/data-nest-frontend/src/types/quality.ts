@@ -63,9 +63,6 @@ export interface QualityJob {
     id: string;
     name: string;
     description?: string;
-    /** 数据源范围（可选），为空表示不限数据源 */
-    datasourceId?: string;
-    datasourceName?: string;
     /** 是否启用：1 启用，0 停用 */
     enabled: number;
     /** 是否定时调度：1 是，0 否 */
@@ -100,7 +97,6 @@ export interface QualityJob {
 export interface QualityJobCreateRequest {
     name: string;
     description?: string;
-    datasourceId?: string;
     enabled?: number;
     scheduledEnabled?: number;
     cron?: string;
@@ -116,7 +112,6 @@ export interface QualityJobCreateRequest {
 export interface QualityJobUpdateRequest {
     name?: string;
     description?: string;
-    datasourceId?: string;
     enabled?: number;
     scheduledEnabled?: number;
     cron?: string;
@@ -131,7 +126,6 @@ export interface QualityJobUpdateRequest {
 /** 分页查询质量任务 */
 export interface QualityJobQueryParams {
     keyword?: string;
-    datasourceId?: string;
     enabled?: number;
     /** 仅筛选已启用定时调度 */
     scheduledEnabled?: number;
@@ -179,6 +173,10 @@ export interface QualityRule {
     tableId?: string;
     /** 对象表名（schema.table，computed 字段） */
     tableName?: string;
+    /** 对象表归属数据源 ID（经 metadata_table 回填） */
+    datasourceId?: string;
+    /** 对象表归属数据源名（内置 Doris 显示 "Doris 数仓"） */
+    datasourceName?: string;
     /** 检查字段（唯一性/值域必填；完整性可空） */
     columnName?: string;
     /** 是否按字段检查：1 按字段，0 整表（完整性用） */

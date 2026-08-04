@@ -2,10 +2,10 @@ import {useEffect, useState} from 'react';
 import DsButton from '../../../components/DsButton';
 import DsModal from '../../../components/DsModal';
 import {listQualityTemplates} from '../../../api/quality';
-import {listMetadataColumns} from '../../../api/metadata';
+import {listMetadataColumns, listMetadataDatasourceIds} from '../../../api/metadata';
 import {QUALITY_TYPE_LABEL} from '../../../types/quality';
 import type {QualityRuleTemplate, QualityRuleBatchCreateRequest, RuleBatchItem} from '../../../types/quality';
-import type {MetadataColumn, MetadataTable} from '../../../types/metadata';
+import type {MetadataColumn, MetadataDatasource, MetadataTable} from '../../../types/metadata';
 import TableSelectModal from './TableSelectModal';
 
 interface BatchApplyItem extends RuleBatchItem {
@@ -16,8 +16,6 @@ interface BatchApplyModalProps {
     open: boolean;
     /** 所属质量任务 */
     jobId: string;
-    /** 默认数据源（从任务继承，用于选表） */
-    defaultDatasourceId?: string;
     onClose: () => void;
     onSubmit: (payload: QualityRuleBatchCreateRequest) => Promise<unknown>;
 }
@@ -25,12 +23,14 @@ interface BatchApplyModalProps {
 export default function BatchApplyModal({
                                             open,
                                             jobId,
-                                            defaultDatasourceId,
                                             onClose,
                                             onSubmit,
                                         }: BatchApplyModalProps) {
     const [templates, setTemplates] = useState<QualityRuleTemplate[]>([]);
     const [templateId, setTemplateId] = useState<string>('');
+    /** 目标数据源（仅已采集元数据的数据源；先选数据源再选表） */
+    const [datasourceId, setDatasourceId] = useState<string>('');
+    const [datasourceOptions, setDatasourceOptions] = useState<MetadataDatasource[]>([]);
     const [items, setItems] = useState<BatchApplyItem[]>([]);
     const [tableSelectOpen, setTableSelectOpen] = useState(false);
     const [columnsMap, setColumnsMap] = useState<Record<string, MetadataColumn[]>>({});
@@ -46,11 +46,23 @@ export default function BatchApplyModal({
                 setTemplates(res.data || []);
             })
             .catch(() => setTemplates([]));
+        listMetadataDatasourceIds()
+            .then((res) => setDatasourceOptions(res.data || []))
+            .catch(() => setDatasourceOptions([]));
         setTemplateId('');
+        setDatasourceId('');
         setItems([]);
         setColumnsMap({});
         setErrors('');
     }, [open]);
+
+    // 切换数据源时清空已选表（表归属发生变化）
+    const handleDatasourceChange = (id: string) => {
+        setDatasourceId(id);
+        setItems([]);
+        setColumnsMap({});
+        setErrors('');
+    };
 
     const loadColumns = (tableId: string) => {
         if (columnsMap[tableId]) return;
@@ -92,6 +104,10 @@ export default function BatchApplyModal({
     const validate = (): boolean => {
         if (!templateId) {
             setErrors('请选择模板');
+            return false;
+        }
+        if (!datasourceId) {
+            setErrors('请选择数据源');
             return false;
         }
         if (items.length === 0) {
@@ -186,11 +202,32 @@ export default function BatchApplyModal({
                         )}
                     </div>
 
+                    <div>
+                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                            数据源 <span className="text-ds-danger">*</span>
+                        </label>
+                        <select
+                            value={datasourceId}
+                            onChange={(e) => handleDatasourceChange(e.target.value)}
+                            className={selectClass}
+                        >
+                            <option value="">请选择数据源</option>
+                            {datasourceOptions.map((d) => (
+                                <option key={String(d.id)} value={String(d.id)}>
+                                    {d.name || `数据源 ${d.id}`}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                            仅展示已采集元数据的数据源，批量应用的表将取自该数据源
+                        </p>
+                    </div>
+
                     <div className="flex items-center justify-between">
                         <label className="text-ds-small font-semibold text-ds-text-secondary">
                             目标表 {items.length > 0 && `（已选 ${items.length} 张）`}
                         </label>
-                        <DsButton variant="secondary" onClick={() => setTableSelectOpen(true)} disabled={!templateId}>
+                        <DsButton variant="secondary" onClick={() => setTableSelectOpen(true)} disabled={!templateId || !datasourceId}>
                             选择表
                         </DsButton>
                     </div>
@@ -308,7 +345,8 @@ export default function BatchApplyModal({
             <TableSelectModal
                 open={tableSelectOpen}
                 onClose={() => setTableSelectOpen(false)}
-                defaultDatasourceId={defaultDatasourceId}
+                defaultDatasourceId={datasourceId}
+                lockDatasource
                 selectedTables={[]}
                 multiple
                 onConfirm={handleTablesSelected}

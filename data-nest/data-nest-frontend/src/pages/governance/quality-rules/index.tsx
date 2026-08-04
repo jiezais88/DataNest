@@ -61,7 +61,7 @@ export default function QualityRulesPage() {
     const [loading, setLoading] = useState(false);
 
     // ============ 所属任务下拉 ============
-    const [jobOptions, setJobOptions] = useState<{ id: string; name: string; datasourceId?: string }[]>([]);
+    const [jobOptions, setJobOptions] = useState<{ id: string; name: string }[]>([]);
 
     // ============ 操作状态 ============
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -98,7 +98,6 @@ export default function QualityRulesPage() {
             .then((res) => setJobOptions((res.data.records || []).map((j) => ({
                 id: String(j.id),
                 name: j.name,
-                datasourceId: j.datasourceId || undefined,
             }))))
             .catch(() => setJobOptions([]));
     }, []);
@@ -218,6 +217,15 @@ export default function QualityRulesPage() {
             width: COL.TRIGGER_TYPE,
             render: (v: QualityRuleType) => (
                 <span className="text-ds-small text-ds-text-secondary">{QUALITY_TYPE_LABEL[v] || v}</span>
+            ),
+        },
+        {
+            title: '数据源',
+            dataIndex: 'datasourceName',
+            width: COL.NAME,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span title={v || '—'} className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
             ),
         },
         {
@@ -468,7 +476,6 @@ export default function QualityRulesPage() {
                 mode={drawerMode}
                 editItem={editItem}
                 jobId={jobId}
-                defaultDatasourceId={jobOptions.find((j) => String(j.id) === String(jobId))?.datasourceId}
                 onClose={() => {
                     setDrawerOpen(false);
                     setEditItem(null);
@@ -479,7 +486,6 @@ export default function QualityRulesPage() {
             <BatchApplyModal
                 open={batchOpen}
                 jobId={jobId}
-                defaultDatasourceId={jobOptions.find((j) => String(j.id) === String(jobId))?.datasourceId}
                 onClose={() => setBatchOpen(false)}
                 onSubmit={handleBatchSubmit}
             />

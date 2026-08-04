@@ -14,8 +14,10 @@ import type {MetadataDatasource, MetadataTable} from '../../../types/metadata';
 interface TableSelectModalProps {
     open: boolean;
     onClose: () => void;
-    /** 默认数据源（从质量任务继承，可为空） */
+    /** 默认数据源（可为空；用于默认选中 + lockDatasource 时锁定） */
     defaultDatasourceId?: string;
+    /** 是否锁定数据源（true 时数据源下拉禁用，仅可在该数据源下选库/表） */
+    lockDatasource?: boolean;
     /** 已选表（用于高亮，多选场景） */
     selectedTables?: MetadataTable[];
     /** 是否多选，默认 false */
@@ -31,6 +33,7 @@ export default function TableSelectModal({
                                              open,
                                              onClose,
                                              defaultDatasourceId,
+                                             lockDatasource = false,
                                              selectedTables = [],
                                              multiple = false,
                                              onConfirm,
@@ -60,13 +63,18 @@ export default function TableSelectModal({
             .then((res) => {
                 const list = res.data || [];
                 setDatasources(list);
-                const initial = defaultDatasourceId && list.some((d) => String(d.id) === String(defaultDatasourceId))
-                    ? String(defaultDatasourceId)
-                    : '';
-                setDatasourceId(initial);
-                if (!initial && list.length === 1) {
-                    setDatasourceId(String(list[0].id));
+                let initial = '';
+                // 锁定模式：强制使用 defaultDatasourceId（若在列表中）
+                if (lockDatasource) {
+                    initial = defaultDatasourceId && list.some((d) => String(d.id) === String(defaultDatasourceId))
+                        ? String(defaultDatasourceId)
+                        : '';
+                } else if (defaultDatasourceId && list.some((d) => String(d.id) === String(defaultDatasourceId))) {
+                    initial = String(defaultDatasourceId);
+                } else if (list.length === 1) {
+                    initial = String(list[0].id);
                 }
+                setDatasourceId(initial);
             })
             .catch(() => setDatasources([]));
         setPicked(selectedTables);
@@ -194,7 +202,8 @@ export default function TableSelectModal({
                     <select
                         value={datasourceId}
                         onChange={(e) => setDatasourceId(e.target.value)}
-                        className="flex-1 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
+                        disabled={lockDatasource}
+                        className="flex-1 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <option value="">请选择数据源</option>
                         {datasources.map((d) => (
