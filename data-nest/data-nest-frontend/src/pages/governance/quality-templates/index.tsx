@@ -286,12 +286,12 @@ export default function QualityTemplatesPage() {
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="详情">
-                        <DsIconButton tone="accent" onClick={() => openView(item)}>
+                        <DsIconButton tone="accent" onClick={() => openView(item)} aria-label="详情">
                             <HiOutlineEye size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="批量应用">
-                        <DsIconButton tone="accent" onClick={() => handleBatchApply(item)}>
+                        <DsIconButton tone="accent" onClick={() => handleBatchApply(item)} aria-label="批量应用">
                             <HiOutlineRocketLaunch size={14}/>
                         </DsIconButton>
                     </Tooltip>
@@ -308,7 +308,7 @@ export default function QualityTemplatesPage() {
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="编辑">
-                                <DsIconButton tone="accent" onClick={() => openEdit(item)}>
+                                <DsIconButton tone="accent" onClick={() => openEdit(item)} aria-label="编辑">
                                     <HiOutlineCodeBracketSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
@@ -320,6 +320,7 @@ export default function QualityTemplatesPage() {
                                             setDeleteTarget(item);
                                             setDeleteOpen(true);
                                         }}
+                                        aria-label="删除"
                                     >
                                         <HiOutlineTrash size={14}/>
                                     </DsIconButton>

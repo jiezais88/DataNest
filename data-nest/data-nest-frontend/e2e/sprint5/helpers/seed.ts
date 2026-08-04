@@ -228,10 +228,23 @@ export async function deleteSyncJobs(): Promise<void> {
         psql(`DELETE
               FROM sync_job_history
               WHERE sync_job_id = ${id}`);
+        // 清理关联告警：alert_rule 主表无 object_id 列，须经 alert_rule_object 子表反查 alert_rule_id 级联删
         psql(`DELETE
-              FROM alert_rule
+              FROM alert_rule_user
+              WHERE alert_rule_id IN (SELECT alert_rule_id
+                                      FROM alert_rule_object
+                                      WHERE object_type = 'SYNC_JOB'
+                                        AND object_id = ${id})`);
+        psql(`DELETE
+              FROM alert_rule_object
               WHERE object_type = 'SYNC_JOB'
                 AND object_id = ${id}`);
+        psql(`DELETE
+              FROM alert_rule
+              WHERE id IN (SELECT alert_rule_id
+                           FROM alert_rule_object
+                           WHERE object_type = 'SYNC_JOB'
+                             AND object_id = ${id})`);
         psql(`DELETE
               FROM sync_job
               WHERE id = ${id}`);
@@ -279,10 +292,23 @@ export async function deleteCollectTasks(): Promise<void> {
         psql(`DELETE
               FROM collect_execution_log
               WHERE task_id = ${id}`);
+        // 清理关联告警：经 alert_rule_object 子表反查 alert_rule_id 级联删
         psql(`DELETE
-              FROM alert_rule
+              FROM alert_rule_user
+              WHERE alert_rule_id IN (SELECT alert_rule_id
+                                      FROM alert_rule_object
+                                      WHERE object_type = 'COLLECT_TASK'
+                                        AND object_id = ${id})`);
+        psql(`DELETE
+              FROM alert_rule_object
               WHERE object_type = 'COLLECT_TASK'
                 AND object_id = ${id}`);
+        psql(`DELETE
+              FROM alert_rule
+              WHERE id IN (SELECT alert_rule_id
+                           FROM alert_rule_object
+                           WHERE object_type = 'COLLECT_TASK'
+                             AND object_id = ${id})`);
         psql(`DELETE
               FROM collect_task
               WHERE id = ${id}`);
@@ -407,16 +433,32 @@ export async function cleanupAll(): Promise<void> {
             console.warn('cleanup bad ds:', ERR(e));
         }
         // 删除测试告警规则/历史：e2e_s5 对象命名 + 测试用假对象 ID 区间（6200000000000000xxx）
+        // alert_rule 主表无 object_id 列，假 ID 区间须经 alert_rule_object 子表反查 alert_rule_id
         psql(`DELETE
               FROM alert_rule_user
-              WHERE alert_rule_id IN (SELECT id
-                                      FROM alert_rule
-                                      WHERE object_name LIKE '%e2e_s5%'
-                                         OR (object_id >= 6200000000000000000 AND object_id < 6500000000000000000))`);
+              WHERE alert_rule_id IN (SELECT ar.id
+                                      FROM alert_rule ar
+                                      WHERE ar.object_name LIKE '%e2e_s5%'
+                                         OR ar.id IN (SELECT alert_rule_id
+                                                      FROM alert_rule_object
+                                                      WHERE object_id >= 6200000000000000000
+                                                        AND object_id < 6500000000000000000))`);
+        psql(`DELETE
+              FROM alert_rule_object
+              WHERE alert_rule_id IN (SELECT ar.id
+                                      FROM alert_rule ar
+                                      WHERE ar.object_name LIKE '%e2e_s5%'
+                                         OR ar.id IN (SELECT alert_rule_id
+                                                      FROM alert_rule_object
+                                                      WHERE object_id >= 6200000000000000000
+                                                        AND object_id < 6500000000000000000))`);
         psql(`DELETE
               FROM alert_rule
               WHERE object_name LIKE '%e2e_s5%'
-                 OR (object_id >= 6200000000000000000 AND object_id < 6500000000000000000)`);
+                 OR id IN (SELECT alert_rule_id
+                           FROM alert_rule_object
+                           WHERE object_id >= 6200000000000000000
+                             AND object_id < 6500000000000000000)`);
         psql(`DELETE FROM alert_history WHERE alert_rule_id NOT IN (SELECT id FROM alert_rule)
               OR (id >= 6400000000000000000 AND id < 6500000000000000000)`);
         await api.dispose();
