@@ -480,12 +480,12 @@ export default function DataQualityPage() {
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="执行">
-                        <DsIconButton tone="accent" onClick={() => handleExecuteJob()}>
+                        <DsIconButton tone="accent" onClick={() => handleExecuteJob()} aria-label="执行">
                             <HiOutlinePlay size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="详情">
-                        <DsIconButton tone="accent" onClick={() => openJobView(item)}>
+                        <DsIconButton tone="accent" onClick={() => openJobView(item)} aria-label="详情">
                             <HiOutlineEye size={14}/>
                         </DsIconButton>
                     </Tooltip>
@@ -496,12 +496,13 @@ export default function DataQualityPage() {
                                     tone="success"
                                     active={item.enabled === 1}
                                     onClick={() => handleToggleJob(item)}
+                                    aria-label={item.enabled === 1 ? '停用' : '启用'}
                                 >
                                     <HiOutlineScale size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="编辑">
-                                <DsIconButton tone="accent" onClick={() => openJobEdit(item)}>
+                                <DsIconButton tone="accent" onClick={() => openJobEdit(item)} aria-label="编辑">
                                     <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
@@ -512,6 +513,7 @@ export default function DataQualityPage() {
                                         setDeleteJobTarget({id: item.id, name: item.name});
                                         setDeleteJobOpen(true);
                                     }}
+                                    aria-label="删除"
                                 >
                                     <HiOutlineTrash size={14}/>
                                 </DsIconButton>
@@ -615,17 +617,17 @@ export default function DataQualityPage() {
             render: (_, item) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                     <Tooltip title="执行">
-                        <DsIconButton tone="accent" onClick={() => handleExecuteRule()}>
+                        <DsIconButton tone="accent" onClick={() => handleExecuteRule()} aria-label="执行">
                             <HiOutlinePlay size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="预览 SQL">
-                        <DsIconButton tone="accent" onClick={() => handlePreviewSql(item)}>
+                        <DsIconButton tone="accent" onClick={() => handlePreviewSql(item)} aria-label="预览 SQL">
                             <HiOutlineClipboardDocumentCheck size={14}/>
                         </DsIconButton>
                     </Tooltip>
                     <Tooltip title="详情">
-                        <DsIconButton tone="accent" onClick={() => openRuleView(item)}>
+                        <DsIconButton tone="accent" onClick={() => openRuleView(item)} aria-label="详情">
                             <HiOutlineEye size={14}/>
                         </DsIconButton>
                     </Tooltip>
@@ -636,12 +638,13 @@ export default function DataQualityPage() {
                                     tone="success"
                                     active={item.enabled === 1}
                                     onClick={() => handleToggleRule(item)}
+                                    aria-label={item.enabled === 1 ? '停用' : '启用'}
                                 >
                                     <HiOutlineScale size={14}/>
                                 </DsIconButton>
                             </Tooltip>
                             <Tooltip title="编辑">
-                                <DsIconButton tone="accent" onClick={() => openRuleEdit(item)}>
+                                <DsIconButton tone="accent" onClick={() => openRuleEdit(item)} aria-label="编辑">
                                     <HiOutlinePencilSquare size={14}/>
                                 </DsIconButton>
                             </Tooltip>
@@ -652,6 +655,7 @@ export default function DataQualityPage() {
                                         setDeleteRuleTarget({id: item.id, name: item.name});
                                         setDeleteRuleOpen(true);
                                     }}
+                                    aria-label="删除"
                                 >
                                     <HiOutlineTrash size={14}/>
                                 </DsIconButton>

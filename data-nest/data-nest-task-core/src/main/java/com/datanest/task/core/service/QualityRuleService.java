@@ -89,11 +89,6 @@ public class QualityRuleService {
         Long jobId = request.getJobId();
         requireJob(jobId);
         validateType(request.getType());
-        // 防御：非 CUSTOM_SQL 必须选模板（DTO @AssertTrue 已拦，此处兜底保证 SQL 来源）
-        if (!"CUSTOM_SQL".equals(request.getType()) && request.getTemplateId() == null) {
-            throw new BusinessException(ErrorCode.QUALITY_RULE_BATCH_TEMPLATE_INVALID,
-                    "非自定义 SQL 规则必须选择模板");
-        }
         MetadataTable table = requireTable(request.getTableId());
         QualityRuleTemplate template = request.getTemplateId() == null
                 ? null : templateMapper.selectById(request.getTemplateId());
@@ -199,11 +194,6 @@ public class QualityRuleService {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + id);
         }
         validateType(request.getType());
-        // 防御：非 CUSTOM_SQL 必须保留模板（SQL 来源）；无模板的规则不允许改成模板类类型
-        if (!"CUSTOM_SQL".equals(request.getType()) && entity.getTemplateId() == null) {
-            throw new BusinessException(ErrorCode.QUALITY_RULE_BATCH_TEMPLATE_INVALID,
-                    "非自定义 SQL 规则必须选择模板，无法编辑为模板类类型");
-        }
         String name = request.getName().trim();
         if (!entity.getName().equals(name) && countByJobAndName(entity.getJobId(), name) > 0) {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "任务下已存在同名规则: " + name);

@@ -87,12 +87,6 @@ public class QualityRuleCreateRequest {
         return !"CUSTOM_SQL".equals(type) || (sqlExpression != null && !sqlExpression.isBlank());
     }
 
-    @AssertTrue(message = "非自定义 SQL 规则必须选择模板（模板提供校验 SQL）")
-    public boolean isTemplateRequiredValid() {
-        // CUSTOM_SQL 不依赖模板（自带 SQL）；其余类型必须选模板，保证规则有 SQL 来源
-        return "CUSTOM_SQL".equals(type) || templateId != null;
-    }
-
     @AssertTrue(message = "值域范围检查必须填写值域边界 rangeMin/rangeMax，且 rangeMin ≤ rangeMax")
     public boolean isRangeBoundsValid() {
         if (!"RANGE".equals(type)) {

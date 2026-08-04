@@ -41,3 +41,19 @@ export const BUILTIN_TEMPLATES = [
 
 /** 内置模板的 result_metric（用于内置模板不可删除校验时的定位） */
 export const BUILTIN_NAME = '完整性检查';
+
+// ==================== 质量任务 / 质量规则 ====================
+
+/** 质量任务 / 规则相关测试数据前缀 */
+export const QUALITY_PREFIX = 'e2e_s6_q';
+/** 元数据测试数据源名称 */
+export const QUALITY_DS_NAME = 'e2e_s6_quality_ds';
+/** 元数据测试库名 */
+export const QUALITY_DB = 'e2e_s6_qdb';
+/** 元数据测试表名 */
+export const QUALITY_TABLE = 'e2e_s6_orders';
+/** 自动触发绑定用同步任务名 */
+export const QUALITY_SYNC_JOB = 'e2e_s6_sync_job';
+
+/** 质量任务类型枚举（供断言用） */
+export const QUALITY_ALERT_LEVELS = ['SEVERE_WARNING', 'WARNING', 'DANGER'] as const;

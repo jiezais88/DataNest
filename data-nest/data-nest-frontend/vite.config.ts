@@ -14,15 +14,9 @@ export default defineConfig(({mode}) => {
     return {
         plugins: [
             react(),
-            // 构建时预压缩 .gz（nginx gzip_static 直接吐预压缩文件，省去每次请求实时 gzip）
-            viteCompression({
-                verbose: false,
-                threshold: 10240, // 仅压缩 > 10KB 的资产
-                algorithm: 'gzip',
-                ext: '.gz',
-                deleteOriginFile: false,
-            }),
-            // 预压缩 .br（nginx brotli_static 直接吐，压缩率比 gzip 高 ~15-20%；nginx 需启用 ngx_brotli）
+            // 预压缩 .br（nginx brotli_static 直接吐，压缩率比 gzip 高 ~15-20%；nginx 需启用 ngx_brotli）。
+            // 现代浏览器（2015+）均支持 brotli，gzip 冗余，删掉以减小 dist 磁盘体积；nginx brotli_static
+            // 不支持时会回退到 gzip_static（gzip on 仍开启），网络传输无损失。
             viteCompression({
                 verbose: false,
                 threshold: 10240,

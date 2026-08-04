@@ -44,7 +44,7 @@ public class SyncJobController {
         return Result.ok(syncJobService.getById(id));
     }
 
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/page")
     public Result<PageResult<SyncJobDTO>> list(@RequestBody SyncJobQueryRequest request) {
         return Result.ok(syncJobService.list(request));

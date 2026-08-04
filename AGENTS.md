@@ -179,6 +179,12 @@ docker compose up -d --no-deps app-engineering app-worker
   strip 末尾 `_` 段匹配；应按相同规则构建「DS 任务名→node」反向映射。SUB_DAG 等依赖 sync 更新状态的节点 匹配失败会落
   WAITING→SKIPPED。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
+- **质量规则新增（配置层）不强制模板**：前端 `QualityRuleDrawer` 新增时 `templateId` 恒为空、UI 无模板控件，后端 DTO `isTemplateRequiredValid`
+  原强制非 CUSTOM_SQL 必选模板导致新增完整性/唯一性/值域规则必报 400。已放宽为可选（`template_id` 可空、PRD"可选自模板"）。改动 `QualityRuleService`
+  后须重建 **app-governance**。无模板的非 CUSTOM_SQL 规则 preview-sql 返回 null（前端降级显示"无预览 SQL"，已知项，执行批再处理）。
+- **质量任务自动触发绑定同步任务依赖 engineering 只读权限**：`AutoTriggerSelect` 调 `/engineering/sync-jobs/page` 读取同步任务下拉，该接口原
+  `@SaCheckRole` 仅限 `SUPER_ADMIN`/`DATA_ENGINEER`，治理员（GOVERNANCE_ADMIN）配置质量任务自动触发绑定同步任务时下拉为空。已在
+  `SyncJobController.list` 增加 `GOVERNANCE_ADMIN` 只读访问（改动 engineering 后重建 **app-engineering**）。排查"自动触发绑定同步任务下拉空"先看此。
 - **格式化工具会破坏已应用 Flyway 脚本的 checksum**：曾出现 IDE/格式化工具把迁移 SQL 按语法树拆行（如 `id\n BIGSERIAL\n PRIMARY\n
   KEY`、`VARCHAR\n(100)`），导致已应用迁移的本地文件内容与数据库 `flyway_schema_history` 记录的 checksum 不一致，`app-system`
   启动时 Flyway validate 报 `Migration checksum mismatch` 而退出，后续新迁移也无法执行。处理：用 flyway 镜像对 postgres 执行

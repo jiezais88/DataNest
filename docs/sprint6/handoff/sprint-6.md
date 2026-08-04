@@ -21,7 +21,7 @@
 | 后端实现（质量任务/规则/检查/评分/合规） | 🔄 进行中 | 规则模板库（模板 CRUD）✅；质量任务 + 质量规则**配置层**后端 ✅（含模板批量生成/调度配置/QualityCheckHandler 扫描预留）；真实执行校验/评分/告警合并/worker 自动触发待做 |
 | 前端实现（规则模板库）                   | ✅ 完成   | 独立「规则模板库」页面已交付（列表/统计/筛选/新增/编辑/详情/启停/删除）；数据质量页与血缘联动待做 |
 | 前端实现（质量任务/规则）                | ✅ 完成   | 独立「数据质量」页（质量任务/质量规则双页签）已交付（任务 CRUD/启停/统计/筛选；规则按任务管理/新增/批量应用/启停/删除/预览SQL；自动触发对象按 项目-DAG-节点 三级树） |
-| 联调验证                                 | ✅ 完成   | 任务/规则全部接口经网关联调通过（见「质量任务/规则 · API 验证记录」）                              |
+| 联调验证                                 | ✅ 完成   | 任务/规则全部接口经网关联调通过（见「质量任务/规则 · API 验证记录」）；E2E 全绿（36 用例，见「质量任务/规则 · E2E 测试记录」） |
 
 ## 3. 关键决策（用户已确认）
 
@@ -111,7 +111,10 @@
   checksum。**后续禁止格式化工具拆分 migration SQL**（AGENTS.md §6 / §8.6 已记录）。
 - B3 状态：质量告警需扩展 `AlertRuleService` 对象类型支持 QUALITY（明确，仍待执行批处理）。
 - B4：**任务详情 `ruleCount` 恒为 0**：`QualityJobService.getById` 用 `withRuleCount=false` 构建 DTO，设置 `rules` 后未重算 `ruleCount`，详情返回恒 0（列表接口正常）。前端列表用 `page` 接口不受影响，但详情内若要展示规则数需修复。
-- B5：**手动创建的无模板规则 preview-sql 返回 null**：手动创建（未选模板、无 `sqlExpression`）的规则调用 `/preview-sql` 时 `RuleSqlGenerator.generate(template=null,...)` 返回 null，前端回退显示"无预览 SQL"。批量应用创建的规则（带 templateId）预览正常。
+- B5：**手动创建的无模板规则 preview-sql 返回 null**：手动创建（未选模板、无 `sqlExpression`）的规则调用 `/preview-sql` 时 `RuleSqlGenerator.generate(template=null,...)` 返回 null，前端回退显示"无预览 SQL"。批量应用创建的规则（带 templateId）预览正常。**本次已缓解**：E2E 用 CUSTOM_SQL（自带 SQL）规则验证预览 SQL 正常；无模板非 CUSTOM_SQL 规则的 preview 仍返回 null（已知项，前端降级显示"无预览 SQL"），留待执行批。
+- B6：~~**前端新增非 CUSTOM_SQL 规则必然 400**~~ → ✅ 已修复：`QualityRuleDrawer` 新增时 `templateId` 恒为 `undefined`，后端 DTO `isTemplateRequiredValid` 强制非 CUSTOM_SQL 必须选模板，导致前端新增完整性/唯一性/值域规则必报 400。修复：移除 DTO 强制校验 + `QualityRuleService.create/update` 防御兜底（数据模型 `template_id` 可空、PRD"可选自模板"、前端 UI 无模板控件，故放宽为可选）。已重新部署 app-governance，API 验证无模板创建 COMPLETENESS 规则返回 200。
+- B7：~~**治理员无法读取同步任务列表导致自动触发绑定不可用**~~ → ✅ 已修复：质量任务自动触发绑定同步任务时，`AutoTriggerSelect` 调 `/engineering/sync-jobs/page` 读取下拉，但该接口 `@SaCheckRole` 仅限 `SUPER_ADMIN`/`DATA_ENGINEER`，治理员（GOVERNANCE_ADMIN）返回 403 → 下拉为空。修复：`SyncJobController.list` 增加 `GOVERNANCE_ADMIN` 只读访问。已重新部署 app-engineering，E2E 自动触发完整绑定通过。
+- B8：**`data-quality/index.tsx` 操作按钮缺 aria-label** → ✅ 已修复：质量任务/质量规则表格操作按钮（执行/详情/启停/编辑/删除、预览 SQL）此前无 `aria-label`，E2E 无法可靠定位。已全部补齐（与 quality-templates 一致）。已重建 app-frontend。
 
 ## 6. Next Action
 
@@ -181,6 +184,16 @@
 - 选表链路：`/governance/metadata/datasources` → `/datasources/{id}/databases` → `/datasources/{id}/databases/{db}/tables`（MYSQL/DORIS 无 schema 路径）→ `/tables/{tableId}/columns`（列下拉），全通。
 - 页面：`http://localhost:3000/governance/data-quality` SPA fallback 200 + 懒加载 chunk 生成，`docker compose build app-frontend` + `up -d` 后容器健康。
 - 测试数据已清理（质量任务已删除，其下规则级联清除；`quality_job`/`quality_rule` 均 0）。
+
+### 质量任务/规则 · E2E 测试记录（2026-08-04，第三次会话，36 用例全绿）
+
+> 为质量任务 + 质量规则（配置层）编写了两份 Playwright E2E spec，与既有 `quality-templates.spec.ts` 一起跑 **36 个用例全部通过**。
+> 新增文件：`e2e/sprint6/e2e/quality-jobs.spec.ts`（13 例）、`quality-rules.spec.ts`（11 例）。
+
+- **seed 扩展**（`e2e/sprint6/helpers/seed.ts` + `data.ts`）：新增 `seedQualityMetadata`（独立 MYSQL 数据源 `e2e_s6_quality_ds` + `metadata_table`(e2e_s6_qdb.e2e_s6_orders) + `metadata_column`(id/order_no/amount)，source_status=ONLINE）+ `seedSyncJob`（e2e_s6_sync_job，供自动触发绑定），带 `e2e_s6_q` 前缀，幂等，teardown 清理。
+- **质量任务覆盖**：页面加载/统计卡片、Tab 切换、新增（必填名/数据源）、定时调度缺 cron 校验 + 填 cron 成功、**自动触发完整绑定同步任务**、详情只读、编辑、启停、关键字/状态筛选、删除（级联）、权限（工程师只读）。
+- **质量规则覆盖**：选任务展示该任务规则、新增（COMPLETENESS 整表 / UNIQUENESS 选字段 / CUSTOM_SQL）、预览 SQL、详情只读、编辑、启停、删除、模板批量应用（内置完整性模板 + 多表选表）、权限（工程师只读）。
+- **API 辅助诊断**：用 `Invoke-RestMethod` 验证选表链路（datasources → databases → tables → columns）、同步任务下拉、规则创建契约。
 
 ### 质量任务/规则 · 前端代码 Review 记录（2026-08-04，通过 code-reviewer 子代理）
 
