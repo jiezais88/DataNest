@@ -34,7 +34,6 @@ import {
     HiOutlinePlus,
     HiOutlineScale,
     HiOutlineTrash,
-    HiOutlineClipboardDocumentCheck,
 } from 'react-icons/hi2';
 import type {
     QualityAlertLevel,
@@ -42,8 +41,6 @@ import type {
     AutoTriggerObjectType,
 } from '../../../types/quality';
 import QualityJobDrawer from './QualityJobDrawer';
-
-type Tab = 'jobs';
 
 const ALERT_LEVEL_LABEL: Record<QualityAlertLevel, string> = {
     SEVERE_ONLY: '仅严重',
@@ -59,8 +56,6 @@ const AUTO_TRIGGER_TYPE_LABEL: Record<AutoTriggerObjectType, string> = {
 export default function DataQualityPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
-
-    const [activeTab, setActiveTab] = useState<Tab>('jobs');
 
     // ============ 质量任务 ============
     const [jobs, setJobs] = useState<QualityJob[]>([]);
@@ -119,15 +114,13 @@ export default function DataQualityPage() {
         loadStats();
     }, [loadStats]);
 
-    // URL 状态同步（对齐 data-standards）：进页初始化一次 Tab/任务页筛选与分页，深层跳转返回后筛选不丢
+    // URL 状态同步（对齐 data-standards）：进页初始化一次任务筛选与分页，深层跳转返回后筛选不丢
     const urlInitRef = useRef(false);
     useEffect(() => {
         if (urlInitRef.current) return;
         urlInitRef.current = true;
         const p = searchParams;
-        const tab: Tab = 'jobs';
         const en = p.get('jobEnabled');
-        setActiveTab(tab);
         setJobKeyword(p.get('jobKeyword') || '');
         setJobEnabled(en === '1' || en === '0' ? en : '');
         setJobPage(Number(p.get('jobPage')) || 1);
@@ -136,14 +129,13 @@ export default function DataQualityPage() {
 
     useEffect(() => {
         const next = new URLSearchParams();
-        next.set('tab', activeTab);
         if (jobKeyword) next.set('jobKeyword', jobKeyword);
         if (jobEnabled === '1' || jobEnabled === '0') next.set('jobEnabled', jobEnabled);
         if (jobPage > 1) next.set('jobPage', String(jobPage));
         if (next.toString() === searchParams.toString()) return;
         setSearchParams(next, {replace: true});
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, jobKeyword, jobEnabled, jobPage]);
+    }, [jobKeyword, jobEnabled, jobPage]);
 
     const resetJobFilters = () => {
         setJobKeyword('');
@@ -448,10 +440,6 @@ export default function DataQualityPage() {
         },
     ], [canWrite, handleToggleJob, handleToggleSchedule, schedulingId, openJobEdit, openJobView]);
 
-    const tabs = [
-        {key: 'jobs' as Tab, label: '质量任务', icon: HiOutlineClipboardDocumentCheck},
-    ];
-
     const statCards = [
         {label: '全部任务', value: stats.all},
         {label: '已启用', value: stats.enabled},
@@ -467,29 +455,7 @@ export default function DataQualityPage() {
                 </div>
             </div>
 
-            <div className="flex gap-ds-2 mb-ds-4 flex-shrink-0">
-                {tabs.map((t) => {
-                    const Icon = t.icon;
-                    const active = activeTab === t.key;
-                    return (
-                        <button
-                            key={t.key}
-                            onClick={() => setActiveTab(t.key)}
-                            className={`flex items-center gap-ds-2 px-ds-4 py-ds-2 rounded-ds-sm text-ds-small font-semibold transition-colors ${
-                                active
-                                    ? 'bg-ds-accent-light text-ds-accent'
-                                    : 'text-ds-text-secondary hover:bg-ds-bg-hover'
-                            }`}
-                        >
-                            <Icon size={18}/>
-                            {t.label}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {activeTab === 'jobs' && (
-                <div className="flex flex-col gap-ds-4">
+            <div className="flex flex-col gap-ds-4">
                     {/* 统计卡片 */}
                     <div className="grid grid-cols-3 gap-ds-4">
                         {statCards.map((s) => (
@@ -576,7 +542,6 @@ export default function DataQualityPage() {
                         />
                     </div>
                 </div>
-            )}
 
             <QualityJobDrawer
                 open={jobDrawerOpen}

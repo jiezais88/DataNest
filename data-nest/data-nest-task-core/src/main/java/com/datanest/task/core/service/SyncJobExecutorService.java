@@ -39,6 +39,7 @@ public class SyncJobExecutorService {
     private final MetadataRegistrationService metadataRegistrationService;
     private final SyncJobRetryService syncJobRetryService;
     private final AlertFiringService alertFiringService;
+    private final QualityAutoTriggerService qualityAutoTriggerService;
 
     public SyncJobExecutorService(SyncJobMapper syncJobMapper,
                                   SyncJobHistoryMapper syncJobHistoryMapper,
@@ -46,7 +47,8 @@ public class SyncJobExecutorService {
                                   AddaxJobService addaxJobService,
                                   MetadataRegistrationService metadataRegistrationService,
                                   SyncJobRetryService syncJobRetryService,
-                                  AlertFiringService alertFiringService) {
+                                  AlertFiringService alertFiringService,
+                                  QualityAutoTriggerService qualityAutoTriggerService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.syncJobLogMapper = syncJobLogMapper;
@@ -54,6 +56,7 @@ public class SyncJobExecutorService {
         this.metadataRegistrationService = metadataRegistrationService;
         this.syncJobRetryService = syncJobRetryService;
         this.alertFiringService = alertFiringService;
+        this.qualityAutoTriggerService = qualityAutoTriggerService;
     }
 
     /**
@@ -96,6 +99,8 @@ public class SyncJobExecutorService {
             // Sprint 5：同步任务成功告警（按 alert_rule 配置）
             alertFiringService.fire("SYNC_JOB", syncJobId, "SUCCESS", "同步任务执行成功，写入 "
                     + result.writeRows() + " 行");
+            // Sprint 8：同步任务成功后触发绑定的质量任务自动检查
+            triggerQualityOnSuccess(QualityAutoTriggerService.OBJECT_TYPE_SYNC_JOB, syncJobId);
             return;
         }
 
@@ -120,6 +125,17 @@ public class SyncJobExecutorService {
             syncJobRetryService.registerRetryIfNeeded(job, history);
         } catch (Exception e) {
             logger.error("登记同步任务重试失败（不影响失败状态落库）: syncJobId={}", syncJobId, e);
+        }
+    }
+
+    /**
+     * 触发绑定该对象的质量任务自动检查（失败不影响主任务执行结果）。
+     */
+    private void triggerQualityOnSuccess(String objectType, Long objectId) {
+        try {
+            qualityAutoTriggerService.triggerOnSuccess(objectType, objectId);
+        } catch (Exception e) {
+            logger.error("质量任务自动触发失败（不影响同步结果）: type={}, objectId={}", objectType, objectId, e);
         }
     }
 

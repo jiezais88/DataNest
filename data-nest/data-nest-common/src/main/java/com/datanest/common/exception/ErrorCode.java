@@ -99,6 +99,11 @@ public enum ErrorCode {
     QUALITY_TABLE_NOT_FOUND(4212, "目标表不存在"),
     QUALITY_JOB_CRON_REQUIRED(4213, "未配置 Cron 表达式"),
 
+    // Quality errors — Sprint 8 数据质量（执行 + 结果记录）
+    QUALITY_CHECK_BATCH_NOT_FOUND(4214, "质量检查批次不存在"),
+    QUALITY_CHECK_SQL_GENERATE_FAILED(4215, "质量规则校验 SQL 生成失败"),
+    QUALITY_CHECK_EXECUTE_FAILED(4216, "质量检查执行失败"),
+
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");
 

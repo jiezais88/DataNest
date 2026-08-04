@@ -194,6 +194,20 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在
   `data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package data-nest-system` 并重建 `app-system` 镜像，
   否则容器内 jar 仍是旧脚本。
+- **质量执行在 app-worker（Sprint 8 执行层）**：`qualityCheckExecuteHandler` 注册在 `data-nest-worker` 组，`QualityCheckService` 在 worker
+  容器内执行。手动/定时/自动三种触发统一投递到该 handler。改 task-core 的质量执行代码后必须重建 **app-worker**（不只是 governance）。
+- **质量任务定时 = 每任务独立注册 XXL-JOB（不再全局扫描）**：`startSchedule` 按需 `registerJob`（worker 组 + 自身 cron）或 `startJob`，
+  `stopSchedule` 仅 `stopJob`（不注销，保留 `xxl_job_id`），`delete` 注销，`update` 里 cron 变更会 `updateJob` 同步。`quality_job` 有
+  `xxl_job_id` 字段。已废弃 `QualityCheckHandler` 全局扫描（该旧 handler 若残留在 XXL-JOB admin 可手动删）。
+- **质量执行 executorParam 带触发类型**：手动/自动经 `QualityCheckTriggerService` 显式传 `jobId:MANUAL` / `jobId:AUTO_TRIGGER`
+  （带冒号）；**定时触发用注册时保存的纯 `jobId`（无冒号）**，`QualityCheckExecuteHandler` 对无冒号 param 默认按 `SCHEDULED` 处理，
+  有冒号则解析 triggerType。排查"定时触发落库成 MANUAL"先看 handler 的 param 解析。
+- **质量结果值提取坑（RANGE）**：Doris/MySQL 对空表 `SUM(...) AS out_of_range` 返回 **NULL**（非 0），且 JDBC 列名可能大小写变化。
+  `QualityCheckService.computeRangeRatio` 已对列名大小写不敏感匹配，且 `total=0` 或 `out` 为 NULL 时按 0 处理。改动时保持该语义。
+- **质量接口经 gateway 前缀是 `/api/governance/quality/**`**（gateway 只把 `/api/governance/**` 路由到 governance），不是 `/api/quality/**`。
+  直接调 `/api/quality/...` 会得到 gateway 的 `NoResourceFoundException` 404。质量接口实际路径形如 `/api/governance/quality/jobs/page`。
+- **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细），本次只记录结果值（`result_value`），
+  不做分级/评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`（无规则视为 SUCCESS）。
 
 ## 7. 代码与提交约定
 

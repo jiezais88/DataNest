@@ -37,12 +37,14 @@ public class CollectExecutor {
     private final MetadataColumnMapper metadataColumnMapper;
     private final ExtractorFactory extractorFactory;
     private final AlertFiringService alertFiringService;
+    private final QualityAutoTriggerService qualityAutoTriggerService;
 
     public CollectExecutor(CollectTaskMapper collectTaskMapper, CollectHistoryMapper collectHistoryMapper,
                            CollectExecutionLogMapper logMapper, CollectChangeDetailMapper changeDetailMapper,
                            DataSourceConnectionMapper dataSourceConnectionMapper, MetadataTableMapper metadataTableMapper,
                            MetadataColumnMapper metadataColumnMapper, ExtractorFactory extractorFactory,
-                           AlertFiringService alertFiringService) {
+                           AlertFiringService alertFiringService,
+                           QualityAutoTriggerService qualityAutoTriggerService) {
         this.collectTaskMapper = collectTaskMapper;
         this.collectHistoryMapper = collectHistoryMapper;
         this.logMapper = logMapper;
@@ -52,6 +54,7 @@ public class CollectExecutor {
         this.metadataColumnMapper = metadataColumnMapper;
         this.extractorFactory = extractorFactory;
         this.alertFiringService = alertFiringService;
+        this.qualityAutoTriggerService = qualityAutoTriggerService;
     }
 
     public void execute(String param) {
@@ -200,6 +203,13 @@ public class CollectExecutor {
         if (ExecutionStatus.SUCCESS.getCode().equals(lastStatus)) {
             alertFiringService.fire("COLLECT_TASK", taskId, "SUCCESS",
                     "采集完成：表 " + tableCount + "，字段 " + columnCount);
+            // Sprint 8：采集任务成功后触发绑定的质量任务自动检查（失败不影响采集结果）
+            try {
+                qualityAutoTriggerService.triggerOnSuccess(
+                        QualityAutoTriggerService.OBJECT_TYPE_COLLECT_TASK, taskId);
+            } catch (Exception e) {
+                logger.error("质量任务自动触发失败（不影响采集结果）: taskId={}", taskId, e);
+            }
         } else if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
             alertFiringService.fire("COLLECT_TASK", taskId, "FAILURE", errorMessage);
         }

@@ -140,6 +140,16 @@
 - 任务列表 `data-quality/index.tsx`：「触发方式」列改为**单选显示**（自动触发 > 定时 > 手动，历史数据若同时开启按此优先级归一展示），不再拼接 "手动 + 定时"。
 - 后端无改动，仅重建 **app-frontend**（`--no-cache`）。
 
+### 📌 Sprint 7 追加 · 数据质量路由去掉 `?tab=jobs` 参数（2026-08-04）
+
+> 需求：数据质量页路由 `/governance/data-quality` 目前会带上 `?tab=jobs`，实际只有一个 Tab（质量任务），参数无意义，去掉。
+
+**变更（仅前端 `data-quality/index.tsx`）：**
+- 移除 `Tab` 类型、`activeTab` state、`tabs` 数组及 Tab 切换 UI（恒为 'jobs'，无实际作用）。
+- 移除 URL 中 `tab` 参数的写入与初始化，只保留 `jobKeyword`/`jobEnabled`/`jobPage` 的筛选分页 URL 同步。
+- 移除未使用的 `HiOutlineClipboardDocumentCheck` import。
+- 仅重建 **app-frontend**（`--no-cache`）。
+
 ## 5. Blocker
 
 > 需求：质量任务可在**列表直接开启/关闭定时调度**，参考同步任务操作列的调度开关。
@@ -328,9 +338,55 @@
   `GenericSqlExecutor` 200 行截断与 5 秒超时（PRD §6.2.2 / 技术文档 §4.1）。
 - **权限**：读接口全员可看，写接口（新增/编辑/删除/启停）治理员+超管（`@SaCheckRole` + `SaMode.OR`）。
 
-### 质量任务/规则配置层 · 本次踩坑记录
+## 8. Sprint 8 质量执行层（检查执行 + 结果记录）变更记录
 
-- **登录 token 传递**：Sa-Token 走 `Authorization` header，且**直接放原始 token，不带 `Bearer ` 前缀**（测试时曾加 Bearer 导致 401；对齐前端 `src/api/request.ts`）。
+> **更新**：2026-08-04 | 阶段：质量检查**执行层**后端完成（真实执行 + 批次/明细落库 + 三种触发）
+
+### 8.1 关键决策（用户确认，替代 Sprint 6 技术文档 T4/表结构）
+
+- **执行位置在 app-worker**：`qualityCheckExecuteHandler` 注册在 `data-nest-worker` 组，`QualityCheckService` 在 worker 容器内执行（非 app-job）。
+- **定时调度改为「每任务独立注册 XXL-JOB」**（替代原 `QualityCheckHandler` 每分钟全局扫描）：`startSchedule` 按需 `registerJob`（worker 组 + 自身 cron）或 `startJob`；`stopSchedule` 仅 `stopJob`（不注销，保留 `xxl_job_id`）；`delete` 注销；`update` 里 cron 变更 `updateJob` 同步。**已删除 `QualityCheckHandler` 及 JobRegistrar 注册**。
+- **结果记录两张表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细），不做 `history`/`score` 表。本次**只记录结果值（result_value）**，不做分级/评分/告警合并。
+- **三种触发统一走 worker 上的 XXL-JOB handler**：手动（`MANUAL`）、定时（XXL-JOB cron 触发，`SCHEDULED`）、自动（DAG/SYNC/COLLECT 成功回调，`AUTO_TRIGGER`）。
+
+### 8.2 变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest-system/.../db/migration/V3.6.4__sprint8_quality_check_execution.sql`（新增） | 建 `quality_check_batch`（job_id/job_name/trigger_type/status/起止/耗时/error）+ `quality_check_detail`（batch_id/rule_id/result_metric/result_value/success/executed_sql/error）；`quality_job` 加 `xxl_job_id` 列（紧凑单行） |
+| task-core entity：`QualityCheckBatch`/`QualityCheckDetail`（新增）、`QualityJob`（加 `xxlJobId`） | 批次/明细实体 + 任务绑定 XXL-JOB ID |
+| task-core mapper：`QualityCheckBatchMapper`/`QualityCheckDetailMapper`（新增） | 批次/明细 Mapper |
+| task-core dto：`QualityCheckBatchDTO`/`QualityCheckDetailDTO`/`QualityCheckQueryRequest`（新增） | 批次分页/详情（含明细、成功/失败数）展示 DTO |
+| task-core service：`QualityCheckService`（新增） | 执行核心：`executeJob`（建 batch→逐规则生成 SQL→分派执行器→提取 result_value→写 detail→收尾更新 batch 终态→更新 last_trigger_at）、`executeRule`（单规则独立批次 job_id=null）、分页查询/详情；结果值提取：RANGE 用 `out_of_range/total`（total=0 或 out=NULL 按 0），其余按 result_metric 列名（大小写不敏感）取，兜底首行首列 |
+| task-core service：`QualityCheckTriggerService`（新增） | XXL-JOB 触发统一入口：`triggerJob`/`triggerRule`（按需 `registerJob` + `triggerJob`）；executorParam 带触发类型 `jobId:triggerType` |
+| task-core service：`QualityAutoTriggerService`（新增） | `triggerOnSuccess(objectType, objectId)`：查 `enabled+auto_trigger_enabled+类型/ID` 匹配任务逐个触发（AUTO_TRIGGER，try-catch 包裹不阻塞主任务） |
+| task-core service：`QualityJobService`（修改） | `executeJob` 改调 triggerService；`startSchedule` 注册/启动 XXL-JOB、`stopSchedule` 仅 stopJob、`delete` 注销、`update` cron 变更同步 XXL-JOB；删除 `touchLastTriggerAt`/`listScheduledEnabled` |
+| task-core service：`QualityRuleService`（修改） | `executeRule` 改调 `triggerService.triggerRule`（param=`rule:<ruleId>`） |
+| task-core service：`SyncJobExecutorService`/`CollectExecutor`/`DagAlertExecutionListener`（修改） | 成功分支接入 `QualityAutoTriggerService.triggerOnSuccess`（DAG_NODE 经 dagId+nodeId 反查 dag_node.id） |
+| task-core exception：`ErrorCode`（修改） | 新增 4214~4216：`QUALITY_CHECK_BATCH_NOT_FOUND`/`SQL_GENERATE_FAILED`/`EXECUTE_FAILED` |
+| worker job：`QualityCheckExecuteHandler`（新增） | `@XxlJob("qualityCheckExecuteHandler")`，param 解析 `jobId[:triggerType]`（无冒号默认 SCHEDULED）或 `rule:<ruleId>` |
+| job：`QualityCheckHandler`（删除）、`JobRegistrar`（修改） | 废弃全局扫描 handler，移除注册行 |
+| governance controller：`QualityJobController`/`QualityRuleController`（修改）、`QualityCheckController`（新增） | execute 改调 trigger；新增 `/quality/checks`（批次分页/详情） |
+
+### 8.3 验证结果（API 全通）
+
+- **手动任务执行**：`POST /api/governance/quality/jobs/{id}/execute` → batch `trigger_type=MANUAL`，`status=SUCCESS`，detail 3 条全成功（COMPLETENESS null_rate=0 / UNIQUENESS duplicate_count=0 / RANGE out_of_range_rate=0）。
+- **手动单规则执行**：`POST /api/governance/quality/rules/{id}/execute` → batch `job_id=null`（单规则执行），`status=SUCCESS`。
+- **定时调度**：`schedule/start` → XXL-JOB `trigger_status=1`（cron=`0 * * * * ?`）；`schedule/stop` → `trigger_status=0` 且 `xxl_job_id` 保留；XXL-JOB 到点触发生成 `trigger_type=SCHEDULED` batch。
+- **自动触发**：质量任务绑定同步任务（SYNC_JOB），同步任务成功 → 自动生成 `trigger_type=AUTO_TRIGGER` batch。
+- **cron 变更同步**：`update` 改 cron 后 XXL-JOB `schedule_conf` 同步更新。
+- **批次查询**：`/api/governance/quality/checks/page` + `/{id}`（含明细、ruleCount/successCount/failedCount）全通。
+- **部署**：app-system（Flyway V3.6.4）+ app-governance/app-job/app-worker/app-engineering 全 healthy。
+
+### 8.4 踩坑记录
+
+- **RANGE 空表 SUM 返回 NULL**：Doris/MySQL 对空表 `SUM(CASE...)` 返回 NULL（非 0），且 JDBC 列名可能大小写变化。`computeRangeRatio` 需对列名**大小写不敏感**匹配 + `total=0` 或 `out=NULL` 按 0 处理（否则误报"缺少 total/out_of_range 列"）。
+- **定时触发落库成 MANUAL**：XXL-JOB 定时触发用的是**注册时保存的 executor_param（纯 jobId）**，不是 `triggerJob` 显式 param。修复：`QualityCheckExecuteHandler` 对**无冒号** param 默认按 `SCHEDULED`，有冒号（`jobId:MANUAL`/`jobId:AUTO_TRIGGER`）解析 triggerType。
+- **gateway 质量路由前缀**：质量接口经网关统一走 `/api/governance/quality/**`（gateway 只路由 `/api/governance/**` 到 governance）；直接调 `/api/quality/...` 得 `NoResourceFoundException` 404。
+- **改 task-core 质量执行代码必须重建 app-worker**（不只是 governance），否则 worker 跑旧 jar。
+- **PowerShell 联调**：`curl.exe` 在 PowerShell 传 JSON 会因引号转义报 9999；用 `Invoke-RestMethod`（登录/列表/执行等全用）。
+
+## 7. 备注
 - **定时扫描命中判断**：`QualityCheckHandler` 用 `CronExpression.next(minuteStart.minusNanos(1)) == minuteStart` 判断 cron 是否命中当前分钟整点，兼容秒级 cron（普通 `matches()` 无法精确匹配分钟级任务）。
 - **规则数批量统计**：任务列表的 `ruleCount` 用 `GROUP BY job_id` 一次查出全部任务规则数，避免 N+1（`QualityRuleService.countByJobIds`）。
 - **删除级联**：任务删除时 `QualityJobService.delete` 先 `ruleService.deleteByJob` 删规则再删任务（事务）。

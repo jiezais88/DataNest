@@ -51,8 +51,11 @@ public class QualityJob {
     /** 告警触发等级：SEVERE_ONLY / SEVERE_WARNING */
     private String alertLevel;
 
-    /** 最近一次触发时间（防重 R6） */
+    /** 最近一次触发时间 */
     private LocalDateTime lastTriggerAt;
+
+    /** 定时调度 XXL-JOB 任务 ID（注册到 data-nest-worker 组，带自身 cron） */
+    private Integer xxlJobId;
 
     private Long createdBy;
 

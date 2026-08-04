@@ -60,6 +60,7 @@ public class QualityRuleService {
     private final MetadataTableMapper tableMapper;
     private final DataSourceConnectionMapper dataSourceMapper;
     private final SysUserService sysUserService;
+    private final QualityCheckTriggerService triggerService;
 
     public QualityRuleService(QualityRuleMapper ruleMapper,
                               QualityJobMapper jobMapper,
@@ -67,7 +68,8 @@ public class QualityRuleService {
                               QualityRuleTemplateMapper templateMapper,
                               MetadataTableMapper tableMapper,
                               DataSourceConnectionMapper dataSourceMapper,
-                              SysUserService sysUserService) {
+                              SysUserService sysUserService,
+                              QualityCheckTriggerService triggerService) {
         this.ruleMapper = ruleMapper;
         this.jobMapper = jobMapper;
         this.jobRuleMapper = jobRuleMapper;
@@ -75,6 +77,7 @@ public class QualityRuleService {
         this.tableMapper = tableMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.sysUserService = sysUserService;
+        this.triggerService = triggerService;
     }
 
     // ==================== 查询 ====================
@@ -323,11 +326,11 @@ public class QualityRuleService {
     }
 
     /**
-     * 单条规则执行（预留）：执行校验下一批实现。
+     * 单条规则执行：触发 worker 上的质量执行 XXL-JOB 异步执行（param=rule:&lt;ruleId&gt;）。
      */
     public void executeRule(Long id) {
         requireRule(id);
-        throw new BusinessException(ErrorCode.QUALITY_RULE_EXECUTE_NOT_IMPLEMENTED, "执行功能待实现");
+        triggerService.triggerRule(id, "MANUAL");
     }
 
     /**
