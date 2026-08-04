@@ -82,6 +82,12 @@ public enum ErrorCode {
     ALERT_RULE_NOT_FOUND(7201, "告警规则不存在"),
     ALERT_RULE_OBJECT_INVALID(7202, "告警规则对象类型非法"),
 
+    // Quality errors — Sprint 6 数据质量（规则模板库）
+    QUALITY_TEMPLATE_NOT_FOUND(4201, "质量规则模板不存在"),
+    QUALITY_TEMPLATE_NAME_EXISTS(4202, "质量规则模板名称已存在"),
+    QUALITY_TEMPLATE_TYPE_INVALID(4203, "质量规则模板类型非法"),
+    QUALITY_TEMPLATE_BUILTIN_NOT_DELETE(4204, "内置模板不可删除"),
+
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");
 
