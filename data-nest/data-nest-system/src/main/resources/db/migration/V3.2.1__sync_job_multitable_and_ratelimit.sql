@@ -28,14 +28,10 @@ ALTER TABLE sync_job
 -- --------------------------------------------
 -- 列注释
 -- --------------------------------------------
-COMMENT
-ON COLUMN sync_job.source_tables_detail                IS '多表结构化配置 JSONB（比 source_tables 字段多 incrementalField / lastSyncTime 等）';
-COMMENT
-ON COLUMN sync_job.read_rate_limit_mbps                IS '读取速率限制（MB/s，0=不限制）。Sprint 3 增强：保护源库 IO';
-COMMENT
-ON COLUMN sync_job.write_rate_limit_rows_per_second    IS '写入速率限制（行/秒，0=不限制）。Sprint 3 增强：保护目标库 IO';
-COMMENT
-ON COLUMN sync_job.rate_limit_enabled                  IS '限流总开关：0-关闭（按 read/write 字段生效），1-启用';
+COMMENT ON COLUMN sync_job.source_tables_detail IS '多表结构化配置 JSONB（比 source_tables 字段多 incrementalField / lastSyncTime 等）';
+COMMENT ON COLUMN sync_job.read_rate_limit_mbps IS '读取速率限制（MB/s，0=不限制）。Sprint 3 增强：保护源库 IO';
+COMMENT ON COLUMN sync_job.write_rate_limit_rows_per_second IS '写入速率限制（行/秒，0=不限制）。Sprint 3 增强：保护目标库 IO';
+COMMENT ON COLUMN sync_job.rate_limit_enabled IS '限流总开关：0-关闭（按 read/write 字段生效），1-启用';
 
 -- --------------------------------------------
 -- 索引：加速「按 read_rate_limit 过滤」

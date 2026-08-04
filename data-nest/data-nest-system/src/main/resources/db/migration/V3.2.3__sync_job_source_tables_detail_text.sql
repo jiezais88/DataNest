@@ -7,10 +7,8 @@
 -- 影响范围：仅 sync_job.source_tables_detail 单列；source_tables (jsonb) 不动
 
 ALTER TABLE sync_job
-ALTER
-COLUMN source_tables_detail TYPE TEXT USING source_tables_detail::TEXT;
+    ALTER COLUMN source_tables_detail TYPE TEXT USING source_tables_detail::TEXT;
 
 -- 列注释保留
-COMMENT
-ON COLUMN sync_job.source_tables_detail
+COMMENT ON COLUMN sync_job.source_tables_detail
     IS '多表结构化配置（TEXT，存 JSON 字符串，业务层 fastjson2 解析；Sprint3-Fix3 改自 jsonb）';

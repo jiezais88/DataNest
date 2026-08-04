@@ -6,8 +6,6 @@
 -- ============================================
 
 ALTER TABLE dag_execution
-ALTER
-COLUMN resolved_params TYPE TEXT USING resolved_params::TEXT;
+    ALTER COLUMN resolved_params TYPE TEXT USING resolved_params::TEXT;
 
-COMMENT
-ON COLUMN dag_execution.resolved_params IS '本次执行解析后的参数值（手动覆盖 + 默认值 + 系统变量），JSON 字符串存储';
+COMMENT ON COLUMN dag_execution.resolved_params IS '本次执行解析后的参数值（手动覆盖 + 默认值 + 系统变量），JSON 字符串存储';

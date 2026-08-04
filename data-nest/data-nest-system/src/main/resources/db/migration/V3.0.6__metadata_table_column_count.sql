@@ -6,5 +6,4 @@
 ALTER TABLE metadata_table
     ADD COLUMN IF NOT EXISTS column_count INT NOT NULL DEFAULT 0;
 
-COMMENT
-ON COLUMN metadata_table.column_count IS '表字段数量';
+COMMENT ON COLUMN metadata_table.column_count IS '表字段数量';

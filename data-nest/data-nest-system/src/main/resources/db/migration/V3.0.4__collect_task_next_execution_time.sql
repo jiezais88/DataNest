@@ -6,5 +6,4 @@
 ALTER TABLE collect_task
     ADD COLUMN IF NOT EXISTS next_execution_time TIMESTAMP DEFAULT NULL;
 
-COMMENT
-ON COLUMN collect_task.next_execution_time IS 'Cron 任务下一次执行时间';
+COMMENT ON COLUMN collect_task.next_execution_time IS 'Cron 任务下一次执行时间';

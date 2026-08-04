@@ -3,35 +3,15 @@
 -- 2. 将 alert_rule.object_id 迁移到 alert_rule_object
 -- 3. 删除 alert_rule.object_id 列及唯一约束
 
-CREATE TABLE IF NOT EXISTS alert_rule_object
-(
-    id
-    BIGINT
-    PRIMARY
-    KEY,
-    alert_rule_id
-    BIGINT
-    NOT
-    NULL,
-    object_type
-    VARCHAR
-(
-    32
-) NOT NULL,
+CREATE TABLE IF NOT EXISTS alert_rule_object (
+    id BIGINT PRIMARY KEY,
+    alert_rule_id BIGINT NOT NULL,
+    object_type VARCHAR(32) NOT NULL,
     object_id BIGINT NOT NULL,
-    object_name VARCHAR
-(
-    255
-),
+    object_name VARCHAR(255),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_alert_rule_object_rule FOREIGN KEY
-(
-    alert_rule_id
-) REFERENCES alert_rule
-(
-    id
-) ON DELETE CASCADE
-    );
+    CONSTRAINT fk_alert_rule_object_rule FOREIGN KEY (alert_rule_id) REFERENCES alert_rule (id) ON DELETE CASCADE
+);
 
 CREATE INDEX IF NOT EXISTS idx_alert_rule_object_rule_id ON alert_rule_object (alert_rule_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_alert_rule_object ON alert_rule_object (alert_rule_id, object_type, object_id);
@@ -55,9 +35,7 @@ WHERE ar.object_id IS NOT NULL
 
 -- 删除 alert_rule.object_id 列及唯一约束
 ALTER TABLE alert_rule
-DROP
-COLUMN IF EXISTS object_id;
+DROP COLUMN IF EXISTS object_id;
 
 ALTER TABLE alert_rule
-DROP
-CONSTRAINT IF EXISTS uk_alert_rule_object;
+DROP CONSTRAINT IF EXISTS uk_alert_rule_object;

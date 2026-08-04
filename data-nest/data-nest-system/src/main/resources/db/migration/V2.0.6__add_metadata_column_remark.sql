@@ -3,5 +3,4 @@
 ALTER TABLE metadata_column
     ADD COLUMN IF NOT EXISTS remark TEXT DEFAULT NULL;
 
-COMMENT
-ON COLUMN metadata_column.remark IS '业务口径、枚举值说明等补充信息，可人工编辑';
+COMMENT ON COLUMN metadata_column.remark IS '业务口径、枚举值说明等补充信息，可人工编辑';

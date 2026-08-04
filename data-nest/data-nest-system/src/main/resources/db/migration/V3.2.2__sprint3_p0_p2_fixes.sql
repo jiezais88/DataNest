@@ -11,8 +11,7 @@
 ALTER TABLE dag_project
     ADD COLUMN IF NOT EXISTS ds_project_code BIGINT DEFAULT NULL;
 
-COMMENT
-ON COLUMN dag_project.ds_project_code IS 'DS 项目 code（关联 DolphinScheduler t_ds_project.code）';
+COMMENT ON COLUMN dag_project.ds_project_code IS 'DS 项目 code（关联 DolphinScheduler t_ds_project.code）';
 
 CREATE INDEX IF NOT EXISTS idx_dag_project_ds_project_code
     ON dag_project (ds_project_code);
@@ -21,8 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_dag_project_ds_project_code
 ALTER TABLE node_execution
     ADD COLUMN IF NOT EXISTS sync_job_id BIGINT DEFAULT NULL;
 
-COMMENT
-ON COLUMN node_execution.sync_job_id IS '关联的同步任务 ID（SYNC 节点专用；用于 DagExecutionSyncService 反查 sync_job_history 同步终态）';
+COMMENT ON COLUMN node_execution.sync_job_id IS '关联的同步任务 ID（SYNC 节点专用；用于 DagExecutionSyncService 反查 sync_job_history 同步终态）';
 
 CREATE INDEX IF NOT EXISTS idx_node_execution_sync_job_id
     ON node_execution (sync_job_id);

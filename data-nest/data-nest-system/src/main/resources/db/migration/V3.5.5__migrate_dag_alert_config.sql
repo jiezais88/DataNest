@@ -34,11 +34,11 @@ FROM alert_rule r
          JOIN dag_alert_config dac
               ON dac.dag_id = r.object_id AND r.object_type = 'DAG' AND dac.dag_id IS NOT NULL
          JOIN LATERAL unnest(string_to_array(regexp_replace(dac.recipients, '[;；,，]', ';', 'g'), ';')) AS rcpt
-ON true
-    JOIN sys_user u ON lower (trim (u.email)) = lower (trim (rcpt))
+         ON true
+         JOIN sys_user u ON lower (trim (u.email)) = lower (trim (rcpt))
 WHERE dac.recipients IS NOT NULL
   AND dac.recipients <> ''
   AND NOT EXISTS (SELECT 1
-    FROM alert_rule_user aru
-    WHERE aru.alert_rule_id = r.id
-  AND aru.user_id = u.id);
+                  FROM alert_rule_user aru
+                  WHERE aru.alert_rule_id = r.id
+                    AND aru.user_id = u.id);

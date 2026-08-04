@@ -5,69 +5,32 @@
 --       任务内「选择模板 + 多表」批量生成 quality_rule 实例，避免重复配置。
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS quality_rule_template
-(
-    id
-    BIGSERIAL
-    PRIMARY
-    KEY,
-    name
-    VARCHAR
-(
-    100
-) NOT NULL,
-    type VARCHAR
-(
-    20
-) NOT NULL CHECK
-(
-    type
-    IN
-(
-    'COMPLETENESS',
-    'UNIQUENESS',
-    'RANGE',
-    'CUSTOM_SQL'
-)),
-    description VARCHAR
-(
-    500
-),
+CREATE TABLE IF NOT EXISTS quality_rule_template (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('COMPLETENESS', 'UNIQUENESS', 'RANGE', 'CUSTOM_SQL')),
+    description VARCHAR(500),
     sql_template TEXT, -- 校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等
-    result_metric VARCHAR
-(
-    50
-), -- 结果指标名，如 null_rate / duplicate_count / out_of_range_rate
+    result_metric VARCHAR(50), -- 结果指标名，如 null_rate / duplicate_count / out_of_range_rate
     builtin SMALLINT NOT NULL DEFAULT 0, -- 是否内置：1 内置，0 自定义
     enabled SMALLINT NOT NULL DEFAULT 1,
     created_by BIGINT,
     updated_by BIGINT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uk_quality_rule_template_name UNIQUE
-(
-    name
-)
-    );
+    CONSTRAINT uk_quality_rule_template_name UNIQUE (name)
+);
 
 CREATE INDEX IF NOT EXISTS idx_quality_rule_template_type ON quality_rule_template (type);
 
-COMMENT
-ON TABLE quality_rule_template IS '质量规则模板库（D3）';
-COMMENT
-ON COLUMN quality_rule_template.name IS '模板名称（唯一）';
-COMMENT
-ON COLUMN quality_rule_template.type IS '模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL';
-COMMENT
-ON COLUMN quality_rule_template.description IS '模板说明';
-COMMENT
-ON COLUMN quality_rule_template.sql_template IS '校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等';
-COMMENT
-ON COLUMN quality_rule_template.result_metric IS '结果指标名，如 null_rate / duplicate_count / out_of_range_rate';
-COMMENT
-ON COLUMN quality_rule_template.builtin IS '是否内置：1 内置，0 自定义';
-COMMENT
-ON COLUMN quality_rule_template.enabled IS '是否启用：1 启用，0 停用';
+COMMENT ON TABLE quality_rule_template IS '质量规则模板库（D3）';
+COMMENT ON COLUMN quality_rule_template.name IS '模板名称（唯一）';
+COMMENT ON COLUMN quality_rule_template.type IS '模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL';
+COMMENT ON COLUMN quality_rule_template.description IS '模板说明';
+COMMENT ON COLUMN quality_rule_template.sql_template IS '校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等';
+COMMENT ON COLUMN quality_rule_template.result_metric IS '结果指标名，如 null_rate / duplicate_count / out_of_range_rate';
+COMMENT ON COLUMN quality_rule_template.builtin IS '是否内置：1 内置，0 自定义';
+COMMENT ON COLUMN quality_rule_template.enabled IS '是否启用：1 启用，0 停用';
 
 -- ============================================
 -- 内置四类模板种子数据

@@ -88,6 +88,16 @@ public enum ErrorCode {
     QUALITY_TEMPLATE_TYPE_INVALID(4203, "质量规则模板类型非法"),
     QUALITY_TEMPLATE_BUILTIN_NOT_DELETE(4204, "内置模板不可删除"),
 
+    // Quality errors — Sprint 6 数据质量（质量任务 + 质量规则配置层）
+    QUALITY_JOB_NOT_FOUND(4205, "质量任务不存在"),
+    QUALITY_JOB_NAME_EXISTS(4206, "质量任务名称已存在"),
+    QUALITY_JOB_ALERT_LEVEL_INVALID(4207, "告警等级非法"),
+    QUALITY_RULE_NOT_FOUND(4208, "质量规则不存在"),
+    QUALITY_RULE_NAME_EXISTS(4209, "质量规则名称已存在"),
+    QUALITY_RULE_EXECUTE_NOT_IMPLEMENTED(4210, "执行功能待实现"),
+    QUALITY_RULE_BATCH_TEMPLATE_INVALID(4211, "模板批量应用参数非法"),
+    QUALITY_TABLE_NOT_FOUND(4212, "目标表不存在"),
+
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");
 

@@ -9,5 +9,4 @@
 ALTER TABLE dag_execution
     ADD COLUMN IF NOT EXISTS edge_snapshot TEXT;
 
-COMMENT
-ON COLUMN dag_execution.edge_snapshot IS '创建执行实例时的 dag_edge JSON 快照（[{"source":"<nodeId>","target":"<nodeId>"},...]，无边时为 []，历史视图渲染边用）';
+COMMENT ON COLUMN dag_execution.edge_snapshot IS '创建执行实例时的 dag_edge JSON 快照（[{"source":"<nodeId>","target":"<nodeId>"},...]，无边时为 []，历史视图渲染边用）';

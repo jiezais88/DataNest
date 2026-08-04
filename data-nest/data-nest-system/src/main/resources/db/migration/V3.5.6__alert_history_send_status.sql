@@ -6,7 +6,6 @@
 -- ============================================
 
 ALTER TABLE alert_history
-    ADD COLUMN IF NOT EXISTS send_status VARCHAR (16) NOT NULL DEFAULT 'SUCCESS';
+    ADD COLUMN IF NOT EXISTS send_status VARCHAR(16) NOT NULL DEFAULT 'SUCCESS';
 
-COMMENT
-ON COLUMN alert_history.send_status IS '邮件发送状态：SUCCESS 发送成功 / FAILED 发送失败';
+COMMENT ON COLUMN alert_history.send_status IS '邮件发送状态：SUCCESS 发送成功 / FAILED 发送失败';

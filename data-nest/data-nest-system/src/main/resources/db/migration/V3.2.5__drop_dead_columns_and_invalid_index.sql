@@ -12,8 +12,7 @@
 -- 注意：collect_history.column_count 是另一张表的有效统计列，不在本迁移范围内。
 -- --------------------------------------------
 ALTER TABLE metadata_table
-DROP
-COLUMN IF EXISTS column_count;
+    DROP COLUMN IF EXISTS column_count;
 
 -- --------------------------------------------
 -- 删除死列 sync_job.retry_count / sync_job.next_retry_at
@@ -23,10 +22,8 @@ COLUMN IF EXISTS column_count;
 -- 注意：sync_job_history.retry_count / next_retry_at 为有效列，不在本迁移范围内。
 -- --------------------------------------------
 ALTER TABLE sync_job
-DROP
-COLUMN IF EXISTS retry_count,
-    DROP
-COLUMN IF EXISTS next_retry_at;
+    DROP COLUMN IF EXISTS retry_count,
+    DROP COLUMN IF EXISTS next_retry_at;
 
 -- --------------------------------------------
 -- 删除无效索引 idx_dag_node_config_pattern

@@ -179,6 +179,15 @@ docker compose up -d --no-deps app-engineering app-worker
   strip 末尾 `_` 段匹配；应按相同规则构建「DS 任务名→node」反向映射。SUB_DAG 等依赖 sync 更新状态的节点 匹配失败会落
   WAITING→SKIPPED。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
+- **格式化工具会破坏已应用 Flyway 脚本的 checksum**：曾出现 IDE/格式化工具把迁移 SQL 按语法树拆行（如 `id\n BIGSERIAL\n PRIMARY\n
+  KEY`、`VARCHAR\n(100)`），导致已应用迁移的本地文件内容与数据库 `flyway_schema_history` 记录的 checksum 不一致，`app-system`
+  启动时 Flyway validate 报 `Migration checksum mismatch` 而退出，后续新迁移也无法执行。处理：用 flyway 镜像对 postgres 执行
+  `repair`（`docker run --rm --network datanest-net -v <migration目录>:/flyway/sql:ro flyway/flyway:11.14.1
+  -url="jdbc:postgresql://middleware-postgres:5432/datanest" -user="datanest" -password="datanest123" repair`）固化 checksum。
+  **预防**：所有 Flyway 脚本统一用紧凑单行风格，**不要用格式化工具拆分**（已 2026-08-04 全量重写 + repair 固化）。
+- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在
+  `data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package data-nest-system` 并重建 `app-system` 镜像，
+  否则容器内 jar 仍是旧脚本。
 
 ## 7. 代码与提交约定
 
@@ -312,6 +321,15 @@ public Result<SyncJobDTO> create(@Valid @RequestBody SyncJobCreateRequest reques
 - 时间字段统一用 `java.time.LocalDateTime`。
 - 布尔字段在实体中用 `Boolean`，数据库中用 `SMALLINT` 或 `BOOLEAN` 按 Flyway 脚本约定。
 - 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层用 Fastjson2 解析/组装。
+
+#### Flyway 脚本格式约定（重要）
+
+- 迁移脚本统一在 `data-nest-system/src/main/resources/db/migration`，命名 `V<版本>__<描述>.sql`。
+- **所有迁移脚本统一用紧凑单行 SQL 风格**（如 `id BIGSERIAL PRIMARY KEY,`、`VARCHAR(100) NOT NULL`、
+  `COMMENT ON COLUMN x IS '...'` 单行）。
+- **禁止用 IDE/格式化工具拆分迁移 SQL**：格式化工具会破坏已应用脚本的 checksum，触发 Flyway validate 失败（见 §6 已知坑）。
+- 新增脚本参考 `V3.6.1__sprint6_quality_job_rule.sql`（紧凑、带文件头注释、带 COMMENT）。
+- 已应用脚本**不要随意改动**；确需调整格式/语义时，必须用 flyway `repair` 固化 checksum 并重启 `app-system` 验证。
 
 ### 8.7 Mapper 与 SQL
 

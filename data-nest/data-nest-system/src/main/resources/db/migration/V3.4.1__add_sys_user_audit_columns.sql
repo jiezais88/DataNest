@@ -7,7 +7,5 @@ ALTER TABLE sys_user
     ADD COLUMN IF NOT EXISTS created_by BIGINT DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS updated_by BIGINT DEFAULT NULL;
 
-COMMENT
-ON COLUMN sys_user.created_by IS '创建人 (sys_user.id)';
-COMMENT
-ON COLUMN sys_user.updated_by IS '修改人 (sys_user.id)';
+COMMENT ON COLUMN sys_user.created_by IS '创建人 (sys_user.id)';
+COMMENT ON COLUMN sys_user.updated_by IS '修改人 (sys_user.id)';
