@@ -43,6 +43,12 @@ export function HistoryDetailModal({open, item, onClose, onViewLogs}: HistoryDet
             }
         >
             <div className="space-y-ds-3">
+                {item.id != null && (
+                    <div className="grid grid-cols-[100px_1fr] gap-y-ds-2 text-ds-small">
+                        <span className="text-ds-text-muted">实例 ID</span>
+                        <span className="text-ds-text-primary font-mono tabular-nums break-all">{item.id}</span>
+                    </div>
+                )}
                 {'taskName' in item && item.taskName !== undefined && (
                     <div className="grid grid-cols-[100px_1fr] gap-y-ds-2 text-ds-small">
                         <span className="text-ds-text-muted">任务名称</span>

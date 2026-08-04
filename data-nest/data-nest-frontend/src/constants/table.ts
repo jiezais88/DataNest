@@ -30,6 +30,8 @@ export const COL = {
     ERROR_MESSAGE_NORMAL: 160,
     /** 节点执行情况 */
     NODE_SUMMARY: 240,
+    /** 实例 ID（19 位 Snowflake，含间距；等宽 + 悬浮看全量） */
+    ID: 190,
     /** 操作列：2 个按钮 */
     OPERATION_2: 120,
     /** 操作列：3 个按钮 */

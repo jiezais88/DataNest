@@ -353,6 +353,25 @@ export default function DagExecutionsGlobalPage() {
             ),
         },
         {
+            title: '实例 ID',
+            dataIndex: 'id',
+            width: COL.ID,
+            ellipsis: true,
+            render: (v?: string | number) => {
+                const text = v != null ? String(v) : '';
+                return (
+                    text ? (
+                        <Tooltip title={text}>
+                            <span
+                                className="text-ds-small text-ds-text-secondary font-mono tabular-nums">{text}</span>
+                        </Tooltip>
+                    ) : (
+                        <span className="text-ds-small text-ds-text-muted">-</span>
+                    )
+                );
+            },
+        },
+        {
             title: '执行方式',
             dataIndex: 'triggerType',
             width: 90,
@@ -627,7 +646,7 @@ export default function DagExecutionsGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1160}}
+                            scroll={{x: 1350}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (

@@ -260,6 +260,22 @@ export default function SyncJobHistoryGlobalPage() {
             ),
         },
         {
+            title: '实例 ID',
+            dataIndex: 'id',
+            width: COL.ID,
+            ellipsis: true,
+            render: (v?: string) => (
+                v ? (
+                    <Tooltip title={v}>
+                        <span
+                            className="text-ds-small text-ds-text-secondary font-mono tabular-nums">{v}</span>
+                    </Tooltip>
+                ) : (
+                    <span className="text-ds-small text-ds-text-muted">-</span>
+                )
+            ),
+        },
+        {
             title: '触发方式',
             dataIndex: 'triggerType',
             width: 90,
@@ -487,7 +503,7 @@ export default function SyncJobHistoryGlobalPage() {
                             loading={loading}
                             pagination={false}
                             columns={columns}
-                            scroll={{x: 1200}}
+                            scroll={{x: 1390}}
                             className="prototype-table prototype-table-flush"
                             locale={{
                                 emptyText: (

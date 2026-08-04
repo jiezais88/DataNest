@@ -222,6 +222,22 @@ export default function CollectHistoryGlobalPage() {
             ),
         },
         {
+            title: '实例 ID',
+            dataIndex: 'id',
+            width: COL.ID,
+            ellipsis: true,
+            render: (v?: string) => (
+                v ? (
+                    <Tooltip title={v}>
+                        <span
+                            className="text-ds-small text-ds-text-secondary font-mono tabular-nums">{v}</span>
+                    </Tooltip>
+                ) : (
+                    <span className="text-ds-small text-ds-text-muted">-</span>
+                )
+            ),
+        },
+        {
             title: '触发方式',
             dataIndex: 'triggerType',
             width: 90,
@@ -436,7 +452,7 @@ export default function CollectHistoryGlobalPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1200}}
+                            scroll={{x: 1390}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{
@@ -494,6 +510,13 @@ export default function CollectHistoryGlobalPage() {
                 >
                     <div className="space-y-ds-3">
                         <div className="grid grid-cols-[100px_1fr] gap-y-ds-2 text-ds-small">
+                            {selectedHistory.id != null && (
+                                <>
+                                    <span className="text-ds-text-muted">实例 ID</span>
+                                    <span
+                                        className="text-ds-text-primary font-mono tabular-nums break-all">{selectedHistory.id}</span>
+                                </>
+                            )}
                                 <span className="text-ds-text-muted">任务名称</span>
                                 <span
                                     className="text-ds-text-primary font-medium">{selectedHistory.taskName || '-'}</span>

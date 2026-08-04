@@ -562,7 +562,7 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
             </div>
 
             {summaryItems.length > 0 && (
-                <div className="grid grid-cols-[auto_1fr] gap-x-ds-4 gap-y-1.5 text-ds-small items-baseline">
+                <div className="grid grid-cols-[auto_1fr] gap-x-ds-4 gap-y-1.5 text-ds-small items-center">
                     {summaryItems.map(item => (
                         <Fragment key={item.label}>
                             <span className="text-ds-text-muted">{item.label}</span>
@@ -624,6 +624,92 @@ function SqlOutputDisplay({outputInfo}: { outputInfo?: string }) {
     );
 }
 
+// ─────────── 条件分支节点输出（执行视图产品化展示命中分支） ───────────
+interface ConditionOutputInfo {
+    /** 命中的分支下标（0 起） */
+    branchIndex?: number;
+    /** 命中分支指向的下游节点 id */
+    nextNodeId?: string;
+    /** 命中分支名称 */
+    branchName?: string;
+    /** 是否被上游条件跳过（未进行条件求值） */
+    skipped?: boolean;
+}
+
+function parseConditionOutputInfo(outputInfo?: string): ConditionOutputInfo | null {
+    if (!outputInfo) return null;
+    try {
+        const parsed = JSON.parse(outputInfo) as ConditionOutputInfo;
+        if (parsed && typeof parsed === 'object') return parsed;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function ConditionOutputDisplay({
+                                    outputInfo,
+                                    nodeNameMap,
+                                }: {
+    outputInfo?: string;
+    /** nodeId → nodeName，用于把 nextNodeId 解析为可读的下游节点名 */
+    nodeNameMap?: Map<string, string>;
+}) {
+    const info = parseConditionOutputInfo(outputInfo);
+    if (!info) {
+        return (
+            <pre
+                className="text-ds-nano text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
+                {outputInfo}
+            </pre>
+        );
+    }
+    // 被上游条件跳过：展示提示而非「命中分支」（此时没有求值结果）
+    if (info.skipped) {
+        return (
+            <div className="space-y-ds-2">
+                <div className="flex items-center gap-ds-2">
+                    <span
+                        className="text-ds-caption font-semibold px-ds-2 py-0.5 rounded bg-ds-warning-light text-ds-warning">
+                        条件分支
+                    </span>
+                </div>
+                <div className="text-ds-small text-ds-warning">
+                    该节点被上游条件分支跳过，未执行条件求值
+                </div>
+            </div>
+        );
+    }
+    const nextName = info.nextNodeId ? nodeNameMap?.get(info.nextNodeId) : null;
+    // 优先展示下游节点名，不暴露画布内部节点 id（如 n4_d）；无节点名时回退到原始 id 便于排查
+    const nextDisplay = nextName || info.nextNodeId || '—';
+    return (
+        <div className="space-y-ds-2">
+            <div className="flex items-center gap-ds-2">
+                <span
+                    className="text-ds-caption font-semibold px-ds-2 py-0.5 rounded bg-ds-accent-light text-ds-accent">
+                    条件分支
+                </span>
+                {info.branchIndex != null && (
+                    <span className="text-ds-small text-ds-text-muted">
+                        命中第 {info.branchIndex + 1} 个分支
+                    </span>
+                )}
+            </div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-ds-4 gap-y-1.5 text-ds-small items-center">
+                <span className="text-ds-text-muted">命中分支</span>
+                <span className="text-ds-text-primary font-medium">
+                    {info.branchName || '—'}
+                </span>
+                <span className="text-ds-text-muted">下游节点</span>
+                <span className="text-ds-text-primary" title={info.nextNodeId}>
+                    {nextDisplay}
+                </span>
+            </div>
+        </div>
+    );
+}
+
 // ─────────── 右侧属性面板（编辑模式：只读摘要 + 编辑按钮；运行模式：运行信息 + 实时日志） ───────────
 function PropertyPanel({
                            node,
@@ -631,6 +717,7 @@ function PropertyPanel({
                            readOnly,
                            onViewLogs,
                            executionId,
+                           nodeNameMap,
                        }: {
     node: Node<RFNodeData> | null;
     onEdit: () => void;
@@ -639,6 +726,8 @@ function PropertyPanel({
     onViewLogs?: () => void;
     /** 运行视图执行实例 id：SQL/PYTHON 节点实时日志（Sprint 4） */
     executionId?: string;
+    /** nodeId → nodeName，条件分支节点输出展示下游节点名 */
+    nodeNameMap?: Map<string, string>;
 }) {
     if (!node) {
         return (
@@ -711,6 +800,9 @@ function PropertyPanel({
                                 <div className="text-ds-caption text-ds-text-muted mb-ds-1">输出</div>
                                 {node.data.nodeType === 'SQL' ? (
                                     <SqlOutputDisplay outputInfo={node.data.outputInfo}/>
+                                ) : node.data.nodeType === 'CONDITION' ? (
+                                    <ConditionOutputDisplay outputInfo={node.data.outputInfo}
+                                                            nodeNameMap={nodeNameMap}/>
                                 ) : (
                                     <pre
                                         className="text-ds-nano text-ds-text-secondary font-mono whitespace-pre-wrap break-all m-0 max-h-40 overflow-auto">
@@ -780,6 +872,32 @@ function DagEditorInner() {
     const [rfEdges, setRfEdges, onEdgesChangeRaw] = useEdgesState<Edge>([]);
     // 未保存标记：onNodesChange / onEdgesChange / setDag / 节点保存 / 节点删除 时置 true；保存成功后置 false
     const [isDirty, setIsDirty] = useState(false);
+    // 快照对比判定「真实内容变更」：只把节点/连线的业务内容变化算作 dirty，
+    // 规避 ReactFlow 单击选中/框选/缩放等触发的 select/dimensions/position UI 态噪声误报。
+    // null 表示快照尚未初始化（加载/回滚后待 rfNodes 首次稳定时重建），此时不判 dirty。
+    const savedSnapshotRef = useRef<string | null>(null);
+    // 提取用于脏判断的「内容快照」：只保留业务内容，剔除 ReactFlow 的 UI 态字段（selected/hidden/dragging/测量尺寸等）
+    const buildSnapshot = useCallback((nodes: Node<RFNodeData>[], edges: Edge[]) => JSON.stringify({
+        nodes: nodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            position: n.position,
+            data: n.data,
+        })),
+        edges: edges.map(e => ({id: e.id, source: e.source, target: e.target})),
+    }), []);
+    // 每次节点/边实际变化后做快照对比：
+    // - 快照尚未初始化（加载/回滚后 rfNodes 首次稳定）：重建基线，不算 dirty
+    // - 已初始化：业务内容真的变了且可编辑 → 标 dirty（只置 true，不覆盖手动 dirty）
+    useEffect(() => {
+        if (savedSnapshotRef.current === null) {
+            savedSnapshotRef.current = buildSnapshot(rfNodes, rfEdges);
+            return;
+        }
+        if (canEdit && buildSnapshot(rfNodes, rfEdges) !== savedSnapshotRef.current) {
+            setIsDirty(true);
+        }
+    }, [rfNodes, rfEdges, canEdit, buildSnapshot]);
     const [dag, setDag] = useState<Dag>({
         projectId,
         name: '',
@@ -979,8 +1097,10 @@ function DagEditorInner() {
                 return refreshExecution();
             }
         }).then(() => {
-            // 加载完成的初始状态不算 dirty（避免首次进入就被拦截）
+            // 加载完成的初始状态不算 dirty（避免首次进入就被拦截）；
+            // 快照置空，待 rfNodes 首次稳定时由 useEffect 重建基线
             setIsDirty(false);
+            savedSnapshotRef.current = null;
         }).catch(e => notify.error('加载 DAG 失败: ' + (e?.message || '')));
     }, [id, executionId, isRunView, refreshExecution, loadDag, isNew]);
 
@@ -993,22 +1113,17 @@ function DagEditorInner() {
         });
     }, []);
 
-    // 把 onNodesChange 包一层：过滤掉 select/reset 这些"非内容变更"，其余都标 dirty
-    // 只读模式（执行详情/无编辑权限）下禁止标 dirty，避免点击节点后返回被误拦截
+    // 把 onNodesChange 包一层：原样透传给 ReactFlow 应用变更（含 select/dimensions 等 UI 态变更）。
+    // dirty 判定交给 useEffect([rfNodes, rfEdges]) 做快照对比，只把业务内容变化记为未保存，
+    // 规避单击选中节点触发的边 dimensions 变更导致误报「保存更改」。
     const onNodesChange = useCallback((changes: NodeChange[]) => {
-        if (canEdit) {
-            const real = changes.some(c => c.type !== 'select' && c.type !== 'reset' && c.type !== 'dimensions');
-            if (real) setIsDirty(true);
-        }
         onNodesChangeRaw(changes);
-    }, [onNodesChangeRaw, canEdit]);
+    }, [onNodesChangeRaw]);
 
-    // onEdgesChange 同理（连线删除/重置等也算内容变更）
+    // onEdgesChange 同理（连线删除/重置等也算内容变更，由快照对比统一判定）
     // 条件节点出线被删除时同步删除对应分支，保证分支与连线一致
     const onEdgesChange = useCallback((changes: EdgeChange[]) => {
         if (canEdit) {
-            const real = changes.some(c => c.type !== 'select' && c.type !== 'reset');
-            if (real) setIsDirty(true);
             const removed = changes.filter(c => c.type === 'remove');
             if (removed.length > 0) {
                 const removedIds = new Set(removed.map(c => c.id));
@@ -1334,15 +1449,16 @@ function DagEditorInner() {
                 await updateDag(id, payload);
                 notify.success('DAG 已更新');
             }
-            // 保存成功：清 dirty 标志与本地草稿（navigate 之前，避免 onBack 再次拦截）
+            // 保存成功：清 dirty 标志并重建快照基线（navigate 之前，避免 onBack 再次拦截）
             setIsDirty(false);
+            savedSnapshotRef.current = buildSnapshot(rfNodes, rfEdges);
             setDraftParams([]);
             setDraftAlertConfig(undefined);
             navigate(`/engineering/dags/${savedId}/edit`);
         } catch {
             // 错误提示由 request 拦截器统一弹出
         }
-    }, [dag, rfNodes, rfEdges, id, isNew, navigate, draftParams, draftAlertConfig]);
+    }, [dag, rfNodes, rfEdges, id, isNew, navigate, draftParams, draftAlertConfig, buildSnapshot]);
 
     const handleSave = useCallback(() => {
         if (!dag.name) {
@@ -1412,11 +1528,13 @@ function DagEditorInner() {
             cancelText: '放弃',
             onOk: () => handleSave(),
             onCancel: () => {
+                // 放弃离开：重建快照基线，避免下次进来同一内容又被判 dirty
+                savedSnapshotRef.current = buildSnapshot(rfNodes, rfEdges);
                 setIsDirty(false);
                 navBack();
             },
         });
-    }, [isDirty, navigate, handleSave, dag.projectId, fromPath, isRunView, location.state]);
+    }, [isDirty, navigate, handleSave, dag.projectId, fromPath, isRunView, location.state, rfNodes, rfEdges, buildSnapshot]);
 
     /**
      * 离开页面前拦截：浏览器关闭/刷新时也提示（PRD §6.4.1）
@@ -1556,6 +1674,14 @@ function DagEditorInner() {
                                         </span>
                                     </span>
                                     <span>触发：{execution.triggerType === 'MANUAL' ? '手动' : '定时'}</span>
+                                    {execution.id != null && (
+                                        <span
+                                            className="font-mono tabular-nums"
+                                            title={String(execution.id)}
+                                        >
+                                            实例 ID：{execution.id}
+                                        </span>
+                                    )}
                                     <span>耗时：{formatDuration(execution.durationMs)}</span>
                                     <span>开始：{formatDateTime(execution.startTime)}</span>
                                     <span>结束：{formatDateTime(execution.endTime)}</span>
@@ -1839,7 +1965,8 @@ function DagEditorInner() {
 
                 {/* 右侧：属性面板（260px） */}
                 <PropertyPanel node={selectedNode} onEdit={handleEditFromPanel} readOnly={isRunView || !canEdit}
-                               onViewLogs={handleViewNodeLogs} executionId={executionId}/>
+                               onViewLogs={handleViewNodeLogs} executionId={executionId}
+                               nodeNameMap={new Map(rfNodes.map(n => [n.id, n.data.nodeName]))}/>
             </div>
 
             {/* 节点配置抽屉 */}
@@ -1966,6 +2093,8 @@ function DagEditorInner() {
                 canEdit={canEdit}
                 onClose={() => setVersionModalOpen(false)}
                 onRolledBack={() => {
+                    // 回滚后画布节点由 loadDag 重建：重置快照基线，待 rfNodes 稳定后重建
+                    savedSnapshotRef.current = null;
                     loadDag().then(() => setIsDirty(false)).catch(() => {
                     });
                 }}
