@@ -359,8 +359,8 @@ services:
   # ============================================
   app-gateway:
     build:
-      context: ./data-nest-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/gateway.Dockerfile
     container_name: datanest-app-gateway
     environment:
       - TZ=Asia/Shanghai
@@ -401,8 +401,8 @@ services:
   # ============================================
   app-system:
     build:
-      context: ./data-nest-system
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/system.Dockerfile
     container_name: datanest-app-system
     environment:
       - TZ=Asia/Shanghai
@@ -560,8 +560,8 @@ services:
   # ============================================
   app-engineering:
     build:
-      context: ./data-nest-engineering
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/engineering.Dockerfile
     container_name: datanest-app-engineering
     environment:
       - TZ=Asia/Shanghai
@@ -619,8 +619,8 @@ services:
   # ============================================
   app-governance:
     build:
-      context: ./data-nest-governance
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/governance.Dockerfile
     container_name: datanest-app-governance
     environment:
       - TZ=Asia/Shanghai
@@ -663,8 +663,8 @@ services:
   # ============================================
   app-worker:
     build:
-      context: ./data-nest-worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/worker.Dockerfile
     container_name: datanest-app-worker
     environment:
       - TZ=Asia/Shanghai
@@ -722,8 +722,8 @@ services:
   # ============================================
   app-job:
     build:
-      context: ./data-nest-job
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/job.Dockerfile
     container_name: datanest-app-job
     environment:
       - TZ=Asia/Shanghai

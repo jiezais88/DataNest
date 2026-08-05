@@ -12,4 +12,4 @@ fi
 
 echo "Starting DataNest Engineering Service..."
 
-exec java -jar /app/app.jar "$@"
+exec java org.springframework.boot.loader.launch.JarLauncher "$@"

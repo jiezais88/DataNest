@@ -14,6 +14,7 @@
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和生成的 job json `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
 - **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需重启对应服务。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
+- **common 的 `GlobalExceptionHandler` 是 MVC 专属，WebFlux 网关不能注册**（2026-08-05 部署时发现）：`GlobalExceptionHandler` 是 `@RestControllerAdvice`，其 `@ExceptionHandler(NoResourceFoundException.class)` 引用了 `org.springframework.web.servlet.*` 类型；网关是 WebFlux（无 `spring-webmvc`），WebFlux 的 `RequestMappingHandlerAdapter` 反射 introspect 该 advice 方法签名时 `NoClassDefFoundError: NoResourceFoundException` → 网关启动失败。修复：`CommonExceptionAutoConfiguration`（`@AutoConfiguration`）加 `@ConditionalOnWebApplication(type = SERVLET)`，WebFlux 下不注册。**教训**：`@ConditionalOnWebApplication` 等条件注解必须放在 `@AutoConfiguration`/`@Configuration` 配置类上才生效，放在 `@RestControllerAdvice`/`@Component` 这类被组件扫描或 `@Bean` 注册的普通类上无效。后续给 common 新增 MVC 专属 bean 时注意网关(WebFlux)兼容。
 
 ## 二、告警相关（当前有效，AGENTS.md 正文保留精简版）
 

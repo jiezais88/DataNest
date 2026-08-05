@@ -1,0 +1,40 @@
+# ============================================
+# DataNest 根级 .dockerignore
+# 6 个后端服务的 build context 统一为根目录，
+# 此文件用于大幅缩小构建上下文传输体积。
+# 仅保留各模块 target/ 下的 fat jar，其余一律排除。
+# ============================================
+
+# 各模块编译产物（仅放行 repackage 后的 fat jar）
+**/target/**
+!**/target/*.jar
+
+# 版本控制 / IDE
+.git
+**/.git/**
+.idea
+.vscode
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
+
+# 前端（由 app-frontend 独立构建，后端 context 不需要）
+data-nest-frontend/
+**/node_modules/
+**/dist/
+
+# 数据 / 脚本 / 共享配置（运行期注入，不需要进 context）
+data/
+scripts/
+shared-configs/
+
+# 文档
+*.md
+AGENTS.md
+
+# 日志 / 临时文件
+**/*.log
+**/*.tmp
+**/*.pid
