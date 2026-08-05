@@ -1,6 +1,6 @@
 ﻿# Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）；**标准合规检查 E2E 完成**（15 用例全绿：判定/统计/UI/忽略/导出/权限/定时 handler，业务视角端到端验证，见 §22）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -38,6 +38,7 @@
 | Sprint6 级联删除/删除校验补全           | ✅ 完成   | 删数据源/规则模板/质量任务「被引用阻止」（HAS_REFERENCES 3005），API 自测通过，见 §18 |
 | 质量检查历史清理定时任务                | ✅ 完成   | 新增 QualityCheckHistoryCleanupHandler（cron 04:30，保留 30 天，级联删 batch+detail），已注册 XXL-JOB，见 §18 |
 | 删除补全 + 引用明细提示（后端+前端）   | ✅ 完成   | 删 DAG 清血缘、删质量任务评分方案1、被阻止删除返回引用名称列表；前端 ReferenceListModal 接入各删除页，见 §19 |
+| 标准合规检查 E2E（业务视角）            | ✅ 完成   | 15 用例全绿：判定（4 不合规：1 表命名+2 列命名+1 字段类型）/统计/UI/忽略/导出/权限/定时 handler（XXL-JOB 真实触发），见 §22 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -1244,3 +1245,56 @@ data-nest-common
 
 - 其余暂未纳入 e2e 的页面（datasources/users/sync-jobs/collect-tasks/dag-executions/dags）筛选即时化改造未补 e2e 断言（现有测试不依赖该交互，改动经 tsc + 手工验证）。
 - 质量报告（DG-07）S8 单独会话。
+
+## 22. 标准合规检查 E2E（2026-08-05，本次会话，业务视角）
+
+> **背景**：§17 后端（b6b40bb4）+ §20 前端（f7248b98）完成标准合规检查后，按业务链路做端到端测试。**15 个用例全绿（15 passed, 18.8s）**，覆盖判定 / 统计 / UI / 忽略 / 导出 / 权限 / 定时 handler。
+
+### 22.1 测试设计（独立合规数据源，避免与执行层失败表混扰）
+
+- **专属数据源** `e2e_s6_compliance_ds`（id=`9000060000000000001`，复用 middleware-test-mysql）+ 1 张物理表 `e2e_s6_compliance_orders`（列 id/order_no/amount），metadata_table id=`9000060000000000011`。
+- **标准数据**（`e2e_s6_compliance` 前缀 + 固定 ID 段 900006...）：
+  - 字段类型标准 `e2e_s6_compliance_type`：allowedTypes=`["INT"]`
+  - 命名规范 TABLE PREFIX `dwd_`；命名规范 COLUMN PREFIX `order_`（关联字段类型标准）
+- **确定性判定**（扫描合规数据源，checkNaming+checkFieldType）共 **4 条不合规**：
+  - 表 `e2e_s6_compliance_orders` 不以 `dwd_` 开头 → NAMING TABLE ×1
+  - 列 `id`/`amount` 不匹配 `order_` → NAMING COLUMN ×2
+  - 列 `order_no` 匹配 `order_` 但 varchar∉[INT] → TYPE COLUMN ×1
+  - 统计：totalObjects=4；初始 nonCompliant=4/ignored=0/rate=0.0%；忽略 1 条后 3/1/25.0%
+
+### 22.2 用例覆盖（compliance.spec.ts，15 条）
+
+| 组 | 用例 |
+|----|------|
+| A | DB 判定：恰 4 条（1 表命名+2 列命名+1 字段类型）、NAMING/TYPE 字段内容（standard_name/actual/expected）、重扫幂等 |
+| B | 统计/分页 API：summary（4/0/0.0%）、默认仅未忽略 4 条、violationType=TYPE 筛出 1 条 |
+| C | UI：标准合规页三格统计+列表徽章（NAMING×3/TYPE×1）、数据源/违规类型筛选、立即扫描弹窗 |
+| D | 忽略/取消忽略：API 统计联动（3/1/25.0%）+ UI 徽章「已忽略」变化 |
+| E | 导出：CSV 表头+不合规行+实际值/期望值 |
+| F | 权限：工程师可查看/忽略但不可扫描/建标准（403）；分析师不可查看（页面无菜单+API 非 200） |
+| G | **定时 handler**：XXL-JOB admin 真实触发 `standardComplianceCheckHandler` → 全量扫描重建合规表结果 |
+
+### 22.3 新增/改动文件
+
+| 文件 | 说明 |
+|------|------|
+| `e2e/sprint6/helpers/data.ts`（修改） | 合规固定 ID 段 + XXL-JOB admin 地址/账号常量 |
+| `e2e/sprint6/helpers/seed.ts`（修改） | 新增 `seedCompliance`/`cleanupCompliance`（播种标准/数据源/物理表，幂等），挂入 `seedAll`/`cleanupAll` |
+| `e2e/sprint6/helpers/xxl.ts`（新增） | XXL-JOB admin REST 客户端（登录/查执行器/查任务/触发，TypeScript 复刻 SchedulerClient） |
+| `e2e/sprint6/e2e/compliance.spec.ts`（新增） | 15 个业务 E2E 用例 |
+
+### 22.4 验证过程发现的坑
+
+- **后端 Long 序列化为字符串**：`summary`/`page` 返回数字字段为字符串（如 `"4"`），断言需 `Number()` 包裹。
+- **环境已有真实数据源**（`datanest`，含历史合规结果 + 真实命名规范 `_id` SUFFIX）：已确认 e2e 规范不与真实规范冲突（`id` 不以 `_id` 结尾）；UI 统计/列表先筛选到合规数据源隔离；清理只删 `e2e_s6` 前缀，保护真实数据。
+- **XXL-JOB context path 是根路径**：登录 `POST /auth/doLogin`（非 `/xxl-job-admin/auth/doLogin`），`XXL_ADMIN_BASE=http://localhost:8088`。
+- **UI strict mode**：统计卡片/徽章/分页按钮文本重复，定位需精确选择器（label 父容器 `.text-ds-display`、`.ant-table` 内限定、`toHaveCount`）。
+
+### 22.5 清理验证
+
+- 测试跑完后 `cleanupCompliance` 幂等清理 e2e 标准/数据源/物理表/合规结果；真实数据源历史结果（`datanest` 数据源）保留完好（G1 定时扫描会重建真实数据源结果，属定时扫描正常行为，不影响环境）。
+- 测试数据固定 ID 段 `900006...` 独立，不影响执行/质量/告警/评分各段。
+
+### 22.6 待办（后续）
+
+- 质量规则页「批量应用」接线、删除用户、合规结果历史清理定时任务（沿用 §19.6/§20.6 待办，未新增）。

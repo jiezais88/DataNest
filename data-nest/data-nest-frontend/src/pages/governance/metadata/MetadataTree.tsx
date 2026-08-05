@@ -409,15 +409,6 @@ export default function MetadataTree({
                             <HiOutlineXMark size={14}/>
                         </button>
                     )}
-                    {!searchKeyword && (
-                        <button
-                            onClick={handleSearch}
-                            disabled={searchLoading}
-                            className="absolute right-ds-2 top-1/2 -translate-y-1/2 text-ds-text-muted hover:text-ds-accent disabled:opacity-50"
-                        >
-                            <HiOutlineMagnifyingGlass size={14}/>
-                        </button>
-                    )}
                 </div>
                 {isSearchMode && (
                     <p className="mt-ds-1 text-ds-caption text-ds-text-muted truncate">

@@ -21,6 +21,7 @@ import Pagination from '../../../components/Pagination';
 import SearchInput from '../../../components/SearchInput';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DsButton from '../../../components/DsButton';
+import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsIconButton from '../../../components/DsIconButton';
 import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
@@ -615,27 +616,18 @@ export default function DataStandardsPage() {
                                 onChange={(e) => setNamingKeyword(e.target.value)}
                                 placeholder="搜索规范名称..."
                             />
-                            <select
-                                value={namingAppliesTo}
-                                onChange={(e) => setNamingAppliesTo(e.target.value as NamingStandardQueryParams['appliesTo'])}
-                                className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                            >
-                                <option value="">全部对象</option>
-                                <option value="TABLE">表名</option>
-                                <option value="COLUMN">字段名</option>
-                            </select>
-                            <select
-                                value={namingEnabled ?? ''}
-                                onChange={(e) => {
-                                    const v = e.target.value;
-                                    setNamingEnabled(v === '' ? undefined : Number(v));
-                                }}
-                                className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                            >
-                                <option value="">全部状态</option>
-                                <option value="1">启用</option>
-                                <option value="0">停用</option>
-                            </select>
+                            <DsFilterSelect
+                                value={namingAppliesTo ?? ''}
+                                onChange={(v) => setNamingAppliesTo(v as NamingStandardQueryParams['appliesTo'])}
+                                options={[{value: '', label: '全部对象'}, {value: 'TABLE', label: '表名'}, {value: 'COLUMN', label: '字段名'}]}
+                                aria-label="按对象筛选"
+                            />
+                            <DsFilterSelect
+                                value={namingEnabled != null ? String(namingEnabled) : ''}
+                                onChange={(v) => setNamingEnabled(v === '' ? undefined : Number(v))}
+                                options={[{value: '', label: '全部状态'}, {value: '1', label: '启用'}, {value: '0', label: '停用'}]}
+                                aria-label="按状态筛选"
+                            />
                             <div className="ml-auto flex items-center gap-ds-2">
                                 <DsButton
                                     onClick={() => {

@@ -12,6 +12,7 @@ import DsButton from '../../../../components/DsButton';
 import DsIconButton from '../../../../components/DsIconButton';
 import DsModal from '../../../../components/DsModal';
 import DsStatusBadge from '../../../../components/DsStatusBadge';
+import DsRangePicker from '../../../../components/DsRangePicker';
 import TriggerBadge from '../../../../components/TriggerBadge';
 import DsFilterSelect from '../../../../components/DsFilterSelect';
 import DsToolbar from '../../../../components/DsToolbar';
@@ -420,23 +421,15 @@ export default function CollectHistoryGlobalPage() {
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />
-                    <div className="flex items-center gap-ds-2">
-                        <input
-                            type="datetime-local"
-                            value={draftStartTimeFrom}
-                            onChange={(e) => setDraftStartTimeFrom(e.target.value)}
-                            className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                            aria-label="开始时间起"
-                        />
-                        <span className="text-ds-small text-ds-text-muted">至</span>
-                        <input
-                            type="datetime-local"
-                            value={draftStartTimeTo}
-                            onChange={(e) => setDraftStartTimeTo(e.target.value)}
-                            className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                            aria-label="开始时间止"
-                        />
-                    </div>
+                    <DsRangePicker
+                        from={draftStartTimeFrom}
+                        to={draftStartTimeTo}
+                        onChange={(from, to) => {
+                            setDraftStartTimeFrom(from);
+                            setDraftStartTimeTo(to);
+                            applyQuery({...query, startTimeFrom: from, startTimeTo: to});
+                        }}
+                    />
                 </DsToolbar>
             </div>
 

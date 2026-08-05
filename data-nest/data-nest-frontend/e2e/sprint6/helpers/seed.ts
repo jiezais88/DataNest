@@ -44,6 +44,17 @@ import {
     SCORE_RULE_SEVERE_1,
     SCORE_RULE_SEVERE_PASS,
     SCORE_RULE_UNAVAIL,
+    COMPLIANCE_PREFIX,
+    COMPLIANCE_DS_ID,
+    COMPLIANCE_DS_NAME,
+    COMPLIANCE_TABLE,
+    COMPLIANCE_TABLE_ID,
+    COMPLIANCE_TYPE_STD_ID,
+    COMPLIANCE_TYPE_STD_NAME,
+    COMPLIANCE_NS_TABLE_ID,
+    COMPLIANCE_NS_COL_ID,
+    COMPLIANCE_NS_TABLE_NAME,
+    COMPLIANCE_NS_COL_NAME,
 } from './data';
 
 /**
@@ -591,6 +602,111 @@ export function cleanupQualityScores(): void {
     quiet(mysqlExec, `DROP TABLE IF EXISTS ${SCORE_TABLE_PASS}, ${SCORE_TABLE_WARN}, ${SCORE_TABLE_SEVERE}, ${SCORE_TABLE_UNAVAIL}`);
 }
 
+// ==================== 标准合规检查（Sprint 6） ====================
+
+/**
+ * 播种标准合规测试数据（幂等）：
+ * - 在 middleware-test-mysql 建 1 张专属合规物理表 e2e_s6_compliance_orders（列 id/order_no/amount）。
+ * - 专属合规数据源 e2e_s6_compliance_ds + metadata_table（id=COMPLIANCE_TABLE_ID）+ 3 列 metadata_column。
+ * - 标准数据（e2e_s6_compliance 前缀，固定 ID）：
+ *   - 字段类型标准 COMPLIANCE_TYPE_STD_ID：allowedTypes=["INT"]
+ *   - 命名规范 TABLE（COMPLIANCE_NS_TABLE_ID）：PREFIX dwd_
+ *   - 命名规范 COLUMN（COMPLIANCE_NS_COL_ID）：PREFIX order_，关联字段类型标准
+ *
+ * 判定（对合规数据源扫描，checkNaming+checkFieldType，共 4 条不合规）：
+ * - 表 e2e_s6_compliance_orders 不以 dwd_ 开头 → NAMING TABLE ×1
+ * - 列 id / amount 不匹配 order_ → NAMING COLUMN ×2
+ * - 列 order_no 匹配 order_，varchar 不在 [INT] → TYPE COLUMN ×1
+ * 统计：totalObjects=1 表+3 列=4；初始 nonCompliant=4、ignored=0、rate=0.0%。
+ *
+ * 独立数据源避免与执行层失败表（e2e_s6_no_such_table）混在一起污染统计。
+ */
+export function seedCompliance(): void {
+    // 清理历史（先清结果，再清标准，再清元数据，最后 DROP 物理表）
+    psql(`DELETE FROM compliance_check_result WHERE table_id = ${COMPLIANCE_TABLE_ID}`);
+    psql(`DELETE FROM naming_standard WHERE id IN (${COMPLIANCE_NS_TABLE_ID}, ${COMPLIANCE_NS_COL_ID})`);
+    psql(`DELETE FROM field_type_standard WHERE id = ${COMPLIANCE_TYPE_STD_ID}`);
+    psql(`DELETE FROM metadata_column WHERE table_id = ${COMPLIANCE_TABLE_ID}`);
+    psql(`DELETE FROM metadata_table WHERE id = ${COMPLIANCE_TABLE_ID}`);
+    psql(`DELETE FROM datasource_connection WHERE id = ${COMPLIANCE_DS_ID}`);
+    quiet(mysqlExec, `DROP TABLE IF EXISTS ${COMPLIANCE_TABLE}`);
+
+    // 物理表（与执行层表结构一致，行数据无要求）
+    quiet(mysqlExec, `
+        CREATE TABLE IF NOT EXISTS ${COMPLIANCE_TABLE} (
+            id BIGINT PRIMARY KEY,
+            order_no VARCHAR(64),
+            amount DECIMAL(18,2)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 数据源（密码用 AES-256-GCM 加密，与执行层一致；状态 NORMAL 非 ONLINE）
+    psql(`
+        INSERT INTO datasource_connection
+        (id, name, type, host, port, database_name, schema_name, username, encrypted_password,
+         status, created_at, updated_at, auto_collect_on_save)
+        VALUES (${COMPLIANCE_DS_ID}, '${COMPLIANCE_DS_NAME}', 'MYSQL', '${EXEC_MYSQL.host}', ${EXEC_MYSQL.port},
+                '${EXEC_MYSQL.db}', NULL, '${EXEC_MYSQL.user}', 'x', 'NORMAL', now(), now(), 0);
+    `);
+
+    // 元数据表（source_status=ONLINE，供合规扫描匹配）
+    psql(`
+        INSERT INTO metadata_table
+        (id, datasource_id, database_name, schema_name, table_name, table_comment,
+         source_status, source_type, created_at, updated_at)
+        VALUES (${COMPLIANCE_TABLE_ID}, ${COMPLIANCE_DS_ID}, '${EXEC_MYSQL.db}', NULL, '${COMPLIANCE_TABLE}',
+                'e2e s6 标准合规测试表', 'ONLINE', 'EXTERNAL', now(), now());
+    `);
+
+    // 元数据列（3 列：id/order_no/amount）
+    psql(`
+        INSERT INTO metadata_column
+        (id, table_id, column_name, data_type, column_comment, nullable, ordinal_position,
+         source_type, source_status, created_at, updated_at)
+        VALUES
+        (9000060000000000111, ${COMPLIANCE_TABLE_ID}, 'id', 'bigint', '主键', false, 1, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000060000000000112, ${COMPLIANCE_TABLE_ID}, 'order_no', 'varchar', '订单号', true, 2, 'EXTERNAL', 'ONLINE', now(), now()),
+        (9000060000000000113, ${COMPLIANCE_TABLE_ID}, 'amount', 'decimal', '金额', true, 3, 'EXTERNAL', 'ONLINE', now(), now());
+    `);
+
+    // 字段类型标准（allowedTypes=["INT"]，用 JSONB 数组）
+    psql(`
+        INSERT INTO field_type_standard
+        (id, name, category, allowed_types, description, created_at, updated_at)
+        VALUES (${COMPLIANCE_TYPE_STD_ID}, '${COMPLIANCE_TYPE_STD_NAME}', '数值', '["INT"]'::jsonb,
+                'e2e s6 标准合规字段类型标准', now(), now());
+    `);
+
+    // 命名规范：TABLE PREFIX dwd_（无关联字段类型标准）；COLUMN PREFIX order_（关联字段类型标准）
+    psql(`
+        INSERT INTO naming_standard
+        (id, name, applies_to, rule_type, rule_value, target_standard_id, priority, enabled,
+         description, created_at, updated_at)
+        VALUES
+        (${COMPLIANCE_NS_TABLE_ID}, '${COMPLIANCE_NS_TABLE_NAME}', 'TABLE', 'PREFIX', 'dwd_', NULL, 10, 1,
+         'e2e s6 表名前缀规范', now(), now()),
+        (${COMPLIANCE_NS_COL_ID}, '${COMPLIANCE_NS_COL_NAME}', 'COLUMN', 'PREFIX', 'order_', ${COMPLIANCE_TYPE_STD_ID}, 10, 1,
+         'e2e s6 字段名前缀规范(关联类型标准)', now(), now());
+    `);
+}
+
+/** 清理标准合规测试数据（标准 / 元数据 / 合规结果 / 物理表，幂等） */
+export function cleanupCompliance(): void {
+    // 结果：清 e2e 专属合规表 + 定时全量扫描给其它 e2e 数据源表产出的所有结果（按对象路径 e2e_s6 前缀兜底）
+    psql(`DELETE FROM compliance_check_result WHERE table_id = ${COMPLIANCE_TABLE_ID}`);
+    psql(`DELETE FROM compliance_check_result WHERE datasource_id = ${COMPLIANCE_DS_ID}`);
+    psql(`DELETE FROM compliance_check_result WHERE object_path LIKE '%e2e_s6%'`);
+    // 标准
+    psql(`DELETE FROM naming_standard WHERE id IN (${COMPLIANCE_NS_TABLE_ID}, ${COMPLIANCE_NS_COL_ID})`);
+    psql(`DELETE FROM field_type_standard WHERE id = ${COMPLIANCE_TYPE_STD_ID}`);
+    // 元数据
+    psql(`DELETE FROM metadata_column WHERE table_id = ${COMPLIANCE_TABLE_ID}`);
+    psql(`DELETE FROM metadata_table WHERE id = ${COMPLIANCE_TABLE_ID}`);
+    psql(`DELETE FROM datasource_connection WHERE id = ${COMPLIANCE_DS_ID}`);
+    // 物理表
+    quiet(mysqlExec, `DROP TABLE IF EXISTS ${COMPLIANCE_TABLE}`);
+}
+
 // ==================== 清理 / 播种 ====================
 
 /** 清理全部 Sprint 6 测试数据（幂等） */
@@ -630,6 +746,11 @@ export async function cleanupAll(): Promise<void> {
     } catch (e) {
         console.warn('sprint6 cleanup quality scores:', ERR(e));
     }
+    try {
+        cleanupCompliance();
+    } catch (e) {
+        console.warn('sprint6 cleanup compliance:', ERR(e));
+    }
 }
 
 /** 全量播种（globalSetup 调用，幂等） */
@@ -642,4 +763,5 @@ export async function seedAll(): Promise<void> {
     seedExecMetadata();
     seedQualityAlerts();
     seedQualityScores();
+    seedCompliance();
 }

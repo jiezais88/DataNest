@@ -15,6 +15,7 @@ import Pagination from '../../../components/Pagination';
 import SearchInput from '../../../components/SearchInput';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DsButton from '../../../components/DsButton';
+import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsIconButton from '../../../components/DsIconButton';
 import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
@@ -328,34 +329,24 @@ export default function QualityTemplatesPage() {
                         onChange={(e) => setKeyword(e.target.value)}
                         placeholder="搜索模板名称..."
                     />
-                    <select
+                    <DsFilterSelect
                         value={type}
-                        onChange={(e) => setType(e.target.value as QualityTemplateType | '')}
-                        className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                    >
-                        <option value="">全部类型</option>
-                        {TYPE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                    </select>
-                    <select
-                        value={builtin ?? ''}
-                        onChange={(e) => setBuiltin(e.target.value === '' ? undefined : Number(e.target.value))}
-                        className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                    >
-                        <option value="">全部来源</option>
-                        <option value="1">内置</option>
-                        <option value="0">自定义</option>
-                    </select>
-                    <select
-                        value={enabled ?? ''}
-                        onChange={(e) => setEnabled(e.target.value === '' ? undefined : Number(e.target.value))}
-                        className="px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent"
-                    >
-                        <option value="">全部状态</option>
-                        <option value="1">启用</option>
-                        <option value="0">停用</option>
-                    </select>
+                        onChange={(v) => setType(v as QualityTemplateType | '')}
+                        options={[{value: '', label: '全部类型'}, ...TYPE_OPTIONS]}
+                        aria-label="按类型筛选"
+                    />
+                    <DsFilterSelect
+                        value={builtin != null ? String(builtin) : ''}
+                        onChange={(v) => setBuiltin(v === '' ? undefined : Number(v))}
+                        options={[{value: '', label: '全部来源'}, {value: '1', label: '内置'}, {value: '0', label: '自定义'}]}
+                        aria-label="按来源筛选"
+                    />
+                    <DsFilterSelect
+                        value={enabled != null ? String(enabled) : ''}
+                        onChange={(v) => setEnabled(v === '' ? undefined : Number(v))}
+                        options={[{value: '', label: '全部状态'}, {value: '1', label: '启用'}, {value: '0', label: '停用'}]}
+                        aria-label="按状态筛选"
+                    />
                     <div className="ml-auto flex items-center gap-ds-2">
                         <DsButton
                             onClick={() => {

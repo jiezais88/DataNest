@@ -145,3 +145,38 @@ export const SCORE_RULE_SEVERE_1 = '9000050000000000105';
 export const SCORE_RULE_SEVERE_PASS = '9000050000000000106';
 export const SCORE_RULE_UNAVAIL = '9000050000000000107';
 
+// ==================== 标准合规检查（Sprint 6） ====================
+
+/** 标准合规测试数据前缀（命名规范 / 字段类型标准 / 合规数据源） */
+export const COMPLIANCE_PREFIX = 'e2e_s6_compliance';
+
+/**
+ * 标准合规测试固定 ID 段（9000060000000000000+，独立于质量/执行/自动/告警/评分五段）。
+ * 对应 seed.ts 中 seedCompliance 播种的专属合规数据源 + 1 张物理表 + 命名规范 + 字段类型标准。
+ * 复用 middleware-test-mysql（EXEC_MYSQL）与 testdb。
+ */
+/** 合规专属数据源（独立于执行层，避免失败表污染统计） */
+export const COMPLIANCE_DS_ID = '9000060000000000001';
+/** 合规专属数据源名 */
+export const COMPLIANCE_DS_NAME = 'e2e_s6_compliance_ds';
+/** 合规物理表（1 张，列 id/order_no/amount） */
+export const COMPLIANCE_TABLE = 'e2e_s6_compliance_orders';
+/** 合规物理表 metadata_table 固定 ID */
+export const COMPLIANCE_TABLE_ID = '9000060000000000011';
+/** 合规字段类型标准固定 ID（allowedTypes=["INT"]） */
+export const COMPLIANCE_TYPE_STD_ID = '9000060000000000201';
+/** 合规字段类型标准名 */
+export const COMPLIANCE_TYPE_STD_NAME = `${COMPLIANCE_PREFIX}_type`;
+/** 合规命名规范固定 ID（TABLE: PREFIX dwd_；COLUMN: PREFIX order_ 关联字段类型标准） */
+export const COMPLIANCE_NS_TABLE_ID = '9000060000000000101';
+export const COMPLIANCE_NS_COL_ID = '9000060000000000102';
+/** 合规命名规范名 */
+export const COMPLIANCE_NS_TABLE_NAME = `${COMPLIANCE_PREFIX}_table`;
+export const COMPLIANCE_NS_COL_NAME = `${COMPLIANCE_PREFIX}_col`;
+/** XXL-JOB admin 地址（宿主机映射端口，context path 为根，登录 /auth/doLogin）与登录账号 */
+export const XXL_ADMIN_BASE = process.env.XXL_ADMIN_BASE ?? 'http://localhost:8088';
+export const XXL_ADMIN_USER = process.env.XXL_ADMIN_USER ?? 'admin';
+export const XXL_ADMIN_PASS = process.env.XXL_ADMIN_PASS ?? '123456';
+/** 标准合规定时 handler 注册名（JobRegistrar 平台任务） */
+export const XXL_HANDLER_COMPLIANCE = 'standardComplianceCheckHandler';
+
