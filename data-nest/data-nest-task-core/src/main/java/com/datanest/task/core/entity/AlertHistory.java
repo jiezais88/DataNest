@@ -39,4 +39,7 @@ public class AlertHistory {
     /** 联查对象名（非表字段，列表展示用） */
     @TableField(exist = false)
     private String objectName;
+
+    /** 告警规则名称（冗余落库；规则删除后历史仍保留名称） */
+    private String ruleName;
 }

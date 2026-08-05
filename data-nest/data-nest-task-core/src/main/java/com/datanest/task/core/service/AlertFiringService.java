@@ -97,6 +97,7 @@ public class AlertFiringService {
             AlertHistory history = new AlertHistory();
             history.setId(IdWorker.getId());
             history.setAlertRuleId(rule.getId());
+            history.setRuleName(rule.getName());
             history.setObjectType(rule.getObjectType());
             history.setObjectId(objectId);
             history.setAlertType(alertType);

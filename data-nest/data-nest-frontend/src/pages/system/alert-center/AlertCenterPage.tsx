@@ -45,6 +45,7 @@ const OBJECT_TYPE_OPTIONS: { value: AlertObjectType | ''; label: string }[] = [
     {value: 'DAG', label: 'DAG'},
     {value: 'SYNC_JOB', label: '同步任务'},
     {value: 'COLLECT_TASK', label: '采集任务'},
+    {value: 'QUALITY', label: '质量任务'},
 ];
 
 const ALERT_TYPE_OPTIONS: { value: AlertTriggerType | ''; label: string }[] = [
@@ -73,8 +74,14 @@ const TRIGGER_LABEL: Record<AlertTriggerType, string> = {
 };
 
 function objectTypeBadge(type: AlertObjectType) {
-    const variant = type === 'SYNC_JOB' ? 'accent' : type === 'COLLECT_TASK' ? 'success' : 'running';
-    const label = type === 'SYNC_JOB' ? '同步任务' : type === 'COLLECT_TASK' ? '采集任务' : 'DAG';
+    const variant = type === 'SYNC_JOB' ? 'accent'
+        : type === 'COLLECT_TASK' ? 'success'
+            : type === 'QUALITY' ? 'warning'
+                : 'running';
+    const label = type === 'SYNC_JOB' ? '同步任务'
+        : type === 'COLLECT_TASK' ? '采集任务'
+            : type === 'QUALITY' ? '质量任务'
+                : 'DAG';
     return <DsStatusBadge variant={variant} label={label}/>;
 }
 
@@ -285,6 +292,15 @@ export default function AlertCenterPage() {
     // ==================== 列定义 ====================
     const ruleColumns = useMemo<ColumnsType<AlertRuleDTO>>(() => [
         {
+            title: '规则名称',
+            dataIndex: 'name',
+            width: COL.NAME,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-primary font-medium" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
             title: '对象类型',
             dataIndex: 'objectType',
             width: COL.STATUS,
@@ -421,6 +437,15 @@ export default function AlertCenterPage() {
             ),
         },
         {
+            title: '告警规则',
+            dataIndex: 'ruleName',
+            width: COL.NAME,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-primary font-medium" title={v || '-'}>{v || '-'}</span>
+            ),
+        },
+        {
             title: '对象类型',
             dataIndex: 'objectType',
             width: COL.STATUS,
@@ -495,7 +520,7 @@ export default function AlertCenterPage() {
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">告警中心</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">统一管理
-                        DAG、同步任务、采集任务的邮件告警规则</p>
+                        DAG、同步任务、采集任务、质量任务的邮件告警规则</p>
                 </div>
                 {activeTab === 'rules' && canWrite && (
                     <DsButton onClick={openCreate}>
@@ -663,6 +688,9 @@ export default function AlertCenterPage() {
                         <span className="text-ds-text-primary">
                             {detailHistory.sentAt ? formatDateTime(detailHistory.sentAt) : '—'}
                         </span>
+
+                        <span className="text-ds-text-muted">告警规则</span>
+                        <span className="text-ds-text-primary">{detailHistory.ruleName || '—'}</span>
 
                         <span className="text-ds-text-muted">对象类型</span>
                         <span>{objectTypeBadge(detailHistory.objectType)}</span>

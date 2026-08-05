@@ -141,6 +141,8 @@ PRD 原「每条规则独立 Cron」已在三层模型下 **废除**（见 D1）
 - 分级告警相关（本会话交付）：
   - `V3.6.5__sprint6_quality_alert.sql`：`quality_check_detail` 加 `result_level`，`quality_check_batch` 加 `alert_sent`。
   - `V3.6.6__alert_rule_quality_object_type.sql`：放开 `alert_rule.object_type` 的 CHECK 约束，追加 `QUALITY`。
+  - `V3.6.7__alert_rule_name.sql`：`alert_rule` 加 `name`（必填、同一 object_type 下唯一），`alert_history` 加 `rule_name`
+    （冗余落库，规则删除后历史仍保留名称）。历史数据回填 `COALESCE(object_name,'未命名规则')`，同类型重名追加 `-N` 序号。
 
 ### 3.1 `quality_rule_template`（规则模板库，D3）
 
@@ -367,6 +369,10 @@ result_value ≥ severe_threshold          → SEVERE
 - `AlertRuleService.resolveObjectName` 对 QUALITY 返回 **质量任务名**（查 `quality_job`）。
 - 告警规则的对象下拉新增「质量」类型：按质量任务返回（`listObjectOptions` 扩展，`objectType=QUALITY`）。
 - `AlertHistoryMapper.selectHistoryPage` 增加 `LEFT JOIN quality_job` 联查 QUALITY 对象名。
+- **规则名称（2026-08-05）**：`alert_rule` 新增 `name`（必填、同一 `object_type` 下唯一，索引 `uk_alert_rule_name(object_type,name)`）；
+  `AlertRuleService.validate` 校验必填 + `assertNameUnique`（update 排除自身 id）。`alert_history` 新增 `rule_name`（冗余落库），
+  `selectHistoryPage` 以 `COALESCE(ar.name, ah.rule_name) AS ruleName` 联查（兼容历史旧数据）。
+  前端告警中心规则表/历史表各新增名称列，`AlertRuleModal` 新增规则名称输入框。
 
 **批量合并告警**：
 

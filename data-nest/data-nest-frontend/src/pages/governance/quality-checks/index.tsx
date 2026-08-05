@@ -21,6 +21,7 @@ import DsToolbar from '../../../components/DsToolbar';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import Pagination from '../../../components/Pagination';
 import {
+    QUALITY_CHECK_LEVEL_LABEL,
     QUALITY_CHECK_STATUS_LABEL,
     QUALITY_CHECK_TRIGGER_LABEL,
     QUALITY_TYPE_LABEL,
@@ -28,6 +29,7 @@ import {
 import type {
     QualityCheckBatch,
     QualityCheckDetail,
+    QualityCheckLevel,
     QualityCheckStatus,
     QualityCheckTriggerType,
 } from '../../../types/quality';
@@ -39,6 +41,14 @@ const STATUS_VARIANT: Record<QualityCheckStatus, DsStatusVariant> = {
     SUCCESS: 'success',
     PARTIAL_FAILED: 'warning',
     FAILED: 'danger',
+};
+
+/** 规则分级判定 -> 徽章变体（通过/警告/严重/不可用，对齐后端分级语义） */
+const LEVEL_VARIANT: Record<QualityCheckLevel, DsStatusVariant> = {
+    PASS: 'success',
+    WARNING: 'warning',
+    SEVERE: 'danger',
+    UNAVAILABLE: 'pending',
 };
 
 const TRIGGER_OPTIONS = [
@@ -388,6 +398,9 @@ function QualityCheckDetailView({loading, detail}: { loading: boolean; detail: Q
 }
 
 function DetailCard({d}: { d: QualityCheckDetail }) {
+    const level = d.resultLevel as QualityCheckLevel | undefined;
+    const levelLabel = level ? (QUALITY_CHECK_LEVEL_LABEL[level] || level) : '—';
+    const levelVariant = level ? (LEVEL_VARIANT[level] || 'pending') : 'pending';
     const fields = [
         {label: '规则类型', value: d.ruleType ? (QUALITY_TYPE_LABEL[d.ruleType] || d.ruleType) : '—'},
         {label: '目标表', value: d.tableName || '—'},
@@ -399,11 +412,7 @@ function DetailCard({d}: { d: QualityCheckDetail }) {
         <div className="border border-ds-border-subtle rounded-ds-sm p-ds-4">
             <div className="flex items-center justify-between gap-ds-2 mb-ds-2">
                 <span className="text-ds-small text-ds-text-primary font-medium break-all">{d.ruleName || '—'}</span>
-                {d.success === 1 ? (
-                    <DsStatusBadge label="成功" variant="success"/>
-                ) : (
-                    <DsStatusBadge label="失败" variant="danger"/>
-                )}
+                <DsStatusBadge label={levelLabel} variant={levelVariant}/>
             </div>
             <div className="grid grid-cols-4 gap-x-ds-4 gap-y-ds-2 mb-ds-3">
                 {fields.map((f) => (

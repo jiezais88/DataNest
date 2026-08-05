@@ -91,7 +91,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 roles: GOVERNANCE_WRITE_ROLES
             },
             {
-                label: '数据质量',
+                label: '质量任务',
                 path: '/governance/data-quality',
                 icon: <HiOutlineCheckBadge size={18}/>,
                 roles: GOVERNANCE_WRITE_ROLES

@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警后端完成（分级判定落库 + fireBatch 合并告警 + QUALITY 对象类型），已部署自测通过
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型），已构建部署
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -25,6 +25,8 @@
 | Sprint 8 执行层前端                      | ✅ 完成   | 新增「质量检查历史」独立菜单页（批次列表+规则明细抽屉）+ 任务/规则执行按钮从占位改为真实触发，见 §8.5 |
 | 联调验证                                 | ✅ 完成   | 任务/规则全部接口经网关联调通过（见「质量任务/规则 · API 验证记录」）；E2E 全绿（36 用例，见「质量任务/规则 · E2E 测试记录」） |
 | Sprint 6 分级邮件告警后端                 | ✅ 完成   | 分级判定落库（result_level）+ fireBatch 合并告警 + 告警中心 QUALITY 对象类型，见 §9 |
+| Sprint 6 分级邮件告警前端                 | ✅ 完成   | 质量检查历史明细卡片展示分级判定（通过/警告/严重/不可用）；告警中心支持「质量任务」对象类型配置/筛选/徽章，见 §9.7 |
+| 告警规则名称 + 质量任务页改名             | ✅ 完成   | alert_rule 加 name（必填/同类型唯一）+ alert_history 加 rule_name；告警中心规则/历史新增名称列；AlertRuleModal 加规则名称输入框；数据质量页改名「质量任务」去统计改副标题，见 §10 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -518,5 +520,62 @@
 
 ### 9.6 遗留
 
-- **前端告警中心 `AlertRuleModal` 需加「质量」对象类型选项**（`OBJECT_TYPE_OPTIONS` 加 QUALITY，对象下拉走 `object-options?objectType=QUALITY`）。本次为后端开发，前端留待联调批接入。
 - **`AlertFiringService.saveHistory` 7 参重载**：`summary` 参数仅用于日志（`AlertHistory` 表无 detail 列），未持久化；保留用于追踪，后续如需详情可加列或降级为 6 参。非阻塞。
+
+### 9.7 Sprint 6 分级邮件告警前端（2026-08-05）
+
+> 后端分级邮件告警（§9）落地到前端：质量检查历史页展示规则分级判定，告警中心支持「质量任务」对象类型。纯前端改动，无需后端重建。
+
+**变更清单（纯前端）：**
+
+| 产物 | 变更 |
+|------|------|
+| `src/types/quality.ts`（修改） | 新增 `QualityCheckLevel` 类型（`PASS`/`WARNING`/`SEVERE`/`UNAVAILABLE`）+ `QUALITY_CHECK_LEVEL_LABEL`（通过/警告/严重/不可用，单一出处）；`QualityCheckDetail` 增加 `resultLevel?: QualityCheckLevel` 字段（对齐后端 `QualityCheckDetailDTO.resultLevel`） |
+| `src/pages/governance/quality-checks/index.tsx`（修改） | `DetailCard` 规则明细卡片顶部原「成功/失败」徽章改为**分级判定徽章**（`LEVEL_VARIANT`：PASS=success/WARNING=warning/SEVERE=danger/UNAVAILABLE=pending），展示 result_level 分级，与邮件告警等级对应 |
+| `src/types/alert.ts`（修改） | `AlertObjectType` 增加 `'QUALITY'` |
+| `src/components/AlertRuleModal.tsx`（修改） | `OBJECT_TYPE_OPTIONS` 增加「质量任务」；对象选择复用非 DAG 平铺 Select（`object-options?objectType=QUALITY` 自动加载质量任务列表），零额外分支 |
+| `src/pages/system/alert-center/AlertCenterPage.tsx`（修改） | `OBJECT_TYPE_OPTIONS` 筛选增加「质量任务」；`objectTypeBadge` 增加 QUALITY 分支（warning 变体 + 「质量任务」label） |
+
+**Review 结论（功能 × 架构 × 效率）：**
+- **架构融洽**：分级常量收敛到 `types/quality.ts`（`QUALITY_CHECK_LEVEL_LABEL`），与既有 `QUALITY_CHECK_STATUS_LABEL`/`QUALITY_TYPE_LABEL` 单一出处；`LEVEL_VARIANT` 放在页面文件与 `STATUS_VARIANT` 同处，符合项目「状态渲染」惯例；`AlertObjectType` 枚举驱动，`AlertRuleModal`/`AlertCenterPage` 无侵入扩展。
+- **业务正确**：`resultLevel` 字段名与后端 `QualityCheckDetailDTO.resultLevel`（`@Data` → `getResultLevel`）一致，经 `/governance/quality/checks/{id}` 返回；分级语义对齐后端 `AlertConstants.QUALITY_LEVEL_*`；UNAVAILABLE 用灰色 pending 变体，与「不可用/异常」语义匹配，不会误读为成功。
+- **实现高效**：复用 `DsStatusBadge`；`AlertRuleModal` 非 DAG 走平铺 Select，只加一个选项即自动适配 QUALITY，零额外分支；`DsStatusVariant` 含 `pending`（`bg-ds-bg-hover text-ds-text-muted`），类型安全。
+
+**构建部署：** `npm run build`（tsc + vite，3005 modules 通过，无类型错误）→ `docker compose build app-frontend` → `up -d --no-deps app-frontend`，容器 `Up`。
+
+## 10. 告警规则名称 + 质量任务页改名（2026-08-05）
+
+> **阶段**：后端（task-core + Flyway）+ 前端协同改动。三个需求：①数据质量页改名「质量任务」并去掉统计、改副标题；②告警规则新增「规则名称」，告警历史回显「告警规则名称」；③告警中心描述统一为「DAG、同步任务、采集任务、质量任务」。
+
+### 10.1 需求确认（用户）
+- **规则名称**：必填 + 同一对象类型下唯一。
+- **描述修改**：AlertCenterPage 副标题补「质量任务」；数据质量页副标题改为「配置质量任务并设置触发方式…」（质量规则已独立菜单，任务页不再提"质量规则"）。
+
+### 10.2 变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest-system/.../db/migration/V3.6.7__alert_rule_name.sql`（新增） | `alert_rule` 加 `name`（必填，回填 `COALESCE(object_name,'未命名规则')`，同类型重名追加 `-N` 序号保证唯一索引，唯一索引 `uk_alert_rule_name(object_type,name)`）；`alert_history` 加 `rule_name`（冗余落库，规则删除后历史仍保留名称） |
+| task-core `AlertRule`（修改） | 新增 `name` 字段 |
+| task-core `AlertRuleDTO`（修改） | 新增 `name` 字段 |
+| task-core `AlertRuleService`（修改） | `validate()` 校验 name 必填 + `assertNameUnique`（同类型唯一，update 排除自身 id）；createRule/updateRule/applyFields 写入 name；toDTO 返回 name |
+| task-core `AlertHistory`（修改） | 新增 `ruleName` 字段（映射真实列 `rule_name`） |
+| task-core `AlertHistoryMapper`（修改） | `selectHistoryPage` 增加 `LEFT JOIN alert_rule ar`，`COALESCE(ar.name, ah.rule_name) AS ruleName`（兼容历史旧数据） |
+| task-core `AlertFiringService`（修改） | `saveHistory` 冗余写入 `history.setRuleName(rule.getName())` |
+| `src/types/alert.ts`（修改） | `AlertRuleDTO` 加 `name`；`AlertHistory` 加 `ruleName` |
+| `src/components/AlertRuleModal.tsx`（修改） | 新增「规则名称」输入框（必填，所有模式 create/edit/quick 共用）；validate 校验非空；payload 带 name |
+| `src/pages/system/alert-center/AlertCenterPage.tsx`（修改） | 告警规则表新增「规则名称」列（name）；告警历史表新增「告警规则」列（ruleName）；历史详情弹窗加规则名；副标题补「质量任务」 |
+| `src/pages/governance/data-quality/index.tsx`（修改） | 标题「数据质量」→「质量任务」；**删除统计卡片**（全部/已启用/已停用 + `stats`/`loadStats`/`statCards` 及所有 `loadStats()` 调用）；副标题改为「配置质量任务并设置触发方式，对数据资产进行质量检查」 |
+| `src/components/Sidebar.tsx` + `src/utils/breadcrumb.ts`（修改） | 「数据质量」菜单/面包屑改名为「质量任务」 |
+
+### 10.3 部署
+- **后端**：task-core 共享改动 → `mvn install` 全量后重建 **app-system**（Flyway V3.6.7）+ **app-engineering / app-worker / app-governance / app-job**，全部 healthy。
+- **前端**：`npm run build`（tsc + vite 通过）→ `docker compose build app-frontend` → `up -d`。
+- **Flyway 迁移踩坑**：V3.6.7 首次因部分规则 `object_name` 为 NULL，`SET NOT NULL` 失败；二次因回填「未命名规则」同类型重名触发唯一索引冲突。最终回填用 `COALESCE(object_name,'未命名规则')` + 窗口函数对同类型重名追加 `-N` 序号，成功。
+
+### 10.4 验证记录（API + 页面）
+- 告警规则列表 `GET /api/system/alert-rules` → 每条返回 `name`（历史数据正确回填）。
+- 告警历史 `GET /api/system/alert-history` → 返回 `ruleName`（新产生的告警冗余落库，旧历史经 `LEFT JOIN alert_rule` 联查）。
+- 创建规则缺 name → `7202 必须填写规则名称`；同类型重名 → `7202 同一对象类型下已存在同名告警规则`。
+- 页面：`/governance/data-quality` 标题「质量任务」、无统计卡；告警中心规则/历史含名称列。
+- PowerShell 联调注意：`curl.exe` 传 JSON body 报 9999，用 `Invoke-RestMethod`（与 §8.4 一致）。

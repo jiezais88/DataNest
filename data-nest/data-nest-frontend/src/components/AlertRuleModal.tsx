@@ -28,6 +28,7 @@ const OBJECT_TYPE_OPTIONS: { value: AlertObjectType; label: string }[] = [
     {value: 'DAG', label: 'DAG'},
     {value: 'SYNC_JOB', label: '同步任务'},
     {value: 'COLLECT_TASK', label: '采集任务'},
+    {value: 'QUALITY', label: '质量任务'},
 ];
 
 const TRIGGER_OPTIONS: { value: AlertTriggerType; label: string }[] = [
@@ -74,6 +75,7 @@ export default function AlertRuleModal({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const [name, setName] = useState<string>('');
     const [objectType, setObjectType] = useState<AlertObjectType>('DAG');
     const [objectIds, setObjectIds] = useState<string[]>([]);
     const [objectOptions, setObjectOptions] = useState<AlertObjectOption[]>([]);
@@ -98,6 +100,7 @@ export default function AlertRuleModal({
         const applyRule = (rule?: AlertRuleDTO | null) => {
             if (!rule) {
                 // 无规则 → 默认值（quick 模式带对象）
+                setName('');
                 setObjectType(quickObjectType || 'DAG');
                 setObjectIds(quickObjectId ? [quickObjectId] : []);
                 setConditions(['FAILURE']);
@@ -106,6 +109,7 @@ export default function AlertRuleModal({
                 setEnabled(true);
                 return;
             }
+            setName(rule.name || '');
             setObjectType(rule.objectType || 'DAG');
             setObjectIds(rule.objectIds?.length ? rule.objectIds : (quickObjectId ? [quickObjectId] : []));
             setConditions(rule.triggerConditions?.length ? rule.triggerConditions : ['FAILURE']);
@@ -181,7 +185,7 @@ export default function AlertRuleModal({
     };
 
     const validate = (): string | null => {
-        if (objectIds.length === 0) return '请选择告警对象';
+        if (!name.trim()) return '请填写规则名称';
         if (conditions.length === 0) return '请至少选择一个触发条件';
         if (conditions.includes('TIMEOUT') && (!timeoutMinutes || timeoutMinutes <= 0)) {
             return '勾选「超时」时必须填写大于 0 的超时阈值';
@@ -209,6 +213,7 @@ export default function AlertRuleModal({
             return;
         }
         const payload: AlertRuleDTO = {
+            name: name.trim(),
             objectType,
             objectIds,
             triggerConditions: conditions,
@@ -307,6 +312,22 @@ export default function AlertRuleModal({
                 </div>
             ) : (
                 <div className="space-y-ds-4">
+                    <div>
+                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                            规则名称 <span className="text-ds-danger">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            disabled={readOnly}
+                            placeholder="如：财务夜间同步失败告警"
+                            maxLength={100}
+                            className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        />
+                        <p className="mt-ds-1 text-ds-nano text-ds-text-muted">同一对象类型下名称需唯一</p>
+                    </div>
+
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             对象类型 <span className="text-ds-danger">*</span>

@@ -272,6 +272,9 @@ export type QualityCheckTriggerType = 'MANUAL' | 'SCHEDULED' | 'AUTO_TRIGGER';
 /** 批次状态：运行中 / 成功 / 部分失败 / 失败 */
 export type QualityCheckStatus = 'RUNNING' | 'SUCCESS' | 'PARTIAL_FAILED' | 'FAILED';
 
+/** 规则分级判定（对齐后端 QualityCheckDetail.resultLevel）：通过 / 警告 / 严重 / 不可用 */
+export type QualityCheckLevel = 'PASS' | 'WARNING' | 'SEVERE' | 'UNAVAILABLE';
+
 /** 质量检查批次（对齐后端 QualityCheckBatchDTO） */
 export interface QualityCheckBatch {
     id: string;
@@ -314,6 +317,8 @@ export interface QualityCheckDetail {
     resultMetric?: string;
     /** 结果值 */
     resultValue?: number | string;
+    /** 分级判定：通过 / 警告 / 严重 / 不可用（Sprint 6 分级告警） */
+    resultLevel?: QualityCheckLevel;
     /** 1 成功，0 失败 */
     success?: number;
     errorMessage?: string;
@@ -347,4 +352,12 @@ export const QUALITY_CHECK_STATUS_LABEL: Record<QualityCheckStatus, string> = {
     SUCCESS: '成功',
     PARTIAL_FAILED: '部分失败',
     FAILED: '失败',
+};
+
+/** 规则分级中文展示（对齐后端 AlertConstants.QUALITY_LEVEL_*） */
+export const QUALITY_CHECK_LEVEL_LABEL: Record<QualityCheckLevel, string> = {
+    PASS: '通过',
+    WARNING: '警告',
+    SEVERE: '严重',
+    UNAVAILABLE: '不可用',
 };

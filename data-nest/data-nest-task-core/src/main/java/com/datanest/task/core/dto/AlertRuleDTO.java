@@ -13,7 +13,10 @@ public class AlertRuleDTO {
 
     private Long id;
 
-    /** DAG / SYNC_JOB / COLLECT_TASK */
+    /** 规则名称（用户自定义，必填；同一 object_type 下唯一） */
+    private String name;
+
+    /** DAG / SYNC_JOB / COLLECT_TASK / QUALITY */
     private String objectType;
 
     /** 告警对象 ID 列表（多选） */

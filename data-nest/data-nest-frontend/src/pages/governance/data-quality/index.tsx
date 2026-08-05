@@ -70,7 +70,6 @@ export default function DataQualityPage() {
     const [schedulingId, setSchedulingId] = useState<string>('');
     /** 执行按钮 loading（记录当前正在触发的任务 ID） */
     const [executingId, setExecutingId] = useState<string>('');
-    const [stats, setStats] = useState({all: 0, enabled: 0, disabled: 0});
     const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
     const [jobEditItem, setJobEditItem] = useState<QualityJob | null>(null);
     const [jobDrawerMode, setJobDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
@@ -96,26 +95,9 @@ export default function DataQualityPage() {
         }
     }, [jobPage, jobPageSize, jobKeyword, jobEnabled]);
 
-    const loadStats = useCallback(async () => {
-        try {
-            const [all, enabled, disabled] = await Promise.all([
-                queryQualityJobs({page: 1, pageSize: 1}),
-                queryQualityJobs({page: 1, pageSize: 1, enabled: 1}),
-                queryQualityJobs({page: 1, pageSize: 1, enabled: 0}),
-            ]);
-            setStats({all: all.data.total, enabled: enabled.data.total, disabled: disabled.data.total});
-        } catch {
-            // ignore
-        }
-    }, []);
-
     useEffect(() => {
         loadJobs();
     }, [loadJobs]);
-
-    useEffect(() => {
-        loadStats();
-    }, [loadStats]);
 
     // URL 状态同步（对齐 data-standards）：进页初始化一次任务筛选与分页，深层跳转返回后筛选不丢
     const urlInitRef = useRef(false);
@@ -174,7 +156,6 @@ export default function DataQualityPage() {
             notify.success('质量任务创建成功');
         }
         loadJobs();
-        loadStats();
     };
 
     const handleToggleJob = useCallback(async (item: QualityJob) => {
@@ -182,8 +163,7 @@ export default function DataQualityPage() {
         await toggleQualityJob(item.id, nextEnabled);
         notify.success(nextEnabled === 1 ? '已启用' : '已停用');
         loadJobs();
-        loadStats();
-    }, [loadJobs, loadStats]);
+    }, [loadJobs]);
 
     /** 列表内直接开启/关闭调度（参考同步任务操作列调度开关） */
     const handleToggleSchedule = useCallback(async (item: QualityJob) => {
@@ -221,7 +201,6 @@ export default function DataQualityPage() {
             setDeleteJobOpen(false);
             setDeleteJobTarget(null);
             loadJobs();
-            loadStats();
         } finally {
             setDeleteJobLoading(false);
         }
@@ -454,108 +433,87 @@ export default function DataQualityPage() {
         },
     ], [canWrite, handleToggleJob, handleToggleSchedule, handleExecuteJob, schedulingId, executingId, openJobEdit, openJobView]);
 
-    const statCards = [
-        {label: '全部任务', value: stats.all},
-        {label: '已启用', value: stats.enabled},
-        {label: '已停用', value: stats.disabled},
-    ];
-
     return (
         <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
-                    <h1 className="text-ds-display text-ds-text-primary">数据质量</h1>
-                    <p className="text-ds-small text-ds-text-muted mt-ds-1">配置质量任务与质量规则，对数据资产进行质量检查与评分</p>
+                    <h1 className="text-ds-display text-ds-text-primary">质量任务</h1>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">配置质量任务并设置触发方式，对数据资产进行质量检查</p>
                 </div>
             </div>
 
-            <div className="flex flex-col gap-ds-4">
-                    {/* 统计卡片 */}
-                    <div className="grid grid-cols-3 gap-ds-4">
-                        {statCards.map((s) => (
-                            <div
-                                key={s.label}
-                                className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-4 flex items-center justify-between"
-                            >
-                                <span className="text-ds-small text-ds-text-secondary">{s.label}</span>
-                                <span className="text-ds-title text-ds-text-primary font-bold tabular-nums">{s.value}</span>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
-                        <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
-                            <DsToolbar
-                                extra={(
-                                    <>
-                                        <DsButton onClick={() => { setJobPage(1); loadJobs(); }} disabled={jobLoading}>
-                                            {jobLoading ? '查询中...' : '查询'}
-                                        </DsButton>
-                                        <DsButton variant="secondary" onClick={resetJobFilters}>重置</DsButton>
-                                        {canWrite && (
-                                            <DsButton onClick={openJobCreate}>
-                                                <HiOutlinePlus size={16}/>
-                                                新增质量任务
-                                            </DsButton>
-                                        )}
-                                    </>
+            <div
+                className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
+                <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
+                    <DsToolbar
+                        extra={(
+                            <>
+                                <DsButton onClick={() => { setJobPage(1); loadJobs(); }} disabled={jobLoading}>
+                                    {jobLoading ? '查询中...' : '查询'}
+                                </DsButton>
+                                <DsButton variant="secondary" onClick={resetJobFilters}>重置</DsButton>
+                                {canWrite && (
+                                    <DsButton onClick={openJobCreate}>
+                                        <HiOutlinePlus size={16}/>
+                                        新增质量任务
+                                    </DsButton>
                                 )}
-                            >
-                                <SearchInput
-                                    value={jobKeyword}
-                                    onChange={(e) => setJobKeyword(e.target.value)}
-                                    placeholder="搜索任务名称..."
-                                />
-                                <DsFilterSelect
-                                    value={jobEnabled}
-                                    onChange={setJobEnabled}
-                                    aria-label="按状态筛选"
-                                    options={[
-                                        {value: '', label: '全部状态'},
-                                        {value: '1', label: '启用'},
-                                        {value: '0', label: '停用'},
-                                    ]}
-                                />
-                            </DsToolbar>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                            <Table<QualityJob>
-                                dataSource={jobs}
-                                rowKey="id"
-                                loading={jobLoading}
-                                pagination={false}
-                                scroll={{x: 1400}}
-                                columns={jobColumns}
-                                className="prototype-table prototype-table-flush"
-                                locale={{
-                                    emptyText: (
-                                        <DsTableEmpty
-                                            description="暂无质量任务，创建第一个任务开始质量检查。"
-                                            action={canWrite && (
-                                                <DsButton onClick={openJobCreate}>
-                                                    <HiOutlinePlus size={16}/>
-                                                    新增质量任务
-                                                </DsButton>
-                                            )}
-                                        />
-                                    ),
-                                }}
-                            />
-                        </div>
-
-                        <Pagination
-                            page={jobPage}
-                            pageSize={jobPageSize}
-                            total={jobTotal}
-                            onChange={(p, s) => {
-                                setJobPage(p);
-                                setJobPageSize(s);
-                            }}
+                            </>
+                        )}
+                    >
+                        <SearchInput
+                            value={jobKeyword}
+                            onChange={(e) => setJobKeyword(e.target.value)}
+                            placeholder="搜索任务名称..."
                         />
-                    </div>
+                        <DsFilterSelect
+                            value={jobEnabled}
+                            onChange={setJobEnabled}
+                            aria-label="按状态筛选"
+                            options={[
+                                {value: '', label: '全部状态'},
+                                {value: '1', label: '启用'},
+                                {value: '0', label: '停用'},
+                            ]}
+                        />
+                    </DsToolbar>
                 </div>
+
+                <div className="overflow-x-auto">
+                    <Table<QualityJob>
+                        dataSource={jobs}
+                        rowKey="id"
+                        loading={jobLoading}
+                        pagination={false}
+                        scroll={{x: 1400}}
+                        columns={jobColumns}
+                        className="prototype-table prototype-table-flush"
+                        locale={{
+                            emptyText: (
+                                <DsTableEmpty
+                                    description="暂无质量任务，创建第一个任务开始质量检查。"
+                                    action={canWrite && (
+                                        <DsButton onClick={openJobCreate}>
+                                            <HiOutlinePlus size={16}/>
+                                            新增质量任务
+                                        </DsButton>
+                                    )}
+                                />
+                            ),
+                        }}
+                    />
+                </div>
+
+                <Pagination
+                    page={jobPage}
+                    pageSize={jobPageSize}
+                    total={jobTotal}
+                    onChange={(p, s) => {
+                        setJobPage(p);
+                        setJobPageSize(s);
+                    }}
+                />
+            </div>
 
             <QualityJobDrawer
                 open={jobDrawerOpen}

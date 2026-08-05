@@ -19,7 +19,10 @@ public class AlertRule {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
-    /** 对象类型：DAG / SYNC_JOB / COLLECT_TASK */
+    /** 规则名称（用户自定义，必填；同一 object_type 下唯一） */
+    private String name;
+
+    /** 对象类型：DAG / SYNC_JOB / COLLECT_TASK / QUALITY */
     private String objectType;
 
     /** 对象名称冗余，便于列表展示；多对象时以「、」拼接 */

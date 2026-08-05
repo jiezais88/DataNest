@@ -107,6 +107,7 @@ public class AlertRuleService {
         LocalDateTime now = LocalDateTime.now();
         AlertRule rule = new AlertRule();
         applyFields(rule, dto);
+        rule.setName(dto.getName());
         rule.setObjectName(resolveObjectNames(dto.getObjectType(), dto.getObjectIds()));
         rule.setCreatedAt(now);
         rule.setUpdatedAt(now);
@@ -124,6 +125,10 @@ public class AlertRuleService {
         }
         if (dto.getObjectType() != null) {
             dto.setObjectType(dto.getObjectType().toUpperCase());
+        }
+        if (StringUtils.hasText(dto.getName())) {
+            assertNameUnique(dto.getObjectType() != null ? dto.getObjectType() : rule.getObjectType(),
+                    dto.getName(), id);
         }
         applyFields(rule, dto);
         if (StringUtils.hasText(dto.getObjectType()) && dto.getObjectIds() != null && !dto.getObjectIds().isEmpty()) {
@@ -367,6 +372,9 @@ public class AlertRuleService {
     }
 
     private void validate(AlertRuleDTO dto) {
+        if (!StringUtils.hasText(dto.getName())) {
+            throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "必须填写规则名称");
+        }
         String objectType = dto.getObjectType() == null ? null : dto.getObjectType().toUpperCase();
         if (!AlertConstants.OBJECT_TYPE_DAG.equals(objectType)
                 && !AlertConstants.OBJECT_TYPE_SYNC_JOB.equals(objectType)
@@ -392,9 +400,32 @@ public class AlertRuleService {
         if (dto.getUserIds() == null || dto.getUserIds().isEmpty()) {
             throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "必须选择至少一个接收用户");
         }
+        assertNameUnique(objectType, dto.getName(), null);
+    }
+
+    /**
+     * 校验规则名称在同一对象类型下唯一（创建时 excludeRuleId 传 null；更新时传自身 id 排除）。
+     */
+    private void assertNameUnique(String objectType, String name, Long excludeRuleId) {
+        if (objectType == null || !StringUtils.hasText(name)) {
+            return;
+        }
+        QueryWrapper<AlertRule> wrapper = new QueryWrapper<>();
+        wrapper.eq("object_type", objectType.toUpperCase())
+                .eq("name", name.trim());
+        if (excludeRuleId != null) {
+            wrapper.ne("id", excludeRuleId);
+        }
+        if (alertRuleMapper.selectCount(wrapper) > 0) {
+            throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID,
+                    "同一对象类型下已存在同名告警规则: " + name.trim());
+        }
     }
 
     private void applyFields(AlertRule rule, AlertRuleDTO dto) {
+        if (StringUtils.hasText(dto.getName())) {
+            rule.setName(dto.getName().trim());
+        }
         if (dto.getObjectType() != null) {
             rule.setObjectType(dto.getObjectType().toUpperCase());
         }
@@ -479,6 +510,7 @@ public class AlertRuleService {
     private AlertRuleDTO toDTO(AlertRule rule) {
         AlertRuleDTO dto = new AlertRuleDTO();
         dto.setId(rule.getId());
+        dto.setName(rule.getName());
         dto.setObjectType(rule.getObjectType());
         dto.setObjectName(rule.getObjectName());
         dto.setTriggerConditions(parseConditions(rule.getTriggerConditions()));

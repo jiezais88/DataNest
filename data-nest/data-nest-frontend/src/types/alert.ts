@@ -2,7 +2,7 @@
 // 对齐后端 task-core AlertRuleDTO / AlertObjectOptionDTO / AlertHistory / UserOptionDTO
 // 注意：后端 JacksonConfig 将 Long 全局序列化为字符串，所有 ID 用 string 类型
 
-export type AlertObjectType = 'DAG' | 'SYNC_JOB' | 'COLLECT_TASK';
+export type AlertObjectType = 'DAG' | 'SYNC_JOB' | 'COLLECT_TASK' | 'QUALITY';
 
 export type AlertTriggerType = 'FAILURE' | 'TIMEOUT' | 'SUCCESS';
 
@@ -11,7 +11,9 @@ export type AlertSendStatus = 'SUCCESS' | 'FAILED';
 
 export interface AlertRuleDTO {
     id?: string;
-    /** DAG / SYNC_JOB / COLLECT_TASK */
+    /** 规则名称（必填，同一对象类型下唯一） */
+    name?: string;
+    /** DAG / SYNC_JOB / COLLECT_TASK / QUALITY */
     objectType: AlertObjectType;
     /** 告警对象 ID 列表（多选） */
     objectIds: string[];
@@ -53,6 +55,8 @@ export interface AlertHistory {
     sentAt?: string;
     /** 联查对象名（非表字段） */
     objectName?: string;
+    /** 告警规则名称（冗余/联查，规则删除后仍保留） */
+    ruleName?: string;
 }
 
 /** 用户选择器选项（仅返回已填写邮箱的用户） */
