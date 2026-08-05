@@ -129,7 +129,6 @@ export default function AlertCenterPage() {
 
     // ==================== 告警规则 ====================
     const [draftKeyword, setDraftKeyword] = useState('');
-    const [draftObjectType, setDraftObjectType] = useState<AlertObjectType | ''>('');
 
     const {
         list: rules,
@@ -139,6 +138,7 @@ export default function AlertCenterPage() {
         loading: rulesLoading,
         setPage: setRulesPage,
         setPageSize: setRulesPageSize,
+        query: ruleQuery,
         applyQuery: applyRuleQuery,
         reload: reloadRules,
     } = usePagedList<RuleListQuery, AlertRuleDTO>({
@@ -155,10 +155,6 @@ export default function AlertCenterPage() {
         defaultPageSize: 10,
     });
 // ==================== 告警历史 ====================
-    const [draftHistoryType, setDraftHistoryType] = useState<AlertObjectType | ''>('');
-    const [draftAlertType, setDraftAlertType] = useState<AlertTriggerType | ''>('');
-    const [draftSendStatus, setDraftSendStatus] = useState<AlertSendStatus | ''>('');
-
     const {
         list: history,
         total: historyTotal,
@@ -167,6 +163,7 @@ export default function AlertCenterPage() {
         loading: historyLoading,
         setPage: setHistoryPage,
         setPageSize: setHistoryPageSize,
+        query: historyQuery,
         applyQuery: applyHistoryQuery,
     } = usePagedList<HistoryListQuery, AlertHistory>({
         fetcher: async (query) => {
@@ -253,23 +250,19 @@ export default function AlertCenterPage() {
     };
 
     const handleRuleSearch = () => {
-        applyRuleQuery({keyword: draftKeyword, objectType: draftObjectType});
+        applyRuleQuery({...ruleQuery, keyword: draftKeyword});
     };
 
     const handleRuleReset = () => {
         setDraftKeyword('');
-        setDraftObjectType('');
         applyRuleQuery(INITIAL_RULE_QUERY);
     };
 
     const handleHistorySearch = () => {
-        applyHistoryQuery({objectType: draftHistoryType, alertType: draftAlertType, sendStatus: draftSendStatus});
+        applyHistoryQuery(historyQuery);
     };
 
     const handleHistoryReset = () => {
-        setDraftHistoryType('');
-        setDraftAlertType('');
-        setDraftSendStatus('');
         applyHistoryQuery(INITIAL_HISTORY_QUERY);
     };
 
@@ -575,8 +568,8 @@ export default function AlertCenterPage() {
                                 placeholder="搜索对象名称..."
                             />
                             <DsFilterSelect
-                                value={draftObjectType}
-                                onChange={v => setDraftObjectType(v as AlertObjectType | '')}
+                                value={ruleQuery.objectType || ''}
+                                onChange={v => applyRuleQuery({...ruleQuery, objectType: v as AlertObjectType | ''})}
                                 options={OBJECT_TYPE_OPTIONS}
                                 aria-label="按对象类型筛选"
                             />
@@ -621,20 +614,20 @@ export default function AlertCenterPage() {
                             }
                         >
                             <DsFilterSelect
-                                value={draftHistoryType}
-                                onChange={v => setDraftHistoryType(v as AlertObjectType | '')}
+                                value={historyQuery.objectType || ''}
+                                onChange={v => applyHistoryQuery({...historyQuery, objectType: v as AlertObjectType | ''})}
                                 options={OBJECT_TYPE_OPTIONS}
                                 aria-label="按对象类型筛选"
                             />
                             <DsFilterSelect
-                                value={draftAlertType}
-                                onChange={v => setDraftAlertType(v as AlertTriggerType | '')}
+                                value={historyQuery.alertType || ''}
+                                onChange={v => applyHistoryQuery({...historyQuery, alertType: v as AlertTriggerType | ''})}
                                 options={ALERT_TYPE_OPTIONS}
                                 aria-label="按告警类型筛选"
                             />
                             <DsFilterSelect
-                                value={draftSendStatus}
-                                onChange={v => setDraftSendStatus(v as AlertSendStatus | '')}
+                                value={historyQuery.sendStatus || ''}
+                                onChange={v => applyHistoryQuery({...historyQuery, sendStatus: v as AlertSendStatus | ''})}
                                 options={SEND_STATUS_OPTIONS}
                                 aria-label="按发送状态筛选"
                             />

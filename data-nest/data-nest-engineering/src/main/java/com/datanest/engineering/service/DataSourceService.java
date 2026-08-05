@@ -20,6 +20,7 @@ import com.datanest.task.core.dto.TestConnectionResult;
 import com.datanest.task.core.entity.CollectTask;
 import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.QualityRule;
+import com.datanest.task.core.entity.QualityScore;
 import com.datanest.task.core.entity.SyncJob;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.ConnectionTester;
@@ -58,6 +59,7 @@ public class DataSourceService {
     private final MetadataColumnMapper metadataColumnMapper;
     private final ComplianceCleanupMapper complianceCleanupMapper;
     private final QualityRuleMapper qualityRuleMapper;
+    private final QualityScoreMapper qualityScoreMapper;
     private final SchedulerClient schedulerClient;
     private final DataSourceRefreshService dataSourceRefreshService;
     private final SysUserService sysUserService;
@@ -67,7 +69,7 @@ public class DataSourceService {
                              SyncJobMapper syncJobMapper,
                              MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
                              ComplianceCleanupMapper complianceCleanupMapper,
-                             QualityRuleMapper qualityRuleMapper,
+                             QualityRuleMapper qualityRuleMapper, QualityScoreMapper qualityScoreMapper,
                              SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService,
                              SysUserService sysUserService) {
         this.dataSourceMapper = dataSourceMapper;
@@ -79,6 +81,7 @@ public class DataSourceService {
         this.metadataColumnMapper = metadataColumnMapper;
         this.complianceCleanupMapper = complianceCleanupMapper;
         this.qualityRuleMapper = qualityRuleMapper;
+        this.qualityScoreMapper = qualityScoreMapper;
         this.schedulerClient = schedulerClient;
         this.dataSourceRefreshService = dataSourceRefreshService;
         this.sysUserService = sysUserService;
@@ -232,6 +235,13 @@ public class DataSourceService {
         int removed = complianceCleanupMapper.deleteByDatasourceId(id);
         if (removed > 0) {
             logger.info("级联删除合规检查结果: datasourceId={}, count={}", id, removed);
+        }
+
+        // 级联删除该数据源下的质量评分（quality_score，防止残留孤儿评分显示「—」）
+        int scoreRemoved = qualityScoreMapper.delete(
+                new QueryWrapper<QualityScore>().eq("datasource_id", id));
+        if (scoreRemoved > 0) {
+            logger.info("级联删除质量评分: datasourceId={}, count={}", id, scoreRemoved);
         }
 
         dataSourceMapper.deleteById(id);

@@ -99,8 +99,6 @@ export default function DataSourcesPage() {
         const pageNum = Number(p.get('page')) || 1;
         const pageSizeNum = Number(p.get('pageSize')) || 10;
         setDraftKeyword(keyword);
-        setDraftType(type);
-        setDraftStatus(status);
         if (pageSizeNum !== 10) setPageSize(pageSizeNum);
         applyQuery({keyword, type, status});
         if (pageNum > 1) setPage(pageNum);
@@ -121,8 +119,6 @@ export default function DataSourcesPage() {
     }, [query, page, pageSize]);
 
     const [draftKeyword, setDraftKeyword] = useState('');
-    const [draftType, setDraftType] = useState<DataSourceType | ''>('');
-    const [draftStatus, setDraftStatus] = useState<DataSourceStatus | ''>('');
 
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
@@ -146,13 +142,11 @@ export default function DataSourcesPage() {
     const canPreview = useHasRole(ROLE.SUPER_ADMIN, ROLE.GOVERNANCE_ADMIN, ROLE.DATA_ENGINEER);
 
     const handleSearch = () => {
-        applyQuery({keyword: draftKeyword, type: draftType, status: draftStatus});
+        applyQuery({...query, keyword: draftKeyword});
     };
 
     const handleReset = () => {
         setDraftKeyword('');
-        setDraftType('');
-        setDraftStatus('');
         setPageSize(10);
         applyQuery(INITIAL_QUERY);
     };
@@ -476,15 +470,15 @@ export default function DataSourcesPage() {
                     />
 
                     <DsFilterSelect
-                        value={draftType}
-                        onChange={(v) => setDraftType(v as DataSourceType | '')}
+                        value={query.type}
+                        onChange={(v) => applyQuery({...query, type: v as DataSourceType | ''})}
                         options={TYPE_OPTIONS}
                         aria-label="按类型筛选"
                     />
 
                     <DsFilterSelect
-                        value={draftStatus}
-                        onChange={(v) => setDraftStatus(v as DataSourceStatus | '')}
+                        value={query.status}
+                        onChange={(v) => applyQuery({...query, status: v as DataSourceStatus | ''})}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />

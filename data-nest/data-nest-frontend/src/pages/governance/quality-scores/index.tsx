@@ -13,7 +13,7 @@ import {COL} from '../../../constants/table';
 import {notify} from '../../../utils/notify';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {getDataSources} from '../../../api/datasource';
+import {listMetadataDatasourceIds} from '../../../api/metadata';
 import {
     executeTableQualityRules,
     getQualityScoreConfig,
@@ -33,7 +33,7 @@ import type {DsStatusVariant} from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import Pagination from '../../../components/Pagination';
 import QualityScoreBadge from '../../../components/QualityScoreBadge';
-import type {DataSource} from '../../../types/datasource';
+import type {MetadataDatasource} from '../../../types/metadata';
 import {
     QUALITY_CHECK_LEVEL_LABEL,
     QUALITY_HEALTH_LABEL,
@@ -79,8 +79,8 @@ export default function QualityScoresPage() {
     const [healthLevel, setHealthLevel] = useState<QualityHealthLevel | ''>('');
     const [loading, setLoading] = useState(false);
 
-    // 数据源下拉
-    const [datasources, setDatasources] = useState<DataSource[]>([]);
+    // 数据源下拉（与质量任务/规则一致：只列采集过元数据的数据源）
+    const [datasources, setDatasources] = useState<MetadataDatasource[]>([]);
     const [datasourceOptions, setDatasourceOptions] = useState<{value: string; label: string}[]>([
         {value: '', label: '全部数据源'},
     ]);
@@ -102,12 +102,12 @@ export default function QualityScoresPage() {
 
     const loadDataSources = useCallback(async () => {
         try {
-            const res = await getDataSources({page: 1, pageSize: 500});
-            const list = res.data.records ?? [];
+            const res = await listMetadataDatasourceIds();
+            const list = res.data ?? [];
             setDatasources(list);
             setDatasourceOptions([
                 {value: '', label: '全部数据源'},
-                ...list.map((d) => ({value: d.id, label: d.name})),
+                ...list.map((d) => ({value: String(d.id), label: d.name || `数据源 ${d.id}`})),
             ]);
         } catch {
             // 数据源下拉失败不影响评分列表加载，保持仅「全部数据源」
@@ -221,6 +221,52 @@ export default function QualityScoresPage() {
             setExecuting(false);
         }
     };
+
+    // ============ 评分来源演算（基于规则最近结果 + 全局扣分配置，PRD §6.5.1） ============
+    const detailBreakdown = useMemo(() => {
+        if (detailRules.length === 0) return null;
+        let passWeight = 0;
+        let warningWeight = 0;
+        let severeWeight = 0;
+        let checkedCount = 0;
+        const jobSet = new Set<string>();
+        for (const r of detailRules) {
+            if (r.jobName) jobSet.add(r.jobName);
+            const w = Number(r.weight) || 0;
+            if (r.resultLevel === 'PASS') {
+                passWeight += w;
+                checkedCount++;
+            } else if (r.resultLevel === 'WARNING') {
+                warningWeight += w;
+                checkedCount++;
+            } else if (r.resultLevel === 'SEVERE') {
+                severeWeight += w;
+                checkedCount++;
+            }
+        }
+        const totalWeight = passWeight + warningWeight + severeWeight;
+        if (totalWeight <= 0) {
+            const fallbackScore = detail?.score != null && detail.score !== '' ? Number(detail.score) : null;
+            return {passWeight, warningWeight, severeWeight, totalWeight, baseScore: 100, deduct: 0, finalScore: fallbackScore, ruleCount: detailRules.length, jobCount: jobSet.size, checkedCount};
+        }
+        const warningDeduct = config.warningDeduct || 0;
+        const severeDeduct = config.severeDeduct || 0;
+        const baseScore = (100 * passWeight) / totalWeight;
+        const deduct = warningWeight * warningDeduct + severeWeight * severeDeduct;
+        const finalScore = Math.max(0, baseScore - deduct);
+        return {
+            passWeight,
+            warningWeight,
+            severeWeight,
+            totalWeight,
+            baseScore,
+            deduct,
+            finalScore,
+            ruleCount: detailRules.length,
+            jobCount: jobSet.size,
+            checkedCount,
+        };
+    }, [detailRules, config, detail?.score]);
 
     // ============ 扣分配置 ============
     const openConfig = async () => {
@@ -548,6 +594,41 @@ export default function QualityScoresPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* 评分来源（产品优化：说明评分由哪些任务/规则聚合、权重占比与扣分明细） */}
+                        {detailBreakdown && (
+                            <div className="rounded-ds-md border border-ds-border-subtle bg-ds-bg-root p-ds-4 space-y-ds-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-ds-subhead font-semibold text-ds-text-primary">评分来源</h4>
+                                    <span className="text-ds-tiny text-ds-text-muted">
+                                        由 {detailBreakdown.jobCount} 个质量任务 · {detailBreakdown.ruleCount} 条规则聚合
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-ds-3 text-ds-small">
+                                    <div className="flex items-center justify-between bg-white border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2">
+                                        <span className="text-ds-text-muted">基础分（PASS 权重占比）</span>
+                                        <span className="font-semibold text-ds-text-primary">{detailBreakdown.baseScore.toFixed(1)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between bg-white border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2">
+                                        <span className="text-ds-text-muted">总扣分（警告+严重×权重）</span>
+                                        <span className="font-semibold text-ds-danger">−{detailBreakdown.deduct.toFixed(1)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between bg-white border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2">
+                                        <span className="text-ds-text-muted">最终分</span>
+                                        <span className="font-semibold text-ds-accent">{detailBreakdown.finalScore?.toFixed(1) ?? '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between bg-white border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2">
+                                        <span className="text-ds-text-muted">权重分布</span>
+                                        <span className="font-semibold text-ds-text-primary">
+                                            PASS {detailBreakdown.passWeight} / 警告 {detailBreakdown.warningWeight} / 严重 {detailBreakdown.severeWeight}
+                                        </span>
+                                    </div>
+                                </div>
+                                <p className="text-ds-tiny text-ds-text-muted">
+                                    算法（PRD §6.5.1）：基础分 = 100 × PASS权重 / 有效权重；总扣分 = 警告权重×{config.warningDeduct || 0} + 严重权重×{config.severeDeduct || 0}；最终分 = max(0, 基础分 − 扣分)。仅计算最近一次有结果（通过/警告/严重）的规则，未检查或失败规则不计入。
+                                </p>
+                            </div>
+                        )}
 
                         {/* 规则结果列表 */}
                         <div>

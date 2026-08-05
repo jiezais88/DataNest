@@ -109,8 +109,6 @@ export default function SyncJobsPage() {
     const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
 
     const [draftKeyword, setDraftKeyword] = useState('');
-    const [draftTriggerType, setDraftTriggerType] = useState<SyncTriggerType | ''>('');
-    const [draftExecutionStatus, setDraftExecutionStatus] = useState<SyncExecutionStatus | ''>('');
 
     const {
         list, total, page, pageSize, loading, query,
@@ -147,8 +145,6 @@ export default function SyncJobsPage() {
         const pageNum = Number(p.get('page')) || 1;
         const pageSizeNum = Number(p.get('pageSize')) || 10;
         setDraftKeyword(keyword);
-        setDraftTriggerType(triggerType);
-        setDraftExecutionStatus(executionStatus);
         if (pageSizeNum !== 10) setPageSize(pageSizeNum);
         applyQuery({keyword, triggerType, executionStatus});
         if (pageNum > 1) setPage(pageNum);
@@ -284,17 +280,11 @@ export default function SyncJobsPage() {
     };
 
     const handleSearch = () => {
-        applyQuery({
-            keyword: draftKeyword,
-            triggerType: draftTriggerType,
-            executionStatus: draftExecutionStatus,
-        });
+        applyQuery({...query, keyword: draftKeyword});
     };
 
     const handleReset = () => {
         setDraftKeyword('');
-        setDraftTriggerType('');
-        setDraftExecutionStatus('');
         applyQuery(INITIAL_QUERY);
     };
 
@@ -562,15 +552,15 @@ export default function SyncJobsPage() {
                     />
 
                     <DsFilterSelect
-                        value={draftTriggerType}
-                        onChange={(v) => setDraftTriggerType(v as SyncTriggerType | '')}
+                        value={query.triggerType}
+                        onChange={(v) => applyQuery({...query, triggerType: v as SyncTriggerType | ''})}
                         options={TRIGGER_OPTIONS}
                         aria-label="按触发方式筛选"
                     />
 
                     <DsFilterSelect
-                        value={draftExecutionStatus}
-                        onChange={(v) => setDraftExecutionStatus(v as SyncExecutionStatus | '')}
+                        value={query.executionStatus}
+                        onChange={(v) => applyQuery({...query, executionStatus: v as SyncExecutionStatus | ''})}
                         options={STATUS_OPTIONS}
                         aria-label="按执行状态筛选"
                     />

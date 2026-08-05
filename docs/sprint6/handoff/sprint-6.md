@@ -1199,3 +1199,48 @@ data-nest-common
 - 质量规则页/规则模板库「批量应用」占位按钮接线（后端已就绪，§17.10 第 2 项）。
 - 删除用户 `deleteUser` / 角色管理（§17.10 第 3 项）。
 - 合规结果历史清理定时任务（§19.6）。
+
+## 21. 质量评分问题排查 + 全局筛选统一（2026-08-05，本次会话）
+
+> **背景**：用户对质量评分提出 3 个疑问（数据源来源不一致 / 数据源列显示「—」/ 评分聚合可解释性），并指出「数据源管理类型下拉不触发查询需手动点查询」的全局一致性问题。经排查确认问题根因后，用户确认四个方向均处理。
+
+### 21.1 排查结论（问题 → 根因）
+
+| # | 用户疑问 | 排查结论 |
+|---|---------|---------|
+| 1 | 质量规则与质量评分的数据源来源不一致 | **确认不一致**：质量任务/规则选表用 `listMetadataDatasourceIds`（只列采集过元数据的源）；质量评分筛选用 `getDataSources`（数据源管理全量连接）。产品上评分筛选应只列有元数据的源，需统一 |
+| 2 | 质量评分「数据源」列显示「—」 | **确认为孤儿评分**：`quality_score.datasource_id`（9000020000000000001/0002）在 `datasource_connection` 表不存在（e2e 测试残留），`toDTO` 回填 `datasourceName` 时 `selectById` 返回 null → 「—」。根因：`DataSourceService.delete` 删数据源时清理了元数据/合规结果但**未清 `quality_score`** |
+| 3 | 评分是否表维度聚合，详情看不出哪个任务/规则算的 | **确认为表维度跨任务聚合**（PRD §6.5.1）：`quality_score` 一张表一行，跨所有质量任务聚合该表启用规则最近结果。详情弹窗**有**返回规则明细（含 jobName/weight/resultLevel），但 UI 未做「评分来源」拆解，用户看不出来 → 产品设计可优化 |
+| 4 | 数据源管理类型下拉不触发查询 | **确认为分派系的历史遗留不一致**：engineering/system 域 10 页（数据源/同步/同步历史/项目/DAG执行/项目内DAG/采集/采集历史/用户/告警中心）用 draft+手动点查询；governance 质量域 6 页即时触发；质量评分混合 |
+
+### 21.2 处理方案（用户确认四项均处理）
+
+**问题 1（数据源来源统一）**
+- `quality-scores/index.tsx`：数据源下拉 `getDataSources` → `listMetadataDatasourceIds`（与质量任务/规则一致，只列采集过元数据的源）。
+
+**问题 2（孤儿评分）**
+- 后端 `DataSourceService.delete` 增加 `qualityScoreMapper.delete(eq datasource_id)` 级联清理（删数据源时删该源下评分，防再产生孤儿）。
+- 一次性清理现有 e2e 残留孤儿评分（SQL 按 `NOT EXISTS datasource_connection` 删 2 条）。
+
+**问题 3（产品优化）**
+- `quality-scores` 详情弹窗新增「评分来源」卡片：展示由 N 个任务/M 条规则聚合、基础分（PASS 权重占比）、总扣分（警告+严重×权重）、最终分、权重分布（PASS/警告/严重权重和），附 PRD §6.5.1 算法说明（基于 detailRules + 全局扣分配置前端演算）。
+
+**问题 4（筛选即时触发）**
+- 统一模式：**下拉即时触发**（value 绑已应用 query，onChange 直接 `applyQuery`），**输入框/时间范围保留 draft**（避免逐字符查询）。改造 9 个带下拉的 draft 页面：
+  - engineering/datasources、sync-jobs、sync-jobs/history-global、dag-executions、dags/project（假分页）
+  - governance/collect-tasks、collect-tasks/history-global
+  - system/users、alert-center（规则对象类型 + 历史 3 个下拉）
+- `dags/index.tsx` 仅输入框，保持 draft（无需改）。
+
+### 21.3 Review 与验证
+
+- **前端 `npm run build`（tsc）**：通过（修复了标准合规遗留的 `HiOutlineDownload` 图标 / `violationType` 类型 / 漏加 `StandardCompliancePage` lazyPage / `DsFilterSelect value` 类型等历史 TS 错误）。
+- **后端 `mvn` 编译**：通过（DataSourceService 补 `QualityScore` import）。
+- **quality-scores e2e**：11 个测试全绿（`11 passed`），质量评分改动（数据源下拉源 + 评分来源卡片）无回归。
+- **容器**：engineering/governance/worker/job/system/frontend 重建后 healthy。
+- **孤儿清理**：`DELETE 2`，`quality_score` 现 0 条孤儿。
+
+### 21.4 待办（后续）
+
+- 其余暂未纳入 e2e 的页面（datasources/users/sync-jobs/collect-tasks/dag-executions/dags）筛选即时化改造未补 e2e 断言（现有测试不依赖该交互，改动经 tsc + 手工验证）。
+- 质量报告（DG-07）S8 单独会话。

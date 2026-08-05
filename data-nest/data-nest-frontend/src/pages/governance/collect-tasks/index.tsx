@@ -110,7 +110,6 @@ export default function CollectTasksPage() {
         const pageNum = Number(p.get('page')) || 1;
         const pageSizeNum = Number(p.get('pageSize')) || 10;
         setDraftKeyword(keyword);
-        setDraftStatus(status);
         if (pageSizeNum !== 10) setPageSize(pageSizeNum);
         applyQuery({keyword, status});
         if (pageNum > 1) setPage(pageNum);
@@ -130,7 +129,6 @@ export default function CollectTasksPage() {
     }, [query, page, pageSize]);
 
     const [draftKeyword, setDraftKeyword] = useState('');
-    const [draftStatus, setDraftStatus] = useState<TaskStatus | ''>('');
 
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editItem, setEditItem] = useState<CollectTask | null>(null);
@@ -228,12 +226,11 @@ export default function CollectTasksPage() {
     };
 
     const handleSearch = () => {
-        applyQuery({keyword: draftKeyword, status: draftStatus});
+        applyQuery({...query, keyword: draftKeyword});
     };
 
     const handleReset = () => {
         setDraftKeyword('');
-        setDraftStatus('');
         applyQuery(INITIAL_QUERY);
     };
 
@@ -547,8 +544,8 @@ export default function CollectTasksPage() {
                     />
 
                     <DsFilterSelect
-                        value={draftStatus}
-                        onChange={(v) => setDraftStatus(v as TaskStatus | '')}
+                        value={query.status}
+                        onChange={(v) => applyQuery({...query, status: v as TaskStatus | ''})}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />

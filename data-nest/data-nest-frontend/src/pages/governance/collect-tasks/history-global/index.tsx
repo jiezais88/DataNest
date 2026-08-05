@@ -51,8 +51,7 @@ export default function CollectHistoryGlobalPage() {
     const [searchParams, setSearchParams] = useSearchParams();
 
     const defaultRange = getDefaultTimeRange();
-    // 草稿查询条件（输入中、未点查询的值），点「查询」时通过 applyQuery 应用
-    const [draftStatus, setDraftStatus] = useState<ExecutionStatus | ''>('');
+    // 草稿查询条件（输入中、未点查询的值）：输入框与时间范围；状态下拉即时生效
     const [draftKeyword, setDraftKeyword] = useState('');
     const [draftStartTimeFrom, setDraftStartTimeFrom] = useState(defaultRange.from);
     const [draftStartTimeTo, setDraftStartTimeTo] = useState(defaultRange.to);
@@ -112,7 +111,6 @@ export default function CollectHistoryGlobalPage() {
             startTimeFrom: urlFrom || defaultRange.from,
             startTimeTo: urlTo || defaultRange.to,
         };
-        setDraftStatus(status || '');
         setDraftKeyword(next.keyword || '');
         setDraftStartTimeFrom(next.startTimeFrom || defaultRange.from);
         setDraftStartTimeTo(next.startTimeTo || defaultRange.to);
@@ -149,7 +147,7 @@ export default function CollectHistoryGlobalPage() {
         const hasTaskId = !!query.taskId;
         applyQuery({
             ...(hasTaskId ? {taskId: query.taskId} : {}),
-            status: draftStatus || undefined,
+            status: query.status,
             keyword: draftKeyword || undefined,
             startTimeFrom: draftStartTimeFrom,
             startTimeTo: draftStartTimeTo,
@@ -159,7 +157,6 @@ export default function CollectHistoryGlobalPage() {
     const handleReset = () => {
         const range = getDefaultTimeRange();
         clearTaskIdUrl();
-        setDraftStatus('');
         setDraftKeyword('');
         setDraftStartTimeFrom(range.from);
         setDraftStartTimeTo(range.to);
@@ -418,8 +415,8 @@ export default function CollectHistoryGlobalPage() {
                     )}
 
                     <DsFilterSelect
-                        value={draftStatus}
-                        onChange={(v) => setDraftStatus(v as ExecutionStatus | '')}
+                        value={query.status ?? ''}
+                        onChange={(v) => applyQuery({...query, status: v as ExecutionStatus | undefined})}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />

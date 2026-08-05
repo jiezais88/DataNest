@@ -35,8 +35,7 @@ export default function SyncJobHistoryGlobalPage() {
     const canEdit = useCanEdit();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    // 草稿查询条件（点「查询」才应用）
-    const [draftStatus, setDraftStatus] = useState<SyncHistoryStatus | ''>('');
+    // 草稿查询条件（点「查询」才应用）：输入框与时间范围；状态下拉即时生效
     const [draftKeyword, setDraftKeyword] = useState('');
     const defaultRange = getDefaultTimeRange();
     const [draftStartTimeFrom, setDraftStartTimeFrom] = useState(defaultRange.from);
@@ -122,7 +121,6 @@ export default function SyncJobHistoryGlobalPage() {
             startTimeFrom: urlFrom || defaultRange.from,
             startTimeTo: urlTo || defaultRange.to,
         };
-        setDraftStatus(status || '');
         setDraftKeyword(next.keyword || '');
         setDraftStartTimeFrom(next.startTimeFrom);
         setDraftStartTimeTo(next.startTimeTo);
@@ -159,7 +157,7 @@ export default function SyncJobHistoryGlobalPage() {
         const hasSyncJobId = !!query.syncJobId;
         applyQuery({
             ...(hasSyncJobId ? {syncJobId: query.syncJobId} : {}),
-            status: draftStatus || undefined,
+            status: query.status,
             keyword: draftKeyword || undefined,
             startTimeFrom: draftStartTimeFrom,
             startTimeTo: draftStartTimeTo,
@@ -169,7 +167,6 @@ export default function SyncJobHistoryGlobalPage() {
     const handleReset = () => {
         const range = getDefaultTimeRange();
         clearSyncJobIdUrl();
-        setDraftStatus('');
         setDraftKeyword('');
         setDraftStartTimeFrom(range.from);
         setDraftStartTimeTo(range.to);
@@ -467,8 +464,8 @@ export default function SyncJobHistoryGlobalPage() {
                     )}
 
                     <DsFilterSelect
-                        value={draftStatus}
-                        onChange={(v) => setDraftStatus(v as SyncHistoryStatus | '')}
+                        value={query.status ?? ''}
+                        onChange={(v) => applyQuery({...query, status: v as SyncHistoryStatus | undefined})}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />

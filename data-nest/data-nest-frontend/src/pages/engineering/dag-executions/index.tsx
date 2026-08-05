@@ -107,8 +107,6 @@ export default function DagExecutionsGlobalPage() {
     const defaultRange = getDefaultTimeRange();
     const [draftDagName, setDraftDagName] = useState('');
     const [draftProjectName, setDraftProjectName] = useState('');
-    const [draftStatus, setDraftStatus] = useState('');
-    const [draftTriggerType, setDraftTriggerType] = useState('');
     const [draftStartTimeFrom, setDraftStartTimeFrom] = useState(defaultRange.from);
     const [draftStartTimeTo, setDraftStartTimeTo] = useState(defaultRange.to);
 
@@ -176,8 +174,6 @@ export default function DagExecutionsGlobalPage() {
         };
         setDraftDagName(dagName);
         setDraftProjectName(urlProjectName);
-        setDraftStatus(urlStatus || '');
-        setDraftTriggerType(urlTriggerType || '');
         setDraftStartTimeFrom(next.startTimeFrom);
         setDraftStartTimeTo(next.startTimeTo);
         if (pageSizeNum !== 10) setPageSize(pageSizeNum);
@@ -233,8 +229,8 @@ export default function DagExecutionsGlobalPage() {
             dagName: draftDagName.trim(),
             projectName: draftProjectName.trim(),
             ...(hasDagId ? {dagId: applied.dagId} : {}),
-            status: draftStatus || undefined,
-            triggerType: draftTriggerType || undefined,
+            status: applied.status,
+            triggerType: applied.triggerType,
             startTimeFrom: normalizeDateTime(draftStartTimeFrom),
             startTimeTo: normalizeDateTime(draftStartTimeTo),
         });
@@ -245,8 +241,6 @@ export default function DagExecutionsGlobalPage() {
         clearDagIdFilter();
         setDraftDagName('');
         setDraftProjectName('');
-        setDraftStatus('');
-        setDraftTriggerType('');
         setDraftStartTimeFrom(range.from);
         setDraftStartTimeTo(range.to);
         applyQuery({
@@ -617,14 +611,14 @@ export default function DagExecutionsGlobalPage() {
                         placeholder="搜索所属项目"
                     />
                     <DsFilterSelect
-                        value={draftStatus}
-                        onChange={(v) => setDraftStatus(v)}
+                        value={applied.status || ''}
+                        onChange={(v) => applyQuery({...applied, status: v || undefined})}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />
                     <DsFilterSelect
-                        value={draftTriggerType}
-                        onChange={(v) => setDraftTriggerType(v)}
+                        value={applied.triggerType || ''}
+                        onChange={(v) => applyQuery({...applied, triggerType: v || undefined})}
                         options={TRIGGER_OPTIONS}
                         aria-label="按触发方式筛选"
                     />

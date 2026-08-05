@@ -47,8 +47,6 @@ function getRoleName(code: string) {
 
 export default function UsersPage() {
     const [draftKeyword, setDraftKeyword] = useState('');
-    const [draftRoleCode, setDraftRoleCode] = useState('');
-    const [draftStatus, setDraftStatus] = useState('');
 
     const [modalOpen, setModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view'>('create');
@@ -102,8 +100,6 @@ export default function UsersPage() {
         const pageNum = Number(p.get('page')) || 1;
         const pageSizeNum = Number(p.get('pageSize')) || 10;
         setDraftKeyword(keyword);
-        setDraftRoleCode(roleCode);
-        setDraftStatus(status);
         if (pageSizeNum !== 10) setPageSize(pageSizeNum);
         applyQuery({keyword, roleCode, status});
         if (pageNum > 1) setPage(pageNum);
@@ -124,13 +120,11 @@ export default function UsersPage() {
     }, [query, page, pageSize]);
 
     const handleSearch = () => {
-        applyQuery({keyword: draftKeyword, roleCode: draftRoleCode, status: draftStatus});
+        applyQuery({...query, keyword: draftKeyword});
     };
 
     const handleReset = () => {
         setDraftKeyword('');
-        setDraftRoleCode('');
-        setDraftStatus('');
         applyQuery({keyword: '', roleCode: '', status: ''});
     };
 
@@ -388,15 +382,15 @@ export default function UsersPage() {
                     />
 
                     <DsFilterSelect
-                        value={draftRoleCode}
-                        onChange={(v) => setDraftRoleCode(v)}
+                        value={query.roleCode}
+                        onChange={(v) => applyQuery({...query, roleCode: v})}
                         options={ROLE_OPTIONS}
                         aria-label="按角色筛选"
                     />
 
                     <DsFilterSelect
-                        value={draftStatus}
-                        onChange={(v) => setDraftStatus(v)}
+                        value={query.status}
+                        onChange={(v) => applyQuery({...query, status: v})}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />

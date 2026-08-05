@@ -7,8 +7,8 @@ import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
+    HiOutlineArrowDownTray,
     HiOutlineCheckCircle,
-    HiOutlineDownload,
     HiOutlineEye,
     HiOutlineHandThumbUp,
     HiOutlineShieldCheck,
@@ -162,7 +162,7 @@ export default function StandardCompliancePage() {
                 ...params,
                 page,
                 pageSize,
-                violationType: violationType || undefined,
+                violationType: violationType ? (violationType as 'NAMING' | 'TYPE') : undefined,
                 ignored: Number(ignored),
             });
             setItems(res.data.records ?? []);
@@ -451,7 +451,7 @@ export default function StandardCompliancePage() {
                 </div>
                 <div className="flex items-center gap-ds-2 flex-shrink-0">
                     <DsButton variant="secondary" onClick={handleExport} disabled={loading}>
-                        <HiOutlineDownload size={16}/>
+                        <HiOutlineArrowDownTray size={16}/>
                         导出问题清单
                     </DsButton>
                     {canWrite && (

@@ -22,6 +22,7 @@ const MetadataPage = lazyPage(() => import('../pages/governance/metadata'));
 const LineageGraphPage = lazyPage(() => import('../pages/governance/metadata/lineage/LineageGraphPage'));
 const AlertCenterPage = lazyPage(() => import('../pages/system/alert-center/AlertCenterPage'));
 const DataStandardsPage = lazyPage(() => import('../pages/governance/data-standards'));
+const StandardCompliancePage = lazyPage(() => import('../pages/governance/compliance'));
 const DagsPage = lazyPage(() => import('../pages/engineering/dags'));
 const ProjectDagsPage = lazyPage(() => import('../pages/engineering/dags/project'));
 const DagExecutionsGlobalPage = lazyPage(() => import('../pages/engineering/dag-executions'));

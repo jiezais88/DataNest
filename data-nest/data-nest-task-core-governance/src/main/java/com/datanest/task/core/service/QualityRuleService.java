@@ -19,12 +19,16 @@ import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityJobRule;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
+import com.datanest.task.core.entity.QualityScore;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import com.datanest.task.core.mapper.QualityJobRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleTemplateMapper;
+import com.datanest.task.core.mapper.QualityScoreMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +54,8 @@ import java.util.stream.Stream;
 @Service
 public class QualityRuleService {
 
+    private static final Logger log = LoggerFactory.getLogger(QualityRuleService.class);
+
     private static final Set<String> SUPPORTED_TYPES = Set.of(
             "COMPLETENESS", "UNIQUENESS", "RANGE", "CUSTOM_SQL"
     );
@@ -62,6 +68,7 @@ public class QualityRuleService {
     private final DataSourceConnectionMapper dataSourceMapper;
     private final SysUserService sysUserService;
     private final QualityCheckTriggerService triggerService;
+    private final QualityScoreMapper qualityScoreMapper;
 
     public QualityRuleService(QualityRuleMapper ruleMapper,
                               QualityJobMapper jobMapper,
@@ -70,7 +77,8 @@ public class QualityRuleService {
                               MetadataTableMapper tableMapper,
                               DataSourceConnectionMapper dataSourceMapper,
                               SysUserService sysUserService,
-                              QualityCheckTriggerService triggerService) {
+                              QualityCheckTriggerService triggerService,
+                              QualityScoreMapper qualityScoreMapper) {
         this.ruleMapper = ruleMapper;
         this.jobMapper = jobMapper;
         this.jobRuleMapper = jobRuleMapper;
@@ -79,6 +87,7 @@ public class QualityRuleService {
         this.dataSourceMapper = dataSourceMapper;
         this.sysUserService = sysUserService;
         this.triggerService = triggerService;
+        this.qualityScoreMapper = qualityScoreMapper;
     }
 
     // ==================== 查询 ====================
@@ -322,14 +331,37 @@ public class QualityRuleService {
 
     /**
      * 删除规则（级联删除 quality_job_rule 关联）。
+     * <p>
+     * 删完后对规则所属表做「无启用规则」检查：若该表删除后不再有启用规则，
+     * 则清理该表 quality_score（与删任务 cleanupScoresWithoutActiveRules 语义一致），
+     * 避免残留孤儿评分。
      */
     @Transactional
     public void delete(Long id) {
-        if (ruleMapper.selectById(id) == null) {
+        QualityRule entity = ruleMapper.selectById(id);
+        if (entity == null) {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + id);
         }
         jobRuleMapper.delete(new QueryWrapper<QualityJobRule>().eq("rule_id", id));
         ruleMapper.deleteById(id);
+        if (entity.getTableId() != null) {
+            cleanupScoreIfNoActiveRule(entity.getTableId());
+        }
+    }
+
+    /**
+     * 若指定表已无任何启用规则，则删除该表 quality_score（清孤儿评分）。
+     */
+    private void cleanupScoreIfNoActiveRule(Long tableId) {
+        Long activeRules = ruleMapper.selectCount(
+                new QueryWrapper<QualityRule>().eq("table_id", tableId).eq("enabled", 1));
+        if (activeRules == null || activeRules == 0) {
+            int removed = qualityScoreMapper.delete(
+                    new QueryWrapper<QualityScore>().eq("table_id", tableId));
+            if (removed > 0) {
+                log.info("删除质量规则后清理无规则覆盖表的评分: tableId={}, removed={}", tableId, removed);
+            }
+        }
     }
 
     /**

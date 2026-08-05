@@ -72,7 +72,6 @@ export default function ProjectDagsPage() {
 
     const [searchName, setSearchName] = useState('');
     const [appliedName, setAppliedName] = useState('');
-    const [statusFilter, setStatusFilter] = useState<DsStatusVariant | ''>('');
     const [appliedStatus, setAppliedStatus] = useState<DsStatusVariant | ''>('');
     // 后端 GET /engineering/dev/dags 只接收 projectId、一次性返回全量列表（不支持 page/pageSize），
     // 因此本页保留前端假分页，不接入 usePagedList
@@ -116,7 +115,6 @@ export default function ProjectDagsPage() {
             : '';
         setSearchName(name);
         setAppliedName(name);
-        setStatusFilter(validStatus);
         setAppliedStatus(validStatus);
         if (pageSizeNum !== 10) setPageSize(pageSizeNum);
         setPage(pageNum > 0 ? pageNum : 1);
@@ -223,14 +221,12 @@ export default function ProjectDagsPage() {
 
     const handleQuery = () => {
         setAppliedName(searchName);
-        setAppliedStatus(statusFilter);
         setPage(1);
         refresh();
     };
 
     const handleReset = () => {
         setSearchName('');
-        setStatusFilter('');
         setAppliedName('');
         setAppliedStatus('');
         setPage(1);
@@ -460,8 +456,12 @@ export default function ProjectDagsPage() {
                         placeholder="搜索 DAG 名称..."
                     />
                     <DsFilterSelect
-                        value={statusFilter}
-                        onChange={(v) => setStatusFilter(v as DsStatusVariant | '')}
+                        value={appliedStatus}
+                        onChange={(v) => {
+                            setAppliedStatus(v as DsStatusVariant | '');
+                            setPage(1);
+                            refresh();
+                        }}
                         options={STATUS_OPTIONS}
                         aria-label="按状态筛选"
                     />
