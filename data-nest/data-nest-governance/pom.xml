@@ -54,6 +54,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Sprint 6 质量分级告警：governance 注入 QualityCheckService → AlertFiringService → MailService，需显式声明 mail（task-core 中为 provided） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Nacos Discovery & Config -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>

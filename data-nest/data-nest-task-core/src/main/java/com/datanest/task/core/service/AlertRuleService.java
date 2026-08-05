@@ -41,6 +41,7 @@ public class AlertRuleService {
     private final DagProjectMapper dagProjectMapper;
     private final SyncJobMapper syncJobMapper;
     private final CollectTaskMapper collectTaskMapper;
+    private final QualityJobMapper qualityJobMapper;
     private final SysUserService sysUserService;
 
     public AlertRuleService(AlertRuleMapper alertRuleMapper,
@@ -51,6 +52,7 @@ public class AlertRuleService {
                             DagProjectMapper dagProjectMapper,
                             SyncJobMapper syncJobMapper,
                             CollectTaskMapper collectTaskMapper,
+                            QualityJobMapper qualityJobMapper,
                             SysUserService sysUserService) {
         this.alertRuleMapper = alertRuleMapper;
         this.alertRuleUserMapper = alertRuleUserMapper;
@@ -60,6 +62,7 @@ public class AlertRuleService {
         this.dagProjectMapper = dagProjectMapper;
         this.syncJobMapper = syncJobMapper;
         this.collectTaskMapper = collectTaskMapper;
+        this.qualityJobMapper = qualityJobMapper;
         this.sysUserService = sysUserService;
     }
 
@@ -215,6 +218,10 @@ public class AlertRuleService {
             return collectTaskMapper.selectList(new QueryWrapper<CollectTask>().select("id", "name"))
                     .stream().map(c -> new AlertObjectOptionDTO(c.getId(), c.getName())).toList();
         }
+        if (AlertConstants.OBJECT_TYPE_QUALITY.equals(type)) {
+            return qualityJobMapper.selectList(new QueryWrapper<QualityJob>().select("id", "name"))
+                    .stream().map(q -> new AlertObjectOptionDTO(q.getId(), q.getName())).toList();
+        }
         throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "对象类型非法: " + objectType);
     }
 
@@ -363,7 +370,8 @@ public class AlertRuleService {
         String objectType = dto.getObjectType() == null ? null : dto.getObjectType().toUpperCase();
         if (!AlertConstants.OBJECT_TYPE_DAG.equals(objectType)
                 && !AlertConstants.OBJECT_TYPE_SYNC_JOB.equals(objectType)
-                && !AlertConstants.OBJECT_TYPE_COLLECT_TASK.equals(objectType)) {
+                && !AlertConstants.OBJECT_TYPE_COLLECT_TASK.equals(objectType)
+                && !AlertConstants.OBJECT_TYPE_QUALITY.equals(objectType)) {
             throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "对象类型非法: " + dto.getObjectType());
         }
         if (dto.getObjectIds() == null || dto.getObjectIds().isEmpty()) {
@@ -436,6 +444,10 @@ public class AlertRuleService {
         if (AlertConstants.OBJECT_TYPE_COLLECT_TASK.equals(type)) {
             CollectTask task = collectTaskMapper.selectById(objectId);
             return task == null ? null : task.getName();
+        }
+        if (AlertConstants.OBJECT_TYPE_QUALITY.equals(type)) {
+            QualityJob job = qualityJobMapper.selectById(objectId);
+            return job == null ? null : job.getName();
         }
         return null;
     }

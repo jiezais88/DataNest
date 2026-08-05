@@ -138,6 +138,9 @@ PRD 原「每条规则独立 Cron」已在三层模型下 **废除**（见 D1）
 - Flyway 最新脚本编号 `V3.5.7`，本 Sprint 新增脚本从 `V3.6.0` 开始，放在
   `data-nest-system/src/main/resources/db/migration/`。
 - 本 Sprint 需要 1 个总脚本 `V3.6.0__sprint6_data_quality.sql`（含任务/规则/模板/批次/历史/评分/合规忽略字段），以及若干增量脚本视实现拆分。
+- 分级告警相关（本会话交付）：
+  - `V3.6.5__sprint6_quality_alert.sql`：`quality_check_detail` 加 `result_level`，`quality_check_batch` 加 `alert_sent`。
+  - `V3.6.6__alert_rule_quality_object_type.sql`：放开 `alert_rule.object_type` 的 CHECK 约束，追加 `QUALITY`。
 
 ### 3.1 `quality_rule_template`（规则模板库，D3）
 
@@ -355,22 +358,25 @@ result_value ≥ severe_threshold          → SEVERE
 
 ### 5.4 告警（复用 alert_rule 体系，扩展 QUALITY）
 
-**对象模型**：质量告警仍走 `alert_rule`，但对象类型扩展 `QUALITY`。
+**对象模型**：质量告警仍走 `alert_rule`，但对象类型扩展 `QUALITY`（对象粒度 = **质量任务**，`objectId=任务ID`）。
 
-- `AlertConstants` 新增 `OBJECT_TYPE_QUALITY = "QUALITY"`、`DISPLAY_QUALITY = "质量"`、
-  `ALERT_QUALITY_FAILURE = "FAILURE"`。
-- `AlertRuleService.validate()` 的 `SUPPORTED_TRIGGERS` 与对象类型校验（当前硬编码 DAG/SYNC_JOB/COLLECT_TASK）需扩展支持
-  QUALITY。
-- `AlertRuleService.resolveObjectName` 对 QUALITY 返回规则名。
-- 告警规则的对象下拉新增「质量」类型：按质量任务/规则返回（`listObjectOptions` 扩展）。
+- `AlertConstants` 新增 `OBJECT_TYPE_QUALITY = "QUALITY"`、`DISPLAY_QUALITY = "质量任务"`；触发条件复用
+  `ALERT_FAILURE = "FAILURE"`（语义=质量异常，不新增 ALERT_QUALITY_FAILURE）。
+- `AlertRuleService.validate()` 的对象类型校验扩展支持 QUALITY（白名单 DAG/SYNC_JOB/COLLECT_TASK/QUALITY）；
+  `SUPPORTED_TRIGGERS` 保持 FAILURE/TIMEOUT/SUCCESS，QUALITY 规则 `triggerConditions` 固定 `["FAILURE"]`。
+- `AlertRuleService.resolveObjectName` 对 QUALITY 返回 **质量任务名**（查 `quality_job`）。
+- 告警规则的对象下拉新增「质量」类型：按质量任务返回（`listObjectOptions` 扩展，`objectType=QUALITY`）。
+- `AlertHistoryMapper.selectHistoryPage` 增加 `LEFT JOIN quality_job` 联查 QUALITY 对象名。
 
 **批量合并告警**：
 
-- 新增 `AlertFiringService.fireBatch(AlertBatchRequest)`，入参含 `objectType=QUALITY`、`objectId=任务ID`、`batchId`、
-  `List<AlertItem>`（每项含 ruleName、tableName、resultValue、level）。
-- 逻辑：查该对象 QUALITY 告警规则 → 校验 `alert_level`（SEVERE_ONLY 仅收 SEVERE；SEVERE_WARNING 收 SEVERE+WARNING）→
-  过滤达到等级的异常项 → 生成 **一条邮件**（正文逐条列出）+ **多条 `alert_history` 记录**。
-- 防重：`batchId` 幂等（`quality_check_batch.alert_sent` 标记已发，防止 handler 重跑重复发）；单条严重仍按既有 60 秒防重。
+- 新增 `AlertFiringService.fireBatch(objectType, objectId, alertType, List<AlertItem>)`，`AlertItem(level, ruleName, detail)`
+  （level 为 PASS/WARNING/SEVERE/UNAVAILABLE 之一，仅告警等级项进入 items）。
+- 逻辑：查该对象 QUALITY 告警规则 → 校验 `alert_level`（SEVERE_ONLY 仅收 SEVERE；SEVERE_WARNING 收 SEVERE+WARNING；
+  UNAVAILABLE 不告警 R2）→ 过滤达到等级的异常项 → 生成 **一条邮件**（正文逐条列出）+ **多条 `alert_history` 记录**
+  （每异常一条，便于审计）。
+- 防重：`quality_check_batch.alert_sent` 标记已发（批次级幂等，防止 handler 重跑重复发）；fireBatch 内部另按既有
+  60 秒防重（同一对象同类告警 60s 内不重复发）。
 
 ---
 
@@ -488,7 +494,9 @@ result_value ≥ severe_threshold          → SEVERE
   `QualityCheckHistory`/`QualityScore`
 - [ ] task-core Service：`QualityCheckService`（执行/判定/评分）、`ScoreCalculator`、`QualityRuleTemplateService`、
   `QualityJobService`
-- [ ] task-core 告警扩展：`AlertConstants`、`AlertFiringService.fireBatch`、`AlertRuleService` 支持 QUALITY
+- [x] task-core 告警扩展（分级邮件告警，本次交付）：`AlertConstants`、`AlertFiringService.fireBatch`、
+  `AlertRuleService` 支持 QUALITY；`QualityCheckService` 分级判定落库（result_level）+ 批次收尾触发合并告警；
+  Flyway `V3.6.5`（result_level/alert_sent）+ `V3.6.6`（alert_rule.object_type 放开 QUALITY）
 - [ ] governance Controller：6 个（§6.1~6.6）
 - [ ] job Handler：`QualityCheckHandler`（定时）、`StandardComplianceCheckHandler`（合规扫描）、
   `QualityCheckHistoryCleanupHandler`（历史清理）

@@ -158,13 +158,17 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和生成的 job json
   `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
 - **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需要重启对应服务。
-- **DAG 告警邮件需要 worker/job 也配邮件**：`spring-boot-starter-mail` 在 task-core 是 `provided`，worker/job 必须在自己
+- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 task-core 是 `provided`，worker/job 必须在自己
   pom 显式声明（compile），且 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则
-  `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。本地 MailHog 需非空 `MAIL_USERNAME`/
-  `MAIL_PASSWORD`
+  `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。**Sprint 6 起 governance 也必须声明
+  `spring-boot-starter-mail`**（`QualityCheckController` 注入 `QualityCheckService` → `AlertFiringService` → `MailService`，缺 mail 类会
+  `NoClassDefFoundError` 启动失败）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`
   （空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
 - **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**
   （`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
+- **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改
+  `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含
+  QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。
 - **ReactFlow 11 受控 edges/nodes 必须配 onEdgesChange/onNodesChange**：直接传 `edges`/`nodes` prop 而不传 change handler
   时，内部 `setEdges`/`setNodes` 静默不执行，边不渲染（血缘图谱页曾踩此坑，节点正常但边为空且无报错）。改用
   `useNodesState`/`useEdgesState` 或补 handler。排查"节点正常、边不渲染"先看此。
@@ -206,8 +210,17 @@ docker compose up -d --no-deps app-engineering app-worker
   `QualityCheckService.computeRangeRatio` 已对列名大小写不敏感匹配，且 `total=0` 或 `out` 为 NULL 时按 0 处理。改动时保持该语义。
 - **质量接口经 gateway 前缀是 `/api/governance/quality/**`**（gateway 只把 `/api/governance/**` 路由到 governance），不是 `/api/quality/**`。
   直接调 `/api/quality/...` 会得到 gateway 的 `NoResourceFoundException` 404。质量接口实际路径形如 `/api/governance/quality/jobs/page`。
-- **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细），本次只记录结果值（`result_value`），
-  不做分级/评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`（无规则视为 SUCCESS）。
+- **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细）。明细含 `result_value`（结果值）与
+  `result_level`（Sprint 6 分级判定：`PASS`/`WARNING`/`SEVERE`/`UNAVAILABLE`），不评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`
+  （无规则视为 SUCCESS）。
+- **质量分级判定（Sprint 6 分级邮件告警）**：
+  - 阈值判定在 `QualityCheckService.determineLevel`：`value < warning` → PASS；`warning ≤ value < severe` → WARNING；
+    `value ≥ severe`（或无 severe 时 `value ≥ warning`）→ SEVERE；warning/severe 都为空 → PASS（不告警）；SQL 失败 → UNAVAILABLE。
+  - 批次收尾 `fireBatchAlert` 按任务 `alert_level`（`SEVERE_ONLY` 收 SEVERE；`SEVERE_WARNING` 收 SEVERE+WARNING）过滤达到等级的明细，
+    调 `AlertFiringService.fireBatch` 合并为**一条邮件** + **每条异常写一条 `alert_history`**；`quality_check_batch.alert_sent` 置 1 幂等。
+  - **UNAVAILABLE（数据源不可用/SQL 失败）不触发告警**（R2：避免环境抖动误报），只记录 result_level。
+  - 告警复用 `alert_rule` 体系，扩展对象类型 `QUALITY`（对象=质量任务，`object_id=任务ID`），`triggerConditions` 固定 `["FAILURE"]`，
+    接收用户在「告警中心」创建 QUALITY 规则时选择（质量任务表单仅配置 alert_level，无接收用户控件）。
 - **质量执行层 E2E 测试（sprint6/quality-checks.spec.ts）**：用 `e2e_s6_exec_ds`（MYSQL）/`e2e_s6_exec_pg_ds`（POSTGRESQL）
   两个真实执行数据源（middleware-test-mysql:3306 / middleware-test-postgres:5432），目标表 `e2e_s6_orders`。数据源密码需为
   AES-256-GCM 可解密密文，helpers/encrypt.ts 复刻后端 EncryptionConfig 逻辑（密钥默认 `DataNestDefaultEncryptionKey2026`）。

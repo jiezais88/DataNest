@@ -23,15 +23,16 @@ public interface AlertHistoryMapper extends BaseMapper<AlertHistory> {
 
     /**
      * 告警历史分页查询。
-     * 列表展示需要对象名：按 object_type 分别 LEFT JOIN dag / sync_job / collect_task，
+     * 列表展示需要对象名：按 object_type 分别 LEFT JOIN dag / sync_job / collect_task / quality_job，
      * 以 COALESCE 取到 object_name（冗余到查询结果，不落库）。
      */
     @Select("<script>" +
-            "SELECT ah.*, COALESCE(d.name, sj.name, ct.name) AS objectName " +
+            "SELECT ah.*, COALESCE(d.name, sj.name, ct.name, qj.name) AS objectName " +
             "FROM alert_history ah " +
             "LEFT JOIN dag d ON ah.object_type = 'DAG' AND d.id = ah.object_id " +
             "LEFT JOIN sync_job sj ON ah.object_type = 'SYNC_JOB' AND sj.id = ah.object_id " +
             "LEFT JOIN collect_task ct ON ah.object_type = 'COLLECT_TASK' AND ct.id = ah.object_id " +
+            "LEFT JOIN quality_job qj ON ah.object_type = 'QUALITY' AND qj.id = ah.object_id " +
             "<where>" +
             "  <if test='objectType != null and objectType != \"\"'> AND ah.object_type = #{objectType} </if>" +
             "  <if test='objectId != null'> AND ah.object_id = #{objectId} </if>" +

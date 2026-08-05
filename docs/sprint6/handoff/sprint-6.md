@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-04（第二次会话）| **阶段**：规则模板库前后端 + 质量任务/规则配置层后端完成（检查/评分/合规/前端待做）
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警后端完成（分级判定落库 + fireBatch 合并告警 + QUALITY 对象类型），已部署自测通过
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -24,6 +24,7 @@
 | Sprint 8 执行层后端                      | ✅ 完成   | 质量检查真实执行 + 批次/明细落库 + 三种触发（MANUAL/SCHEDULED/AUTO_TRIGGER），见 §8 |
 | Sprint 8 执行层前端                      | ✅ 完成   | 新增「质量检查历史」独立菜单页（批次列表+规则明细抽屉）+ 任务/规则执行按钮从占位改为真实触发，见 §8.5 |
 | 联调验证                                 | ✅ 完成   | 任务/规则全部接口经网关联调通过（见「质量任务/规则 · API 验证记录」）；E2E 全绿（36 用例，见「质量任务/规则 · E2E 测试记录」） |
+| Sprint 6 分级邮件告警后端                 | ✅ 完成   | 分级判定落库（result_level）+ fireBatch 合并告警 + 告警中心 QUALITY 对象类型，见 §9 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -457,3 +458,65 @@
 - **MYSQL/DORIS 无 schema**：`TableSelectModal` 用 `isWithoutSchema(type)` 判断（`DB_TYPES_WITHOUT_SCHEMA` 含 MYSQL/DORIS），无 schema 类型选库后直接加载表，不出现 schema 列；否则三层选择。手动调 schemas 接口验证 MYSQL 返回 `[null]`，应走无 schema 路径。
 - **自动触发对象存数据库主键**：`autoTriggerObjectId` 存 `dag_node.id`/`sync_job.id`/`collect_task.id`（Long 数据库主键），DAG_NODE 前端按 项目→DAG→节点 三级级联选择，编辑时通过反查恢复回显；后端 `QualityJobDTO` **无** `autoTriggerObjectName` 字段，前端对象名由选择组件自行维护。
 - **PowerShell 中文乱码**：`Invoke-RestMethod` 请求体/控制台对中文按 GBK 处理，联调时中文显示 `??????`，是 PowerShell 编码问题非后端；前端浏览器走 UTF-8 正常。
+
+## 9. Sprint 6 分级邮件告警后端（2026-08-05）
+
+> **阶段**：分级判定落库 + fireBatch 合并告警 + 告警中心 QUALITY 对象类型，后端全部完成、部署自测通过。
+> **前置**：§8 执行层已具备（`quality_check_batch`/`quality_check_detail` 落 result_value），本节在此之上补分级与告警。
+
+### 9.1 关键决策（用户确认）
+
+| 决策点         | 结论                                                                                                                        |
+|----------------|-----------------------------------------------------------------------------------------------------------------------------|
+| 告警体系       | **完全复用 `alert_rule`**（方案B）：质量任务编辑时无需独立接收用户字段，走告警中心扩展对象类型 `QUALITY`（对象=质量任务，`object_id=任务ID`） |
+| 接收用户配置   | **只在「告警中心」配置**：创建 QUALITY 规则时选接收用户（取平台用户邮箱）；质量任务表单**不加**接收用户控件，仅保留 `alert_level` 触发等级 |
+| 触发条件       | QUALITY 规则 `triggerConditions` 固定 `["FAILURE"]`（语义=质量异常）                                                           |
+| 触发等级       | 权威取 `quality_job.alert_level`（`SEVERE_ONLY` 收 SEVERE；`SEVERE_WARNING` 收 SEVERE+WARNING）                              |
+| 分级落库       | **补分级判定并落库**：`quality_check_detail.result_level`（`PASS`/`WARNING`/`SEVERE`/`UNAVAILABLE`）                          |
+| UNAVAILABLE 告警 | **不触发**（R2：数据源不可用/SQL 失败不产生误告警），只记录 result_level                                                    |
+
+### 9.2 变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest-system/.../db/migration/V3.6.5__sprint6_quality_alert.sql`（新增） | `quality_check_detail` 加 `result_level VARCHAR(20)`；`quality_check_batch` 加 `alert_sent SMALLINT DEFAULT 0`（合并告警幂等标记） |
+| `data-nest-system/.../db/migration/V3.6.6__alert_rule_quality_object_type.sql`（新增） | 放开 `alert_rule.object_type` CHECK 约束：原仅 `DAG/SYNC_JOB/COLLECT_TASK`，DROP 后重建为含 `QUALITY` |
+| task-core `AlertConstants`（修改） | 新增 `OBJECT_TYPE_QUALITY="QUALITY"`、`DISPLAY_QUALITY="质量任务"`、`QUALITY_LEVEL_*`（PASS/WARNING/SEVERE/UNAVAILABLE）；触发条件复用 `ALERT_FAILURE="FAILURE"` |
+| task-core `AlertRuleService`（修改） | `validate()` 对象类型白名单加 QUALITY（`SUPPORTED_OBJECT_TYPES`）；`resolveObjectName` 对 QUALITY 查 `quality_job.name`（注入 `QualityJobMapper`）；`listObjectOptions` 对 QUALITY 返回质量任务列表 |
+| task-core `AlertFiringService`（修改） | 新增 `fireBatch(objectType, objectId, alertType, List<AlertItem>)`（AlertItem=level/ruleName/detail）：查 QUALITY 规则→过滤等级→一条邮件+每条异常一条 `alert_history`；`displayObjectType`/`buildObjectUrl` 支持 QUALITY；`saveHistory` 7 参重载（summary 仅供日志） |
+| task-core `AlertHistoryMapper`（修改） | `selectHistoryPage` 增加 `LEFT JOIN quality_job` 联查 QUALITY 对象名 |
+| task-core `QualityCheckDetail`/`QualityCheckBatch`/`QualityCheckDetailDTO`（修改） | 新增 `resultLevel` / `alertSent` 字段 |
+| task-core `QualityCheckService`（修改） | `determineLevel` 分级判定（`value<warning`→PASS；`warning≤value<severe`→WARNING；`value≥severe` 或无 severe 时 `value≥warning`→SEVERE；阈值全空→PASS；SQL 失败→UNAVAILABLE）；批次收尾 `fireBatchAlert`（job_id 非空时按 `alert_level` 过滤→调 `fireBatch`→`alert_sent` 置 1 幂等）；`isAlertable` 判定（SEVERE 必触发、WARNING 仅 SEVERE_WARNING、UNAVAILABLE/PASS 不触发） |
+| governance `pom.xml`（修改） | **补 `spring-boot-starter-mail`**（compile）：`QualityCheckController` 注入 `QualityCheckService`→`AlertFiringService`→`MailService`，缺 mail 类会 `NoClassDefFoundError` 启动失败 |
+| 文档（同步回落） | `技术文档` §3.0 脚本清单 + §5.4 告警对象模型/fireBatch；`PRD` §6.2.2 表单去掉接收用户控件、§6.4 入口描述；`AGENTS.md` 质量分级判定 + governance mail 依赖 + alert_rule.object_type 约束坑 |
+
+### 9.3 部署
+
+- 编译：`mvn -pl task-core,engineering,worker,governance,job -am clean package`（含 system 因 Flyway 脚本变更）。
+- 镜像重建部署：**app-system**（先启，执行 Flyway V3.6.5/V3.6.6）→ **app-worker / app-engineering / app-governance**。四个容器全部 healthy。
+- 需重建 app-worker（质量执行代码在 worker）+ app-engineering（task-core 共享）+ app-governance（接口+mail 依赖）+ app-system（Flyway 脚本）。
+
+### 9.4 验证记录（API 自测，全链路通过）
+
+> 手动播种 E2E 执行元数据（`e2e_s6_exec_ds`/`e2e_s6_exec_pg_ds` + `e2e_s6_orders` 表 4 行），创建质量任务（SEVERE_WARNING）含 2 条 CUSTOM_SQL 规则（各设不同阈值使 value=4 → 分别 WARNING/SEVERE），验证完清理。
+
+- **告警中心 QUALITY 支持**：`GET /api/system/alert-rules/object-options?objectType=QUALITY` 返回 200（对象类型校验通过）。
+- **创建 QUALITY 规则**：`POST /api/system/alert-rules`（objectType=QUALITY, objectIds=[jobId], triggerConditions=["FAILURE"], userIds=[1]）→ 200，`objectName` 正确解析为任务名。
+- **分级判定落库**：任务执行 → detail `result_level` 正确：`s6_warning_rule`(warn=3,severe=5,val=4)→**WARNING**、`s6_severe_rule`(warn=3,severe=4,val=4)→**SEVERE**；batch `alert_sent=1`。
+- **合并告警（SEVERE_WARNING）**：一次批次 2 项异常 → `alert_history` **2 条** + MailHog **1 封邮件**（主题 `[DataNest 告警] 质量任务「...」执行失败（2 项）`），正文逐条列出 `[警告]`/`[严重]` 及规则名、类型、结果值、跳转链接。
+- **触发等级过滤（SEVERE_ONLY）**：改 `alert_level=SEVERE_ONLY` 后执行 → 仅 `s6_severe_rule`(SEVERE) 触发：`alert_history` **1 条** + 邮件 `（1 项）`，WARNING 被过滤。
+- **60s 防重**：同任务 60s 内二次执行被 `countRecent` 抑制（worker 日志"批量告警已发送过，跳过"），等待窗口后恢复。
+- **历史对象名联查**：`GET /api/system/alert-history?objectType=QUALITY` → `objectName` 均正确解析为任务名。
+- **清理**：测试质量任务/规则/告警规则/告警历史/元数据/目标表/MailHog 邮件全部清理。
+
+### 9.5 踩坑记录
+
+- **`alert_rule.object_type` 数据库 CHECK 约束**：最初只在 `AlertRuleService.validate()` 白名单加了 QUALITY，建 QUALITY 规则仍报 `check constraint "alert_rule_object_type_check" 违反`。需 Flyway `V3.6.6` drop 旧约束重建为含 QUALITY（已落档 AGENTS.md §6）。
+- **governance 必须补 mail 依赖**：governance 注入 `QualityCheckService` 后间接依赖 `MailService`，task-core 的 mail 是 `provided`，governance 不声明会启动 `NoClassDefFoundError`（已补 `spring-boot-starter-mail`）。governance 不实际发邮件（告警在 worker），无需配 MAIL 环境变量。
+- **UNAVAILABLE 是否告警**：初版实现为 UNAVAILABLE 也触发，review 时发现与技术文档 R2（"数据源不可用不产生误告警"）冲突，已改为 **UNAVAILABLE 不触发告警**，仅记录 result_level。
+- **`resolveObjectName` 返回任务名**：文档初稿写"返回规则名"，实际对象粒度=质量任务，返回 `quality_job.name`（技术文档已回落）。
+
+### 9.6 遗留
+
+- **前端告警中心 `AlertRuleModal` 需加「质量」对象类型选项**（`OBJECT_TYPE_OPTIONS` 加 QUALITY，对象下拉走 `object-options?objectType=QUALITY`）。本次为后端开发，前端留待联调批接入。
+- **`AlertFiringService.saveHistory` 7 参重载**：`summary` 参数仅用于日志（`AlertHistory` 表无 detail 列），未持久化；保留用于追踪，后续如需详情可加列或降级为 6 参。非阻塞。

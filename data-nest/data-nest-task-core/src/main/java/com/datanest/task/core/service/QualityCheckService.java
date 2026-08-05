@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityCheckBatchDTO;
 import com.datanest.task.core.dto.QualityCheckDetailDTO;
 import com.datanest.task.core.dto.QualityCheckQueryRequest;
@@ -41,8 +42,10 @@ import java.util.Map;
  * 在 app-worker 容器内运行（经 qualityCheckExecuteHandler 触发）。参照 {@link CollectExecutor} 渐进式落库：
  * batch/detail 逐条即时提交，不使用方法级事务——单条规则失败不阻塞其余规则，失败记录独立保留。
  * <p>
- * 本次仅记录结果值（result_value），不做正常/警告/严重分级、不做评分。
  * 结果值提取：RANGE 用 out_of_range/total 计算占比；其余按 result_metric 列名取，取不到降级首行首列。
+ * <p>
+ * 分级判定：按规则 warning_threshold / severe_threshold 计算 result_level（PASS/WARNING/SEVERE/UNAVAILABLE）落库。
+ * 批次收尾后，若任务配置了告警（alert_level 非空）且存在 QUALITY 类型的 alert_rule，触发合并告警（fireBatch）。
  */
 @Service
 public class QualityCheckService {
@@ -61,6 +64,7 @@ public class QualityCheckService {
     private final DataSourceConnectionMapper dataSourceMapper;
     private final DorisSqlExecutor dorisSqlExecutor;
     private final GenericSqlExecutor genericSqlExecutor;
+    private final AlertFiringService alertFiringService;
 
     public QualityCheckService(QualityCheckBatchMapper batchMapper,
                                QualityCheckDetailMapper detailMapper,
@@ -70,7 +74,8 @@ public class QualityCheckService {
                                MetadataTableMapper tableMapper,
                                DataSourceConnectionMapper dataSourceMapper,
                                DorisSqlExecutor dorisSqlExecutor,
-                               GenericSqlExecutor genericSqlExecutor) {
+                               GenericSqlExecutor genericSqlExecutor,
+                               AlertFiringService alertFiringService) {
         this.batchMapper = batchMapper;
         this.detailMapper = detailMapper;
         this.jobMapper = jobMapper;
@@ -80,6 +85,7 @@ public class QualityCheckService {
         this.dataSourceMapper = dataSourceMapper;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.genericSqlExecutor = genericSqlExecutor;
+        this.alertFiringService = alertFiringService;
     }
 
     /**
@@ -111,6 +117,7 @@ public class QualityCheckService {
 
         finishBatch(batch, success, failed, null);
         updateJobLastTriggerAt(jobId);
+        fireBatchAlert(job, batch);
         logger.info("质量检查任务执行完成: batchId={}, jobId={}, success={}, failed={}", batch.getId(), jobId, success, failed);
         return batch.getId();
     }
@@ -158,12 +165,14 @@ public class QualityCheckService {
             detail.setExecutedSql(sql);
             BigDecimal value = executeAndExtract(rule, sql);
             detail.setResultValue(value);
+            detail.setResultLevel(determineLevel(rule, value));
             detail.setSuccess(1);
             detailMapper.insert(detail);
             return true;
         } catch (Exception e) {
             logger.warn("质量规则执行失败: ruleId={}, ruleName={}, error={}", rule.getId(), rule.getName(), e.getMessage());
             detail.setSuccess(0);
+            detail.setResultLevel(AlertConstants.QUALITY_LEVEL_UNAVAILABLE);
             detail.setErrorMessage(e.getMessage());
             if (detail.getExecutedSql() == null) {
                 detail.setExecutedSql(generateSqlSafe(rule));
@@ -171,6 +180,34 @@ public class QualityCheckService {
             detailMapper.insert(detail);
             return false;
         }
+    }
+
+    /**
+     * 按规则阈值计算分级：
+     * <ul>
+     *   <li>warning/severe 阈值都为空 → PASS（未配置分级，不告警）</li>
+     *   <li>value &lt; warning → PASS</li>
+     *   <li>warning ≤ value &lt; severe → WARNING</li>
+     *   <li>value ≥ severe（或无 severe 阈值时 value ≥ warning）→ SEVERE</li>
+     * </ul>
+     */
+    private String determineLevel(QualityRule rule, BigDecimal value) {
+        BigDecimal warning = rule.getWarningThreshold();
+        BigDecimal severe = rule.getSevereThreshold();
+        if (warning == null && severe == null) {
+            return AlertConstants.QUALITY_LEVEL_PASS;
+        }
+        if (value == null) {
+            return AlertConstants.QUALITY_LEVEL_PASS;
+        }
+        if (severe != null && value.compareTo(severe) >= 0) {
+            return AlertConstants.QUALITY_LEVEL_SEVERE;
+        }
+        if (warning != null && value.compareTo(warning) >= 0) {
+            // 无 severe 阈值时，达到 warning 即视为严重（无严重上限）
+            return severe == null ? AlertConstants.QUALITY_LEVEL_SEVERE : AlertConstants.QUALITY_LEVEL_WARNING;
+        }
+        return AlertConstants.QUALITY_LEVEL_PASS;
     }
 
     /**
@@ -423,6 +460,95 @@ public class QualityCheckService {
         }
     }
 
+    /**
+     * 批次收尾后触发分级合并告警（Sprint 6）。
+     * <ul>
+     *   <li>任务未配置 alert_level（SEVERE_ONLY / SEVERE_WARNING）→ 不触发</li>
+     *   <li>批次已发送（alert_sent=1）→ 跳过（幂等）</li>
+     *   <li>按任务触发等级过滤达到等级的明细：SEVERE/UNAVAILABLE 必触发；WARNING 仅在 SEVERE_WARNING 时触发</li>
+     *   <li>合并为一条邮件（fireBatch），写 alert_history</li>
+     * </ul>
+     * 告警实际是否发出由 alert_rule（QUALITY 类型 + 接收用户）决定；未配置规则则静默跳过。
+     */
+    private void fireBatchAlert(QualityJob job, QualityCheckBatch batch) {
+        if (job == null || batch == null) {
+            return;
+        }
+        if (job.getAlertLevel() == null || job.getAlertLevel().isBlank()) {
+            return;
+        }
+        if (batch.getAlertSent() != null && batch.getAlertSent() == 1) {
+            return;
+        }
+        List<QualityCheckDetail> details = listDetailsByBatch(batch.getId());
+        if (details.isEmpty()) {
+            return;
+        }
+        boolean severeOnly = "SEVERE_ONLY".equalsIgnoreCase(job.getAlertLevel());
+        List<AlertFiringService.AlertItem> items = new java.util.ArrayList<>();
+        for (QualityCheckDetail d : details) {
+            if (!isAlertable(d.getResultLevel(), severeOnly)) {
+                continue;
+            }
+            items.add(new AlertFiringService.AlertItem(d.getResultLevel(), d.getRuleName(), buildDetailDesc(d)));
+        }
+        if (items.isEmpty()) {
+            return;
+        }
+        try {
+            alertFiringService.fireBatch(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+                    AlertConstants.ALERT_FAILURE, items);
+        } catch (Exception e) {
+            logger.warn("质量分级告警触发失败: jobId={}, batchId={}", job.getId(), batch.getId(), e);
+        } finally {
+            // 无论是否命中规则，本批次都标记为已处理，避免重复尝试
+            markAlertSent(batch.getId());
+        }
+    }
+
+    /**
+     * 判断某分级是否达到当前任务的告警触发等级。
+     * 严重必触发；警告仅在「严重+警告」模式下触发；通过/不可用不触发（R2：SQL 失败/UNAVAILABLE 不告警）。
+     */
+    private boolean isAlertable(String level, boolean severeOnly) {
+        if (level == null) {
+            return false;
+        }
+        if (AlertConstants.QUALITY_LEVEL_SEVERE.equals(level)) {
+            return true;
+        }
+        if (AlertConstants.QUALITY_LEVEL_WARNING.equals(level)) {
+            return !severeOnly;
+        }
+        return false;
+    }
+
+    /** 构建单条异常明细描述（用于邮件正文/告警详情）。 */
+    private String buildDetailDesc(QualityCheckDetail d) {
+        StringBuilder sb = new StringBuilder();
+        if (d.getRuleType() != null) {
+            sb.append("类型:").append(d.getRuleType());
+        }
+        if (d.getResultValue() != null) {
+            sb.append(", 结果值:").append(d.getResultValue());
+        }
+        if (d.getErrorMessage() != null && !d.getErrorMessage().isBlank()) {
+            sb.append(", 错误:").append(d.getErrorMessage());
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    private void markAlertSent(Long batchId) {
+        try {
+            QualityCheckBatch update = new QualityCheckBatch();
+            update.setId(batchId);
+            update.setAlertSent(1);
+            batchMapper.updateById(update);
+        } catch (Exception e) {
+            logger.warn("标记批次告警已发送失败: batchId={}", batchId, e);
+        }
+    }
+
     // ==================== 查询（供 QualityCheckController 使用） ====================
 
     public QualityCheckBatch requireBatch(Long id) {
@@ -505,6 +631,7 @@ public class QualityCheckService {
         dto.setTableId(detail.getTableId());
         dto.setResultMetric(detail.getResultMetric());
         dto.setResultValue(detail.getResultValue());
+        dto.setResultLevel(detail.getResultLevel());
         dto.setSuccess(detail.getSuccess());
         dto.setErrorMessage(detail.getErrorMessage());
         dto.setExecutedSql(detail.getExecutedSql());

@@ -11,8 +11,8 @@ import java.time.LocalDateTime;
 /**
  * 质量检查规则明细（Sprint 8 执行层）。
  * <p>
- * 批次下每条规则的执行结果：结果值、是否成功、执行 SQL、错误信息。
- * 本次仅记录结果值（result_value），不做分级判定。
+ * 批次下每条规则的执行结果：结果值、是否成功、分级、执行 SQL、错误信息。
+ * 分级判定（result_level）由 QualityCheckService 按阈值计算：PASS/WARNING/SEVERE/UNAVAILABLE。
  */
 @Data
 @TableName("quality_check_detail")
@@ -41,6 +41,9 @@ public class QualityCheckDetail {
 
     /** 执行结果值（DECIMAL） */
     private BigDecimal resultValue;
+
+    /** 分级判定：PASS 通过 / WARNING 警告 / SEVERE 严重 / UNAVAILABLE 不可用（执行失败） */
+    private String resultLevel;
 
     /** 规则执行是否成功：1 成功，0 失败 */
     private Integer success;

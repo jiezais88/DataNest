@@ -29,6 +29,9 @@ public class QualityCheckDetailDTO {
 
     private BigDecimal resultValue;
 
+    /** 分级判定：PASS / WARNING / SEVERE / UNAVAILABLE */
+    private String resultLevel;
+
     /** 1 成功，0 失败 */
     private Integer success;
 
