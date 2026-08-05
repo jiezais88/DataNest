@@ -9,6 +9,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.scheduler.SchedulerClient;
+import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityJobCreateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +17,18 @@ import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
+import com.datanest.task.core.entity.AlertRule;
+import com.datanest.task.core.entity.AlertRuleObject;
 import com.datanest.task.core.entity.QualityJob;
+import com.datanest.task.core.entity.QualityJobRule;
+import com.datanest.task.core.entity.QualityRule;
+import com.datanest.task.core.entity.QualityScore;
+import com.datanest.task.core.mapper.AlertRuleMapper;
+import com.datanest.task.core.mapper.AlertRuleObjectMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
+import com.datanest.task.core.mapper.QualityJobRuleMapper;
+import com.datanest.task.core.mapper.QualityRuleMapper;
+import com.datanest.task.core.mapper.QualityScoreMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,17 +71,32 @@ public class QualityJobService {
     private final SysUserService sysUserService;
     private final QualityCheckTriggerService triggerService;
     private final SchedulerClient schedulerClient;
+    private final AlertRuleObjectMapper alertRuleObjectMapper;
+    private final AlertRuleMapper alertRuleMapper;
+    private final QualityJobRuleMapper qualityJobRuleMapper;
+    private final QualityRuleMapper qualityRuleMapper;
+    private final QualityScoreMapper qualityScoreMapper;
 
     public QualityJobService(QualityJobMapper jobMapper,
                              QualityRuleService ruleService,
                              SysUserService sysUserService,
                              QualityCheckTriggerService triggerService,
-                             SchedulerClient schedulerClient) {
+                             SchedulerClient schedulerClient,
+                             AlertRuleObjectMapper alertRuleObjectMapper,
+                             AlertRuleMapper alertRuleMapper,
+                             QualityJobRuleMapper qualityJobRuleMapper,
+                             QualityRuleMapper qualityRuleMapper,
+                             QualityScoreMapper qualityScoreMapper) {
         this.jobMapper = jobMapper;
         this.ruleService = ruleService;
         this.sysUserService = sysUserService;
         this.triggerService = triggerService;
         this.schedulerClient = schedulerClient;
+        this.alertRuleObjectMapper = alertRuleObjectMapper;
+        this.alertRuleMapper = alertRuleMapper;
+        this.qualityJobRuleMapper = qualityJobRuleMapper;
+        this.qualityRuleMapper = qualityRuleMapper;
+        this.qualityScoreMapper = qualityScoreMapper;
     }
 
     // ==================== 查询 ====================
@@ -218,8 +244,32 @@ public class QualityJobService {
     @Transactional
     public void delete(Long id) {
         QualityJob entity = requireJob(id);
+        // 删除关联校验：若任务已被告警规则绑定（对象类型 QUALITY），阻止删除，并返回具体告警规则名称
+        List<AlertRuleObject> alertObjects = alertRuleObjectMapper.selectByObject(AlertConstants.OBJECT_TYPE_QUALITY, id);
+        if (!alertObjects.isEmpty()) {
+            List<String> alertRuleNames = alertRuleMapper.selectBatchIds(
+                            alertObjects.stream().map(AlertRuleObject::getAlertRuleId).toList())
+                    .stream().map(AlertRule::getName)
+                    .toList();
+            throw new BusinessException(ErrorCode.HAS_REFERENCES,
+                    "质量任务已被告警规则引用，请先删除相关告警规则", alertRuleNames);
+        }
+        // 删除前收集本任务涉及的规则/表（用于删除后评分处理），随后再解除 job_rule 关联
+        List<Long> ruleIds = qualityJobRuleMapper.selectList(
+                        new QueryWrapper<QualityJobRule>().eq("job_id", id))
+                .stream().map(QualityJobRule::getRuleId).toList();
+        List<Long> tableIds = Collections.emptyList();
+        if (!ruleIds.isEmpty()) {
+            tableIds = qualityRuleMapper.selectBatchIds(ruleIds).stream()
+                    .map(QualityRule::getTableId).distinct().toList();
+        }
         ruleService.deleteJobRules(id);
         jobMapper.deleteById(id);
+        // 评分处理（方案1）：任务删除后，若其涉及的表不再有任何启用规则覆盖，则删除该表评分；
+        // 仍有启用规则的表保留评分（下次检查批次收尾会重算）。质量检查批次/明细作为审计记录保留（用户确认）。
+        if (!tableIds.isEmpty()) {
+            cleanupScoresWithoutActiveRules(tableIds);
+        }
 
         Integer xxlJobId = entity.getXxlJobId();
         if (xxlJobId != null) {
@@ -233,6 +283,25 @@ public class QualityJobService {
                     }
                 }
             });
+        }
+    }
+
+    /**
+     * 评分处理（删任务后）：对指定表，若该表不再有任何启用规则覆盖，则删除其质量评分。
+     * 产品语义：评分反映「当前仍被质量监控的表」的健康度；不再被监控的表应恢复"无质量"态。
+     * 仍有启用规则的表保留评分（下次检查批次收尾由 ScoreCalculator 重算）。
+     */
+    private void cleanupScoresWithoutActiveRules(List<Long> tableIds) {
+        for (Long tableId : tableIds) {
+            Long activeRules = qualityRuleMapper.selectCount(
+                    new QueryWrapper<QualityRule>().eq("table_id", tableId).eq("enabled", 1));
+            if (activeRules == null || activeRules == 0) {
+                int removed = qualityScoreMapper.delete(
+                        new QueryWrapper<QualityScore>().eq("table_id", tableId));
+                if (removed > 0) {
+                    logger.info("删除质量任务后清理无规则覆盖表的评分: tableId={}, removed={}", tableId, removed);
+                }
+            }
         }
     }
 

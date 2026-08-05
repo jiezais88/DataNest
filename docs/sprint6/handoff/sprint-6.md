@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -31,6 +31,13 @@
 | 表级质量评分后端                         | ✅ 完成   | 评分跨任务聚合加权计算（quality_score 落库，一张表一行）+ 血缘图谱节点批量回填评分 + 三查询接口；健康度四档区间/扣分算法行业调研后回写 PRD/技术文档，见 §13 |
 | 表级质量评分前端                         | ✅ 完成   | 三个落点全覆盖（独立「质量评分」列表页 + 元数据「质量」页签 + 血缘节点质量徽章）+ 后端补 4 接口（按表规则/按表执行/扣分配置读写）；ScoreCalculator 扣分读库表配置 + 修复 badThreshold 判定 bug，见 §14 |
 | task-core 三步拆分重构                   | ✅ 完成   | 原 task-core 拆为 4 模块（entity/alert/task-core-governance/task-core），包名不变；新增 QualityAutoTriggerPort 接口解耦 alert↔governance；跳过执行内核强拆；全量编译+5 容器重建+核心 API 回归通过，见 §16 |
+| 标准合规检查后端扩展                     | ✅ 完成   | 合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + admin/工程师双角色 API 自测通过，见 §17 |
+| 模板批量应用后端 review 修复             | ✅ 完成   | `QualityRuleService.batchCreate` 修复重名校验 + 批量插入 + 批量绑定关联，API 自测通过，见 §17.7 |
+| 标准合规检查前端                         | 🔄 其他AI | 前端由其他 AI 负责：ComplianceCheckPanel 分组改 TYPE + 忽略/取消/导出按钮 + 分页接入；批量应用占位按钮接线（后端已就绪），见 §17.9/§17.10 |
+| 质量报告（DG-07）                        | ⏳ 不做   | 本轮不做，原排期 S8 单独会话做 |
+| Sprint6 级联删除/删除校验补全           | ✅ 完成   | 删数据源/规则模板/质量任务「被引用阻止」（HAS_REFERENCES 3005），API 自测通过，见 §18 |
+| 质量检查历史清理定时任务                | ✅ 完成   | 新增 QualityCheckHistoryCleanupHandler（cron 04:30，保留 30 天，级联删 batch+detail），已注册 XXL-JOB，见 §18 |
+| 删除补全 + 引用明细提示（后端+前端）   | ✅ 完成   | 删 DAG 清血缘、删质量任务评分方案1、被阻止删除返回引用名称列表；前端 ReferenceListModal 接入各删除页，见 §19 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -922,3 +929,216 @@ data-nest-common
 - **本 Handoff**：§2 状态看板 + 本 §16。
 
 > **遗留**：已暂停的 Sprint 6 质量评分相关 plan 如需继续需重新激活；worker 的 `DagNodeExecuteService` 通配符 `import service.*` 仍存在，但通过依赖传递能解析，未改造（编译通过）。
+
+## 17. 标准合规检查后端扩展（2026-08-05，本次会话）
+
+> **阶段**：标准合规检查（DG-08）后端扩展完成——修复前后端 violationType 不一致 bug、合规逻辑下沉 task-core、忽略/取消忽略、分页列表、导出 CSV、全局定时扫描 handler、放开工程师查看/操作权限。另外完成「模板批量应用」后端 review 修复。**前端由其他 AI 负责，本次只做后端**；质量报告（DG-07）用户明确本轮不做。
+
+### 17.1 范围确认（用户交互式确认）
+
+| 决策点 | 结论 |
+|--------|------|
+| 推进方式 | 先 review 现有代码再开发（合规基础版已存在：`ComplianceCheckService.check/listResults`） |
+| 接口归属 | 沿用 `DataStandardController`（`/data-standards`），不新建独立 Controller |
+| 列表接口 | 新增 `page` 分页接口，**保留**现有 `listResults`（POST `/compliance-check/results`） |
+| 定时扫描 | **全局一个 cron**（扫全部在线数据源，无「合规任务」模型） |
+| 定时 handler 落点 | **下沉 task-core + job 注册 cron**（用户确认；经 task-core 传递依赖，job 可直接注入，无需改 pom） |
+| 忽略粒度 | 按 resultId：`compliance_check_result` 加 `ignored/ignored_at/ignored_by` |
+| 权限 | 本轮放开工程师（DATA_ENGINEER）查看/忽略/导出；标准配置增删改仍限治理员/超管 |
+| 模板批量应用 | 连同质量规则页一起 review（不只看占位按钮） |
+| 质量报告（DG-07） | **本轮不做**（原定 S8） |
+
+### 17.2 Review 发现的关键 bug
+
+- **前后端 `violationType` 不一致**：前端 `ComplianceCheckPanel.tsx` 的 `groupResults` 用 `violationType === 'FIELD_TYPE'` 分组字段类型违规，而后端 `ComplianceCheckService.checkColumn` 产生 TYPE 违规时用 `"TYPE"`。导致字段类型不合规项被误归入「命名规范不合规」分组。**后端语义以现有 `"TYPE"` 为准**，前端需改分组为 `TYPE`（前端由其他 AI 处理）。
+
+### 17.3 变更清单（后端）
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest-task-core-entity`：`NamingStandard`/`FieldTypeStandard`/`ComplianceCheckResult`(entity) + `NamingStandardMapper`/`FieldTypeStandardMapper`/`ComplianceCheckResultMapper`（下沉） | 从 governance 迁入 task-core-entity（包 `com.datanest.task.core.entity/mapper`），删除 governance 旧文件；governance 的 `NamingStandardService`/`FieldTypeStandardService`/`DataStandardController` 改 import；job 经 task-core 传递依赖可直接注入 |
+| `data-nest-task-core-entity` dto（下沉+新增） | `ComplianceCheckRequest`/`ComplianceCheckResultDTO`（加 `ignored`/`ignoredAt`/`ignoredBy`）+ 新增 `ComplianceCheckPageRequest`（含 `page/pageSize/ignored` 筛选）迁入 task-core-entity dto 包 |
+| `data-nest-task-core-governance`：`ComplianceCheckService`（下沉+扩展） | 从 governance 迁入 `com.datanest.task.core.service`；扩展 `ignore(resultId,userId)`/`unignore(resultId)`/`page(pageRequest)`（默认 `ignored=0` 排除已忽略，支持 `ignored=1` 筛选）/`export(request)`（CSV 带 BOM，Excel 可开中文） |
+| `data-nest-common`：`ErrorCode`（修改） | 新增 `COMPLIANCE_CHECK_RESULT_NOT_FOUND(5007)` |
+| `data-nest-system/.../db/migration/V3.7.1__compliance_check_ignore.sql`（新增） | `compliance_check_result` 加 `ignored SMALLINT DEFAULT 0`/`ignored_at TIMESTAMP`/`ignored_by BIGINT` + `idx_compliance_check_result_ignored`（**注意版本号必须大于库内最高 3.7.0**，见 §17.5 踩坑） |
+| `data-nest-governance`：`DataStandardController`（修改） | 新增 4 接口：`POST /compliance-check/page`、`POST /compliance-check/ignore/{resultId}`、`POST /compliance-check/unignore/{resultId}`、`POST /compliance-check/export`（返回 `ResponseEntity<byte[]>` text/csv）；角色注解拆分：合规接口（check/results/page/ignore/unignore/export）`@SaCheckRole` 三角色含 `DATA_ENGINEER`（SaMode.OR），标准配置接口仍限 SUPER_ADMIN/GOVERNANCE_ADMIN |
+| `data-nest-job`：`StandardComplianceCheckHandler`（新增）+ `JobRegistrar`（修改） | `@XxlJob("standardComplianceCheckHandler")` 构造空 `ComplianceCheckRequest` 扫全部在线数据源；注册到 `JobRegistrar.platformJobs` 固定 cron（每天 02:00） |
+| `AGENTS.md`（修改） | §6 已知坑新增「新增迁移脚本版本号必须大于库内已有最高版本」（本次 V3.6.10 撞 V3.7.0 踩坑）；合规下沉 task-core 说明 |
+
+### 17.4 部署
+
+- 编译：`mvn clean package -DskipTests`（11 模块 BUILD SUCCESS）。
+- 重建 5 容器：**app-system**（先启，执行 Flyway V3.7.1）→ **app-governance / app-worker / app-job / app-engineering**（task-core 共享底座改动，按 AGENTS.md 需重建全部消费方），全部 healthy。
+- 前端 app-frontend 由前端 AI 负责，本次未动。
+
+### 17.5 踩坑记录
+
+- **Flyway 版本号撞车**：新增 `V3.6.10` 时库内已有 `V3.7.0`（quality_score_config），Flyway 按版本排序判定新迁移乱序，app-system 启动报 `Detected resolved migration not applied to database: 3.6.10` 退出。处理：改为 `V3.7.1`。**预防**：先查 `flyway_schema_history` 最高版本再定编号；且 `mvn clean package`（避免 target/classes 残留已删旧脚本被带进 jar，首次误报 3.6.10 就是 target 残留导致）。
+- **`@SaCheckRole` 注解 value 需字面量数组**：不能传 `String[]` 常量（注解属性值必须是编译期常量），需内联 `value={"A","B","C"}`。
+- **测试脚本 500 假象**：用 curl 在 PowerShell 传 JSON body 会因引号转义产生非法 JSON，接口返回 `HttpMessageNotReadableException`（500）；用 `Invoke-RestMethod` 或 `--data-binary @file` 正常。
+
+### 17.6 API 验证记录（业务角度，admin + 工程师双角色）
+
+- 合规扫描 `POST /compliance-check` → 81 条不合规项（含 TABLE/COLUMN 的 NAMING 违规），返回 DTO 含 `ignored:0` 三字段。
+- 分页 `POST /compliance-check/page`：默认（ignored=0）total=81；忽略 1 条后默认 total=80，`ignored=1` 筛选 total=1（该条可见）✅ 默认排除已忽略 + 筛选正确。
+- 忽略 `POST /compliance-check/ignore/{id}` → DB `ignored=1` + `ignored_by=1`(admin) + `ignored_at` 记录 ✅。
+- 取消忽略 `POST /compliance-check/unignore/{id}` → DB `ignored=0`，`ignored_by/ignored_at` 清空 ✅。
+- 导出 `POST /compliance-check/export` → CSV 表头（对象路径/对象类型/违规类型/实际值/期望值/适用规范/检查时间/是否忽略）+ 81 行数据，带 BOM 中文可开 ✅。
+- **工程师权限**（创建 DATA_ENGINEER 账号验证）：合规 page/ignore 返回 200 ✅；标准配置 naming-standards/page 返回 403 ✅（权限隔离正确）。
+  - 2026-08-05 补充：**运行扫描 `POST /compliance-check` 工程师返回 403**（权限已按 PRD 收回，仅治理员/超管可运行扫描）；结果查看/忽略/导出工程师仍 200。
+- 测试数据（合规忽略项、工程师账号、导出临时文件）已清理。
+
+### 17.7 模板批量应用 review + 修复（QualityRuleService.batchCreate）
+
+> 用户确认「全部修复」3 个 review 发现的问题：
+
+| 问题 | 修复 |
+|------|------|
+| ① 自动命名「模板名·表名」无重名校验（同表重复应用生成重复规则） | 预计算所有规则名后 `assertNoDuplicateNames`（本次批量内部）+ 一次性 `selectList(in(name))` 查库内已有同名（`ErrorCode.QUALITY_RULE_NAME_EXISTS=4209`），替代原来无校验 |
+| ② 逐条 `ruleMapper.insert` + 逐条 `bindJobRule`（N+1 写） | 改用 MyBatis-Plus `Db.saveBatch(created)`（自动填充 ASSIGN_ID id）批量插入规则 |
+| ③ `bindJobRule` 内幂等 `selectCount` 在批量时冗余 | 批量插入后构造 `List<QualityJobRule>` 一次性 `Db.saveBatch(links)` 绑定，新规则必然未绑定，无需逐条幂等查询 |
+
+- 依赖：`com.baomidou.mybatisplus.extension.toolkit.Db`（MyBatis-Plus 3.5.17 支持）。
+- 部署：task-core-governance 改动 → 重建 app-governance/app-worker/app-job/app-system/app-engineering。
+- **验证**：`POST /quality/rules/batch`（1 模板 + orders/products 2 表）→ 生成 2 条独立规则实例（name「唯一性检查·表名」+ job_rule 关联）；同模板同表再应用 → code=4209「已存在同名规则」，无重复落库 ✅。测试规则已清理。
+
+### 17.8 删除用户 9999 排查结论（非本次改动引入）
+
+- **现象**：调 `DELETE /api/system/users/{id}` 返回 9999 系统内部错误。
+- **根因**：①`UserController`/`UserService` **从未实现删除用户接口**（`DELETE /users/{id}` 不存在，前端用户管理页也无删除按钮、`auth.ts` 无 deleteUser API）——属既有功能缺口，非删除逻辑 bug；②该请求走 gateway 到 app-system 无此端点，Spring 抛 `NoResourceFoundException`(404)，被 `GlobalExceptionHandler.handleException` 兜底统一包装为 500（9999）。
+- **处理**：
+  1. **404 误报 500 已修复**（见下）；**运行扫描权限已按 PRD 收回**（工程师 403，见 §17.6）。
+  2. **删除用户功能仍未实现**：后端 `deleteUser`（级联删角色关联）+ 前端用户管理页删除入口，仍为后续待办（前端由前端 AI 负责）。
+
+### 17.8b 404 误报 500 修复（2026-08-05）
+
+- **根因**：`GlobalExceptionHandler`（data-nest-common）兜底 `@ExceptionHandler(Exception.class)` 把 `NoResourceFoundException`(404) 统一包装为 500（9999），导致所有「接口不存在」的请求误报 500。
+- **修复**：
+  - `ErrorCode` 新增 `NOT_FOUND(404, "请求的资源不存在")`。
+  - `GlobalExceptionHandler` 新增 `@ExceptionHandler(NoResourceFoundException.class)`（`org.springframework.web.servlet.resource.NoResourceFoundException`），`@ResponseStatus(NOT_FOUND)` 返回 `code=404`。
+  - `DataStandardController` 运行扫描 `POST /compliance-check` 角色注解从三角色收回为 `SUPER_ADMIN/GOVERNANCE_ADMIN`（对齐 PRD §8「运行标准合规扫描工程师❌」；用户此前确认的「查看/忽略/导出放开工程师」不变）。
+- **部署**：common 公共底座改动 → 全量 `mvn clean package` + 重建 app-system/app-governance/app-worker/app-job/app-engineering（5 容器 healthy）。
+- **验证**：
+  - 调不存在接口 → HTTP 404 `{"code":404,"message":"请求的资源不存在"}`（原 500/9999）✅
+  - 工程师运行扫描 → HTTP 403 `code=1005` ✅；工程师结果分页 → HTTP 200 total=81 ✅；admin 运行扫描 → 200 ✅
+  - 回归：合规 page/ignore/unignore 均 200，无回归 ✅
+
+### 17.9 前端接口契约（供前端 AI 对接）
+
+后端新增/变更，前端需对齐：
+
+- **路径前缀** `/api/governance/data-standards`（网关已路由 `/api/governance/**`）：
+  - `POST /compliance-check/page`：body `{page,pageSize,ignored?,datasourceIds?,...}`，返回 `PageResult<ComplianceCheckResultDTO>`
+  - `POST /compliance-check/ignore/{resultId}` / `unignore/{resultId}`：忽略/取消忽略
+  - `POST /compliance-check/export`：body `ComplianceCheckRequest`，返回 `text/csv`（`Content-Disposition: attachment`），前端按 blob 下载
+- **字段**：`ComplianceCheckResultDTO` 新增 `ignored`/`ignoredAt`/`ignoredBy`；`violationType` 语义为 `NAMING`/`TYPE`（**前端分组字段类型违规须用 `TYPE`**，非 `FIELD_TYPE`）
+- **权限**：合规接口对 SUPER_ADMIN/GOVERNANCE_ADMIN/DATA_ENGINEER 开放；标准配置接口仅治理员/超管
+- **定时扫描**：后端已注册全局 cron（每天 02:00），前端无需处理
+
+### 17.10 待办
+
+1. 前端：`ComplianceCheckPanel` 分组改 `TYPE` + 忽略/取消忽略/导出按钮 + 分页列表接入（前端 AI）。
+2. 前端：质量规则页/规则模板库「批量应用」占位按钮接线（前端 AI，后端 `POST /quality/rules/batch` 已就绪）。
+3. 后端：删除用户 `deleteUser`（级联角色）+ `GlobalExceptionHandler` 对 `NoResourceFoundException` 返回真 404（用户已确认后续做）。
+4. 质量报告（DG-07）按原排期 S8 单独会话做。
+
+## 18. Sprint6 三维度补全（2026-08-05，级联删除/删除校验/定时任务）
+
+> 用户要求分析 Sprint 6 功能的级联删除、删除关联校验、定时任务完备性，确认方案 A+B 修复。
+
+### 18.1 分析结论（经 code-explorer 全量核查）
+
+**级联删除到位**：质量任务删 `quality_job_rule`、质量规则删 `quality_job_rule`、告警规则删 `alert_rule_user/object`、命名规范级联删合规结果、字段类型标准被引用阻止、数据源级联删字段→表→合规结果。
+
+**级联删除缺口（本轮修复）**：
+- 删质量任务未校验/清理 `alert_rule`(QUALITY) 引用、未校验 auto_trigger 反向引用。
+- 删规则模板未校验被 `quality_rule.template_id` 引用（会留悬空引用）。
+- 删数据源 `getReferences` 只查 collect/sync，未查质量规则引用。
+
+**删除关联校验缺口（本轮修复）**：质量任务/规则模板/数据源三类删除缺「被引用阻止」。
+
+**定时任务完备性**：已有 11 个 platform handler + worker 3 个；缺「质量检查历史清理」；合规结果因是快照性质（重跑覆盖）无需定时清理。
+
+### 18.2 变更清单（后端）
+
+| 文件 | 变更 |
+|------|------|
+| `QualityJobService.delete`（task-core-governance） | 删除前校验 `alert_rule_object` 存在 `object_type='QUALITY' AND object_id=任务id` → HAS_REFERENCES 阻止（注入 `AlertRuleObjectMapper`；auto_trigger 反向引用不适用，auto_trigger 是配置在 quality_job 上指向外部对象） |
+| `QualityRuleTemplateService.delete`（task-core-governance） | 删除前校验 `quality_rule.template_id=模板id` 存在 → HAS_REFERENCES 阻止（注入 `QualityRuleMapper`） |
+| `ReferenceType`（common） | 新增 `QUALITY_RULE("QUALITY_RULE","质量规则")` 枚举 |
+| `DataSourceService.getReferences`（engineering） | 注入 `QualityRuleMapper`，增加查 `quality_rule.table_id in (本数据源表id)` 的质量规则引用 → HAS_REFERENCES 阻止 |
+| `QualityCheckHistoryCleanupHandler`（job，新增） | 按保留天数（默认 30 天，`datanest.job.quality-check-cleanup.retain-days`）分批（每批 500）清理超期 `quality_check_batch` + 级联删关联 `quality_check_detail`（按 batch_id） |
+| `JobRegistrar`（job） | 注册 `qualityCheckHistoryCleanupHandler` cron `0 30 4 * * ?`（每天凌晨 4 点 30 分） |
+
+### 18.3 部署与验证
+
+- 全量 `mvn clean package`（common/engineering/task-core-governance/job 改动）+ 重建 5 容器（app-system/governance/worker/job/engineering），全部 healthy。
+- **删数据源被质量规则引用** → code=3005 HAS_REFERENCES ✅
+- **删模板被质量规则引用** → code=3005 HAS_REFERENCES ✅（删规则后模板可删，校验是"引用时才阻止"）
+- **删质量任务被告警规则(QUALITY)引用** → code=3005 HAS_REFERENCES ✅（删告警规则后任务可删）
+- **质量历史清理 handler**：已注册（jobId=520, triggerStatus=1, cron 正确, triggerNextTime 排定）；清理 SQL 逻辑验证通过（超期 batch/detail 能被查询条件匹配）；手动 `/jobinfo/trigger` 返回 trigger_code=500 是 XXL-JOB 手动触发不传 addressList 的既有环境现象（对照已存在 job 同 500），不影响 cron 自动调度。
+- 测试数据（临时模板/规则/告警规则/超期 batch/工程师账号/临时文件）已清理。
+
+### 18.4 待办/注意
+
+- XXL-JOB 手动 trigger 500（executor 自动注册地址在 admin 未即时生效）为既有环境现象，所有 platform job 手动触发均如此，非本次引入；cron 调度正常。
+- 删除用户功能仍未实现（见 §17.8），后续做。
+
+## 19. 删除补全 + 被阻止删除返回引用明细（2026-08-05）
+
+> 前置：用户要求从产品角度审视删除合理性。经梳理，`alert_history`/`quality_check_batch`/`quality_check_detail` 均设计快照字段（rule_name/job_name），原始产品意图为【保留历史审计记录】。用户最终确认「保留历史」；血缘是「当前数据加工关系」非审计记录，确认「删 DAG 清血缘」；删质量任务评分确认「方案1（无启用规则删评分/否则保留）」。范围：除「删用户/角色」外全部做，前端本次由本会话负责修复。
+
+### 19.1 产品审视结论（删除合理性分层）
+
+| 数据类型 | 代表 | 产品语义 | 删除策略 |
+|----------|------|----------|----------|
+| 配置关联 | alert_rule_user/object、quality_job_rule、DAG 节点/边 | 主动配置的绑定 | **删配置对象时清理** |
+| 审计历史 | alert_history、quality_check_batch/detail、sync/collect_history | 已发生事件的证明 | **保留**，靠定时清理（用户确认，不改快照设计） |
+| 衍生呈现 | lineage_record（血缘） | 当前数据加工关系 | **删 DAG 时按 dag_id 清理**（DAG 删了成死边） |
+| 表级评分 | quality_score | 当前被监控表健康度 | 删质量任务后**无启用规则覆盖则删评分，否则保留**（方案1） |
+
+### 19.2 变更清单（后端）
+
+| 文件 | 变更 |
+|------|------|
+| `DagService.delete`（engineering） | 注入 `LineageRecordMapper`，删 DAG 按 `dag_id` 清血缘（`LineageRecordCleanupMapper` 不删，保留 90 天策略改为随 DAG 删）；子 DAG 引用校验由拼 dagIds 到 message 改为**返回引用 DAG 名称列表**（data） |
+| `QualityJobService.delete`（task-core-governance） | 告警引用校验改为**返回引用告警规则名称列表**（data，注入 `AlertRuleMapper`）；新增 `cleanupScoresWithoutActiveRules`：删任务后查该表是否仍有 `enabled=1` 规则，无则删 quality_score，有则保留（批次/明细作为审计历史**不删**） |
+| `FieldTypeStandardService.delete`（governance） | 被命名规范引用时改 `selectList` 查询，**返回引用命名规范名称列表**（data） |
+| `SyncJobService.delete`（engineering） | DAG 引用由拼 message 改为**结构化 data**（引用 DAG 名称列表） |
+
+### 19.3 变更清单（前端，本次本会话修复）
+
+| 文件 | 变更 |
+|------|------|
+| `components/ReferenceListModal.tsx`（新增） | 通用「删除被阻止」引用明细弹窗，展示后端 BusinessException.data 的名称列表 |
+| `pages/engineering/datasources/index.tsx` | 补 `QUALITY_RULE` 质量规则引用分组展示 |
+| `types/datasource.ts` | `DataSourceReference.type` 扩展为 `'COLLECT'\|'SYNC'\|'QUALITY_RULE'` |
+| `pages/engineering/sync-jobs/index.tsx` | handleDelete 捕获 7009 → ReferenceListModal 展示 DAG 引用名 |
+| `pages/engineering/dags/project.tsx` | handleDelete 捕获 7009 → ReferenceListModal 展示 DAG 引用名 |
+| `pages/governance/data-quality/index.tsx` | handleDeleteJob 捕获 3005 → ReferenceListModal 展示告警规则引用名 |
+| `pages/governance/data-standards/index.tsx` | handleDelete 捕获 3005（field-type）→ ReferenceListModal 展示命名规范引用名 |
+
+### 19.4 部署与 API 自测
+
+- 后端：全量 `mvn clean package` + 重建 5 容器（system/governance/worker/job/engineering），healthy。
+- 前端：`app-frontend` 重建，3000 端口 HTTP 200。
+- **删 DAG 清血缘**：删 `血缘自动上报`(dag_id=2084098676382314498) → 其 2 条 lineage_record 被清（0 行）✅
+- **删质量任务评分方案1**：有启用规则 → 评分保留（85）；无启用规则 → 删任务后评分清理 ✅
+- **删字段类型标准被命名规范引用** → code=3005 + `data:["ID 字段命名规范"]` ✅
+- **删质量任务被告警规则引用** → code=3005 + data 告警规则名（前 §18 已验 3005，本轮改返回名称）✅
+- 测试数据（临时任务/评分/规则启用恢复/被删 e2e DAG）已处理；字段类型标准未删（被阻止保留）。
+
+### 19.5 前端界面待人工验证
+
+浏览器实际点删除按钮验证引用明细弹窗：
+- 删同步任务被 DAG 引用 → 弹窗列 DAG 名
+- 删 DAG 被子 DAG 引用 → 弹窗列 DAG 名
+- 删质量任务被告警引用 → 弹窗列告警规则名
+- 删字段类型标准被命名规范引用 → 弹窗列命名规范名
+- 删数据源被质量规则引用 → 弹窗新增「质量规则」分组
+
+### 19.6 待办（未做）
+
+- 删除用户 `deleteUser`（级联角色）仍未实现（§17.8/§18）。
+- 角色删除/管理未实现。
+- 合规结果历史清理定时任务仍未做（`compliance_check_result` 每天全量扫描累积，仅删数据源/命名规范时清理，无按保留期全局清理）。

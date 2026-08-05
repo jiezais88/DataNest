@@ -25,6 +25,8 @@ import {
 import type {Dag, DagParameter, DagProject} from './types';
 import TriggerParamsModal from './components/TriggerParamsModal';
 import {useCanEdit} from '../../../hooks/useCanEdit';
+import ReferenceListModal from '../../../components/ReferenceListModal';
+import type {ApiError} from '../../../utils/error';
 import SearchInput from '../../../components/SearchInput';
 import Pagination from '../../../components/Pagination';
 import DsButton from '../../../components/DsButton';
@@ -59,6 +61,8 @@ export default function ProjectDagsPage() {
 // 删除确认弹框（对齐原型 md-dag-del）
     const [deleteTarget, setDeleteTarget] = useState<Dag | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+    const [deleteReferences, setDeleteReferences] = useState<string[]>([]);
     const [schedulingId, setSchedulingId] = useState<string | number | null>(null);
     // Sprint 4：列表执行也支持参数覆盖（与画布执行对齐）
     const [triggerModalOpen, setTriggerModalOpen] = useState(false);
@@ -138,8 +142,14 @@ export default function ProjectDagsPage() {
             notify.success('DAG 已删除');
             setDeleteTarget(null);
             await refresh();
-        } catch {
-            // 错误提示由 request 拦截器统一弹出
+        } catch (e) {
+            const errorData = (e as ApiError)?.response?.data;
+            // 被其他 DAG 的子节点引用时（7009），后端 data 返回引用 DAG 名称列表，弹窗展示
+            if (errorData?.code === 7009 && Array.isArray(errorData?.data)) {
+                setDeleteReferences(errorData.data as string[]);
+                setDeleteTarget(null);
+                setDeleteBlockedOpen(true);
+            }
         } finally {
             setDeleting(false);
         }
@@ -525,6 +535,14 @@ export default function ProjectDagsPage() {
                     <div className="mt-[10px]">删除后不可恢复。</div>
                 </div>
             </Modal>
+
+            <ReferenceListModal
+                open={deleteBlockedOpen}
+                title="无法删除 DAG"
+                message={`DAG "${deleteTarget?.name ?? ''}" 已被其他 DAG 的子节点引用，请先删除或修改引用它的 DAG 后再删除。`}
+                references={deleteReferences}
+                onClose={() => setDeleteBlockedOpen(false)}
+            />
         </div>
     );
 }

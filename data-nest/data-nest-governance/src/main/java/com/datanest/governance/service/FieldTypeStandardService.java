@@ -11,9 +11,10 @@ import com.datanest.governance.dto.FieldTypeStandardCreateRequest;
 import com.datanest.governance.dto.FieldTypeStandardDTO;
 import com.datanest.governance.dto.FieldTypeStandardQueryRequest;
 import com.datanest.governance.dto.FieldTypeStandardUpdateRequest;
-import com.datanest.governance.entity.FieldTypeStandard;
-import com.datanest.governance.mapper.FieldTypeStandardMapper;
-import com.datanest.governance.mapper.NamingStandardMapper;
+import com.datanest.task.core.entity.FieldTypeStandard;
+import com.datanest.task.core.entity.NamingStandard;
+import com.datanest.task.core.mapper.FieldTypeStandardMapper;
+import com.datanest.task.core.mapper.NamingStandardMapper;
 import com.datanest.task.core.service.SysUserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,10 +82,11 @@ public class FieldTypeStandardService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.FIELD_TYPE_STANDARD_NOT_FOUND);
         }
-        long refCount = namingStandardMapper.selectCount(
-                new QueryWrapper<com.datanest.governance.entity.NamingStandard>().eq("target_standard_id", id));
-        if (refCount > 0) {
-            throw new BusinessException(ErrorCode.HAS_REFERENCES, "字段类型标准被命名规范引用，无法删除");
+        List<NamingStandard> referencing = namingStandardMapper.selectList(
+                new QueryWrapper<NamingStandard>().eq("target_standard_id", id).select("name"));
+        if (!referencing.isEmpty()) {
+            List<String> refNames = referencing.stream().map(NamingStandard::getName).toList();
+            throw new BusinessException(ErrorCode.HAS_REFERENCES, "字段类型标准被命名规范引用，无法删除", refNames);
         }
         fieldTypeStandardMapper.deleteById(id);
     }

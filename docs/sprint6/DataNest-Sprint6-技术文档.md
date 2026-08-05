@@ -443,14 +443,18 @@ result_value ≥ severe_threshold          → SEVERE
 | POST | `/by-tables`       | 批量查多表评分（血缘回填用）       |
 | POST | `/page`            | 评分列表（按库/数据源/健康度筛选） |
 
-### 6.6 标准合规扩展 `ComplianceCheckController`
+### 6.6 标准合规扩展（沿用 `DataStandardController`，前缀 `/data-standards/compliance-check`）
 
-| 方法 | 路径                   | 说明                                      |
-|------|------------------------|-------------------------------------------|
-| POST | `/ignore/{resultId}`   | 忽略某项（ignored=1）                     |
-| POST | `/unignore/{resultId}` | 取消忽略（ignored=0）                     |
-| GET  | `/page`                | 列表（默认排除已忽略，可带 ignored 筛选） |
-| GET  | `/export`              | 导出 CSV（不合规清单）                    |
+> 2026-08-05 同步回落：合规接口**沿用现有 `DataStandardController`**（不新建独立 Controller，用户确认）；`/page`/`/export` 因需携带 `ComplianceCheckRequest` 筛选参数改为 **POST**（原设计 GET）。完整路径经网关 `/api/governance/data-standards/compliance-check/**`。
+
+| 方法 | 路径                          | 说明                                                              |
+|------|-------------------------------|-------------------------------------------------------------------|
+| POST | `/compliance-check`           | 运行合规扫描（检查命名/字段类型规范，返回本次产生的不合规项）     |
+| POST | `/compliance-check/results`   | 结果列表（保留旧接口，返回全量 List）                             |
+| POST | `/compliance-check/page`      | 分页列表（body `ComplianceCheckPageRequest`，默认排除已忽略，可带 `ignored` 筛选） |
+| POST | `/compliance-check/ignore/{resultId}`   | 忽略某项（ignored=1，记录 ignored_by/ignored_at） |
+| POST | `/compliance-check/unignore/{resultId}` | 取消忽略（ignored=0，清空 ignored_by/ignored_at） |
+| POST | `/compliance-check/export`    | 导出 CSV（body `ComplianceCheckRequest`，返回 `text/csv` + Content-Disposition attachment） |
 
 ---
 
@@ -465,7 +469,8 @@ result_value ≥ severe_threshold          → SEVERE
 | 配置质量告警                     | 治理员、超管                 |
 | 查看检查历史/趋势/评分           | 治理员、超管、工程师、分析师 |
 | 血缘节点评分徽章                 | 治理员、超管、工程师、分析师 |
-| 运行合规扫描                     | 治理员、超管                 |
+| 运行合规扫描                     | 治理员、超管（2026-08-05 确认 PRD：工程师不可运行扫描，已收回） |
+| 查看结果 / 分页                  | 治理员、超管、工程师（2026-08-05 放开工程师） |
 | 忽略/取消忽略/导出               | 治理员、超管、工程师         |
 
 > 具体注解权限 key 需对照系统现有角色权限表（`sys_role`/`sys_user_role`），实现时确认（见 §9 Blocker B2）。

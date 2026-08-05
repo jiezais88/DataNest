@@ -7,7 +7,6 @@ import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
 import {
     createQualityTemplate,
     deleteQualityTemplate,
-    listQualityTemplates,
     queryQualityTemplates,
     toggleQualityTemplate,
     updateQualityTemplate,
@@ -58,9 +57,6 @@ export default function QualityTemplatesPage() {
     const [enabled, setEnabled] = useState<number | undefined>(undefined);
     const [loading, setLoading] = useState(false);
 
-    // 统计卡片（模板总数/内置/自定义），用全量列表前端统计
-    const [allTemplates, setAllTemplates] = useState<QualityRuleTemplate[]>([]);
-
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
     const [editItem, setEditItem] = useState<QualityRuleTemplate | null>(null);
@@ -87,22 +83,9 @@ export default function QualityTemplatesPage() {
         }
     }, [page, pageSize, keyword, type, builtin, enabled]);
 
-    const loadStats = useCallback(async () => {
-        try {
-            const res = await listQualityTemplates();
-            setAllTemplates(res.data || []);
-        } catch {
-            setAllTemplates([]);
-        }
-    }, []);
-
     useEffect(() => {
         loadTemplates();
     }, [loadTemplates]);
-
-    useEffect(() => {
-        loadStats();
-    }, [loadStats]);
 
     const resetFilters = () => {
         setKeyword('');
@@ -113,23 +96,12 @@ export default function QualityTemplatesPage() {
         loadTemplates();
     };
 
-    const stats = useMemo(() => {
-        const totalCount = allTemplates.length;
-        const builtinCount = allTemplates.filter((t) => t.builtin === 1).length;
-        return {
-            total: totalCount,
-            builtin: builtinCount,
-            custom: totalCount - builtinCount,
-        };
-    }, [allTemplates]);
-
     const handleSubmit = async (form: QualityRuleTemplateCreateRequest) => {
         const res = editItem
             ? await updateQualityTemplate(editItem.id, form)
             : await createQualityTemplate(form);
         notify.success(editItem ? '模板更新成功' : '模板创建成功');
         loadTemplates();
-        loadStats();
         return res;
     };
 
@@ -138,9 +110,8 @@ export default function QualityTemplatesPage() {
         const res = await toggleQualityTemplate(item.id, nextEnabled);
         notify.success(nextEnabled === 1 ? '已启用' : '已停用');
         loadTemplates();
-        loadStats();
         return res;
-    }, [loadTemplates, loadStats]);
+    }, [loadTemplates]);
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
@@ -149,7 +120,6 @@ export default function QualityTemplatesPage() {
             await deleteQualityTemplate(deleteTarget.id);
             notify.success('删除成功');
             loadTemplates();
-            loadStats();
             setDeleteOpen(false);
             setDeleteTarget(null);
         } finally {
@@ -333,12 +303,6 @@ export default function QualityTemplatesPage() {
         },
     ], [canWrite, handleToggle, openEdit, openView, handleBatchApply]);
 
-    const statCards = [
-        {label: '模板总数', value: stats.total},
-        {label: '内置模板', value: stats.builtin},
-        {label: '自定义模板', value: stats.custom},
-    ];
-
     return (
         <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
@@ -353,17 +317,6 @@ export default function QualityTemplatesPage() {
                         新增自定义模板
                     </DsButton>
                 )}
-            </div>
-
-            {/* 统计卡片 */}
-            <div className="grid grid-cols-3 gap-ds-3 mb-ds-4 flex-shrink-0">
-                {statCards.map((c) => (
-                    <div key={c.label}
-                         className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle px-ds-4 py-ds-3">
-                        <p className="text-ds-nano text-ds-text-muted">{c.label}</p>
-                        <p className="text-ds-title text-ds-text-primary font-bold mt-ds-0.5 tabular-nums">{c.value}</p>
-                    </div>
-                ))}
             </div>
 
             <div

@@ -55,6 +55,7 @@ public class DagService {
     private final AlertRuleService alertRuleService;
     private final DagAlertConfigMapper dagAlertConfigMapper;
     private final DagAlertHistoryMapper dagAlertHistoryMapper;
+    private final LineageRecordMapper lineageRecordMapper;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
@@ -63,7 +64,8 @@ public class DagService {
                       DagVersionService dagVersionService, SysUserService sysUserService,
                       AlertRuleService alertRuleService,
                       DagAlertConfigMapper dagAlertConfigMapper,
-                      DagAlertHistoryMapper dagAlertHistoryMapper) {
+                      DagAlertHistoryMapper dagAlertHistoryMapper,
+                      LineageRecordMapper lineageRecordMapper) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -78,6 +80,7 @@ public class DagService {
         this.alertRuleService = alertRuleService;
         this.dagAlertConfigMapper = dagAlertConfigMapper;
         this.dagAlertHistoryMapper = dagAlertHistoryMapper;
+        this.lineageRecordMapper = lineageRecordMapper;
     }
 
     @Transactional
@@ -212,8 +215,13 @@ public class DagService {
         List<Long> referencing = dagNodeMapper.selectDagIdsReferencingSubDag(buildSubDagRefPattern(id));
         referencing.removeIf(d -> Objects.equals(d, id));
         if (!referencing.isEmpty()) {
+            // 返回引用 DAG 名称列表（结构化 data），前端可具体提示被哪些 DAG 引用
+            List<Dag> referencingDags = dagMapper.selectBatchIds(referencing);
+            List<String> referencingNames = referencingDags.stream()
+                    .map(d -> d.getName() == null ? String.valueOf(d.getId()) : d.getName())
+                    .toList();
             throw new BusinessException(ErrorCode.DAG_REFERENCED,
-                    "该 DAG 被子 DAG 节点引用，无法删除: dagIds=" + referencing);
+                    "该 DAG 被子 DAG 节点引用，无法删除", referencingNames);
         }
         // 先抓取 DS 侧信息，DB 提交后再做 DS 清理（HTTP 调用不能放在 DB 事务里）
         Long dsProjectCode = dag.getDsProjectCode();
@@ -234,6 +242,11 @@ public class DagService {
         }
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
+        // Sprint 6：删除 DAG 时按 dag_id 清理其产生的血缘记录（血缘是"当前加工关系"呈现，DAG 删除后成死边）
+        int lineageDeleted = lineageRecordMapper.delete(new QueryWrapper<LineageRecord>().eq("dag_id", id));
+        if (lineageDeleted > 0) {
+            logger.info("级联删除 DAG 血缘: dagId={}, records={}", id, lineageDeleted);
+        }
         // Sprint 5：删除 DAG 时级联删除关联告警规则（PRD §7）
         alertRuleService.deleteByObject(AlertConstants.OBJECT_TYPE_DAG, id);
         // Sprint 5 P0：级联删除 Sprint 4 DAG 告警配置

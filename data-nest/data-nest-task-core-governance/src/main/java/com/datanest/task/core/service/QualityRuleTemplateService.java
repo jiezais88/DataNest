@@ -11,7 +11,9 @@ import com.datanest.task.core.dto.QualityRuleTemplateCreateRequest;
 import com.datanest.task.core.dto.QualityRuleTemplateDTO;
 import com.datanest.task.core.dto.QualityRuleTemplateQueryRequest;
 import com.datanest.task.core.dto.QualityRuleTemplateUpdateRequest;
+import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
+import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleTemplateMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,11 +43,14 @@ public class QualityRuleTemplateService {
     );
 
     private final QualityRuleTemplateMapper templateMapper;
+    private final QualityRuleMapper qualityRuleMapper;
     private final SysUserService sysUserService;
 
     public QualityRuleTemplateService(QualityRuleTemplateMapper templateMapper,
+                                      QualityRuleMapper qualityRuleMapper,
                                       SysUserService sysUserService) {
         this.templateMapper = templateMapper;
+        this.qualityRuleMapper = qualityRuleMapper;
         this.sysUserService = sysUserService;
     }
 
@@ -152,6 +157,13 @@ public class QualityRuleTemplateService {
         }
         if (entity.getBuiltin() != null && entity.getBuiltin() == 1) {
             throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_BUILTIN_NOT_DELETE, "内置模板不可删除");
+        }
+        // 删除关联校验：模板被质量规则（template_id）引用时阻止删除，避免规则指向已删除模板
+        Long referenced = qualityRuleMapper.selectCount(
+                new QueryWrapper<QualityRule>().eq("template_id", id));
+        if (referenced != null && referenced > 0) {
+            throw new BusinessException(ErrorCode.HAS_REFERENCES,
+                    "规则模板已被质量规则引用，请先删除相关规则");
         }
         templateMapper.deleteById(id);
     }

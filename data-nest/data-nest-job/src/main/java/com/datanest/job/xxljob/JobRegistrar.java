@@ -60,6 +60,10 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("syncJobRetryHandler", "0 10 * * * ?");
         // Sprint 4：DAG 节点超时告警扫描（默认每分钟）
         platformJobs.put("dagNodeTimeoutAlertHandler", dagTimeoutAlertCron);
+        // Sprint 6：标准合规定时扫描（默认每天凌晨 2 点 30 分，扫全部在线数据源）
+        platformJobs.put("standardComplianceCheckHandler", "0 30 2 * * ?");
+        // Sprint 6 补全：质量检查历史清理（默认每天凌晨 4 点 30 分，保留 30 天）
+        platformJobs.put("qualityCheckHistoryCleanupHandler", "0 30 4 * * ?");
         int jobGroup = resolveJobGroup();
         logger.info("Ensuring platform jobs registered in XXL-JOB, jobGroup={}", jobGroup);
 
@@ -111,6 +115,8 @@ public class JobRegistrar implements ApplicationRunner {
             case "stuckExecutionReaperHandler" -> "卡死 RUNNING 执行收割";
             case "syncJobRetryHandler" -> "同步任务失败重试扫描";
             case "dagNodeTimeoutAlertHandler" -> "DAG 节点超时告警扫描";
+            case "standardComplianceCheckHandler" -> "标准合规定时扫描";
+            case "qualityCheckHistoryCleanupHandler" -> "质量检查历史清理";
             default -> executorHandler;
         };
     }

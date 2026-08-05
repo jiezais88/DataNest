@@ -73,7 +73,7 @@ export interface DataSourceReference {
     taskId: string;
     taskName: string;
     status?: string;
-    type: 'COLLECT' | 'SYNC';
+    type: 'COLLECT' | 'SYNC' | 'QUALITY_RULE';
     sourceDatabase?: string;
     targetDatabase?: string;
     targetTable?: string;

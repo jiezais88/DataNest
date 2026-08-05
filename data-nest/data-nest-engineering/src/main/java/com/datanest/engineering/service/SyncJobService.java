@@ -203,12 +203,12 @@ public class SyncJobService {
                         "\"syncJobId\"\\s*:\\s*\\\"?" + id + "\\\"?"));
         if (!referencingDagIds.isEmpty()) {
             List<Dag> referencingDags = dagMapper.selectBatchIds(referencingDagIds);
-            String names = referencingDags.stream()
+            List<String> names = referencingDags.stream()
                     .map(Dag::getName)
                     .filter(n -> n != null && !n.isEmpty())
-                    .collect(Collectors.joining("、"));
+                    .toList();
             throw new BusinessException(ErrorCode.DAG_REFERENCED,
-                    "该同步任务已被 DAG 引用，无法删除。引用 DAG：" + names);
+                    "该同步任务已被 DAG 引用，无法删除", names);
         }
         syncJobLogMapper.delete(new QueryWrapper<SyncJobLog>().eq("sync_job_id", id));
         syncJobHistoryMapper.delete(new QueryWrapper<SyncJobHistory>().eq("sync_job_id", id));

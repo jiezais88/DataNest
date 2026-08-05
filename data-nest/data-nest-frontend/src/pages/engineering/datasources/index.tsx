@@ -593,6 +593,16 @@ export default function DataSourcesPage() {
                         </ul>
                     </div>
                 )}
+                {deleteReferences.filter(r => r.type === 'QUALITY_RULE').length > 0 && (
+                    <div className="mb-ds-4">
+                        <h4 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">质量规则：</h4>
+                        <ul className="list-disc list-inside text-ds-small text-ds-text-secondary space-y-ds-1">
+                            {deleteReferences.filter(r => r.type === 'QUALITY_RULE').map(r => (
+                                <li key={r.taskId}>{r.taskName}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </DsModal>
 
             <TestResultModal

@@ -1,6 +1,16 @@
 # DataNest Agent 工作约定
 
 > 本文件面向 AI Agent，用于跨会话恢复项目上下文。人类开发者也可查阅。
+> **结构说明**：本文件只保留概览、会话约定、构建规则、验证规范、环境速查和精简版已知坑。详细的架构说明、后端/前端编码规范、完整已知坑与 E2E 测试细节分别拆在 `docs/agent/` 下，按需查阅（见 §0 索引）。
+
+## 0. Agent 文档索引
+
+| 文件 | 内容 | 何时查阅 |
+|------|------|----------|
+| `docs/agent/architecture.md` | 模块/容器/包结构/task-core 拆分依赖关系 | 需要理解模块边界、依赖方向、改共享模块时 |
+| `docs/agent/conventions-backend.md` | 后端技术栈、响应协议、异常、实体/Mapper/Flyway、Controller/URL、Nacos | 写后端代码时 |
+| `docs/agent/conventions-frontend.md` | 前端技术栈、目录结构、API/错误/状态/路由/样式规范 | 写前端代码时 |
+| `docs/agent/gotchas.md` | 已知坑完整版 + 已解决坑 + E2E 测试细节 | 排查问题、写/改测试时 |
 
 ## 1. 项目概览
 
@@ -15,39 +25,32 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 核心模块
 
-> **task-core 拆分（2026-08-05 三步重构）**：原 `data-nest-task-core` 按依赖分层拆为 **4 个模块**，**包名 `com.datanest.task.core.*` 全部保持不变**（零 import 改动）。依赖链：`common ← task-core-entity ← alert ← task-core-governance ← task-core`。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**，新模块经 task-core 传递获得，各消费方 pom 无需改动。
+> **task-core 拆分（2026-08-05 三步重构）**：原 `data-nest-task-core` 按依赖分层拆为 **4 个模块**，**包名 `com.datanest.task.core.*` 全部保持不变**（零 import 改动）。依赖链：`common ← task-core-entity ← alert ← task-core-governance ← task-core`。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**，新模块经 task-core 传递获得，各消费方 pom 无需改动。详见 `docs/agent/architecture.md`。
 
-| 模块                          | 说明                                                                  |
-|-------------------------------|-----------------------------------------------------------------------|
-| `data-nest-common`            | 公共组件（SchedulerClient 等），最底层底座                            |
-| `data-nest-task-core-entity`  | 共享实体/mapper/constant/dto 底座：entity(35)/mapper(36)/dto(35)/constant(2) + `SysUserService`（横切通用服务）。被 alert/governance/task-core 及所有消费方共用 |
-| `data-nest-alert`             | 告警域：`AlertFiringService`/`AlertRuleService`/`DagAlertService`/`MailService`/`DagAlertExecutionListener`/`DagExecutionFinishedListener` + 接口 `QualityAutoTriggerPort`（解耦 alert↔governance） |
-| `data-nest-task-core-governance` | 治理编排服务：`QualityRuleService`/`QualityJobService`/`QualityScoreService`/`QualityRuleTemplateService`/`QualityCheckTriggerService`/`QualityAutoTriggerService`/`DataPreviewService`/`DagTopologyService`/`DataSourceRefreshService`/`ConnectionTester`/`RuleSqlGenerator`（后者实现 `QualityAutoTriggerPort`） |
-| `data-nest-task-core`         | 纯执行内核（21 个 service + collect/config/job 包）：`SyncJobExecutorService`/`CollectExecutor`/`GenericSqlExecutor`/`QualityCheckService`/`ScoreCalculator` 等。保留 `MybatisPlusInterceptorAutoConfiguration` |
-| `data-nest-engineering`       | 数据工程服务（同步任务 API、DAG API）                                 |
-| `data-nest-worker`            | Addax 实际执行方（质量检查执行 handler 也在 worker）                  |
-| `data-nest-governance`        | 数据治理服务（元数据采集、元数据管理、数据标准、质量/评分 Controller） |
-| `data-nest-job`               | XXL-JOB executor，平台定时任务                                       |
-| `data-nest-system`            | 认证、用户、权限                                                      |
-| `data-nest-gateway`           | 网关入口                                                              |
+| 模块 | 说明 |
+|------|------|
+| `data-nest-common` | 公共组件（SchedulerClient 等），最底层底座 |
+| `data-nest-task-core-entity` | 共享实体/mapper/constant/dto 底座 + `SysUserService`。被所有消费方共用 |
+| `data-nest-alert` | 告警域（AlertFiringService 等）+ 接口 `QualityAutoTriggerPort`（解耦 alert↔governance） |
+| `data-nest-task-core-governance` | 治理编排服务（QualityRuleService 等） |
+| `data-nest-task-core` | 纯执行内核（SyncJobExecutorService/QualityCheckService 等） |
+| `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API） |
+| `data-nest-worker` | Addax 实际执行方（质量检查执行 handler 也在 worker） |
+| `data-nest-governance` | 数据治理服务（元数据、数据标准、质量/评分 Controller） |
+| `data-nest-job` | XXL-JOB executor，平台定时任务 |
+| `data-nest-system` | 认证、用户、权限 |
+| `data-nest-gateway` | 网关入口 |
 
-> **依赖方向规则**：`alert` 不能依赖 `task-core-governance`（会成环）。告警侧需要调用治理域自动触发时，通过 `alert` 内定义的接口 `QualityAutoTriggerPort`（含常量 `OBJECT_TYPE_DAG_NODE/SYNC_JOB/COLLECT_TASK`），由 `task-core-governance` 的 `QualityAutoTriggerService implements` 实现。
+> **依赖方向规则**：`alert` 不能依赖 `task-core-governance`（会成环）。告警侧调用治理域自动触发时，通过 `alert` 内接口 `QualityAutoTriggerPort`，由 `task-core-governance` 的 `QualityAutoTriggerService implements` 实现。
 
 ### 核心容器
 
-| 容器                  | 说明                                            |
-|-----------------------|-------------------------------------------------|
-| `app-engineering`     | 数据工程服务                                    |
-| `app-worker`          | 同步/采集任务执行                               |
-| `app-governance`      | 数据治理服务                                    |
-| `app-job`             | XXL-JOB executor                                |
-| `app-system`          | 系统服务                                        |
-| `app-gateway`         | 网关                                            |
-| `middleware-mysql`    | MySQL：Nacos、XXL-JOB、DolphinScheduler、业务库 |
-| `middleware-postgres` | PostgreSQL：业务主库                            |
-| `middleware-nacos`    | Nacos 服务                                      |
-| `middleware-xxljob`   | XXL-JOB Admin                                   |
-| `middleware-redis`    | Redis                                           |
+| 容器 | 说明 |
+|------|------|
+| `app-engineering` / `app-worker` / `app-governance` / `app-job` / `app-system` / `app-gateway` | 对应六个后端服务 |
+| `middleware-mysql` | MySQL：Nacos、XXL-JOB、DolphinScheduler、业务库 |
+| `middleware-postgres` | PostgreSQL：业务主库 |
+| `middleware-nacos` / `middleware-xxljob` / `middleware-redis` | Nacos / XXL-JOB Admin / Redis |
 
 ## 2. 会话约定
 
@@ -59,27 +62,24 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 编码前约定
 
-- **先读代码再动手**。修改代码前必须通过 `Read`/`Grep` 读透相关文件和调用链，不要凭记忆或猜测；特别是 `data-nest-task-core`
-  的改动，要确认 engineering、worker 等所有消费方。
+- **先读代码再动手**。修改代码前必须通过 `Read`/`Grep` 读透相关文件和调用链，不要凭记忆或猜测；特别是 `data-nest-task-core` 的改动，要确认 engineering、worker 等所有消费方。
 - **改接口必须同步前端/文档**。修改 DTO、返回结构、URL 路径、字段含义时，必须同步检查前端调用点和接口文档，避免前后端不一致。
 
 ### 文档同步约定
 
-- **全局 `AGENTS.md`**：当项目架构、环境信息、已知坑、构建规则发生变化时更新。判断标准：这个变更如果下个会话不知道，可能会踩坑或做错决策。
+- **全局 `AGENTS.md`**：当项目架构、环境信息、已知坑、构建规则发生变化时更新。判断标准：这个变更如果下个会话不知道，可能会踩坑或做错决策。更新到 `AGENTS.md` 或 `docs/agent/` 下的对应子文档，避免 AGENTS.md 无限膨胀。
 - **Sprint Handoff 文档**：每个子会话结束时更新当前 Sprint 的状态看板、Blocker、变更清单、Next Action。
-- **Sprint 配套文档**：一个 Sprint 通常包含技术文档、产品文档、UI
-  原型。开发过程中如果对需求、接口、字段、页面交互做了微调，必须同步回落到对应文档，保持"代码实现 = 文档描述"。
-- **代码与文档不一致时必须询问**：开发过程中经常出现代码已实现但文档/原型未更新的情况。当 Agent 发现当前实现和已有文档、原型存在偏差时，
-  **必须暂停并询问用户**"这是有意的临时调整，还是需要同步更新文档？"，不要擅自替用户决定。
+- **Sprint 配套文档**：一个 Sprint 通常包含技术文档、产品文档、UI 原型。开发过程中如果对需求、接口、字段、页面交互做了微调，必须同步回落到对应文档，保持"代码实现 = 文档描述"。
+- **代码与文档不一致时必须询问**：当 Agent 发现当前实现和已有文档、原型存在偏差时，**必须暂停并询问用户**"这是有意的临时调整，还是需要同步更新文档？"，不要擅自替用户决定。
 - 不必更新的情况：纯临时调试命令、一次性验证、很快被覆盖的小尝试。
 
 ### 问题排查约定
 
 - 遇到报错或不确定的问题时，优先检查日志、配置、数据库状态、容器健康度。
-- 如果项目内无法快速定位根因， **先加载 `systematic-debugging` 技能，按四阶段法（根因调查 → 模式分析 → 假设验证 →
-  实现修复）排查**，禁止未定位根因就尝试修复。
-- 在根因调查阶段， **应主动使用 WebSearch 搜索相关错误信息、框架版本兼容性、最佳实践**，而不是凭经验猜测。
+- 如果项目内无法快速定位根因，**先加载 `systematic-debugging` 技能，按四阶段法（根因调查 → 模式分析 → 假设验证 → 实现修复）排查**，禁止未定位根因就尝试修复。
+- 在根因调查阶段，**应主动使用 WebSearch** 搜索相关错误信息、框架版本兼容性、最佳实践，而不是凭经验猜测。
 - 搜索后把关键结论（来源 URL + 核心判断）记录到当前会话或 Sprint Handoff 中，避免后续重复搜索。
+- 排查时优先查 `docs/agent/gotchas.md`，确认是否已有已知坑记录。
 
 ## 3. 构建与部署规则
 
@@ -146,101 +146,64 @@ docker compose up -d --no-deps app-engineering app-worker
 
 ## 5. 环境速查
 
-| 资源              | 用途                    | 地址/命令                                                                   | 账号/密码                   |
-|-------------------|-------------------------|-----------------------------------------------------------------------------|-----------------------------|
-| 网关入口          | 所有 API 统一入口       | http://localhost:8080                                                       | -                           |
-| admin 登录        | 获取全局 token          | `POST /api/system/auth/login`                                               | admin / admin123            |
-| PostgreSQL 业务库 | DataNest 业务主库       | `docker exec -it datanest-middleware-postgres psql -U datanest -d datanest` | datanest / datanest123      |
-| MySQL root        | 管理 MySQL 所有库       | `docker exec -it datanest-middleware-mysql mysql -u root -proot123`         | root / root123              |
-| MySQL nacos       | 查 Nacos 配置、业务库   | `docker exec -it datanest-middleware-mysql mysql -u nacos -pnacos123`       | nacos / nacos123            |
-| Nacos 配置库      | 存储所有 shared-configs | `nacos.config_info` 表（在 middleware-mysql）                               | -                           |
-| XXL-JOB Admin     | 调度任务管理            | http://localhost:8088                                                       | admin / 123456              |
-| XXL-JOB DB        | XXL-JOB 任务信息        | `datanest_scheduler.xxl_job_info`                                           | -                           |
-| Doris 内置        | 目标数仓                | `192.168.119.135:9030`                                                      | root / password             |
-| DolphinScheduler  | 工作流调度（当前保留）  | http://localhost:12345                                                      | admin / dolphinscheduler123 |
+| 资源 | 用途 | 地址/命令 | 账号/密码 |
+|------|------|-----------|-----------|
+| 网关入口 | 所有 API 统一入口 | http://localhost:8080 | - |
+| admin 登录 | 获取全局 token | `POST /api/system/auth/login` | admin / admin123 |
+| PostgreSQL 业务库 | DataNest 业务主库 | `docker exec -it datanest-middleware-postgres psql -U datanest -d datanest` | datanest / datanest123 |
+| MySQL root | 管理 MySQL 所有库 | `docker exec -it datanest-middleware-mysql mysql -u root -proot123` | root / root123 |
+| MySQL nacos | 查 Nacos 配置、业务库 | `docker exec -it datanest-middleware-mysql mysql -u nacos -pnacos123` | nacos / nacos123 |
+| Nacos 配置库 | 存储所有 shared-configs | `nacos.config_info` 表（在 middleware-mysql） | - |
+| XXL-JOB Admin | 调度任务管理 | http://localhost:8088 | admin / 123456 |
+| XXL-JOB DB | XXL-JOB 任务信息 | `datanest_scheduler.xxl_job_info` | - |
+| Doris 内置 | 目标数仓 | `192.168.119.135:9030` | root / password |
+| DolphinScheduler | 工作流调度（当前保留） | http://localhost:12345 | admin / dolphinscheduler123 |
 
-## 6. 已知坑
+## 6. 已知坑（精简版）
+
+> 完整版见 `docs/agent/gotchas.md`（含已解决坑与 E2E 测试细节）。此处仅保留当前有效、最易踩的坑。
+
+### 环境 / 构建
 
 - **worker 已补上 caffeine 依赖**；不要回退，否则 `DagExecutionSyncService` 初始化会 `ClassNotFoundException`。
 - **Addax writer 配置路径已对齐**：代码读的是 `datanest.addax.writer.*`，不是 `datanest.doris.writer.*`。
 - **`writer.database` 兜底已删除**：目标库名由同步任务 `target_database` 决定；为空时直接抛异常。
-- **XXL-JOB 任务 ID 可能失效**：如果 admin 侧的任务被手动删除或清理，`sync_job.xxl_job_id`
-  会指向不存在的任务，触发时报"任务ID非法"。处理办法：将 `sync_job.xxl_job_id` 置空，下次执行会自动重新注册。
+- **XXL-JOB 任务 ID 可能失效**：`sync_job.xxl_job_id` 若指向已删除/清理的任务，触发时报"任务ID非法"。处理：置空该字段，下次执行自动重新注册。
 - **Nacos API 可能 401**：直接查 `middleware-mysql` 的 `nacos.config_info` 表更可靠。
 - **Doris 是外部主机**：不在 docker-compose 里，部署/清理时不要以为重启容器会影响 Doris。
-- **worker 启动 unhealthy 不一定是 caffeine**：如果日志报其他 `ClassNotFoundException`，说明还有 `provided` 依赖没在生活方声明。
-- **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和生成的 job json
-  `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
-- **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需要重启对应服务。
-- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 `data-nest-alert` 模块是 **compile** 依赖（告警模块自己发信，经 task-core → alert 传递给所有消费方，消费方 pom **无需**再显式声明 mail 依赖）。但各服务仍需 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则 `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。governance 因注入 `QualityCheckService` → `AlertFiringService` → `MailService` 也必须能拿到 mail 类（已由 alert 模块 compile 依赖传递解决，无需单独配 MAIL 环境变量——governance 不实际发邮件，告警在 worker）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`
-  （空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
-- **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**
-  （`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
-- **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改
-  `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含
-  QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。
-- **ReactFlow 11 受控 edges/nodes 必须配 onEdgesChange/onNodesChange**：直接传 `edges`/`nodes` prop 而不传 change handler
-  时，内部 `setEdges`/`setNodes` 静默不执行，边不渲染（血缘图谱页曾踩此坑，节点正常但边为空且无报错）。改用
-  `useNodesState`/`useEdgesState` 或补 handler。排查"节点正常、边不渲染"先看此。
-- **SimpleEvaluationContext 不含 MapAccessor**：条件分支 SpEL 里 `#upstream.row_count` 属性语法必然抛
-  "Property cannot be found"。需把 `${a.b}` 转成 SpEL 索引语法 `#a['b']`（见 `DagNodeExecuteService.evaluateBranches`）。
-- **条件节点 upstream 是嵌套结构**：`buildConditionContext` 以「前驱节点名」为 key 构造嵌套 map（支持
-  `${upstream['节点名'].row_count}` 按节点精确取值），顶层同时保留最后遍历前驱的 `row_count/status` 兼容旧写法
-  `${upstream.row_count}`。排查"多前驱条件分支取错值"时，先确认表达式用的是按节点名写法。
-- **条件表达式不再暴露 dag_id**：`buildConditionContext` 已 `vars.remove("dag_id")`；但 `DagParameterResolver` 的
-  `dag_id` 仍保留（供 SQL 占位符 `${dag_id}` 使用）。改动条件表达式变量时别动参数解析层的 `dag_id`。
-- **DagExecutionSyncService 匹配 DS 任务实例**：DS 任务名 = `节点名_节点ID后8位`（nodeId 可能含 `_`），不能简单按 nodeName 或
-  strip 末尾 `_` 段匹配；应按相同规则构建「DS 任务名→node」反向映射。SUB_DAG 等依赖 sync 更新状态的节点 匹配失败会落
-  WAITING→SKIPPED。
+- **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和 `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
+- **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需重启对应服务。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
-- **质量规则新增（配置层）不强制模板**：前端 `QualityRuleDrawer` 新增时 `templateId` 恒为空、UI 无模板控件，后端 DTO `isTemplateRequiredValid`
-  原强制非 CUSTOM_SQL 必选模板导致新增完整性/唯一性/值域规则必报 400。已放宽为可选（`template_id` 可空、PRD"可选自模板"）。改动 `QualityRuleService`
-  后须重建 **app-governance**。无模板的非 CUSTOM_SQL 规则 preview-sql 返回 null（前端降级显示"无预览 SQL"，已知项，执行批再处理）。
-- **质量任务自动触发绑定同步任务依赖 engineering 只读权限**：`AutoTriggerSelect` 调 `/engineering/sync-jobs/page` 读取同步任务下拉，该接口原
-  `@SaCheckRole` 仅限 `SUPER_ADMIN`/`DATA_ENGINEER`，治理员（GOVERNANCE_ADMIN）配置质量任务自动触发绑定同步任务时下拉为空。已在
-  `SyncJobController.list` 增加 `GOVERNANCE_ADMIN` 只读访问（改动 engineering 后重建 **app-engineering**）。排查"自动触发绑定同步任务下拉空"先看此。
-- **格式化工具会破坏已应用 Flyway 脚本的 checksum**：曾出现 IDE/格式化工具把迁移 SQL 按语法树拆行（如 `id\n BIGSERIAL\n PRIMARY\n
-  KEY`、`VARCHAR\n(100)`），导致已应用迁移的本地文件内容与数据库 `flyway_schema_history` 记录的 checksum 不一致，`app-system`
-  启动时 Flyway validate 报 `Migration checksum mismatch` 而退出，后续新迁移也无法执行。处理：用 flyway 镜像对 postgres 执行
-  `repair`（`docker run --rm --network datanest-net -v <migration目录>:/flyway/sql:ro flyway/flyway:11.14.1
-  -url="jdbc:postgresql://middleware-postgres:5432/datanest" -user="datanest" -password="datanest123" repair`）固化 checksum。
-  **预防**：所有 Flyway 脚本统一用紧凑单行风格，**不要用格式化工具拆分**（已 2026-08-04 全量重写 + repair 固化）。
-- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在
-  `data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package data-nest-system` 并重建 `app-system` 镜像，
-  否则容器内 jar 仍是旧脚本。
-- **质量执行在 app-worker（Sprint 8 执行层）**：`qualityCheckExecuteHandler` 注册在 `data-nest-worker` 组，`QualityCheckService` 在 worker
-  容器内执行。手动/定时/自动三种触发统一投递到该 handler。改 task-core 的质量执行代码后必须重建 **app-worker**（不只是 governance）。
-- **质量任务定时 = 每任务独立注册 XXL-JOB（不再全局扫描）**：`startSchedule` 按需 `registerJob`（worker 组 + 自身 cron）或 `startJob`，
-  `stopSchedule` 仅 `stopJob`（不注销，保留 `xxl_job_id`），`delete` 注销，`update` 里 cron 变更会 `updateJob` 同步。`quality_job` 有
-  `xxl_job_id` 字段。已废弃 `QualityCheckHandler` 全局扫描（该旧 handler 若残留在 XXL-JOB admin 可手动删）。
-- **质量执行 executorParam 带触发类型**：手动/自动经 `QualityCheckTriggerService` 显式传 `jobId:MANUAL` / `jobId:AUTO_TRIGGER`
-  （带冒号）；**定时触发用注册时保存的纯 `jobId`（无冒号）**，`QualityCheckExecuteHandler` 对无冒号 param 默认按 `SCHEDULED` 处理，
-  有冒号则解析 triggerType。排查"定时触发落库成 MANUAL"先看 handler 的 param 解析。
-- **质量结果值提取坑（RANGE）**：Doris/MySQL 对空表 `SUM(...) AS out_of_range` 返回 **NULL**（非 0），且 JDBC 列名可能大小写变化。
-  `QualityCheckService.computeRangeRatio` 已对列名大小写不敏感匹配，且 `total=0` 或 `out` 为 NULL 时按 0 处理。改动时保持该语义。
-- **质量接口经 gateway 前缀是 `/api/governance/quality/**`**（gateway 只把 `/api/governance/**` 路由到 governance），不是 `/api/quality/**`。
-  直接调 `/api/quality/...` 会得到 gateway 的 `NoResourceFoundException` 404。质量接口实际路径形如 `/api/governance/quality/jobs/page`。
-- **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细）。明细含 `result_value`（结果值）与
-  `result_level`（Sprint 6 分级判定：`PASS`/`WARNING`/`SEVERE`/`UNAVAILABLE`），不评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`
-  （无规则视为 SUCCESS）。
-- **质量分级判定（Sprint 6 分级邮件告警）**：
-  - 阈值判定在 `QualityCheckService.determineLevel`：`value < warning` → PASS；`warning ≤ value < severe` → WARNING；
-    `value ≥ severe`（或无 severe 时 `value ≥ warning`）→ SEVERE；warning/severe 都为空 → PASS（不告警）；SQL 失败 → UNAVAILABLE。
-  - 批次收尾 `fireBatchAlert` 按任务 `alert_level`（`SEVERE_ONLY` 收 SEVERE；`SEVERE_WARNING` 收 SEVERE+WARNING）过滤达到等级的明细，
-    调 `AlertFiringService.fireBatch` 合并为**一条邮件** + **每条异常写一条 `alert_history`**；`quality_check_batch.alert_sent` 置 1 幂等。
-  - **UNAVAILABLE（数据源不可用/SQL 失败）不触发告警**（R2：避免环境抖动误报），只记录 result_level。
-  - 告警复用 `alert_rule` 体系，扩展对象类型 `QUALITY`（对象=质量任务，`object_id=任务ID`），`triggerConditions` 固定 `["FAILURE"]`，
-    接收用户在「告警中心」创建 QUALITY 规则时选择（质量任务表单仅配置 alert_level，无接收用户控件）。
-- **质量执行层 E2E 测试（sprint6/quality-checks.spec.ts）**：用 `e2e_s6_exec_ds`（MYSQL）/`e2e_s6_exec_pg_ds`（POSTGRESQL）
-  两个真实执行数据源（middleware-test-mysql:3306 / middleware-test-postgres:5432），目标表 `e2e_s6_orders`。数据源密码需为
-  AES-256-GCM 可解密密文，helpers/encrypt.ts 复刻后端 EncryptionConfig 逻辑（密钥默认 `DataNestDefaultEncryptionKey2026`）。
-  执行是异步的（经 XXL-JOB 投递 app-worker），断言通过轮询 `quality_check_batch` 至终态；修改 seed/helpers 后不需要重启服务，
-  但若改了 task-core 执行逻辑需重建 **app-worker**。自动触发用 3 种方式覆盖：真实同步任务成功、真实 DAG 节点成功、播种
-  AUTO_TRIGGER 批次记录。
-- **分级邮件告警 E2E（sprint6/quality-alerts.spec.ts，2026-08-05）**：8 用例全绿。**DsModal 弹窗定位用 `getByRole('dialog', {name: title})`**（非 antd `.ant-modal`）。**antd multiple Select 选中后 dropdown 保持打开**，点击弹窗标题（而非 Escape，会同时关闭 DsModal）关闭 dropdown 后再点保存。**告警规则对象需多选覆盖所有链路**（同一对象告警规则才能在多个任务上命中），SPEC 测试中覆盖主链路 + SEVERE_ONLY 两个任务。**MailHog `decodeMimeEncoded` 修复了 RFC 2047 相邻 encoded-word 间空白插入 bug**（sprint5 mailhog.ts 通用修复）：JavaMail 长主题按 ~40 字节拆分，`e2e_s6_alert_main` 被拆成 `e2e_`/`s6_alert_ma`/`in`，未修复时 `find('e2e_s6_alert_main')` 失败。**邮件正文是 quoted-printable**（非 base64），spec 内 `decodeBody` 按 `=XX` 字节还原 + 移除软换行 `=\r\n`。**结果值前端格式化为整数 `4`**（DB 存 `4.000000`），断言 UI 时用 `getByText('4', {exact:true})`。**告警中心历史页首列是「告警时间」**（非对象名称），`rowBy`（按首列匹配）失效，应按对象名称列用 `.filter({hasText: objectName})`；`getByText` 限定在 `historyRow` 内避免命中筛选下拉 `<option>`。**严格模式同名批次**：主链路任务执行两次（主链路 + 幂等）会产 2 行，`rowBy(...).first()` 取最新。
-- **表级质量评分 E2E（sprint6/quality-scores.spec.ts，2026-08-05）**：11 用例全绿。**DB 多档评分**在 `quality_score` 表精确断言（`score` 存 `100.00`/`70.00`/`20.00` 2 位小数，`health_level`=EXCELLENT/WARNING/BAD）。**评分算法**：基础分=100×(PASS 权重/有效启用规则权重)−警告扣(默认10×警告权重)−严重扣(默认30×严重权重)，**SEVERE 强制 BAD**，badThreshold(60) 以下 BAD，UNAVAILABLE 不参与；无有效规则**不落评分行**。**多档场景需不同物理表名**（`uk_metadata_table_unique(datasource_id, database_name, COALESCE(schema_name,''), table_name)`），seed 用 4 张 `e2e_s6_score_*` 表行数控制 COUNT。**执行**：`POST /governance/quality/scores/table/{tableId}/execute` 逐条 MANUAL 投递 worker（异步），测试轮询 `quality_score` 落行且计数达标/`quality_check_detail` 分级到终态，**不依赖 `waitBatch`**（避免被其他单规则批次污染）。**健康度文案**：EXCELLENT=优秀/GOOD=良好/WARNING=一般/BAD=差，「差」筛选 value=`BAD`。**扣分配置弹窗**：`getByRole('dialog', {name:'扣分配置（质量评分全局配置）'})`，改配置后**需重新执行才重算**（评分只在批次收尾重算，不实时重算存量）。**spec 自带播种**（`ensureTestUsers+seedExecTables+seedExecMetadata+seedQualityScores`），支持 `SKIP_SETUP=1` 独立运行，绕开 Sprint5 collect-task 播种。
-- **CollectTaskService.toDTO NPE（2026-08-05 修复）**：`POST /governance/collect-tasks` 报 `9999 系统内部错误`。根因：`toDTO` 用 `usernameMap.get(task.getUpdatedBy())`，`usernameMap` 是 `Map.of()`（`ImmutableCollections.MapN`，**不允许 null key 的 get**）；按审计约定 V3.6.8 create 只设 `created_by` 不设 `updated_by` → `updatedBy=null` → `Map.of().get(null)` 抛 NPE。修复：`toDTO` 加空安全 `lookupName(map, userId)` helper（`userId==null` 返回 null）。改后须重建 **app-governance**。**教训**：审计约定「create 只设 created_by」后，凡对 `Map.of()`/`Map.ofEntries()` 等不可变 map 做 `get(key)` 的地方，key 可能为 null，需空安全处理。
-- **AlertRuleModal 「对象」multiple Select 选中后浮层遮挡下方字段（2026-08-05 修复）**：`/system/alert-center` 新增/编辑告警规则弹窗中，「对象」用 antd `mode="multiple"` Select（同步任务/采集任务/质量任务类型），antd 默认**选中后 dropdown 保持展开**方便连选。当对象选项 ≥ 4 项时，浮层高度约 200px，会**物理遮挡下方「接收用户」select 控件**，导致真人用户和自动化测试都看不到/点不到「接收用户」（测试错误：`ant-select-item-option-content "users" intercepts pointer events`）。修复：`AlertRuleModal` 改为**受控 dropdown open**（`useState objectDropdownOpen`），`onChange` 选中后立即 `setObjectDropdownOpen(false)`，符合表单场景「选完即操作下一项」的预期。**适用**：所有表单内嵌 antd multiple Select 且下方还有其他字段的场景——要么加 `listHeight` + `virtual={false}` 限高，要么受控 open 选中后关闭。改后须 `npm run build` + 重建 **app-frontend**。
+
+### 告警
+
+- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 `data-nest-alert` 模块是 **compile** 依赖，经 task-core → alert 传递给所有消费方（pom 无需再声明）。但各服务仍需 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则 `MailService` 报"未配置 JavaMailSender"（历史表仍记录，邮件实际没发）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`（空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
+- **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**（`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
+- **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改 `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含 QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。
+
+### DAG / 条件节点
+
+- **ReactFlow 11 受控 edges/nodes 必须配 onEdgesChange/onNodesChange**：直接传 prop 而不传 handler 时边不渲染（节点正常、边为空且无报错）。排查"节点正常、边不渲染"先看此。
+- **SimpleEvaluationContext 不含 MapAccessor**：条件分支 SpEL 里 `#upstream.row_count` 属性语法必然抛 "Property cannot be found"。需用索引语法 `#a['b']`（见 `DagNodeExecuteService.evaluateBranches`）。
+- **条件节点 upstream 是嵌套结构**：`buildConditionContext` 以「前驱节点名」为 key 构造嵌套 map（支持 `${upstream['节点名'].row_count}`），顶层同时保留最后遍历前驱的 `row_count/status` 兼容 `${upstream.row_count}`。排查"多前驱条件分支取错值"先确认用的是按节点名写法。
+- **条件表达式不再暴露 dag_id**：`buildConditionContext` 已 `vars.remove("dag_id")`；但 `DagParameterResolver` 的 `dag_id` 仍保留（供 SQL 占位符 `${dag_id}`）。改动条件表达式变量时别动参数解析层的 `dag_id`。
+- **DagExecutionSyncService 匹配 DS 任务实例**：DS 任务名 = `节点名_节点ID后8位`（nodeId 可能含 `_`），应按相同规则构建「DS 任务名→node」反向映射，不能简单按 nodeName 或 strip 末尾 `_` 段匹配。SUB_DAG 等匹配失败会落 WAITING→SKIPPED。
+
+### Flyway / 迁移脚本
+
+- **禁止用格式化工具拆分迁移 SQL**：会破坏已应用脚本 checksum，触发 `Migration checksum mismatch` 使 app-system 退出。所有迁移脚本统一**紧凑单行风格**；确需调整时用 flyway `repair` 固化 checksum 并重启 `app-system`。
+- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在 `data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package data-nest-system` 并重建 `app-system` 镜像，否则容器内 jar 仍是旧脚本。
+- **新增迁移脚本版本号必须大于数据库已有最高版本**：先查 `flyway_schema_history` 最高版本再定新编号（取「最高+1」，如 `V3.7.1`）；否则 Flyway 报 `Detected resolved migration not applied to database` 使 app-system 启动失败。`mvn clean package` 避免 target/classes 残留已删除旧脚本。
+
+### 质量
+
+- **质量执行在 app-worker（Sprint 8 执行层）**：`qualityCheckExecuteHandler` 注册在 `data-nest-worker` 组，`QualityCheckService` 在 worker 容器内执行。手动/定时/自动三种触发统一投递到该 handler。改 task-core 的质量执行代码后必须重建 **app-worker**（不只是 governance）。
+- **质量任务定时 = 每任务独立注册 XXL-JOB（不再全局扫描）**：`startSchedule` 按需 `registerJob`/`startJob`，`stopSchedule` 仅 `stopJob`（保留 `xxl_job_id`），`delete` 注销，`update` 里 cron 变更会 `updateJob` 同步。已废弃 `QualityCheckHandler` 全局扫描（残留可手动删）。
+- **质量执行 executorParam 带触发类型**：手动/自动显式传 `jobId:MANUAL` / `jobId:AUTO_TRIGGER`（带冒号）；**定时触发用注册时保存的纯 `jobId`（无冒号）**，handler 对无冒号 param 默认按 `SCHEDULED`。排查"定时触发落库成 MANUAL"先看 handler 的 param 解析。
+- **质量结果值提取坑（RANGE）**：Doris/MySQL 对空表 `SUM(...)` 返回 **NULL**（非 0），且 JDBC 列名可能大小写变化。`computeRangeRatio` 已对列名大小写不敏感匹配，`total=0` 或 `out` 为 NULL 时按 0 处理。
+- **质量接口经 gateway 前缀是 `/api/governance/quality/**`**，不是 `/api/quality/**`（直接调会 404）。路径形如 `/api/governance/quality/jobs/page`。
+- **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细）。明细含 `result_value` + `result_level`（`PASS/WARNING/SEVERE/UNAVAILABLE`），不评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`（无规则视为 SUCCESS）。
+- **质量分级判定（Sprint 6 分级邮件告警）**：阈值在 `QualityCheckService.determineLevel`（`value < warning`→PASS；`warning ≤ value < severe`→WARNING；`value ≥ severe` 或无 severe 时 `value ≥ warning`→SEVERE；warning/severe 都空→PASS；SQL 失败→UNAVAILABLE）。批次收尾 `fireBatchAlert` 按任务 `alert_level` 过滤，合并为**一条邮件** + 每条异常写一条 `alert_history`；`alert_sent` 置 1 幂等。**UNAVAILABLE 不触发告警**（R2 防误报）。告警复用 `alert_rule`，扩展对象类型 `QUALITY`。
 
 ## 7. 代码与提交约定
 
@@ -248,374 +211,30 @@ docker compose up -d --no-deps app-engineering app-worker
 - 改配置/改接口后，同步检查 yaml、Nacos 配置、注释、测试、前端调用点。
 - 新增依赖时检查作用域：`provided` 依赖需要在消费方显式声明。
 - 保持代码和周围风格一致，注释用中文。
-- **创建审计字段约定（2026-08-05 起生效，V3.6.8）**：所有实体 `create` 入口（含批量 create/DAG 节点）
-  **只设置 `setCreatedBy`/`setCreatedAt`，禁止 `setUpdatedBy`/`setUpdatedAt`**；`updated_at` 列已通过 Flyway
-  `V3.6.8__drop_updated_at_default.sql` 去掉 `DEFAULT CURRENT_TIMESTAMP` 且允许 NULL，因此创建时
-  `updated_by`/`updated_at` 均为 null，仅真正 update/启停/状态变更时才写入。改 `create` 时不要回归加
-  `setUpdatedBy/setUpdatedAt`；新增带审计字段的表时，其 `updated_at` 不要加 DB 默认值（保持一致，否则创建即显示修改时间）。
+- **创建审计字段约定（2026-08-05 起生效，V3.6.8）**：所有实体 `create` 入口（含批量 create/DAG 节点）**只设置 `setCreatedBy`/`setCreatedAt`，禁止 `setUpdatedBy`/`setUpdatedAt`**；`updated_at` 列已通过 Flyway `V3.6.8__drop_updated_at_default.sql` 去掉 `DEFAULT CURRENT_TIMESTAMP` 且允许 NULL，仅真正 update/启停/状态变更时才写入。新增带审计字段的表时，其 `updated_at` 不要加 DB 默认值。
 - 不要主动运行 `git commit` / `git push`，除非用户明确要求。
 
-## 8. 后端开发规范
-
-### 8.1 技术栈与版本
-
-| 层/组件              | 选型/版本                                                | 说明                                                          |
-|----------------------|----------------------------------------------------------|---------------------------------------------------------------|
-| JDK                  | 21                                                       | LTS，使用 Record、Pattern 等新特性                            |
-| Spring Boot          | 4.0.7                                                    | 配套 Spring Framework 7                                       |
-| Spring Cloud         | 2025.1.2                                                 | Gateway + Nacos 服务发现                                      |
-| Spring Cloud Alibaba | 2025.1.0.0                                               | Nacos Config / Discovery                                      |
-| ORM                  | MyBatis-Plus 3.5.17                                      | PostgreSQL 分页插件已配置                                     |
-| 安全/登录            | Sa-Token 1.45.0                                          | Redis 集中式 Token                                            |
-| JSON                 | Fastjson2 2.0.52（业务序列化）+ Jackson 3（Spring 默认） | Sprint 3 起 Fastjson2 替代 Jackson ObjectMapper               |
-| 数据库迁移           | Flyway 10.22.0                                           | 脚本统一在 `data-nest-system/src/main/resources/db/migration` |
-| 密码加密             | Spring Security `PasswordEncoder`（BCrypt）              | `data-nest-system` 已配置                                     |
-
-### 8.2 模块与包结构
-
-每个业务模块（`engineering`/`governance`/`system`/`job`）统一按以下结构组织：
-
-```
-com.datanest.<模块>
-├── <模块>Application.java        # @SpringBootApplication + @MapperScan
-├── config/                      # MybatisPlusConfig 等模块级配置
-├── controller/                  # REST API 入口
-├── dto/                         # Request / Response / Query DTO
-├── service/                     # 业务逻辑
-├── entity/                      # MyBatis-Plus 实体（共享实体放在 task-core-entity）
-└── mapper/                      # Mapper 接口（共享 Mapper 放在 task-core-entity）
-```
-
-实际代码中包结构保持 **扁平按层划分**：`controller`/`service`/`dto`/`config` 直接挂在 `com.datanest.<模块>` 下， 不要引入
-`dag/`、`dev/`、`sync/` 等子包，否则会影响 MyBatis Mapper 扫描和依赖方引用。 共享的 `entity`、`mapper`、`dto`、`constant`
-集中在 `data-nest-task-core-entity` 的同名包中（`com.datanest.task.core.*`，包名未随模块拆分改变）；共享 `service` 按域分散在
-`data-nest-alert`（告警域）、`data-nest-task-core-governance`（治理编排域）、`data-nest-task-core`（执行内核域）的
-`com.datanest.task.core.service` 中。
-
-`data-nest-common` 只放跨服务共享内容：
-
-```
-com.datanest.common
-├── config/GlobalExceptionHandler.java   # 统一异常处理
-├── dto/                                 # 少量公共 DTO
-├── exception/                           # BusinessException、ErrorCode
-├── jackson/JacksonConfig.java           # Long 转 String 序列化
-├── model/                               # Result、PageResult、LoginRequest
-├── satoken/                             # Sa-Token 公共自动配置
-└── util/                                # 公共工具类
-```
-
-### 8.3 统一响应协议
-
-所有 Controller 返回统一信封 `com.datanest.common.model.Result<T>`：
-
-```java
-public record Result<T>(int code, String message, T data) {
-    public static <T> Result<T> ok(T data) { ...}
-
-    public static <T> Result<T> fail(int code, String message) { ...}
-}
-```
-
-分页返回 `PageResult<T>`：
-
-```java
-public record PageResult<T>(List<T> records, long total, long page, long pageSize) {
-}
-```
-
-约定：
-
-- `code == 200` 表示业务成功；其余为业务错误。
-- Controller 直接 `return Result.ok(service.xxx(...))`，不要在 Controller 里 catch 业务异常。
-- 无返回值时返回 `Result.ok(null)` 或 `Result.<Void>ok(null)`。
-
-### 8.4 异常与错误码
-
-统一使用 `BusinessException(ErrorCode, [detail], [data])`：
-
-```java
-throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: "+id);
-```
-
-`ErrorCode` 按模块分区，新增错误码必须落在对应区间：
-
-| 区间 | 模块                   |
-|------|------------------------|
-| 1xxx | 认证/登录              |
-| 2xxx | 用户管理               |
-| 3xxx | 数据源                 |
-| 4xxx | 数据治理（采集任务等） |
-| 5xxx | 数据标准               |
-| 6xxx | 批量同步               |
-| 7xxx | DAG / 数据开发         |
-| 9xxx | 系统内部错误           |
-
-全局异常处理 `GlobalExceptionHandler` 已覆盖：
-
-- `BusinessException` → 返回对应 code/message/data。
-- `NotLoginException` → 401。
-- `NotRoleException` / `NotPermissionException` → 403。
-- `MethodArgumentNotValidException` / `BindException` / `ConstraintViolationException` → 400，取第一条校验错误。
-- `Exception` → 500，日志打印堆栈。
-
-### 8.5 参数校验
-
-Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size`、`@Pattern`、`@Min`、`@Max`、`@AssertTrue`。
-
-Controller 方法签名：
-
-```java
-
-@PostMapping
-public Result<SyncJobDTO> create(@Valid @RequestBody SyncJobCreateRequest request) { ...}
-```
-
-复杂跨字段校验（如 "Cron 触发必须填 Cron 表达式"）用 `@AssertTrue` 方法，不要散落在 Service 里。
-
-### 8.6 实体与数据库
-
-- 主键统一用 `Long`，MyBatis-Plus `@TableId(type = IdType.ASSIGN_ID)` 生成 Snowflake ID。
-- 所有 `Long` / `long` 类型通过 `JacksonConfig` 序列化为 **字符串**，防止前端 JS 精度丢失。
-- 实体字段驼峰命名，自动映射数据库 `snake_case`。
-- 时间字段统一用 `java.time.LocalDateTime`。
-- 布尔字段在实体中用 `Boolean`，数据库中用 `SMALLINT` 或 `BOOLEAN` 按 Flyway 脚本约定。
-- 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层用 Fastjson2 解析/组装。
-
-#### Flyway 脚本格式约定（重要）
-
-- 迁移脚本统一在 `data-nest-system/src/main/resources/db/migration`，命名 `V<版本>__<描述>.sql`。
-- **所有迁移脚本统一用紧凑单行 SQL 风格**（如 `id BIGSERIAL PRIMARY KEY,`、`VARCHAR(100) NOT NULL`、
-  `COMMENT ON COLUMN x IS '...'` 单行）。
-- **禁止用 IDE/格式化工具拆分迁移 SQL**：格式化工具会破坏已应用脚本的 checksum，触发 Flyway validate 失败（见 §6 已知坑）。
-- 新增脚本参考 `V3.6.1__sprint6_quality_job_rule.sql`（紧凑、带文件头注释、带 COMMENT）。
-- 已应用脚本**不要随意改动**；确需调整格式/语义时，必须用 flyway `repair` 固化 checksum 并重启 `app-system` 验证。
-
-### 8.7 Mapper 与 SQL
-
-- Mapper 继承 `BaseMapper<T>`，简单 CRUD 不写 SQL。
-- 简单自定义 SQL 优先用注解（`@Select`、`@Insert`、`@Delete`），复杂 SQL 用 `resources/mapper/*.xml`。
-- 动态 SQL 用 MyBatis `<script>`，注意 PostgreSQL 关键字转义。
-- 分页统一用 MyBatis-Plus `Page<T>` + `IPage<T>`，已在 `MybatisPlusConfig` 配置 PostgreSQL 方言。
-
-### 8.8 Service 层约定
-
-- 使用构造器注入（Lombok  `@RequiredArgsConstructor` 也可用，但项目当前以显式构造器为主）。
-- 写操作加 `@Transactional`；涉及 XXL-JOB 注册/更新/注销等外部调用，用
-  `TransactionSynchronizationManager.registerSynchronization` 在 `afterCommit` 执行。
-- 查询结果需要脱敏或补充创建人/更新人名称时，批量查询后一次性回填，避免 N+1。
-- DTO 与 Entity 转换写私有 `toDTO` / `toEntity` 方法，不要直接返回 Entity。
-
-### 8.9 Controller 与 URL 规范
-
-- Controller 加 `@RestController`，类级 `@RequestMapping("/<资源>")`。
-- 路径使用 RESTful 风格，动作通过 HTTP 方法 + 路径表达：
-
-```
-GET    /datasources/{id}              # 详情
-POST   /datasources                   # 创建
-PUT    /datasources/{id}              # 更新
-DELETE /datasources/{id}              # 删除
-POST   /datasources/page              # 分页列表
-POST   /datasources/{id}/test         # 动作类接口
-```
-
-- 权限注解 `@SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)`，角色代码与前端
-  `src/constants/roles.ts` 保持一致；左侧菜单显隐以 `src/components/Sidebar.tsx` 为准。
-- 网关路由：`/api/system/**` → `data-nest-system`，`/api/engineering/**` → `data-nest-engineering`，`/api/governance/**` →
-  `data-nest-governance`。
-- 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`，Controller 路径不要重复写前缀。
-- **列表接口**：当前代码实现多为 `POST /{resource}/page`（如 `/api/engineering/datasources/page`、
-  `/api/engineering/sync-jobs/page`），请求体带 keyword + 筛选 + 分页；新增/详情/删除仍用 RESTful 方法表达。
-- 工程侧 Controller 前缀：数据源/同步任务为 `/engineering/*`，DAG/项目管理为 `/dev/*`，执行历史为 `/dag-executions`； 网关已配置
-  StripPrefix，前端统一以 `/api/engineering/...` 调用。
-
-### 8.10 配置与 Nacos
-
-- `application.yml` 只保留端口、`spring.application.name`、`context-path`、`spring.config.import` 和模块级简单配置。
-- 数据库、Redis、Doris、XXL-JOB、Addax、安全等配置走 Nacos `shared-configs`。
-- 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
-- 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。
-
-### 8.11 task-core 共享模块（2026-08-05 三步拆分重构）
-
-原 `data-nest-task-core` 拆为 4 个模块，**包名 `com.datanest.task.core.*` 全部不变**（import 零改动）。依赖链（自底向上）：
-
-```
-data-nest-common
-  └─ data-nest-task-core-entity     # entity/mapper/constant/dto 底座 + SysUserService
-       └─ data-nest-alert           # 告警服务 + 接口 QualityAutoTriggerPort
-            └─ data-nest-task-core-governance   # 治理编排服务（实现 QualityAutoTriggerPort）
-                 └─ data-nest-task-core         # 纯执行内核 + MybatisPlusInterceptorAutoConfiguration
-```
-
-- **消费方**（engineering/governance/worker/job/system）只显式依赖 `data-nest-task-core`，新模块经依赖传递获得。
-- **只要改到任一拆分模块，必须同时重新编译并部署相关消费方**（quality 执行改在 worker、告警发信在 worker/job/governance、接口在 governance），至少 engineering + worker。
-- 各模块 `service` 在 `com.datanest.task.core.service` 下按域分布：alert=告警域、task-core-governance=治理编排域、task-core=执行内核域。`entity/mapper` 都在 `task-core-entity`。
-- `entity`、`mapper` 会被多个服务共同扫描，注意 Bean 冲突和事务边界（同前）。
-- **防环**：`alert` 与 `task-core-governance` 之间用接口 `QualityAutoTriggerPort` 解耦，禁止 alert 反向依赖 governance 服务类。
-
-## 9. 前端开发规范
-
-### 9.1 技术栈与版本
-
-| 层/组件   | 选型/版本               | 说明                            |
-|-----------|-------------------------|---------------------------------|
-| 框架      | React 18.3              | 函数组件 + Hooks                |
-| 语言      | TypeScript ~5.6         | `strict: true`                  |
-| 构建工具  | Vite 5.4                | 开发服务器端口 3000             |
-| UI 组件库 | Ant Design 6            | 主题/样式通过 `tokens.css` 覆盖 |
-| 样式      | Tailwind CSS 3.4        | 自定义 `ds-*` 设计 token        |
-| 路由      | React Router 6          | `createBrowserRouter`           |
-| 状态管理  | Zustand 5               | 当前仅 `useAuthStore`           |
-| HTTP      | Axios 1.18              | 统一封装在 `src/api/request.ts` |
-| 图标      | react-icons (Heroicons) | 统一用 `HiOutline*` 系列        |
-| 代码规范  | ESLint 9 flat config    | `eslint.config.js`              |
-
-### 9.2 目录结构
-
-```
-src
-├── api/               # 按模块封装的 API（auth.ts、sync.ts、engineering.ts...）
-│   └── request.ts     # axios 统一实例 + 拦截器
-├── components/        # 全局通用组件（DsButton、DsModal、Pagination...）
-├── constants/         # 常量：roles.ts、datasource.ts、table.ts、statusColors.ts...
-├── hooks/             # 通用 Hooks：usePagedList、useHasRole、useCanEdit、usePollingWhile
-├── lib/               # 第三方封装或工具库
-├── pages/             # 页面组件，按模块分 engineering/governance/system/home/login
-├── router/            # 路由配置 + 路由组件（ProtectedRoute、LazyDagEditor）
-├── store/             # Zustand store
-├── styles/            # tokens.css（颜色唯一来源）
-├── types/             # TypeScript 类型：common.ts、sync.ts、datasource.ts...
-└── utils/             # 工具函数：notify.ts、error.ts、format.ts、cn.ts...
-```
-
-### 9.3 API 请求规范
-
-统一使用 `src/api/request.ts` 导出的 `request`：
-
-```ts
-import request from './request';
-
-export function getSyncJob(id: string) {
-    return request.get<Result<SyncJob>>(`/engineering/sync-jobs/${id}`);
-}
-```
-
-约定：
-
-- `baseURL = '/api'`，gateway 自动路由到对应服务。
-- 响应拦截器校验 `code !== 200` 时统一弹错误提示并 `reject`； **不拆信封**，返回的是 `{code, message, data}` 本身。
-- API 层通过 `.then(r => r.data)` 拆信封，与 `request.get<Result<T>>` / `request.post<Result<T>>` 的泛型配合。
-- 需要自行处理错误时传 `{skipErrorMessage: true}`（如 SQL 预览行内展示错误、DAG 运行日志轮询）。
-- 19 位 Snowflake ID 全程用 `string` 类型， **不要** `Number(id)`，避免精度丢失。
-
-### 9.4 错误处理
-
-- 普通接口错误由 `request.ts` 统一弹出 `notify.error`，页面无需重复提示。
-- 需要取错误文案时用 `getErrorMessage(e)`：
-
-```ts
-import {getErrorMessage} from '../utils/error';
-
-catch
-(err)
-{
-    notify.error(getErrorMessage(err));
-}
-```
-
-- 401 时拦截器自动清除 token 并跳 `/login`。
-
-### 9.5 状态管理
-
-- 全局状态统一用 Zustand，当前只有 `useAuthStore`。
-- 列表页状态不走全局 store，页面内用 `useState` + `usePagedList`。
-- token / userInfo 持久化到 `localStorage`，key 名统一在 store 中定义。
-
-### 9.6 路由与权限
-
-- 路由定义在 `src/router/index.tsx`，使用 `createBrowserRouter`。
-- 需要登录的页面用 `<ProtectedRoute>` 包裹。
-- 角色判断用 `useHasRole(...roles)` 或 `useCanEdit()`，角色代码从 `src/constants/roles.ts` 引入，不要硬编码字符串。
-- **菜单权限唯一出处**：`src/components/Sidebar.tsx` 中的 `allMenus` + `src/constants/roles.ts` 中的角色数组；
-  PRD/原型中的权限矩阵必须与此二者保持一致。
-
-### 9.7 UI 与样式规范
-
-- **颜色唯一来源**：`src/styles/tokens.css` `:root` 变量。新增颜色先加变量，再在 `tailwind.config.js` 桥接，不要写死 hex。
-- Tailwind 使用项目自定义 token：`ds-bg-root`、`ds-text-primary`、`ds-accent`、`ds-danger` 等。
-- 字体、字号、间距、圆角、阴影、z-index 等均使用 `ds-*` token。
-- antd Table 统一用 `className="prototype-table prototype-table-flush"` + `pagination={false}`，分页用手写
-  `components/Pagination`。
-- 弹窗统一用 `components/DsModal`，按钮用 `components/DsButton`，状态徽章用 `components/DsStatusBadge`。
-- 表格列宽参考 `src/constants/table.ts` 中的 `COL`，同类列在不同页面保持相近宽度。
-- **源码全部为 `.tsx`**，不要新增 `.jsx`；图标统一使用 `react-icons`（以 `HiOutline*` 系列为主）。
-
-### 9.8 列表页与分页
-
-统一使用 `src/hooks/usePagedList.ts`：
-
-```ts
-const {list, total, page, pageSize, loading, setPage, setPageSize, applyQuery, reload} =
-    usePagedList<DataSourceQuery, DataSource>({
-        fetcher: async ({keyword, page, pageSize}) => {
-            const result = await getDataSources({keyword, page, pageSize});
-            return {list: result.data.records, total: result.data.total};
-        },
-        initialQuery: INITIAL_QUERY,
-        defaultPageSize: 10,
-    });
-```
-
-- 查询按钮调用 `applyQuery(draftQuery)`。
-- 重置按钮调用 `applyQuery(INITIAL_QUERY)`。
-- 增删改成功后调用 `reload()`。
-
-### 9.9 消息提示
-
-统一使用 `src/utils/notify.ts`：
-
-```ts
-import {notify} from '../utils/notify';
-
-notify.success('操作成功');
-notify.error('操作失败');
-```
-
-不要直接 `import {message} from 'antd'`，避免静态 message 无法消费动态主题上下文。
-
-### 9.10 类型定义
-
-- 后端协议类型统一放在 `src/types/common.ts`：`Result<T>`、`PageResult<T>`、`PagedQuery`。
-- 各业务类型按模块分文件：`sync.ts`、`datasource.ts`、`metadata.ts` 等。
-- API 函数签名使用泛型：`request.get<Result<SyncJob>>(...)`。
-
-### 9.11 构建与部署
-
-- 本地开发：`pnpm dev` / `npm run dev`（Vite dev server 端口 3000，代理 `/api` 到 `http://localhost:8080`）。
-- 类型检查：`pnpm typecheck` / `npm run typecheck`。
-- 构建：`pnpm build` / `npm run build`（会执行 `tsc -b && vite build`）。
-- 生产部署：Docker 镜像基于 `nginx:alpine`，`dist/` 产物挂载到 `/usr/share/nginx/html/`。
-- 生产构建会 `drop_console` 和 `drop_debugger`。
-
-## 10. 前后端联调约定
+## 8. 编码规范索引
+
+- **后端规范**：见 `docs/agent/conventions-backend.md`（技术栈、响应协议/错误码、实体/Mapper/Flyway、Service/Controller/URL、Nacos）。
+- **前端规范**：见 `docs/agent/conventions-frontend.md`（技术栈、目录结构、API/错误/状态/路由/样式/分页/通知）。
+- 硬约束速记：
+  - 后端统一返回 `Result<T>` / `PageResult<T>`，业务错误用 `BusinessException(ErrorCode)`。
+  - `Long` 主键序列化为字符串；实体用 `LocalDateTime`；JSONB 字段实体用 `String` + Fastjson2。
+  - Flyway 脚本统一紧凑单行风格（见 §6）。
+  - 前端颜色唯一来源 `src/styles/tokens.css`；源码全部 `.tsx`；ID 全程 `string`；列表页用 `usePagedList`。
+  - 接口联调先 Postman/curl 自测通过再联调前端。
+
+## 9. 前后端联调约定
 
 - 所有请求统一走 Gateway：`http://localhost:8080/api/<服务>/<路径>`。
 - 后端 `Long` 类型主键会序列化为字符串，前端类型声明用 `string`，URL 拼接不要转 Number。
-- **列表/分页接口**：优先用 `POST /.../page`（如 `/api/engineering/sync-jobs/page`），不要用 `GET` 列表； DAG 执行历史等场景用
-  `GET` + query params（如 `/api/engineering/dag-executions`）。
+- **列表/分页接口**：优先用 `POST /.../page`（如 `/api/engineering/sync-jobs/page`），不要用 `GET` 列表；DAG 执行历史等场景用 `GET` + query params（如 `/api/engineering/dag-executions`）。
 - **命名统一**：批量数据同步任务在代码/路由/API/表中均为 `sync-jobs`（不是 `sync-tasks`），DAG 菜单在代码中为「项目管理」。
-- 修改 DTO、返回结构、URL 路径、字段含义时，必须同步检查：
-    1. 后端 Controller / Service / DTO
-    2. 前端 `src/api/*` 调用点
-    3. 前端 `src/types/*` 类型
-    4. 相关页面组件
-    5. 接口文档 / Sprint 文档
-- 新增接口先在 Postman/curl 自测通过再联调前端。
+- 修改 DTO、返回结构、URL 路径、字段含义时，必须同步检查：后端 Controller/Service/DTO、前端 `src/api/*`、前端 `src/types/*`、相关页面组件、接口文档/Sprint 文档。
 - 分页字段：`page` 从 1 开始，`pageSize` 默认 10。
 
-## 11. 安全与敏感信息
+## 10. 安全与敏感信息
 
 - 密码、token、密钥等敏感信息 **禁止硬编码**到代码或配置文件中；应走 Nacos 配置或环境变量注入。
 - 日志中禁止打印密码、完整 token、数据库连接串密码部分；打印 DTO 时先脱敏敏感字段。

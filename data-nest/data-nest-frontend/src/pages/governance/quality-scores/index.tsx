@@ -23,12 +23,14 @@ import {
     updateQualityScoreConfig,
 } from '../../../api/quality';
 import DsButton from '../../../components/DsButton';
+import DsIconButton from '../../../components/DsIconButton';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import DsModal from '../../../components/DsModal';
 import DsStatusBadge from '../../../components/DsStatusBadge';
+import DsToolbar from '../../../components/DsToolbar';
+import SearchInput from '../../../components/SearchInput';
 import type {DsStatusVariant} from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
-import DsToolbar from '../../../components/DsToolbar';
 import Pagination from '../../../components/Pagination';
 import QualityScoreBadge from '../../../components/QualityScoreBadge';
 import type {DataSource} from '../../../types/datasource';
@@ -283,7 +285,7 @@ export default function QualityScoresPage() {
             dataIndex: 'score',
             width: COL.COUNT_NORMAL,
             render: (v?: number | string, r?: QualityScore) => (
-                <QualityScoreBadge score={v} healthLevel={r?.healthLevel}/>
+                <QualityScoreBadge table score={v} healthLevel={r?.healthLevel}/>
             ),
         },
         {
@@ -335,9 +337,11 @@ export default function QualityScoresPage() {
             width: COL.OPERATION_2,
             render: (_, r) => (
                 <div className="flex items-center gap-ds-1">
-                    <DsButton variant="ghost" className="px-ds-2 py-0.5 text-ds-small" onClick={() => openDetail(r)}>
-                        查看详情
-                    </DsButton>
+                    <Tooltip title="查看详情">
+                        <DsIconButton tone="accent" onClick={() => openDetail(r)} aria-label="查看详情">
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                 </div>
             ),
         },
@@ -345,73 +349,80 @@ export default function QualityScoresPage() {
 
     // ============ 渲染 ============
     return (
-        <div className="p-ds-6">
-            <DsToolbar
-                extra={
-                    <>
-                        <DsButton variant="secondary" onClick={() => setAlgoOpen(true)}>
-                            <HiOutlineCalculator size={16}/>
-                            评分算法说明
+        <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
+                <div>
+                    <h1 className="text-ds-display text-ds-text-primary">表级质量评分</h1>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">综合各表启用质量规则的最近检查结果加权评分，联动血缘图谱展示</p>
+                </div>
+                <div className="flex items-center gap-ds-2 flex-shrink-0">
+                    <DsButton onClick={() => setAlgoOpen(true)}>
+                        <HiOutlineCalculator size={16}/>
+                        评分算法说明
+                    </DsButton>
+                    {canWrite && (
+                        <DsButton onClick={openConfig}>
+                            <HiOutlineAdjustmentsHorizontal size={16}/>
+                            扣分配置
                         </DsButton>
-                        {canWrite && (
-                            <DsButton variant="secondary" onClick={openConfig}>
-                                <HiOutlineAdjustmentsHorizontal size={16}/>
-                                扣分配置
-                            </DsButton>
-                        )}
-                    </>
-                }
-            >
-                <h1 className="text-ds-heading font-bold text-ds-text-primary whitespace-nowrap">表级质量评分</h1>
-            </DsToolbar>
-
-            <div className="flex items-center gap-ds-2 flex-wrap mt-ds-4">
-                <DsFilterSelect
-                    value={datasourceId}
-                    onChange={setDatasourceId}
-                    aria-label="按数据源筛选"
-                    options={datasourceOptions}
-                />
-                <DsFilterSelect
-                    value={healthLevel}
-                    onChange={(v) => setHealthLevel(v as QualityHealthLevel | '')}
-                    aria-label="按健康度筛选"
-                    options={QUALITY_HEALTH_OPTIONS}
-                />
-                <input
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    placeholder="搜索表名（库名.表名）"
-                    aria-label="搜索表名"
-                    className="w-[220px] px-ds-3 py-[9px] bg-white border border-ds-border-subtle rounded-ds-sm text-sm text-ds-text-primary placeholder:text-ds-text-muted focus:outline-none focus:border-ds-accent"
-                />
-                <DsButton variant="primary" onClick={handleSearch}>查询</DsButton>
-                <DsButton variant="secondary" onClick={resetFilters}>重置</DsButton>
+                    )}
+                </div>
             </div>
 
-            <div className="mt-ds-4 bg-ds-bg-surface rounded-ds-md border border-ds-border-subtle">
-                <Table
-                    rowKey={(r) => r.tableId ?? r.id ?? ''}
-                    columns={columns}
-                    dataSource={items}
-                    loading={loading}
-                    pagination={false}
-                    locale={{emptyText: <DsTableEmpty description="暂无评分数据"/>}}
-                    size="middle"
-                />
-                {total > 0 && (
-                    <div className="flex justify-end px-ds-4 py-ds-3 border-t border-ds-border-subtle">
-                        <Pagination
-                            page={page}
-                            pageSize={pageSize}
-                            total={total}
-                            onChange={(p, s) => {
-                                setPage(p);
-                                setPageSize(s);
-                            }}
+            <div className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
+                <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
+                    <DsToolbar
+                        extra={(
+                            <>
+                                <DsButton onClick={handleSearch} disabled={loading}>
+                                    {loading ? '查询中...' : '查询'}
+                                </DsButton>
+                                <DsButton variant="secondary" onClick={resetFilters}>重置</DsButton>
+                            </>
+                        )}
+                    >
+                        <SearchInput
+                            value={keywordInput}
+                            onChange={(e) => setKeywordInput(e.target.value)}
+                            onEnter={handleSearch}
+                            placeholder="搜索表名（库名.表名）"
+                            aria-label="搜索表名"
                         />
-                    </div>
+                        <DsFilterSelect
+                            value={datasourceId}
+                            onChange={setDatasourceId}
+                            aria-label="按数据源筛选"
+                            options={datasourceOptions}
+                        />
+                        <DsFilterSelect
+                            value={healthLevel}
+                            onChange={(v) => setHealthLevel(v as QualityHealthLevel | '')}
+                            aria-label="按健康度筛选"
+                            options={QUALITY_HEALTH_OPTIONS}
+                        />
+                    </DsToolbar>
+                </div>
+                <div className="overflow-x-auto">
+                    <Table
+                        rowKey={(r) => r.tableId ?? r.id ?? ''}
+                        columns={columns}
+                        dataSource={items}
+                        loading={loading}
+                        pagination={false}
+                        className="prototype-table prototype-table-flush"
+                        locale={{emptyText: <DsTableEmpty description="暂无评分数据"/>}}
+                    />
+                </div>
+                {total > 0 && (
+                    <Pagination
+                        page={page}
+                        pageSize={pageSize}
+                        total={total}
+                        onChange={(p, s) => {
+                            setPage(p);
+                            setPageSize(s);
+                        }}
+                    />
                 )}
             </div>
 
@@ -546,89 +557,91 @@ export default function QualityScoresPage() {
                                     该表暂无启用规则，或尚未执行检查
                                 </div>
                             ) : (
-                                <Table
-                                    rowKey={(r) => r?.ruleId ?? ''}
-                                    columns={[
-                                        {
-                                            title: '规则名称',
-                                            dataIndex: 'ruleName',
-                                            ellipsis: true,
-                                            width: COL.NAME_COMPACT,
-                                            render: (v?: string, r?: QualityTableRuleResult) => (
-                                                <div>
-                                                    <div className="text-ds-small text-ds-text-primary font-medium">{v || '—'}</div>
-                                                    {r?.jobName && (
-                                                        <div className="text-ds-tiny text-ds-text-muted truncate">{r.jobName}</div>
-                                                    )}
-                                                </div>
-                                            ),
-                                        },
-                                        {
-                                            title: '类型',
-                                            dataIndex: 'ruleType',
-                                            width: COL.STATUS,
-                                            render: (v?: string) => (
-                                                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
-                                                    {v ? (QUALITY_TYPE_LABEL[v as keyof typeof QUALITY_TYPE_LABEL] || v) : '—'}
-                                                </span>
-                                            ),
-                                        },
-                                        {
-                                            title: '检查字段',
-                                            dataIndex: 'columnName',
-                                            width: COL.NAME_COMPACT,
-                                            ellipsis: true,
-                                            render: (v?: string) => (
-                                                <span className="text-ds-small text-ds-text-secondary" title={v}>{v || '—'}</span>
-                                            ),
-                                        },
-                                        {
-                                            title: '权重',
-                                            dataIndex: 'weight',
-                                            width: COL.COUNT,
-                                            align: 'right',
-                                            render: (v?: number) => <span className="text-ds-small">{v ?? '—'}</span>,
-                                        },
-                                        {
-                                            title: '最近结果',
-                                            dataIndex: 'resultValue',
-                                            width: COL.COUNT_NORMAL,
-                                            align: 'right',
-                                            render: (v?: number | string) => (
-                                                <span className="text-ds-small text-ds-text-primary">{v ?? '—'}</span>
-                                            ),
-                                        },
-                                        {
-                                            title: '判定',
-                                            dataIndex: 'resultLevel',
-                                            width: COL.STATUS,
-                                            render: (v?: QualityCheckLevel, r?: QualityTableRuleResult) => (
-                                                v ? (
-                                                    <DsStatusBadge variant={LEVEL_VARIANT[v]} label={QUALITY_CHECK_LEVEL_LABEL[v]}/>
-                                                ) : (
-                                                    <span className="text-ds-small text-ds-text-muted">
-                                                        {r?.success === 0 ? '失败' : '未检查'}
+                                <div className="overflow-x-auto">
+                                    <Table
+                                        rowKey={(r) => r?.ruleId ?? ''}
+                                        columns={[
+                                            {
+                                                title: '规则名称',
+                                                dataIndex: 'ruleName',
+                                                ellipsis: true,
+                                                width: COL.NAME_COMPACT,
+                                                render: (v?: string, r?: QualityTableRuleResult) => (
+                                                    <div>
+                                                        <div className="text-ds-small text-ds-text-primary font-medium">{v || '—'}</div>
+                                                        {r?.jobName && (
+                                                            <div className="text-ds-tiny text-ds-text-muted truncate">{r.jobName}</div>
+                                                        )}
+                                                    </div>
+                                                ),
+                                            },
+                                            {
+                                                title: '类型',
+                                                dataIndex: 'ruleType',
+                                                width: COL.STATUS,
+                                                render: (v?: string) => (
+                                                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                                                        {v ? (QUALITY_TYPE_LABEL[v as keyof typeof QUALITY_TYPE_LABEL] || v) : '—'}
                                                     </span>
-                                                )
-                                            ),
-                                        },
-                                        {
-                                            title: '最近检查',
-                                            dataIndex: 'lastCheckedAt',
-                                            width: COL.DATETIME_COMPACT,
-                                            render: (v?: string) => (
-                                                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
-                                                    {formatDateTime(v) || '—'}
-                                                </span>
-                                            ),
-                                        },
-                                    ]}
-                                    dataSource={detailRules}
-                                    pagination={false}
-                                    size="small"
-                                    scroll={{x: 700}}
-                                    locale={{emptyText: <DsTableEmpty description="暂无规则结果"/>}}
-                                />
+                                                ),
+                                            },
+                                            {
+                                                title: '检查字段',
+                                                dataIndex: 'columnName',
+                                                width: COL.NAME_COMPACT,
+                                                ellipsis: true,
+                                                render: (v?: string) => (
+                                                    <span className="text-ds-small text-ds-text-secondary" title={v}>{v || '—'}</span>
+                                                ),
+                                            },
+                                            {
+                                                title: '权重',
+                                                dataIndex: 'weight',
+                                                width: COL.COUNT,
+                                                align: 'right',
+                                                render: (v?: number) => <span className="text-ds-small">{v ?? '—'}</span>,
+                                            },
+                                            {
+                                                title: '最近结果',
+                                                dataIndex: 'resultValue',
+                                                width: COL.COUNT_NORMAL,
+                                                align: 'right',
+                                                render: (v?: number | string) => (
+                                                    <span className="text-ds-small text-ds-text-primary">{v ?? '—'}</span>
+                                                ),
+                                            },
+                                            {
+                                                title: '判定',
+                                                dataIndex: 'resultLevel',
+                                                width: COL.STATUS,
+                                                render: (v?: QualityCheckLevel, r?: QualityTableRuleResult) => (
+                                                    v ? (
+                                                        <DsStatusBadge variant={LEVEL_VARIANT[v]} label={QUALITY_CHECK_LEVEL_LABEL[v]}/>
+                                                    ) : (
+                                                        <span className="text-ds-small text-ds-text-muted">
+                                                            {r?.success === 0 ? '失败' : '未检查'}
+                                                        </span>
+                                                    )
+                                                ),
+                                            },
+                                            {
+                                                title: '最近检查',
+                                                dataIndex: 'lastCheckedAt',
+                                                width: COL.DATETIME_COMPACT,
+                                                render: (v?: string) => (
+                                                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                                                        {formatDateTime(v) || '—'}
+                                                    </span>
+                                                ),
+                                            },
+                                        ]}
+                                        dataSource={detailRules}
+                                        pagination={false}
+                                        scroll={{x: 700}}
+                                        className="prototype-table prototype-table-flush"
+                                        locale={{emptyText: <DsTableEmpty description="暂无规则结果"/>}}
+                                    />
+                                </div>
                             )}
                         </div>
                     </div>

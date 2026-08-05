@@ -1,28 +1,36 @@
-package com.datanest.governance.entity;
+package com.datanest.task.core.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
+/**
+ * 命名规范。定义了表/字段命名的规则（PREFIX/SUFFIX/REGEX）。
+ * 从 governance 模块下沉至共享底座，供治理编排与 job/worker 执行侧共用。
+ */
 @Data
-@TableName(value = "field_type_standard", autoResultMap = true)
-public class FieldTypeStandard {
+@TableName("naming_standard")
+public class NamingStandard {
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     private String name;
 
-    private String category;
+    private String appliesTo;
 
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private List<String> allowedTypes;
+    private String ruleType;
+
+    private String ruleValue;
+
+    private Long targetStandardId;
+
+    private Integer priority;
+
+    private Integer enabled;
 
     private String description;
 

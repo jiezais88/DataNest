@@ -1,22 +1,27 @@
-package com.datanest.governance.service;
+package com.datanest.task.core.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
-import com.datanest.governance.dto.ComplianceCheckRequest;
-import com.datanest.governance.dto.ComplianceCheckResultDTO;
-import com.datanest.governance.entity.ComplianceCheckResult;
-import com.datanest.governance.entity.FieldTypeStandard;
-import com.datanest.governance.entity.NamingStandard;
-import com.datanest.governance.mapper.ComplianceCheckResultMapper;
-import com.datanest.governance.mapper.FieldTypeStandardMapper;
-import com.datanest.governance.mapper.NamingStandardMapper;
+import com.datanest.common.model.PageResult;
+import com.datanest.task.core.dto.ComplianceCheckPageRequest;
+import com.datanest.task.core.dto.ComplianceCheckRequest;
+import com.datanest.task.core.dto.ComplianceCheckResultDTO;
+import com.datanest.task.core.entity.ComplianceCheckResult;
+import com.datanest.task.core.entity.FieldTypeStandard;
 import com.datanest.task.core.entity.MetadataColumn;
 import com.datanest.task.core.entity.MetadataTable;
+import com.datanest.task.core.entity.NamingStandard;
+import com.datanest.task.core.mapper.ComplianceCheckResultMapper;
+import com.datanest.task.core.mapper.FieldTypeStandardMapper;
 import com.datanest.task.core.mapper.MetadataColumnMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
+import com.datanest.task.core.mapper.NamingStandardMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,6 +37,11 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * 标准合规检查服务（治理编排域）。
+ * 从 governance 模块下沉至 task-core-governance，供 governance Controller 与 job 定时扫描共用。
+ * Sprint6 扩展：ignore/unignore/page 分页/export CSV。
+ */
 @Service
 public class ComplianceCheckService {
 
@@ -188,7 +198,109 @@ public class ComplianceCheckService {
         }
     }
 
+    /**
+     * 保留旧接口：按范围返回全量结果（含已忽略项）。
+     */
     public List<ComplianceCheckResultDTO> listResults(ComplianceCheckRequest request) {
+        List<ComplianceCheckResult> list = queryByRange(request, null);
+        return list.stream().map(this::toDTO).collect(Collectors.toList());
+    }
+
+    /**
+     * Sprint6 新增：分页查询结果。
+     * 默认排除已忽略（ignored=0）；显式传 ignored 可筛选 0（未忽略）/1（已忽略）。
+     */
+    public PageResult<ComplianceCheckResultDTO> page(ComplianceCheckPageRequest request) {
+        Integer ignored = request.getIgnored();
+        int pageNo = request.getPage() == null ? 1 : request.getPage();
+        int pageSize = request.getPageSize() == null ? 10 : request.getPageSize();
+        IPage<ComplianceCheckResult> page = new Page<>(pageNo, pageSize);
+        QueryWrapper<ComplianceCheckResult> wrapper = buildRangeWrapper(request);
+        // 默认排除已忽略
+        int effectiveIgnored = ignored == null ? 0 : ignored;
+        wrapper.eq("ignored", effectiveIgnored);
+        wrapper.orderByDesc("checked_at").orderByAsc("id");
+        IPage<ComplianceCheckResult> result = complianceCheckResultMapper.selectPage(page, wrapper);
+        List<ComplianceCheckResultDTO> records = result.getRecords().stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+        return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
+    }
+
+    /**
+     * Sprint6 新增：忽略某条不合规项。
+     *
+     * @param operatorId 操作人 sys_user.id（由 Controller 从登录态获取）
+     */
+    @Transactional
+    public void ignore(Long resultId, Long operatorId) {
+        ComplianceCheckResult entity = complianceCheckResultMapper.selectById(resultId);
+        if (entity == null) {
+            throw new BusinessException(ErrorCode.COMPLIANCE_CHECK_RESULT_NOT_FOUND);
+        }
+        if (Integer.valueOf(1).equals(entity.getIgnored())) {
+            return;
+        }
+        UpdateWrapper<ComplianceCheckResult> uw = new UpdateWrapper<>();
+        uw.eq("id", resultId)
+                .set("ignored", 1)
+                .set("ignored_at", LocalDateTime.now())
+                .set("ignored_by", operatorId);
+        complianceCheckResultMapper.update(null, uw);
+    }
+
+    /**
+     * Sprint6 新增：取消忽略某条不合规项。
+     */
+    @Transactional
+    public void unignore(Long resultId) {
+        ComplianceCheckResult entity = complianceCheckResultMapper.selectById(resultId);
+        if (entity == null) {
+            throw new BusinessException(ErrorCode.COMPLIANCE_CHECK_RESULT_NOT_FOUND);
+        }
+        if (!Integer.valueOf(1).equals(entity.getIgnored())) {
+            return;
+        }
+        UpdateWrapper<ComplianceCheckResult> uw = new UpdateWrapper<>();
+        uw.eq("id", resultId)
+                .set("ignored", 0)
+                .set("ignored_at", null)
+                .set("ignored_by", null);
+        complianceCheckResultMapper.update(null, uw);
+    }
+
+    /**
+     * Sprint6 新增：导出问题清单 CSV（UTF-8 with BOM，兼容 Excel）。
+     * 默认导出未忽略的问题（与 page 的「默认排除已忽略」语义一致）。
+     */
+    public String export(ComplianceCheckRequest request) {
+        List<ComplianceCheckResult> list = queryByRange(request, 0);
+        StringBuilder sb = new StringBuilder("\uFEFF");
+        sb.append("对象路径,对象类型,违规类型,实际值,期望值,适用规范,检查时间,是否忽略\n");
+        for (ComplianceCheckResult r : list) {
+            sb.append(esc(r.getObjectPath())).append(',')
+                    .append(esc(r.getObjectType())).append(',')
+                    .append(esc(r.getViolationType())).append(',')
+                    .append(esc(r.getActualValue())).append(',')
+                    .append(esc(r.getExpectedValue())).append(',')
+                    .append(esc(applicableNames(r))).append(',')
+                    .append(r.getCheckedAt() == null ? "" : r.getCheckedAt().toString()).append(',')
+                    .append(Integer.valueOf(1).equals(r.getIgnored()) ? "是" : "否")
+                    .append('\n');
+        }
+        return sb.toString();
+    }
+
+    private List<ComplianceCheckResult> queryByRange(ComplianceCheckRequest request, Integer ignored) {
+        QueryWrapper<ComplianceCheckResult> wrapper = buildRangeWrapper(request);
+        if (ignored != null) {
+            wrapper.eq("ignored", ignored);
+        }
+        wrapper.orderByDesc("checked_at");
+        return complianceCheckResultMapper.selectList(wrapper);
+    }
+
+    private QueryWrapper<ComplianceCheckResult> buildRangeWrapper(ComplianceCheckRequest request) {
         QueryWrapper<ComplianceCheckResult> wrapper = new QueryWrapper<>();
         Long tableId = request.getTableId();
         if (tableId != null) {
@@ -196,13 +308,16 @@ public class ComplianceCheckService {
         } else {
             List<Long> datasourceIds = resolveDatasourceIds(request, tableId);
             if (datasourceIds.isEmpty()) {
-                return List.of();
+                // 无条件约束，返回空（与旧 listResults 语义一致）
+                wrapper.eq("1", "0");
+                return wrapper;
             }
             List<Long> tableIds = listTableIds(datasourceIds, request.getDatabaseName(), request.getSchemaName());
             if (!tableIds.isEmpty()) {
                 wrapper.in("table_id", tableIds);
             } else {
-                return List.of();
+                wrapper.eq("1", "0");
+                return wrapper;
             }
         }
         if (request.getStartTime() != null) {
@@ -211,9 +326,7 @@ public class ComplianceCheckService {
         if (request.getEndTime() != null) {
             wrapper.le("checked_at", request.getEndTime());
         }
-        wrapper.orderByDesc("checked_at");
-        List<ComplianceCheckResult> list = complianceCheckResultMapper.selectList(wrapper);
-        return list.stream().map(this::toDTO).collect(Collectors.toList());
+        return wrapper;
     }
 
     private List<MetadataTable> listTables(Long datasourceId, String databaseName, String schemaName) {
@@ -229,12 +342,6 @@ public class ComplianceCheckService {
             wrapper.eq("schema_name", schemaName);
         }
         return metadataTableMapper.selectList(wrapper);
-    }
-
-    private List<Long> listTableIds(Long datasourceId, String databaseName, String schemaName) {
-        return listTables(datasourceId, databaseName, schemaName).stream()
-                .map(MetadataTable::getId)
-                .collect(Collectors.toList());
     }
 
     private List<Long> listTableIds(List<Long> datasourceIds, String databaseName, String schemaName) {
@@ -369,6 +476,7 @@ public class ComplianceCheckService {
         r.setApplicableStandards(applicableStandards);
         r.setIsCompliant(0);
         r.setCheckedAt(checkedAt);
+        r.setIgnored(0);
         return r;
     }
 
@@ -434,6 +542,25 @@ public class ComplianceCheckService {
         };
     }
 
+    private String applicableNames(ComplianceCheckResult r) {
+        if (r.getApplicableStandards() == null || r.getApplicableStandards().isEmpty()) {
+            return "";
+        }
+        return r.getApplicableStandards().stream()
+                .map(ComplianceCheckResult.ApplicableStandard::getStandardName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.joining(";"));
+    }
+
+    private String esc(String v) {
+        if (v == null) {
+            return "";
+        }
+        String s = v.replace("\"", "\"\"");
+        return s.contains(",") || s.contains("\"") || s.contains("\n") ? "\"" + s + "\"" : s;
+    }
+
     private boolean isBlank(String s) {
         return s == null || s.isBlank();
     }
@@ -454,6 +581,9 @@ public class ComplianceCheckService {
         dto.setApplicableStandards(toDtoApplicableStandards(entity.getApplicableStandards()));
         dto.setIsCompliant(entity.getIsCompliant());
         dto.setCheckedAt(entity.getCheckedAt());
+        dto.setIgnored(entity.getIgnored());
+        dto.setIgnoredAt(entity.getIgnoredAt());
+        dto.setIgnoredBy(entity.getIgnoredBy());
         return dto;
     }
 

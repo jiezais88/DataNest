@@ -25,6 +25,8 @@ import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsToolbar from '../../../components/DsToolbar';
 import DsFilterSelect from '../../../components/DsFilterSelect';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import ReferenceListModal from '../../../components/ReferenceListModal';
+import type {ApiError} from '../../../utils/error';
 import Pagination from '../../../components/Pagination';
 import SearchInput from '../../../components/SearchInput';
 import {
@@ -76,6 +78,8 @@ export default function DataQualityPage() {
     const [deleteJobTarget, setDeleteJobTarget] = useState<{ id: string; name: string } | null>(null);
     const [deleteJobOpen, setDeleteJobOpen] = useState(false);
     const [deleteJobLoading, setDeleteJobLoading] = useState(false);
+    const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+    const [deleteReferences, setDeleteReferences] = useState<string[]>([]);
 
     // ============ 质量规则（已独立为独立菜单 /governance/quality-rules） ============
 
@@ -201,6 +205,14 @@ export default function DataQualityPage() {
             setDeleteJobOpen(false);
             setDeleteJobTarget(null);
             loadJobs();
+        } catch (e) {
+            const errorData = (e as ApiError)?.response?.data;
+            // 被告警规则引用时（3005），后端 data 返回引用告警规则名称列表，弹窗展示
+            if (errorData?.code === 3005 && Array.isArray(errorData?.data)) {
+                setDeleteReferences(errorData.data as string[]);
+                setDeleteJobOpen(false);
+                setDeleteBlockedOpen(true);
+            }
         } finally {
             setDeleteJobLoading(false);
         }
@@ -539,6 +551,14 @@ export default function DataQualityPage() {
                     setDeleteJobOpen(false);
                     setDeleteJobTarget(null);
                 }}
+            />
+
+            <ReferenceListModal
+                open={deleteBlockedOpen}
+                title="无法删除质量任务"
+                message={`质量任务 "${deleteJobTarget?.name ?? ''}" 已被以下告警规则引用，请先删除相关告警规则后再删除。`}
+                references={deleteReferences}
+                onClose={() => setDeleteBlockedOpen(false)}
             />
         </div>
     );

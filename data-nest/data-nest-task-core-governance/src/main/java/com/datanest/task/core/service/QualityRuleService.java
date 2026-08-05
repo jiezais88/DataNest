@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
@@ -209,17 +210,34 @@ public class QualityRuleService {
             throw new BusinessException(ErrorCode.QUALITY_TABLE_NOT_FOUND, "批量应用存在不存在的目标表");
         }
 
+        // 预计算每条规则名，先做批量重名校验（本次批量内部 + 库内已有同名），避免生成重复规则
+        List<QualityRuleBatchCreateRequest.RuleItem> items = request.getItems();
+        List<String> names = new ArrayList<>(items.size());
+        for (QualityRuleBatchCreateRequest.RuleItem item : items) {
+            names.add(resolveBatchName(template, tableMap.get(item.getTableId()), item, request));
+        }
+        assertNoDuplicateNames(names);
+        Set<String> existingNames = ruleMapper.selectList(
+                        new QueryWrapper<QualityRule>().select("name").in("name", names)).stream()
+                .map(QualityRule::getName)
+                .collect(Collectors.toSet());
+        for (String name : names) {
+            if (existingNames.contains(name)) {
+                throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "已存在同名规则: " + name);
+            }
+        }
+
         Long currentUserId = currentUserId();
         LocalDateTime now = LocalDateTime.now();
-        List<QualityRule> created = new ArrayList<>();
-        for (QualityRuleBatchCreateRequest.RuleItem item : request.getItems()) {
-            MetadataTable table = tableMap.get(item.getTableId());
+        List<QualityRule> created = new ArrayList<>(items.size());
+        for (int i = 0; i < items.size(); i++) {
+            QualityRuleBatchCreateRequest.RuleItem item = items.get(i);
             validateItemForTemplate(template, item);
 
             QualityRule entity = new QualityRule();
             entity.setJobId(request.getJobId());
             entity.setTemplateId(template.getId());
-            entity.setName(resolveBatchName(template, table, item, request));
+            entity.setName(names.get(i));
             entity.setType(template.getType());
             entity.setTableId(item.getTableId());
             entity.setColumnName(item.getColumnName());
@@ -237,11 +255,21 @@ public class QualityRuleService {
             entity.setEnabled(1);
             entity.setCreatedBy(currentUserId);
             entity.setCreatedAt(now);
-            ruleMapper.insert(entity);
-            // 批量应用在任务下进行，写入关联表
-            bindJobRule(request.getJobId(), entity.getId());
             created.add(entity);
         }
+        // 批量插入（Db.saveBatch 自动填充 ASSIGN_ID 主键，避免逐条 insert）
+        Db.saveBatch(created);
+        // 批量写入任务<->规则关联（新规则必然未绑定，无需逐条幂等 selectCount）
+        List<QualityJobRule> links = created.stream()
+                .map(r -> {
+                    QualityJobRule link = new QualityJobRule();
+                    link.setJobId(request.getJobId());
+                    link.setRuleId(r.getId());
+                    link.setCreatedAt(now);
+                    return link;
+                })
+                .collect(Collectors.toList());
+        Db.saveBatch(links);
         return buildDTOs(created);
     }
 
@@ -536,6 +564,21 @@ public class QualityRuleService {
 
     private long countByName(String name) {
         return ruleMapper.selectCount(new QueryWrapper<QualityRule>().eq("name", name));
+    }
+
+    /**
+     * 校验本次批量生成的规则名不重复（同名模板·同名表或用户自定义同名会撞名）。
+     */
+    private void assertNoDuplicateNames(List<String> names) {
+        if (names.stream().distinct().count() != names.size()) {
+            String dup = names.stream()
+                    .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
+                    .entrySet().stream()
+                    .filter(e -> e.getValue() > 1)
+                    .map(Map.Entry::getKey)
+                    .findFirst().orElse("");
+            throw new BusinessException(ErrorCode.QUALITY_RULE_NAME_EXISTS, "批量应用中存在重名规则: " + dup);
+        }
     }
 
     /**

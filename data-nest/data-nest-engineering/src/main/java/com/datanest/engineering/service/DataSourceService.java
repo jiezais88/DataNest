@@ -19,6 +19,7 @@ import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
 import com.datanest.task.core.entity.CollectTask;
 import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.SyncJob;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.ConnectionTester;
@@ -56,6 +57,7 @@ public class DataSourceService {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final ComplianceCleanupMapper complianceCleanupMapper;
+    private final QualityRuleMapper qualityRuleMapper;
     private final SchedulerClient schedulerClient;
     private final DataSourceRefreshService dataSourceRefreshService;
     private final SysUserService sysUserService;
@@ -65,6 +67,7 @@ public class DataSourceService {
                              SyncJobMapper syncJobMapper,
                              MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
                              ComplianceCleanupMapper complianceCleanupMapper,
+                             QualityRuleMapper qualityRuleMapper,
                              SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService,
                              SysUserService sysUserService) {
         this.dataSourceMapper = dataSourceMapper;
@@ -75,6 +78,7 @@ public class DataSourceService {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.complianceCleanupMapper = complianceCleanupMapper;
+        this.qualityRuleMapper = qualityRuleMapper;
         this.schedulerClient = schedulerClient;
         this.dataSourceRefreshService = dataSourceRefreshService;
         this.sysUserService = sysUserService;
@@ -348,6 +352,21 @@ public class DataSourceService {
             dto.setSyncMode(job.getSyncMode());
             dto.setTriggerType(job.getTriggerType());
             references.add(dto);
+        }
+
+        // 质量规则引用（quality_rule.table_id）：数据源被质量规则作为目标表引用时阻止删除
+        List<Long> tableIds = metadataTableMapper.selectIdsByDatasourceId(id);
+        if (tableIds != null && !tableIds.isEmpty()) {
+            List<QualityRule> qualityRules = qualityRuleMapper.selectList(
+                    new QueryWrapper<QualityRule>().in("table_id", tableIds));
+            for (QualityRule rule : qualityRules) {
+                DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
+                dto.setTaskId(rule.getId());
+                dto.setTaskName(rule.getName());
+                dto.setStatus(rule.getEnabled() != null ? String.valueOf(rule.getEnabled()) : null);
+                dto.setType(ReferenceType.QUALITY_RULE.getCode());
+                references.add(dto);
+            }
         }
 
         return references;

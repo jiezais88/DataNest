@@ -1178,7 +1178,6 @@ export default function MetadataPage() {
                                     ]}
                                     dataSource={qualityRules}
                                     pagination={false}
-                                    size="small"
                                     scroll={{x: 700}}
                                     locale={{emptyText: <DsTableEmpty description="暂无规则结果"/>}}
                                 />

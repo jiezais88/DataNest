@@ -1,0 +1,110 @@
+# DataNest 后端开发规范
+
+> 本文件是 AGENTS.md §8 的详细版。核心硬约束见 AGENTS.md 正文，本文件供按需查阅。
+
+## 1. 技术栈与版本
+
+| 层/组件 | 选型/版本 | 说明 |
+|---------|-----------|------|
+| JDK | 21 | LTS，使用 Record、Pattern 等新特性 |
+| Spring Boot | 4.0.7 | 配套 Spring Framework 7 |
+| Spring Cloud | 2025.1.2 | Gateway + Nacos 服务发现 |
+| Spring Cloud Alibaba | 2025.1.0.0 | Nacos Config / Discovery |
+| ORM | MyBatis-Plus 3.5.17 | PostgreSQL 分页插件已配置 |
+| 安全/登录 | Sa-Token 1.45.0 | Redis 集中式 Token |
+| JSON | Fastjson2 2.0.52（业务序列化）+ Jackson 3（Spring 默认） | Sprint 3 起 Fastjson2 替代 Jackson ObjectMapper |
+| 数据库迁移 | Flyway 10.22.0 | 脚本统一在 `data-nest-system/src/main/resources/db/migration` |
+| 密码加密 | Spring Security `PasswordEncoder`（BCrypt） | `data-nest-system` 已配置 |
+
+## 2. 统一响应协议
+
+所有 Controller 返回统一信封 `com.datanest.common.model.Result<T>`：
+
+```java
+public record Result<T>(int code, String message, T data) {
+    public static <T> Result<T> ok(T data) { ... }
+    public static <T> Result<T> fail(int code, String message) { ... }
+}
+```
+
+分页返回 `PageResult<T>`：`record PageResult<T>(List<T> records, long total, long page, long pageSize)`
+
+约定：
+- `code == 200` 表示业务成功；其余为业务错误。
+- Controller 直接 `return Result.ok(service.xxx(...))`，不要在 Controller 里 catch 业务异常。
+- 无返回值时返回 `Result.ok(null)` 或 `Result.<Void>ok(null)`。
+
+## 3. 异常与错误码
+
+统一使用 `BusinessException(ErrorCode, [detail], [data])`：
+
+```java
+throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: " + id);
+```
+
+`ErrorCode` 按模块分区，新增错误码必须落在对应区间：
+
+| 区间 | 模块 |
+|------|------|
+| 1xxx | 认证/登录 |
+| 2xxx | 用户管理 |
+| 3xxx | 数据源 |
+| 4xxx | 数据治理（采集任务等） |
+| 5xxx | 数据标准 |
+| 6xxx | 批量同步 |
+| 7xxx | DAG / 数据开发 |
+| 9xxx | 系统内部错误 |
+
+全局异常处理 `GlobalExceptionHandler` 已覆盖：`BusinessException`→对应 code；`NotLoginException`→401；`NotRoleException`/`NotPermissionException`→403；`MethodArgumentNotValidException`/`BindException`/`ConstraintViolationException`→400（取第一条校验错误）；`Exception`→500。
+
+## 4. 参数校验
+
+Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size`、`@Pattern`、`@Min`、`@Max`、`@AssertTrue`。Controller 方法签名加 `@Valid @RequestBody`。复杂跨字段校验（如 "Cron 触发必须填 Cron 表达式"）用 `@AssertTrue` 方法，不要散落在 Service 里。
+
+## 5. 实体与数据库
+
+- 主键统一用 `Long`，MyBatis-Plus `@TableId(type = IdType.ASSIGN_ID)` 生成 Snowflake ID。
+- 所有 `Long`/`long` 类型通过 `JacksonConfig` 序列化为 **字符串**，防止前端 JS 精度丢失。
+- 实体字段驼峰命名，自动映射数据库 `snake_case`。
+- 时间字段统一用 `java.time.LocalDateTime`。
+- 布尔字段在实体中用 `Boolean`，数据库中用 `SMALLINT` 或 `BOOLEAN` 按 Flyway 脚本约定。
+- 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层用 Fastjson2 解析/组装。
+
+### Flyway 脚本格式约定（硬约束）
+
+- 迁移脚本统一在 `data-nest-system/src/main/resources/db/migration`，命名 `V<版本>__<描述>.sql`。
+- **所有迁移脚本统一用紧凑单行 SQL 风格**（如 `id BIGSERIAL PRIMARY KEY,`、`VARCHAR(100) NOT NULL`、`COMMENT ON COLUMN x IS '...'` 单行）。
+- **禁止用 IDE/格式化工具拆分迁移 SQL**：格式化工具会破坏已应用脚本的 checksum，触发 Flyway validate 失败（见 gotchas.md）。
+- 新增脚本参考 `V3.6.1__sprint6_quality_job_rule.sql`（紧凑、带文件头注释、带 COMMENT）。
+- 已应用脚本**不要随意改动**；确需调整格式/语义时，必须用 flyway `repair` 固化 checksum 并重启 `app-system` 验证。
+
+## 6. Mapper 与 SQL
+
+- Mapper 继承 `BaseMapper<T>`，简单 CRUD 不写 SQL。
+- 简单自定义 SQL 优先用注解（`@Select`、`@Insert`、`@Delete`），复杂 SQL 用 `resources/mapper/*.xml`。
+- 动态 SQL 用 MyBatis `<script>`，注意 PostgreSQL 关键字转义。
+- 分页统一用 MyBatis-Plus `Page<T>` + `IPage<T>`，已在 `MybatisPlusConfig` 配置 PostgreSQL 方言。
+
+## 7. Service 层约定
+
+- 使用构造器注入（Lombok `@RequiredArgsConstructor` 也可用，但项目当前以显式构造器为主）。
+- 写操作加 `@Transactional`；涉及 XXL-JOB 注册/更新/注销等外部调用，用 `TransactionSynchronizationManager.registerSynchronization` 在 `afterCommit` 执行。
+- 查询结果需要脱敏或补充创建人/更新人名称时，批量查询后一次性回填，避免 N+1。
+- DTO 与 Entity 转换写私有 `toDTO` / `toEntity` 方法，不要直接返回 Entity。
+
+## 8. Controller 与 URL 规范
+
+- Controller 加 `@RestController`，类级 `@RequestMapping("/<资源>")`。
+- 路径使用 RESTful 风格，动作通过 HTTP 方法 + 路径表达：`GET /datasources/{id}`、`POST /datasources`、`PUT /datasources/{id}`、`DELETE /datasources/{id}`、`POST /datasources/page`、`POST /datasources/{id}/test`。
+- 权限注解 `@SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)`，角色代码与前端 `src/constants/roles.ts` 保持一致；左侧菜单显隐以 `src/components/Sidebar.tsx` 为准。
+- 网关路由：`/api/system/**` → `data-nest-system`，`/api/engineering/**` → `data-nest-engineering`，`/api/governance/**` → `data-nest-governance`。
+- 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`，Controller 路径不要重复写前缀。
+- **列表接口**：当前代码实现多为 `POST /{resource}/page`（如 `/api/engineering/datasources/page`、`/api/engineering/sync-jobs/page`），请求体带 keyword + 筛选 + 分页；新增/详情/删除仍用 RESTful 方法表达。
+- 工程侧 Controller 前缀：数据源/同步任务为 `/engineering/*`，DAG/项目管理为 `/dev/*`，执行历史为 `/dag-executions`；网关已配置 StripPrefix，前端统一以 `/api/engineering/...` 调用。
+
+## 9. 配置与 Nacos
+
+- `application.yml` 只保留端口、`spring.application.name`、`context-path`、`spring.config.import` 和模块级简单配置。
+- 数据库、Redis、Doris、XXL-JOB、Addax、安全等配置走 Nacos `shared-configs`。
+- 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
+- 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。

@@ -17,6 +17,8 @@ import {
     updateNamingStandard,
 } from '../../../api/dataStandard';
 import {listMetadataDatasourceIds} from '../../../api/metadata';
+import ReferenceListModal from '../../../components/ReferenceListModal';
+import type {ApiError} from '../../../utils/error';
 import Pagination from '../../../components/Pagination';
 import SearchInput from '../../../components/SearchInput';
 import ConfirmDialog from '../../../components/ConfirmDialog';
@@ -97,6 +99,8 @@ export default function DataStandardsPage() {
     } | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+    const [deleteReferences, setDeleteReferences] = useState<string[]>([]);
 
     // Compliance check modal
     const [complianceModalOpen, setComplianceModalOpen] = useState(false);
@@ -320,6 +324,14 @@ export default function DataStandardsPage() {
             else loadFieldTypeStandards();
             setDeleteOpen(false);
             setDeleteTarget(null);
+        } catch (e) {
+            const errorData = (e as ApiError)?.response?.data;
+            // 字段类型标准被命名规范引用时（3005），后端 data 返回引用命名规范名称列表，弹窗展示
+            if (deleteTarget?.type === 'field-type' && errorData?.code === 3005 && Array.isArray(errorData?.data)) {
+                setDeleteReferences(errorData.data as string[]);
+                setDeleteOpen(false);
+                setDeleteBlockedOpen(true);
+            }
         } finally {
             setDeleteLoading(false);
         }
@@ -903,6 +915,14 @@ export default function DataStandardsPage() {
                     setDeleteOpen(false);
                     setDeleteTarget(null);
                 }}
+            />
+
+            <ReferenceListModal
+                open={deleteBlockedOpen}
+                title="无法删除字段类型标准"
+                message={`字段类型标准 "${deleteTarget?.name ?? ''}" 已被以下命名规范引用，请先删除或修改相关命名规范后再删除。`}
+                references={deleteReferences}
+                onClose={() => setDeleteBlockedOpen(false)}
             />
 
             <DsModal

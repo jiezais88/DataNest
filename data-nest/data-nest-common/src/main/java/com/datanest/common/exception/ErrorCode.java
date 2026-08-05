@@ -41,6 +41,7 @@ public enum ErrorCode {
 
     COMPLIANCE_CHECK_ITEM_REQUIRED(5005, "检查项目不能全部关闭"),
     INVALID_NAMING_STANDARD_PARAM(5006, "命名规范参数非法"),
+    COMPLIANCE_CHECK_RESULT_NOT_FOUND(5007, "合规检查结果不存在"),
 
     // Batch sync errors (6xxx)
     SYNC_JOB_NAME_EXISTS(6001, "同步任务名称已存在"),
@@ -106,6 +107,7 @@ public enum ErrorCode {
     QUALITY_SCORE_CONFIG_INVALID(4217, "质量评分全局配置参数非法"),
 
     // System errors (9xxx)
+    NOT_FOUND(404, "请求的资源不存在"),
     INTERNAL_ERROR(9999, "系统内部错误");
 
     private final int code;

@@ -31,6 +31,8 @@ import {NODE_STATUS_COLOR} from '../../../constants/statusColors';
 import usePagedList from '../../../hooks/usePagedList';
 import Pagination from '../../../components/Pagination';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import ReferenceListModal from '../../../components/ReferenceListModal';
+import type {ApiError} from '../../../utils/error';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
 import DsStatusBadge from '../../../components/DsStatusBadge';
@@ -176,6 +178,8 @@ export default function SyncJobsPage() {
     const [deleteTarget, setDeleteTarget] = useState<SyncJob | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+    const [deleteReferences, setDeleteReferences] = useState<string[]>([]);
 
     // Sprint 5：快捷告警配置
     const [alertTarget, setAlertTarget] = useState<SyncJob | null>(null);
@@ -266,6 +270,14 @@ export default function SyncJobsPage() {
             setDeleteOpen(false);
             setDeleteTarget(null);
             reload();
+        } catch (e) {
+            const errorData = (e as ApiError)?.response?.data;
+            // 被 DAG 引用时（7009），后端 data 返回引用 DAG 名称列表，弹窗展示
+            if (errorData?.code === 7009 && Array.isArray(errorData?.data)) {
+                setDeleteReferences(errorData.data as string[]);
+                setDeleteOpen(false);
+                setDeleteBlockedOpen(true);
+            }
         } finally {
             setDeleteLoading(false);
         }
@@ -663,6 +675,14 @@ export default function SyncJobsPage() {
                     setDeleteOpen(false);
                     setDeleteTarget(null);
                 }}
+            />
+
+            <ReferenceListModal
+                open={deleteBlockedOpen}
+                title="无法删除同步任务"
+                message={`同步任务 "${deleteTarget?.name ?? ''}" 已被以下 DAG 引用，请先删除或修改这些 DAG 后再删除。`}
+                references={deleteReferences}
+                onClose={() => setDeleteBlockedOpen(false)}
             />
         </div>
     );

@@ -11,10 +11,12 @@ import com.datanest.governance.dto.NamingStandardCreateRequest;
 import com.datanest.governance.dto.NamingStandardDTO;
 import com.datanest.governance.dto.NamingStandardQueryRequest;
 import com.datanest.governance.dto.NamingStandardUpdateRequest;
-import com.datanest.governance.entity.NamingStandard;
-import com.datanest.governance.mapper.ComplianceCheckResultMapper;
-import com.datanest.governance.mapper.FieldTypeStandardMapper;
-import com.datanest.governance.mapper.NamingStandardMapper;
+import com.datanest.task.core.entity.ComplianceCheckResult;
+import com.datanest.task.core.entity.FieldTypeStandard;
+import com.datanest.task.core.entity.NamingStandard;
+import com.datanest.task.core.mapper.ComplianceCheckResultMapper;
+import com.datanest.task.core.mapper.FieldTypeStandardMapper;
+import com.datanest.task.core.mapper.NamingStandardMapper;
 import com.datanest.task.core.service.SysUserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,7 +105,7 @@ public class NamingStandardService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.NAMING_STANDARD_NOT_FOUND);
         }
-        complianceCheckResultMapper.delete(new QueryWrapper<com.datanest.governance.entity.ComplianceCheckResult>().eq("standard_id", id));
+        complianceCheckResultMapper.delete(new QueryWrapper<ComplianceCheckResult>().eq("standard_id", id));
         namingStandardMapper.deleteById(id);
     }
 
@@ -140,8 +142,8 @@ public class NamingStandardService {
         Map<Long, String> standardNameMap = standardIds.isEmpty()
                 ? Map.of()
                 : fieldTypeStandardMapper.selectBatchIds(standardIds).stream().collect(Collectors.toMap(
-                com.datanest.governance.entity.FieldTypeStandard::getId,
-                com.datanest.governance.entity.FieldTypeStandard::getName
+                FieldTypeStandard::getId,
+                FieldTypeStandard::getName
         ));
 
         List<Long> userIds = result.getRecords().stream()
