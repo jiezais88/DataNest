@@ -87,6 +87,7 @@ export const router = createBrowserRouter([
             {path: 'governance/metadata/lineage', element: <LineageGraphPage/>},
             {path: 'system/alert-center', element: <AlertCenterPage/>},
             {path: 'governance/data-standards', element: <DataStandardsPage/>},
+            {path: 'governance/compliance', element: <StandardCompliancePage/>},
             {path: 'governance/quality-templates', element: <QualityTemplatesPage/>},
             {path: 'governance/data-quality', element: <DataQualityPage/>},
             {path: 'governance/quality-rules', element: <QualityRulesPage/>},

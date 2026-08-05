@@ -11,6 +11,7 @@ import com.datanest.governance.service.NamingStandardService;
 import com.datanest.task.core.dto.ComplianceCheckPageRequest;
 import com.datanest.task.core.dto.ComplianceCheckRequest;
 import com.datanest.task.core.dto.ComplianceCheckResultDTO;
+import com.datanest.task.core.dto.ComplianceCheckSummaryDTO;
 import com.datanest.task.core.service.ComplianceCheckService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -129,6 +130,12 @@ public class DataStandardController {
     @PostMapping("/compliance-check/page")
     public Result<PageResult<ComplianceCheckResultDTO>> pageComplianceCheckResults(@RequestBody ComplianceCheckPageRequest request) {
         return Result.ok(complianceCheckService.page(request));
+    }
+
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/compliance-check/summary")
+    public Result<ComplianceCheckSummaryDTO> summaryComplianceCheck(@RequestBody ComplianceCheckRequest request) {
+        return Result.ok(complianceCheckService.summary(request));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)

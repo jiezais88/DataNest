@@ -12,6 +12,7 @@ import com.datanest.common.model.PageResult;
 import com.datanest.task.core.dto.ComplianceCheckPageRequest;
 import com.datanest.task.core.dto.ComplianceCheckRequest;
 import com.datanest.task.core.dto.ComplianceCheckResultDTO;
+import com.datanest.task.core.dto.ComplianceCheckSummaryDTO;
 import com.datanest.task.core.entity.ComplianceCheckResult;
 import com.datanest.task.core.entity.FieldTypeStandard;
 import com.datanest.task.core.entity.MetadataColumn;
@@ -216,15 +217,84 @@ public class ComplianceCheckService {
         int pageSize = request.getPageSize() == null ? 10 : request.getPageSize();
         IPage<ComplianceCheckResult> page = new Page<>(pageNo, pageSize);
         QueryWrapper<ComplianceCheckResult> wrapper = buildRangeWrapper(request);
-        // 默认排除已忽略
-        int effectiveIgnored = ignored == null ? 0 : ignored;
-        wrapper.eq("ignored", effectiveIgnored);
+        // ignored：null 或缺省=0（默认仅未忽略）；1=仅已忽略；2=全部（不过滤）
+        if (ignored != null && ignored == 2) {
+            // 全部：不加 ignored 条件
+        } else {
+            int effectiveIgnored = ignored == null ? 0 : ignored;
+            wrapper.eq("ignored", effectiveIgnored);
+        }
+        if (request.getViolationType() != null && !request.getViolationType().isBlank()) {
+            wrapper.eq("violation_type", request.getViolationType());
+        }
         wrapper.orderByDesc("checked_at").orderByAsc("id");
         IPage<ComplianceCheckResult> result = complianceCheckResultMapper.selectPage(page, wrapper);
         List<ComplianceCheckResultDTO> records = result.getRecords().stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return PageResult.of(records, result.getTotal(), result.getCurrent(), result.getSize());
+    }
+
+    /**
+     * Sprint6 新增：统计摘要（前端三格统计：不合规项 / 已忽略 / 合规率）。
+     * 口径：nonCompliant=范围内未忽略不合规项（ignored=0），ignored=已忽略数（ignored=1），
+     * totalObjects=范围内在线表+字段对象总数，complianceRate=(1 - nonCompliant/totalObjects)*100 保留 1 位小数。
+     */
+    public ComplianceCheckSummaryDTO summary(ComplianceCheckRequest request) {
+        Long tableId = request.getTableId();
+        List<Long> tableIds = resolveRangeTableIds(request);
+        // 范围内在线对象总数（表 + 字段）作为合规率分母；空范围视为合规率 100
+        long totalObjects = 0L;
+        if (tableId != null) {
+            QueryWrapper<MetadataColumn> cw = new QueryWrapper<>();
+            cw.eq("table_id", tableId).eq("source_status", MetadataSourceStatus.ONLINE.getCode());
+            totalObjects = 1L + metadataColumnMapper.selectCount(cw);
+        } else if (!tableIds.isEmpty()) {
+            QueryWrapper<MetadataColumn> cw = new QueryWrapper<>();
+            cw.in("table_id", tableIds).eq("source_status", MetadataSourceStatus.ONLINE.getCode());
+            totalObjects = tableIds.size() + metadataColumnMapper.selectCount(cw);
+        }
+
+        // 范围内未忽略/已忽略不合规项数（一次表 ID 解析复用，避免重复查询）
+        long nonCompliant = 0L;
+        long ignored = 0L;
+        if (!tableIds.isEmpty()) {
+            QueryWrapper<ComplianceCheckResult> nc = new QueryWrapper<>();
+            nc.in("table_id", tableIds).eq("ignored", 0);
+            nonCompliant = complianceCheckResultMapper.selectCount(nc);
+            QueryWrapper<ComplianceCheckResult> ig = new QueryWrapper<>();
+            ig.in("table_id", tableIds).eq("ignored", 1);
+            ignored = complianceCheckResultMapper.selectCount(ig);
+        }
+
+        double rate = totalObjects == 0 ? 100.0
+                : Math.round((1 - (double) nonCompliant / totalObjects) * 1000) / 10.0;
+
+        ComplianceCheckSummaryDTO dto = new ComplianceCheckSummaryDTO();
+        dto.setNonCompliant(nonCompliant);
+        dto.setIgnored(ignored);
+        dto.setTotalObjects(totalObjects);
+        dto.setComplianceRate(rate);
+        return dto;
+    }
+
+    /**
+     * 解析范围内在线表 ID 列表（tableId 模式返回单元素；否则按数据源/库/模式解析）。
+     * 供 summary 统计复用，避免 buildRangeWrapper 多次触发表 ID 查询。
+     */
+    private List<Long> resolveRangeTableIds(ComplianceCheckRequest request) {
+        Long tableId = request.getTableId();
+        if (tableId != null) {
+            if (metadataTableMapper.selectById(tableId) == null) {
+                return List.of();
+            }
+            return List.of(tableId);
+        }
+        List<Long> datasourceIds = resolveDatasourceIds(request, tableId);
+        if (datasourceIds.isEmpty()) {
+            return List.of();
+        }
+        return listTableIds(datasourceIds, request.getDatabaseName(), request.getSchemaName());
     }
 
     /**

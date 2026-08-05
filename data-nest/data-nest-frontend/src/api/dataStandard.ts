@@ -1,7 +1,9 @@
 import request from './request';
 import type {
+    ComplianceCheckPageParams,
     ComplianceCheckParams,
     ComplianceCheckResult,
+    ComplianceCheckSummary,
     FieldTypeStandard,
     FieldTypeStandardCreateRequest,
     FieldTypeStandardQueryParams,
@@ -57,4 +59,24 @@ export function runComplianceCheck(params: ComplianceCheckParams) {
 
 export function queryComplianceCheckResults(params: ComplianceCheckParams) {
     return request.post<Result<ComplianceCheckResult[]>>('/governance/data-standards/compliance-check/results', params);
+}
+
+export function pageComplianceCheckResults(params: ComplianceCheckPageParams) {
+    return request.post<Result<PageResult<ComplianceCheckResult>>>('/governance/data-standards/compliance-check/page', params);
+}
+
+export function ignoreComplianceCheckResult(resultId: string) {
+    return request.post<Result<null>>(`/governance/data-standards/compliance-check/ignore/${resultId}`);
+}
+
+export function unignoreComplianceCheckResult(resultId: string) {
+    return request.post<Result<null>>(`/governance/data-standards/compliance-check/unignore/${resultId}`);
+}
+
+export function getComplianceCheckSummary(params: ComplianceCheckParams) {
+    return request.post<Result<ComplianceCheckSummary>>('/governance/data-standards/compliance-check/summary', params);
+}
+
+export function exportComplianceCheck(params: ComplianceCheckParams) {
+    return request.post<Blob>('/governance/data-standards/compliance-check/export', params, {responseType: 'blob'});
 }

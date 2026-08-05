@@ -81,7 +81,8 @@ export interface ComplianceCheckResult {
     objectType: 'TABLE' | 'COLUMN';
     objectPath?: string;
     objectName: string;
-    violationType?: 'NAMING' | 'FIELD_TYPE';
+    /** 后端语义：NAMING / TYPE（字段类型用 TYPE，非 FIELD_TYPE） */
+    violationType?: 'NAMING' | 'TYPE';
     tableId?: string;
     tableName?: string;
     columnId?: string;
@@ -91,10 +92,16 @@ export interface ComplianceCheckResult {
     applicableStandards?: ApplicableStandard[];
     isCompliant: number;
     checkedAt?: string;
+    /** Sprint6：忽略标记（0=未忽略，1=已忽略） */
+    ignored?: number;
+    ignoredAt?: string;
+    ignoredBy?: string;
 }
 
 export interface ComplianceCheckParams {
     datasourceIds?: string[];
+    /** 单数数据源 ID（后端兼容字段，优先 datasourceIds） */
+    datasourceId?: string;
     databaseName?: string;
     schemaName?: string;
     tableId?: string;
@@ -102,4 +109,22 @@ export interface ComplianceCheckParams {
     checkFieldType?: boolean;
     startTime?: string;
     endTime?: string;
+}
+
+/** 合规检查分页查询参数（ComplianceCheckPageRequest） */
+export interface ComplianceCheckPageParams extends ComplianceCheckParams {
+    page: number;
+    pageSize: number;
+    /** 忽略状态筛选：null/缺省=仅未忽略(0)；1=仅已忽略；2=全部 */
+    ignored?: number;
+    /** 违规类型筛选：NAMING / TYPE，可空 */
+    violationType?: 'NAMING' | 'TYPE';
+}
+
+/** 合规统计摘要（三格统计：不合规项 / 已忽略 / 合规率） */
+export interface ComplianceCheckSummary {
+    nonCompliant: number;
+    ignored: number;
+    totalObjects: number;
+    complianceRate: number;
 }

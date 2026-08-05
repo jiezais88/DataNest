@@ -2,7 +2,7 @@ import {useLocation, useNavigate} from 'react-router-dom';
 import type {ReactNode} from 'react';
 import {useAuthStore} from '../store/useAuthStore';
 import type {RoleCode} from '../constants/roles';
-import {ALERT_VIEW_ROLES, ALL_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '../constants/roles';
+import {ALERT_VIEW_ROLES, ALL_ROLES, COMPLIANCE_VIEW_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '../constants/roles';
 import LogoMark from './LogoMark';
 import {
     HiOutlineArrowsRightLeft,
@@ -17,6 +17,7 @@ import {
     HiOutlineQueueList,
     HiOutlineScale,
     HiOutlineServer,
+    HiOutlineShieldCheck,
     HiOutlineTableCells,
     HiOutlineUsers,
 } from 'react-icons/hi2';
@@ -83,6 +84,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 path: '/governance/data-standards',
                 icon: <HiOutlineScale size={18}/>,
                 roles: GOVERNANCE_WRITE_ROLES
+            },
+            {
+                label: '标准合规',
+                path: '/governance/compliance',
+                icon: <HiOutlineShieldCheck size={18}/>,
+                roles: COMPLIANCE_VIEW_ROLES
             },
             {
                 label: '规则模板库',

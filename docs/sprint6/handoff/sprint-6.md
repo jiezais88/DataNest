@@ -1,6 +1,6 @@
-# Sprint 6 Handoff
+﻿# Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -33,7 +33,7 @@
 | task-core 三步拆分重构                   | ✅ 完成   | 原 task-core 拆为 4 模块（entity/alert/task-core-governance/task-core），包名不变；新增 QualityAutoTriggerPort 接口解耦 alert↔governance；跳过执行内核强拆；全量编译+5 容器重建+核心 API 回归通过，见 §16 |
 | 标准合规检查后端扩展                     | ✅ 完成   | 合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + admin/工程师双角色 API 自测通过，见 §17 |
 | 模板批量应用后端 review 修复             | ✅ 完成   | `QualityRuleService.batchCreate` 修复重名校验 + 批量插入 + 批量绑定关联，API 自测通过，见 §17.7 |
-| 标准合规检查前端                         | 🔄 其他AI | 前端由其他 AI 负责：ComplianceCheckPanel 分组改 TYPE + 忽略/取消/导出按钮 + 分页接入；批量应用占位按钮接线（后端已就绪），见 §17.9/§17.10 |
+| 标准合规检查前端                         | ✅ 完成   | 新增独立「标准合规」菜单页（三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描），废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20 |
 | 质量报告（DG-07）                        | ⏳ 不做   | 本轮不做，原排期 S8 单独会话做 |
 | Sprint6 级联删除/删除校验补全           | ✅ 完成   | 删数据源/规则模板/质量任务「被引用阻止」（HAS_REFERENCES 3005），API 自测通过，见 §18 |
 | 质量检查历史清理定时任务                | ✅ 完成   | 新增 QualityCheckHistoryCleanupHandler（cron 04:30，保留 30 天，级联删 batch+detail），已注册 XXL-JOB，见 §18 |
@@ -1037,7 +1037,7 @@ data-nest-common
 
 ### 17.10 待办
 
-1. 前端：`ComplianceCheckPanel` 分组改 `TYPE` + 忽略/取消忽略/导出按钮 + 分页列表接入（前端 AI）。
+1. ✅ 前端：标准合规前端已完成（见 §20，2026-08-05）：独立菜单页 + 三格统计 + 忽略/取消忽略 + 导出 + 立即扫描，废弃 `ComplianceCheckPanel` sessionStorage 方案（`violationType` 分组改 `TYPE` 已随重构落地）。
 2. 前端：质量规则页/规则模板库「批量应用」占位按钮接线（前端 AI，后端 `POST /quality/rules/batch` 已就绪）。
 3. 后端：删除用户 `deleteUser`（级联角色）+ `GlobalExceptionHandler` 对 `NoResourceFoundException` 返回真 404（用户已确认后续做）。
 4. 质量报告（DG-07）按原排期 S8 单独会话做。
@@ -1142,3 +1142,60 @@ data-nest-common
 - 删除用户 `deleteUser`（级联角色）仍未实现（§17.8/§18）。
 - 角色删除/管理未实现。
 - 合规结果历史清理定时任务仍未做（`compliance_check_result` 每天全量扫描累积，仅删数据源/命名规范时清理，无按保留期全局清理）。
+
+## 20. 标准合规检查前端（2026-08-05，本次会话）
+
+> **阶段**：在 §17 后端（提交 b6b40bb4）基础上完成**标准合规前端**：新增独立「标准合规」菜单页（对齐 PRD §6.6 / 原型 View 5），并补后端统计摘要接口。经产品沟通确认方向后实施、review、构建部署、文档更新。
+
+### 20.1 产品决策（用户确认）
+
+| 决策点 | 结论 |
+|--------|------|
+| UI 落点 | **新增独立「标准合规」菜单页**（数据治理组，`/governance/compliance`），废弃数据标准页内 sessionStorage 合规检查方案 |
+| 统计形态 | 三格统计：不合规项数 / 已忽略数 / **合规率** |
+| 合规率口径 | `合规率 = (1 − 未忽略不合规项 ÷ 在线表+字段对象总数) × 100%`；**已忽略项视为已豁免/已整改，不拉低合规率**；无范围内对象时返回 100；页面副标题标注「对象合规率（按表/字段对象估算）」 |
+| 菜单权限 | `COMPLIANCE_VIEW_ROLES`（超管/治理员/工程师）——因后端已放开工程师查看/忽略/导出合规结果，独立菜单需对工程师可见 |
+| 立即扫描 | 弹窗选数据源 + 检查项目（命名规范/字段类型）→ 扫描完成后刷新清单页与统计 |
+
+### 20.2 后端补接口（本次会话补充，§17 之后）
+
+| 产物 | 变更 |
+|------|------|
+| `task-core-entity` dto：`ComplianceCheckSummaryDTO`（新增） | 统计摘要 `nonCompliant`/`ignored`/`totalObjects`/`complianceRate` |
+| `task-core-entity` dto：`ComplianceCheckPageRequest`（修改） | 新增 `violationType`（NAMING/TYPE 筛选）；修正 `ignored` 注释（null=0 默认仅未忽略，1=仅已忽略，2=全部） |
+| `task-core-governance`：`ComplianceCheckService`（修改） | 新增 `summary(request)`（`resolveRangeTableIds` 一次表 ID 解析复用，批量统计避免重复查询）+ `page` 支持 `violationType` 过滤 + `ignored=2` 全部 |
+| `governance`：`DataStandardController`（修改） | 新增 `POST /compliance-check/summary`（三角色：超管/治理员/工程师） |
+
+### 20.3 前端变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `src/types/dataStandard.ts`（修改） | `ComplianceCheckResult.violationType` 改 `'NAMING'\|'TYPE'`（对齐后端，字段类型用 TYPE）；加 `ignored`/`ignoredAt`/`ignoredBy`；`ComplianceCheckParams` 加 `datasourceId`；新增 `ComplianceCheckPageParams`（page/pageSize/ignored/violationType）/`ComplianceCheckSummary` |
+| `src/api/dataStandard.ts`（修改） | 新增 `pageComplianceCheckResults`/`ignoreComplianceCheckResult`/`unignoreComplianceCheckResult`/`getComplianceCheckSummary`/`exportComplianceCheck`（`/governance/data-standards/compliance-check/**`） |
+| `src/pages/governance/compliance/index.tsx`（新增） | 独立「标准合规」页：三格统计卡片 + 扫描结果清单（`DsToolbar` 筛选：数据源/违规类型/忽略状态 + 分页 `Pagination` + `DsTableEmpty`）+ 忽略/取消忽略（`ConfirmDialog`）+ 导出 CSV（blob 下载）+ 立即扫描弹窗（选数据源+检查项目）+ 查看跳元数据（`?tableId&columnId&from=compliance`）+ URL 状态同步（返回不丢筛选） |
+| `src/components/Sidebar.tsx` + `src/router/index.tsx`（修改） | 「数据治理」组新增「标准合规」菜单（`COMPLIANCE_VIEW_ROLES`，`HiOutlineShieldCheck`）+ `/governance/compliance` 懒加载路由 |
+| `src/constants/roles.ts`（修改） | 新增 `COMPLIANCE_VIEW_ROLES`（SUPER_ADMIN/GOVERNANCE_ADMIN/DATA_ENGINEER） |
+| `src/pages/governance/data-standards/index.tsx`（修改） | 废弃 sessionStorage 合规方案：移除「合规检查」按钮 + 弹窗 + `fromCompliance` 恢复逻辑 + 结果面板分支；删除 `ComplianceCheckPanel.tsx`（不再引用） |
+
+### 20.4 Review 结论（功能 × 架构 × 效率）
+
+- **架构融洽**：后端 summary DTO 在 task-core-entity（共享底座）、Service 在 task-core-governance、Controller 在 governance，符合模块分层；前端复用 `DsToolbar`/`DsFilterSelect`/`DsStatusBadge`/`DsTableEmpty`/`Pagination`/`ConfirmDialog`/`DsIconButton`/`DsModal`，路由 lazyPage + Sidebar roles，无手写漂移。
+- **业务正确**：`violationType` 用 `TYPE`（对齐后端 §17.2）；`ignored` 三态（0/1/2）语义对齐；合规率口径已忽略不拉低；权限 `COMPLIANCE_VIEW_ROLES` 对齐后端三角色；导出走 CSV blob（`responseType:'blob'`，拦截器对 Blob 透传）。
+- **实现高效**：summary 用 `resolveRangeTableIds` 一次表 ID 解析 + 批量 `selectCount` 避免重复查询；page 用 MP `selectPage`；前端 URL 状态同步（`urlInitRef` 单 init + 单 sync）。
+
+### 20.5 部署与验证
+
+- **构建**：后端 `mvn -pl task-core-entity,task-core-governance,governance,engineering,worker,job,system -am clean package -DskipTests` → BUILD SUCCESS；前端 `npm run build`（tsc 通过）。
+- **部署**：重建 app-governance/engineering/worker/job/system（task-core jar 更新，按 AGENTS.md 全量）+ app-frontend（**`--no-cache`**，首次 `COPY dist/` CACHED 坑见下）。全部容器 healthy。
+- **API 自测**（admin）：
+  - `POST /compliance-check/summary` → `{nonCompliant:81, ignored:0, totalObjects:84, complianceRate:3.6}` ✅
+  - `POST /compliance-check/page`：`ignored=2` 全量 total=81；`violationType=TYPE` 当前无 TYPE 违规返回 0（正常，现有数据全为 NAMING）✅
+  - `POST /compliance-check/ignore/{id}` + `unignore/{id}`：summary 联动 `nonCompliant 81→80→81`、`ignored 0→1→0` ✅
+  - `POST /compliance-check/export`：HTTP 200 返回 7578B CSV（带 BOM）✅
+- **踩坑**：前端镜像 `COPY dist/` 首次 CACHED（BuildKit 未感知 dist 变化）→ `docker compose build --no-cache app-frontend` 强制重建；curl 在 PowerShell 传 JSON body 会因引号转义报 500（Jackson 反序列化错误），用 `-d @file` 或 `Invoke-RestMethod` 正常（与 §17.5 一致）。
+
+### 20.6 待办（后续）
+
+- 质量规则页/规则模板库「批量应用」占位按钮接线（后端已就绪，§17.10 第 2 项）。
+- 删除用户 `deleteUser` / 角色管理（§17.10 第 3 项）。
+- 合规结果历史清理定时任务（§19.6）。

@@ -32,5 +32,8 @@ export const ALERT_VIEW_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEE
 /** 告警规则编辑权限（新增/编辑/停用 = 超管/工程师） */
 export const ALERT_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER];
 
+/** 标准合规查看权限（PRD §8：结果查看/忽略/导出=超管/治理员/工程师，分析师不可） */
+export const COMPLIANCE_VIEW_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.GOVERNANCE_ADMIN, ROLE.DATA_ENGINEER];
+
 /** 全部角色（元数据预览等人人可用的只读场景） */
 export const ALL_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.DATA_ANALYST, ROLE.GOVERNANCE_ADMIN];

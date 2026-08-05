@@ -12,11 +12,9 @@ import {
     deleteNamingStandard,
     queryFieldTypeStandards,
     queryNamingStandards,
-    runComplianceCheck,
     updateFieldTypeStandard,
     updateNamingStandard,
 } from '../../../api/dataStandard';
-import {listMetadataDatasourceIds} from '../../../api/metadata';
 import ReferenceListModal from '../../../components/ReferenceListModal';
 import type {ApiError} from '../../../utils/error';
 import Pagination from '../../../components/Pagination';
@@ -24,7 +22,6 @@ import SearchInput from '../../../components/SearchInput';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
-import DsModal from '../../../components/DsModal';
 import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import {
@@ -34,24 +31,19 @@ import {
     HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlus,
-    HiOutlineShieldCheck,
     HiOutlineTrash,
 } from 'react-icons/hi2';
 import type {
-    ComplianceCheckParams,
-    ComplianceCheckResult,
     FieldTypeStandard,
     FieldTypeStandardCreateRequest,
     NamingStandard,
     NamingStandardCreateRequest,
     NamingStandardQueryParams,
 } from '../../../types/dataStandard';
-import type {MetadataDatasource} from '../../../types/metadata';
 import {formatDateTime} from '../../../utils/format';
 import {COL} from '../../../constants/table';
 import NamingStandardDrawer from './NamingStandardDrawer';
 import FieldTypeStandardDrawer from './FieldTypeStandardDrawer';
-import ComplianceCheckPanel from './ComplianceCheckPanel';
 
 type Tab = 'naming' | 'field-type';
 
@@ -63,7 +55,6 @@ const MATCH_TYPE_LABEL: Record<string, string> = {
 
 export default function DataStandardsPage() {
     const [searchParams, setSearchParams] = useSearchParams();
-    const fromCompliance = searchParams.get('from') === 'compliance';
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
     const [activeTab, setActiveTab] = useState<Tab>('naming');
@@ -101,37 +92,6 @@ export default function DataStandardsPage() {
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
     const [deleteReferences, setDeleteReferences] = useState<string[]>([]);
-
-    // Compliance check modal
-    const [complianceModalOpen, setComplianceModalOpen] = useState(false);
-    const [complianceChecking, setComplianceChecking] = useState(false);
-    const [complianceDatasources, setComplianceDatasources] = useState<MetadataDatasource[]>([]);
-    const [complianceDsIds, setComplianceDsIds] = useState<string[]>([]);
-    const [checkNaming, setCheckNaming] = useState(true);
-    const [checkFieldType, setCheckFieldType] = useState(true);
-
-    // Compliance results panel
-    const [complianceResults, setComplianceResults] = useState<ComplianceCheckResult[]>([]);
-    const [complianceParams, setComplianceParams] = useState<ComplianceCheckParams | null>(null);
-    const [complianceCheckedAt, setComplianceCheckedAt] = useState<string>('');
-    const [showComplianceResults, setShowComplianceResults] = useState(false);
-
-    useEffect(() => {
-        if (!fromCompliance) return;
-        try {
-            const raw = sessionStorage.getItem('datanest:compliance-check-state');
-            if (!raw) return;
-            const state = JSON.parse(raw);
-            if (state.params && state.results) {
-                setComplianceParams(state.params);
-                setComplianceResults(state.results);
-                setComplianceCheckedAt(state.checkedAt || '');
-                setShowComplianceResults(true);
-            }
-        } catch {
-            // ignore
-        }
-    }, [fromCompliance]);
 
     const loadNamingStandards = useCallback(async () => {
         setNamingLoading(true);
@@ -225,57 +185,6 @@ export default function DataStandardsPage() {
         setSearchParams(next, {replace: true});
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, namingKeyword, namingAppliesTo, namingEnabled, namingPage, fieldTypeKeyword, fieldTypePage]);
-
-    const openComplianceModal = async () => {
-        setComplianceModalOpen(true);
-        setComplianceDsIds([]);
-        setCheckNaming(true);
-        setCheckFieldType(true);
-        try {
-            const res = await listMetadataDatasourceIds();
-            setComplianceDatasources(res.data || []);
-        } catch {
-            setComplianceDatasources([]);
-        }
-    };
-
-    const handleRunComplianceCheck = async () => {
-        if (complianceDsIds.length === 0) {
-            notify.warning('请选择检查数据源');
-            return;
-        }
-        if (!checkNaming && !checkFieldType) {
-            notify.warning('请至少选择一项检查项目');
-            return;
-        }
-        const params: ComplianceCheckParams = {
-            datasourceIds: complianceDsIds,
-            checkNaming,
-            checkFieldType,
-        };
-        setComplianceChecking(true);
-        try {
-            const res = await runComplianceCheck(params);
-            notify.success('合规检查完成');
-            const checkedAtValue = formatDateTime(new Date().toISOString());
-            setComplianceResults(res.data || []);
-            setComplianceParams(params);
-            setComplianceCheckedAt(checkedAtValue);
-            setComplianceModalOpen(false);
-            setShowComplianceResults(true);
-            try {
-                sessionStorage.setItem('datanest:compliance-check-state', JSON.stringify({
-                    params,
-                    results: res.data || [],
-                    checkedAt: checkedAtValue,
-                }));
-            } catch {
-                // ignore
-            }
-        } finally {
-            setComplianceChecking(false);
-        }
-    };
 
     const handleNamingSubmit = async (form: NamingStandardCreateRequest) => {
         const res = namingEditItem
@@ -653,21 +562,6 @@ export default function DataStandardsPage() {
         {key: 'field-type', label: '字段类型标准', icon: HiOutlineBookOpen},
     ];
 
-    if (showComplianceResults && complianceParams) {
-        return (
-            <div className="h-full flex flex-col overflow-hidden">
-                <ComplianceCheckPanel
-                    params={complianceParams}
-                    datasources={complianceDatasources}
-                    results={complianceResults}
-                    checkedAt={complianceCheckedAt}
-                    onReCheck={openComplianceModal}
-                    onClose={() => setShowComplianceResults(false)}
-                />
-            </div>
-        );
-    }
-
     return (
         <div className="flex flex-col">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
@@ -683,12 +577,6 @@ export default function DataStandardsPage() {
                             >
                                 <HiOutlinePlus size={16}/>
                                 {activeTab === 'naming' ? '新建命名规范' : '新建字段类型标准'}
-                            </DsButton>
-                            <DsButton
-                                onClick={openComplianceModal}
-                            >
-                                <HiOutlineShieldCheck size={16}/>
-                                合规检查
                             </DsButton>
                         </>
                     )}
@@ -924,103 +812,6 @@ export default function DataStandardsPage() {
                 references={deleteReferences}
                 onClose={() => setDeleteBlockedOpen(false)}
             />
-
-            <DsModal
-                open={complianceModalOpen}
-                onClose={() => setComplianceModalOpen(false)}
-                title="合规检查"
-                width="w-[480px]"
-                footer={
-                    <>
-                        <DsButton
-                            variant="secondary"
-                            onClick={() => setComplianceModalOpen(false)}
-                        >
-                            取消
-                        </DsButton>
-                        <DsButton
-                            onClick={handleRunComplianceCheck}
-                            disabled={complianceChecking}
-                        >
-                            {complianceChecking ? '检查中...' : '开始检查'}
-                        </DsButton>
-                    </>
-                }
-            >
-                <div className="space-y-ds-4">
-                    <div>
-                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                            检查范围 <span className="text-ds-danger">*</span>
-                        </label>
-                        <div
-                            className="space-y-ds-2 max-h-[200px] overflow-auto border border-ds-border-subtle rounded-ds-sm p-ds-3 bg-white">
-                            <label className="flex items-center gap-ds-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={complianceDsIds.length === complianceDatasources.length && complianceDatasources.length > 0}
-                                    onChange={(e) => {
-                                        if (e.target.checked) {
-                                            setComplianceDsIds(complianceDatasources.map((ds) => String(ds.id)));
-                                        } else {
-                                            setComplianceDsIds([]);
-                                        }
-                                    }}
-                                    className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent"
-                                />
-                                <span
-                                    className="text-ds-small text-ds-text-secondary font-medium">全部数据源</span>
-                            </label>
-                            {complianceDatasources.map((ds) => {
-                                const id = String(ds.id);
-                                const checked = complianceDsIds.includes(id);
-                                return (
-                                    <label key={ds.id}
-                                           className="flex items-center gap-ds-2 cursor-pointer pl-ds-4">
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={(e) => {
-                                                setComplianceDsIds((prev) =>
-                                                    e.target.checked ? [...prev, id] : prev.filter((v) => v !== id)
-                                                );
-                                            }}
-                                            className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent"
-                                        />
-                                        <span
-                                            className="text-ds-small text-ds-text-secondary">{ds.name || `数据源 ${ds.id}`}</span>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                            检查项目
-                        </label>
-                        <div className="space-y-ds-2">
-                            <label className="flex items-center gap-ds-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={checkNaming}
-                                    onChange={(e) => setCheckNaming(e.target.checked)}
-                                    className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent"
-                                />
-                                <span className="text-ds-small text-ds-text-secondary">命名规范</span>
-                            </label>
-                            <label className="flex items-center gap-ds-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={checkFieldType}
-                                    onChange={(e) => setCheckFieldType(e.target.checked)}
-                                    className="w-4 h-4 text-ds-accent border-ds-border-subtle rounded focus:ring-ds-accent"
-                                />
-                                <span className="text-ds-small text-ds-text-secondary">字段类型标准</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </DsModal>
 
         </div>
     );

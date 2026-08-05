@@ -451,7 +451,8 @@ result_value ≥ severe_threshold          → SEVERE
 |------|-------------------------------|-------------------------------------------------------------------|
 | POST | `/compliance-check`           | 运行合规扫描（检查命名/字段类型规范，返回本次产生的不合规项）     |
 | POST | `/compliance-check/results`   | 结果列表（保留旧接口，返回全量 List）                             |
-| POST | `/compliance-check/page`      | 分页列表（body `ComplianceCheckPageRequest`，默认排除已忽略，可带 `ignored` 筛选） |
+| POST | `/compliance-check/page`      | 分页列表（body `ComplianceCheckPageRequest`，默认排除已忽略；`ignored` 0=仅未忽略/1=仅已忽略/2=全部；`violationType` 可筛 NAMING/TYPE） |
+| POST | `/compliance-check/summary`   | 统计摘要（前端三格：`nonCompliant` 未忽略不合规项 / `ignored` 已忽略 / `totalObjects` 在线表+字段对象数 / `complianceRate` 合规率，2026-08-05 前端补齐） |
 | POST | `/compliance-check/ignore/{resultId}`   | 忽略某项（ignored=1，记录 ignored_by/ignored_at） |
 | POST | `/compliance-check/unignore/{resultId}` | 取消忽略（ignored=0，清空 ignored_by/ignored_at） |
 | POST | `/compliance-check/export`    | 导出 CSV（body `ComplianceCheckRequest`，返回 `text/csv` + Content-Disposition attachment） |
@@ -534,7 +535,7 @@ result_value ≥ severe_threshold          → SEVERE
 - [ ] 检查历史列表 + 详情 + 趋势图（待执行批）
 - [ ] 元数据详情页「质量」页签（待执行批）
 - [ ] 血缘图谱节点质量徽章（`LineageNodeData` 扩展，待执行批）
-- [ ] 标准合规页（忽略/取消忽略/导出，待执行批）
+- [x] 标准合规页（独立菜单 `数据治理/标准合规`，`/governance/compliance`，2026-08-05 交付）：三格统计（不合规项/已忽略/合规率，取自 `/summary`）+ 扫描结果清单（分页 + 数据源/违规类型/忽略状态筛选）+ 忽略/取消忽略 + 导出问题清单（CSV 下载）+ 立即扫描（弹窗选数据源+检查项目）。废弃原「数据标准」页内 sessionStorage 方案（删除 `ComplianceCheckPanel`），查看问题跳元数据页带 `from=compliance`。菜单权限 `COMPLIANCE_VIEW_ROLES`（超管/治理员/工程师）。后端补 `/compliance-check/summary` 接口 + `page` 支持 `violationType`/`ignored=2`。
 
 ---
 
