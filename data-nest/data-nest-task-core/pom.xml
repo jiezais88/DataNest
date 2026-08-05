@@ -22,6 +22,24 @@
             <artifactId>data-nest-common</artifactId>
         </dependency>
 
+        <!-- DataNest Task Core Entity（共享实体/mapper/constant/dto 底座） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-task-core-entity</artifactId>
+        </dependency>
+
+        <!-- DataNest Alert（执行类依赖 AlertFiringService 等告警服务） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-alert</artifactId>
+        </dependency>
+
+        <!-- DataNest Task Core Governance（执行内核调用质量自动触发等治理编排服务） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-task-core-governance</artifactId>
+        </dependency>
+
         <!-- Spring Context (provided by consumers) -->
         <dependency>
             <groupId>org.springframework</groupId>

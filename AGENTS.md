@@ -15,16 +15,23 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 核心模块
 
-| 模块                    | 说明                                                 |
-|-------------------------|------------------------------------------------------|
-| `data-nest-task-core`   | 同步/采集任务核心逻辑，被 engineering 和 worker 共用 |
-| `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API）                |
-| `data-nest-worker`      | Addax 实际执行方                                     |
-| `data-nest-governance`  | 元数据采集任务、元数据管理、数据标准                 |
-| `data-nest-job`         | XXL-JOB executor，平台定时任务                       |
-| `data-nest-system`      | 认证、用户、权限                                     |
-| `data-nest-gateway`     | 网关入口                                             |
-| `data-nest-common`      | 公共组件（SchedulerClient 等）                       |
+> **task-core 拆分（2026-08-05 三步重构）**：原 `data-nest-task-core` 按依赖分层拆为 **4 个模块**，**包名 `com.datanest.task.core.*` 全部保持不变**（零 import 改动）。依赖链：`common ← task-core-entity ← alert ← task-core-governance ← task-core`。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**，新模块经 task-core 传递获得，各消费方 pom 无需改动。
+
+| 模块                          | 说明                                                                  |
+|-------------------------------|-----------------------------------------------------------------------|
+| `data-nest-common`            | 公共组件（SchedulerClient 等），最底层底座                            |
+| `data-nest-task-core-entity`  | 共享实体/mapper/constant/dto 底座：entity(35)/mapper(36)/dto(35)/constant(2) + `SysUserService`（横切通用服务）。被 alert/governance/task-core 及所有消费方共用 |
+| `data-nest-alert`             | 告警域：`AlertFiringService`/`AlertRuleService`/`DagAlertService`/`MailService`/`DagAlertExecutionListener`/`DagExecutionFinishedListener` + 接口 `QualityAutoTriggerPort`（解耦 alert↔governance） |
+| `data-nest-task-core-governance` | 治理编排服务：`QualityRuleService`/`QualityJobService`/`QualityScoreService`/`QualityRuleTemplateService`/`QualityCheckTriggerService`/`QualityAutoTriggerService`/`DataPreviewService`/`DagTopologyService`/`DataSourceRefreshService`/`ConnectionTester`/`RuleSqlGenerator`（后者实现 `QualityAutoTriggerPort`） |
+| `data-nest-task-core`         | 纯执行内核（21 个 service + collect/config/job 包）：`SyncJobExecutorService`/`CollectExecutor`/`GenericSqlExecutor`/`QualityCheckService`/`ScoreCalculator` 等。保留 `MybatisPlusInterceptorAutoConfiguration` |
+| `data-nest-engineering`       | 数据工程服务（同步任务 API、DAG API）                                 |
+| `data-nest-worker`            | Addax 实际执行方（质量检查执行 handler 也在 worker）                  |
+| `data-nest-governance`        | 数据治理服务（元数据采集、元数据管理、数据标准、质量/评分 Controller） |
+| `data-nest-job`               | XXL-JOB executor，平台定时任务                                       |
+| `data-nest-system`            | 认证、用户、权限                                                      |
+| `data-nest-gateway`           | 网关入口                                                              |
+
+> **依赖方向规则**：`alert` 不能依赖 `task-core-governance`（会成环）。告警侧需要调用治理域自动触发时，通过 `alert` 内定义的接口 `QualityAutoTriggerPort`（含常量 `OBJECT_TYPE_DAG_NODE/SYNC_JOB/COLLECT_TASK`），由 `task-core-governance` 的 `QualityAutoTriggerService implements` 实现。
 
 ### 核心容器
 
@@ -78,17 +85,24 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 关键原则
 
-- `data-nest-task-core` 是 `data-nest-engineering` 和 `data-nest-worker` 的 **共享模块**。
-- **只要改到 task-core，必须同时重新编译并部署 engineering 和 worker**，否则执行节点还是旧代码。
+- **task-core 拆分为 4 模块**（entity/alert/task-core-governance/task-core），是 engineering、governance、worker、job、system 的 **共享底座**。
+- 消费方只显式依赖 `data-nest-task-core`（经其传递获得 entity/alert/governance 模块），消费方 pom 无需显式声明新模块。
+- **构建顺序**：Maven 按 `<modules>` 声明顺序构建，`data-nest-task-core` 依赖其余 3 个新模块，所以模块顺序必须是 `common → task-core-entity → alert → task-core-governance → task-core`（已在根 pom 配置）。
+- **只要改到 `data-nest-task-core`（含任一拆分模块），必须同时重新编译并部署所有消费方**（至少 engineering 和 worker；若涉及治理/告警/质量还需 governance/job/system），否则执行节点还是旧代码。命令见下。
 
 ### 常用命令
 
 ```bash
 cd data-nest
+# 全量构建（含拆分出的 4 个 task-core 模块）
+mvn clean package -DskipTests -q
+# 只构建 task-core 及主要消费方（engineering/worker）
 mvn -pl data-nest-task-core,data-nest-engineering,data-nest-worker -am clean package -DskipTests -q
 docker compose build app-engineering app-worker
 docker compose up -d --no-deps app-engineering app-worker
 ```
+
+> `-am`（also make）会自动把 `task-core` 依赖的 `task-core-entity/alert/task-core-governance` 一并构建。
 
 ### 注意
 
@@ -158,11 +172,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和生成的 job json
   `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
 - **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需要重启对应服务。
-- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 task-core 是 `provided`，worker/job 必须在自己
-  pom 显式声明（compile），且 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则
-  `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。**Sprint 6 起 governance 也必须声明
-  `spring-boot-starter-mail`**（`QualityCheckController` 注入 `QualityCheckService` → `AlertFiringService` → `MailService`，缺 mail 类会
-  `NoClassDefFoundError` 启动失败）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`
+- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 `data-nest-alert` 模块是 **compile** 依赖（告警模块自己发信，经 task-core → alert 传递给所有消费方，消费方 pom **无需**再显式声明 mail 依赖）。但各服务仍需 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则 `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。governance 因注入 `QualityCheckService` → `AlertFiringService` → `MailService` 也必须能拿到 mail 类（已由 alert 模块 compile 依赖传递解决，无需单独配 MAIL 环境变量——governance 不实际发邮件，告警在 worker）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`
   （空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
 - **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**
   （`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
@@ -230,6 +240,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **分级邮件告警 E2E（sprint6/quality-alerts.spec.ts，2026-08-05）**：8 用例全绿。**DsModal 弹窗定位用 `getByRole('dialog', {name: title})`**（非 antd `.ant-modal`）。**antd multiple Select 选中后 dropdown 保持打开**，点击弹窗标题（而非 Escape，会同时关闭 DsModal）关闭 dropdown 后再点保存。**告警规则对象需多选覆盖所有链路**（同一对象告警规则才能在多个任务上命中），SPEC 测试中覆盖主链路 + SEVERE_ONLY 两个任务。**MailHog `decodeMimeEncoded` 修复了 RFC 2047 相邻 encoded-word 间空白插入 bug**（sprint5 mailhog.ts 通用修复）：JavaMail 长主题按 ~40 字节拆分，`e2e_s6_alert_main` 被拆成 `e2e_`/`s6_alert_ma`/`in`，未修复时 `find('e2e_s6_alert_main')` 失败。**邮件正文是 quoted-printable**（非 base64），spec 内 `decodeBody` 按 `=XX` 字节还原 + 移除软换行 `=\r\n`。**结果值前端格式化为整数 `4`**（DB 存 `4.000000`），断言 UI 时用 `getByText('4', {exact:true})`。**告警中心历史页首列是「告警时间」**（非对象名称），`rowBy`（按首列匹配）失效，应按对象名称列用 `.filter({hasText: objectName})`；`getByText` 限定在 `historyRow` 内避免命中筛选下拉 `<option>`。**严格模式同名批次**：主链路任务执行两次（主链路 + 幂等）会产 2 行，`rowBy(...).first()` 取最新。
 - **表级质量评分 E2E（sprint6/quality-scores.spec.ts，2026-08-05）**：11 用例全绿。**DB 多档评分**在 `quality_score` 表精确断言（`score` 存 `100.00`/`70.00`/`20.00` 2 位小数，`health_level`=EXCELLENT/WARNING/BAD）。**评分算法**：基础分=100×(PASS 权重/有效启用规则权重)−警告扣(默认10×警告权重)−严重扣(默认30×严重权重)，**SEVERE 强制 BAD**，badThreshold(60) 以下 BAD，UNAVAILABLE 不参与；无有效规则**不落评分行**。**多档场景需不同物理表名**（`uk_metadata_table_unique(datasource_id, database_name, COALESCE(schema_name,''), table_name)`），seed 用 4 张 `e2e_s6_score_*` 表行数控制 COUNT。**执行**：`POST /governance/quality/scores/table/{tableId}/execute` 逐条 MANUAL 投递 worker（异步），测试轮询 `quality_score` 落行且计数达标/`quality_check_detail` 分级到终态，**不依赖 `waitBatch`**（避免被其他单规则批次污染）。**健康度文案**：EXCELLENT=优秀/GOOD=良好/WARNING=一般/BAD=差，「差」筛选 value=`BAD`。**扣分配置弹窗**：`getByRole('dialog', {name:'扣分配置（质量评分全局配置）'})`，改配置后**需重新执行才重算**（评分只在批次收尾重算，不实时重算存量）。**spec 自带播种**（`ensureTestUsers+seedExecTables+seedExecMetadata+seedQualityScores`），支持 `SKIP_SETUP=1` 独立运行，绕开 Sprint5 collect-task 播种。
 - **CollectTaskService.toDTO NPE（2026-08-05 修复）**：`POST /governance/collect-tasks` 报 `9999 系统内部错误`。根因：`toDTO` 用 `usernameMap.get(task.getUpdatedBy())`，`usernameMap` 是 `Map.of()`（`ImmutableCollections.MapN`，**不允许 null key 的 get**）；按审计约定 V3.6.8 create 只设 `created_by` 不设 `updated_by` → `updatedBy=null` → `Map.of().get(null)` 抛 NPE。修复：`toDTO` 加空安全 `lookupName(map, userId)` helper（`userId==null` 返回 null）。改后须重建 **app-governance**。**教训**：审计约定「create 只设 created_by」后，凡对 `Map.of()`/`Map.ofEntries()` 等不可变 map 做 `get(key)` 的地方，key 可能为 null，需空安全处理。
+- **AlertRuleModal 「对象」multiple Select 选中后浮层遮挡下方字段（2026-08-05 修复）**：`/system/alert-center` 新增/编辑告警规则弹窗中，「对象」用 antd `mode="multiple"` Select（同步任务/采集任务/质量任务类型），antd 默认**选中后 dropdown 保持展开**方便连选。当对象选项 ≥ 4 项时，浮层高度约 200px，会**物理遮挡下方「接收用户」select 控件**，导致真人用户和自动化测试都看不到/点不到「接收用户」（测试错误：`ant-select-item-option-content "users" intercepts pointer events`）。修复：`AlertRuleModal` 改为**受控 dropdown open**（`useState objectDropdownOpen`），`onChange` 选中后立即 `setObjectDropdownOpen(false)`，符合表单场景「选完即操作下一项」的预期。**适用**：所有表单内嵌 antd multiple Select 且下方还有其他字段的场景——要么加 `listHeight` + `virtual={false}` 限高，要么受控 open 选中后关闭。改后须 `npm run build` + 重建 **app-frontend**。
 
 ## 7. 代码与提交约定
 
@@ -271,13 +282,15 @@ com.datanest.<模块>
 ├── controller/                  # REST API 入口
 ├── dto/                         # Request / Response / Query DTO
 ├── service/                     # 业务逻辑
-├── entity/                      # MyBatis-Plus 实体（共享实体放在 task-core）
-└── mapper/                      # Mapper 接口（共享 Mapper 放在 task-core）
+├── entity/                      # MyBatis-Plus 实体（共享实体放在 task-core-entity）
+└── mapper/                      # Mapper 接口（共享 Mapper 放在 task-core-entity）
 ```
 
 实际代码中包结构保持 **扁平按层划分**：`controller`/`service`/`dto`/`config` 直接挂在 `com.datanest.<模块>` 下， 不要引入
-`dag/`、`dev/`、`sync/` 等子包，否则会影响 MyBatis Mapper 扫描和依赖方引用。 共享的 `entity`、`mapper`、`service` 集中在
-`data-nest-task-core` 的同名包中。
+`dag/`、`dev/`、`sync/` 等子包，否则会影响 MyBatis Mapper 扫描和依赖方引用。 共享的 `entity`、`mapper`、`dto`、`constant`
+集中在 `data-nest-task-core-entity` 的同名包中（`com.datanest.task.core.*`，包名未随模块拆分改变）；共享 `service` 按域分散在
+`data-nest-alert`（告警域）、`data-nest-task-core-governance`（治理编排域）、`data-nest-task-core`（执行内核域）的
+`com.datanest.task.core.service` 中。
 
 `data-nest-common` 只放跨服务共享内容：
 
@@ -424,11 +437,23 @@ POST   /datasources/{id}/test         # 动作类接口
 - 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
 - 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。
 
-### 8.11 task-core 共享模块
+### 8.11 task-core 共享模块（2026-08-05 三步拆分重构）
 
-- `data-nest-task-core` 是 `data-nest-engineering` 和 `data-nest-worker` 的共享模块。
-- **只要改到 task-core，必须同时重新编译并部署 engineering 和 worker**。
-- task-core 中的 `entity`、`mapper`、`service` 会被两个服务共同扫描，注意 Bean 冲突和事务边界。
+原 `data-nest-task-core` 拆为 4 个模块，**包名 `com.datanest.task.core.*` 全部不变**（import 零改动）。依赖链（自底向上）：
+
+```
+data-nest-common
+  └─ data-nest-task-core-entity     # entity/mapper/constant/dto 底座 + SysUserService
+       └─ data-nest-alert           # 告警服务 + 接口 QualityAutoTriggerPort
+            └─ data-nest-task-core-governance   # 治理编排服务（实现 QualityAutoTriggerPort）
+                 └─ data-nest-task-core         # 纯执行内核 + MybatisPlusInterceptorAutoConfiguration
+```
+
+- **消费方**（engineering/governance/worker/job/system）只显式依赖 `data-nest-task-core`，新模块经依赖传递获得。
+- **只要改到任一拆分模块，必须同时重新编译并部署相关消费方**（quality 执行改在 worker、告警发信在 worker/job/governance、接口在 governance），至少 engineering + worker。
+- 各模块 `service` 在 `com.datanest.task.core.service` 下按域分布：alert=告警域、task-core-governance=治理编排域、task-core=执行内核域。`entity/mapper` 都在 `task-core-entity`。
+- `entity`、`mapper` 会被多个服务共同扫描，注意 Bean 冲突和事务边界（同前）。
+- **防环**：`alert` 与 `task-core-governance` 之间用接口 `QualityAutoTriggerPort` 解耦，禁止 alert 反向依赖 governance 服务类。
 
 ## 9. 前端开发规范
 

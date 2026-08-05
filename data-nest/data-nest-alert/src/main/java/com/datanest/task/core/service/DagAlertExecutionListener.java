@@ -22,14 +22,14 @@ public class DagAlertExecutionListener implements DagExecutionFinishedListener {
     private static final Logger logger = LoggerFactory.getLogger(DagAlertExecutionListener.class);
 
     private final DagAlertService dagAlertService;
-    private final QualityAutoTriggerService qualityAutoTriggerService;
+    private final QualityAutoTriggerPort qualityAutoTriggerPort;
     private final DagNodeMapper dagNodeMapper;
 
     public DagAlertExecutionListener(DagAlertService dagAlertService,
-                                     QualityAutoTriggerService qualityAutoTriggerService,
+                                     QualityAutoTriggerPort qualityAutoTriggerPort,
                                      DagNodeMapper dagNodeMapper) {
         this.dagAlertService = dagAlertService;
-        this.qualityAutoTriggerService = qualityAutoTriggerService;
+        this.qualityAutoTriggerPort = qualityAutoTriggerPort;
         this.dagNodeMapper = dagNodeMapper;
     }
 
@@ -70,8 +70,8 @@ public class DagAlertExecutionListener implements DagExecutionFinishedListener {
                 if (dagNode == null) {
                     continue;
                 }
-                qualityAutoTriggerService.triggerOnSuccess(
-                        QualityAutoTriggerService.OBJECT_TYPE_DAG_NODE, dagNode.getId());
+                qualityAutoTriggerPort.triggerOnSuccess(
+                        QualityAutoTriggerPort.OBJECT_TYPE_DAG_NODE, dagNode.getId());
             } catch (Exception e) {
                 logger.error("质量任务自动触发失败（不影响 DAG 结果）: dagId={}, nodeId={}",
                         dagId, node.getNodeId(), e);

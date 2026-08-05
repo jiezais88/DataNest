@@ -84,6 +84,7 @@ export default function AlertRuleModal({
     const [userIds, setUserIds] = useState<string[]>([]);
     const [timeoutMinutes, setTimeoutMinutes] = useState<number>(30);
     const [enabled, setEnabled] = useState(true);
+    const [objectDropdownOpen, setObjectDropdownOpen] = useState(false);
 
     const isQuick = mode === 'quick';
     const isDraft = isQuick && !quickObjectId;
@@ -276,7 +277,12 @@ export default function AlertRuleModal({
                 showSearch
                 optionFilterProp="label"
                 value={objectIds}
-                onChange={setObjectIds}
+                onChange={(value) => {
+                    setObjectIds(value);
+                    // 选中后自动关闭 dropdown，避免浮层遮挡下方「接收用户」「超时阈值」等字段。
+                    // 表单场景下用户期望「选完即可操作下一项」而非继续连选。
+                    setObjectDropdownOpen(false);
+                }}
                 disabled={readOnly || objectOptionsLoading}
                 loading={objectOptionsLoading}
                 placeholder={objectOptionsLoading ? '加载中...' : '请选择对象（支持多选）'}
@@ -284,6 +290,10 @@ export default function AlertRuleModal({
                 className="w-full"
                 notFoundContent={objectOptionsLoading ? <Spin size="small"/> : '无匹配对象'}
                 allowClear
+                open={objectDropdownOpen}
+                onDropdownVisibleChange={setObjectDropdownOpen}
+                listHeight={240}
+                virtual={false}
             />
         );
     };

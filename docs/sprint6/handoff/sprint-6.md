@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -30,6 +30,7 @@
 | 创建审计字段修复                         | ✅ 完成   | 所有实体 create 入口只设 createdBy/createdAt，去掉 setUpdatedBy/setUpdatedAt；Flyway V3.6.8 去掉 13 张表 updated_at 的 DB 默认值（创建后未修改时 updated_at/updated_by 为 null），见 §12 |
 | 表级质量评分后端                         | ✅ 完成   | 评分跨任务聚合加权计算（quality_score 落库，一张表一行）+ 血缘图谱节点批量回填评分 + 三查询接口；健康度四档区间/扣分算法行业调研后回写 PRD/技术文档，见 §13 |
 | 表级质量评分前端                         | ✅ 完成   | 三个落点全覆盖（独立「质量评分」列表页 + 元数据「质量」页签 + 血缘节点质量徽章）+ 后端补 4 接口（按表规则/按表执行/扣分配置读写）；ScoreCalculator 扣分读库表配置 + 修复 badThreshold 判定 bug，见 §14 |
+| task-core 三步拆分重构                   | ✅ 完成   | 原 task-core 拆为 4 模块（entity/alert/task-core-governance/task-core），包名不变；新增 QualityAutoTriggerPort 接口解耦 alert↔governance；跳过执行内核强拆；全量编译+5 容器重建+核心 API 回归通过，见 §16 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -849,3 +850,75 @@
 - **修复**：`toDTO` 增加空安全 `lookupName(map, userId)` helper（`userId==null` 直接返回 null）。最小改动，仅 `CollectTaskService.java`。
 - **部署**：`mvn -pl data-nest-governance -am clean package -DskipTests` → `docker compose build/up app-governance`。修复后 collect-tasks 创建 code=200。
 - **注意**：此 NPE 与评分提交无关，是审计约定改动未适配 `Map.of()` 的遗留回归；影响所有依赖 collect-task 播种的 Sprint5 测试。
+
+### 15.5 全量回归快照（2026-08-05，task-core 拆分重构期间）
+
+> 在 task-core 拆分重构进行中、容器仍跑旧代码时，用本地 `SKIP_SETUP=1` 模式跑了一次全量 sprint6 回归，作为重构前后的基线对照。
+
+- **结果**：**42 passed / 2 failed**（quality-jobs / quality-rules 各 1 条失败）。
+- **失败原因**：**断言过时，非重构引入**：
+  - `quality-jobs.spec.ts:119`（Tab 切换）与 `quality-rules.spec.ts:151`（选任务展示规则）仍引用 `选择质量任务` aria-label，但前端质量规则已独立成 `/governance/quality-rules` 菜单、筛选改名为 `按所属任务筛选`（既有重构所致）。
+  - 该两条已提前记录于 §8.6「已知残留」，暂留待后续维护。
+- **说明**：本次回归**不用于证明重构正确性**（容器跑的是旧代码）。重构完成后（§16 全量 `mvn clean package` + 5 容器重建）需再跑一遍确认全绿/收敛失败项。
+
+## 16. task-core 三步拆分重构（2026-08-05，本次会话）
+
+> **阶段**：把原 `data-nest-task-core`（39 service + 44 entity + 39 dto）按依赖分层拆为 **4 个模块**，消除 task-core 过大的「上帝模块」问题，让共享底座更清晰、职责更单一。
+> **结果**：全量 `mvn clean package`（11 模块 BUILD SUCCESS）+ 重建 5 个受影响容器（app-engineering/governance/worker/job/system）全部 healthy + 核心 API 回归通过。
+
+### 16.1 设计决策（用户两次把决策交还 Agent）
+
+| 决策点 | 结论 | 理由 |
+|--------|------|------|
+| 包名是否改 | **保持不变**（`com.datanest.task.core.*`） | 被 engineering/governance 共用，改包名会导致 engineering→governance 依赖环；包名不变则所有 import 零改动 |
+| SysUserService 放哪 | **下沉 task-core-entity** | 被 system/engineering/governance/alert 全模块用，只依赖 SysUserMapper，放最底层避免循环 |
+| alert↔governance 耦合 | 新增接口 **`QualityAutoTriggerPort`** | `DagAlertExecutionListener`（alert）不再直接依赖 `QualityAutoTriggerService`（治理域），改注入接口；由 governance 的 `QualityAutoTriggerService implements` 实现 |
+| 3.2 步执行内核强拆 | **跳过（取消）** | `GenericSqlExecutor`(infra)/`AddaxJobService`(sync)/`CollectExecutor`/`MetadataRegistrationService` 都依赖 governance 的 `ConnectionTester`，`SyncJobExecutorService` 依赖 collect 的 `MetadataRegistrationService`，跨域依赖密集；强拆 4 模块产生反直觉依赖图，属过度工程。第 1、2 步已达成核心目标 |
+
+### 16.2 最终模块结构
+
+```
+data-nest-common
+  └─ data-nest-task-core-entity        # entity(35)/mapper(36)/dto(35)/constant(2) + SysUserService
+       └─ data-nest-alert              # 6 告警类 + QualityAutoTriggerPort 接口
+            └─ data-nest-task-core-governance  # 11 治理编排服务（含实现 QualityAutoTriggerPort）
+                 └─ data-nest-task-core        # 纯执行内核（21 service + collect/config/job）+ MybatisPlusInterceptorAutoConfiguration
+```
+
+- **`data-nest-task-core-entity`**（底座，依赖 common）：entity(35)/mapper(36)/dto(35)/constant(2) + `SysUserService`（横切通用服务）。
+- **`data-nest-alert`**（告警域，依赖 entity+common）：`AlertFiringService`/`AlertRuleService`/`DagAlertService`/`MailService`/`DagAlertExecutionListener`/`DagExecutionFinishedListener` + 新接口 `QualityAutoTriggerPort`；mail/fastjson2 改 compile。
+- **`data-nest-task-core-governance`**（治理编排域，依赖 entity+alert+common+spring-boot-starter-json(provided)）：`QualityRuleService`/`QualityJobService`/`QualityScoreService`/`QualityRuleTemplateService`/`QualityCheckTriggerService`/`QualityAutoTriggerService`/`DataPreviewService`/`DagTopologyService`/`DataSourceRefreshService`/`ConnectionTester`/`RuleSqlGenerator`。
+- **`data-nest-task-core`**（执行内核域，依赖 entity+alert+governance+common）：仅剩 21 个执行内核类（collect/config/job/service 包），`resources/META-INF` 的 `MybatisPlusInterceptorAutoConfiguration` 保留于此。
+- **消费方**（engineering/governance/worker/job/system）只显式依赖 `data-nest-task-core`，新模块经依赖传递获得，消费方 pom 零改动。
+
+### 16.3 变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest/pom.xml`（修改） | `<modules>` 加 `task-core-entity`/`alert`/`task-core-governance`；`dependencyManagement` 加 3 个新模块条目；模块顺序保证 `common → task-core-entity → alert → task-core-governance → task-core` |
+| `data-nest-task-core/pom.xml`（修改） | 加 entity + alert + governance 3 个依赖（其余 JDBC/MyBatis/mail 等仍 provided） |
+| 新模块 `data-nest-task-core-entity/pom.xml` / `data-nest-alert/pom.xml` / `data-nest-task-core-governance/pom.xml`（新增） | 各模块最小依赖声明（common + entity 底座；alert 加 mail/fastjson2 compile；governance 加 fastjson2 compile + spring-boot-starter-json provided） |
+| `data-nest-alert/.../service/QualityAutoTriggerPort.java`（新建） | 接口：`triggerOnSuccess(ObjectType, ObjectId)` 语义 + 常量 `OBJECT_TYPE_DAG_NODE/SYNC_JOB/COLLECT_TASK`；供 alert 内 listener 注入，解除对治理域服务类的直接依赖 |
+| `data-nest-alert/.../service/DagAlertExecutionListener.java`（修改） | 注入类型由 `QualityAutoTriggerService` 改为 `QualityAutoTriggerPort` |
+| `data-nest-task-core-governance/.../service/QualityAutoTriggerService.java`（修改） | `implements QualityAutoTriggerPort` |
+| 各消费方（engineering/governance/worker/job/system）pom | **未改动**（依赖经 task-core 传递获得） |
+
+### 16.4 执行中的错误与修复
+
+- **jackson 缺失**：`QualityCheckTriggerService` 用 `tools.jackson.databind.JsonNode`（Jackson 3，Spring Boot 4），governance 模块缺依赖 → 加 `spring-boot-starter-json`（provided）。
+- **测试 URL 错误**：质量任务接口是 `@PostMapping("/page")` 需 POST body，GET 导致 NumberFormatException；告警规则正确路径为 `GET /api/system/alert-rules`。修正后全部 code:200。
+- **PowerShell curl 别名问题**：用 `curl.exe` 替代 `curl`。
+
+### 16.5 验证结果（全部通过）
+
+- 全量 `mvn clean package -DskipTests`：**11 模块 BUILD SUCCESS**。
+- 重建 5 容器（app-engineering/governance/worker/job/system）全部 healthy；worker 完整启动，XXL-JOB 执行器正常（port=9997）。
+- 接口回归：登录、告警规则、质量任务/规则（含 `createdByName` 回填证明 `SysUserService` 正常）、同步任务、血缘图谱 `/api/governance/lineage/graph?tableName=users&depth=2` 全部 code:200。
+- 无 lint 错误。
+
+### 16.6 文档同步
+
+- **AGENTS.md**：§1 核心模块表更新为 4 模块结构 + 依赖链 + 依赖方向规则；§3 构建部署更新关键原则（构建顺序、重建消费方）；§8.2 共享包分布更新；§8.11 新增 task-core 拆分重构说明；§6 mail 依赖坑更新为 alert 模块 compile。
+- **本 Handoff**：§2 状态看板 + 本 §16。
+
+> **遗留**：已暂停的 Sprint 6 质量评分相关 plan 如需继续需重新激活；worker 的 `DagNodeExecuteService` 通配符 `import service.*` 仍存在，但通过依赖传递能解析，未改造（编译通过）。
