@@ -365,3 +365,87 @@ export const QUALITY_CHECK_LEVEL_LABEL: Record<QualityCheckLevel, string> = {
     SEVERE: '严重',
     UNAVAILABLE: '不可用',
 };
+
+// ============ 表级质量评分（Sprint 6 NG8） ============
+
+/** 健康度等级（对齐后端 QualityScoreConstants）：优秀 / 良好 / 一般 / 差 */
+export type QualityHealthLevel = 'EXCELLENT' | 'GOOD' | 'WARNING' | 'BAD';
+
+/** 健康度中文展示（单一出处，评分列表/详情/血缘徽章共用） */
+export const QUALITY_HEALTH_LABEL: Record<QualityHealthLevel, string> = {
+    EXCELLENT: '优秀',
+    GOOD: '良好',
+    WARNING: '一般',
+    BAD: '差',
+};
+
+/** 健康度下拉选项（评分列表页筛选） */
+export const QUALITY_HEALTH_OPTIONS: {value: QualityHealthLevel | ''; label: string}[] = [
+    {value: '', label: '全部健康度'},
+    {value: 'EXCELLENT', label: '优秀'},
+    {value: 'GOOD', label: '良好'},
+    {value: 'WARNING', label: '一般'},
+    {value: 'BAD', label: '差'},
+];
+
+/** 表级质量评分（对齐后端 QualityScoreDTO） */
+export interface QualityScore {
+    id?: string;
+    /** 目标表 metadata_table.id */
+    tableId?: string;
+    /** 库名.表名 */
+    tableName?: string;
+    datasourceId?: string;
+    datasourceName?: string;
+    /** 0-100 分 */
+    score?: number | string;
+    healthLevel?: QualityHealthLevel;
+    healthLevelLabel?: string;
+    /** 最近一次通过规则数 */
+    passRules?: number;
+    /** 最近一次警告规则数 */
+    warningRules?: number;
+    /** 最近一次严重规则数 */
+    severeRules?: number;
+    lastCheckedAt?: string;
+}
+
+/** 评分列表分页查询请求（对齐后端 QualityScoreQueryRequest） */
+export interface QualityScoreQueryParams {
+    page: number;
+    pageSize: number;
+    /** 表名关键字（库名.表名 模糊匹配） */
+    keyword?: string;
+    datasourceId?: string;
+    healthLevel?: QualityHealthLevel | '';
+}
+
+/** 单表规则 + 最近一次检查结果（对齐后端 QualityTableRuleResultDTO，元数据「质量」页签） */
+export interface QualityTableRuleResult {
+    ruleId?: string;
+    ruleName?: string;
+    ruleType?: QualityRuleType;
+    /** 所属任务名（可多任务引用，逗号拼接） */
+    jobName?: string;
+    /** 检查字段 */
+    columnName?: string;
+    weight?: number;
+    /** 最近一次结果值 */
+    resultValue?: number | string;
+    /** 最近一次分级：通过/警告/严重/不可用 */
+    resultLevel?: QualityCheckLevel;
+    /** 最近一次检查时间 */
+    lastCheckedAt?: string;
+    /** 最近一次执行是否成功：1 成功，0 失败 */
+    success?: number;
+}
+
+/** 质量评分全局配置（对齐后端 QualityScoreConfigDTO，扣分配置弹窗） */
+export interface QualityScoreConfig {
+    /** 警告规则每权重扣分分值 */
+    warningDeduct?: number;
+    /** 严重规则每权重扣分分值 */
+    severeDeduct?: number;
+    /** 低分区阈值 */
+    badThreshold?: number;
+}

@@ -16,14 +16,18 @@ import {
     updateTableComment,
 } from '../../../api/metadata';
 import {getLineageByTargetTable} from '../../../api/lineage';
+import {executeTableQualityRules, getQualityScoreByTable, getTableQualityRuleResults} from '../../../api/quality';
 import type {MetadataColumn, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
 import type {LineageRecord} from '../../../types/lineage';
+import type {QualityCheckLevel, QualityScore, QualityTableRuleResult} from '../../../types/quality';
+import {QUALITY_CHECK_LEVEL_LABEL, QUALITY_TYPE_LABEL} from '../../../types/quality';
 import MetadataTree from './MetadataTree';
 import EmptyState from '../../../components/EmptyState';
 import {previewMetadataTable, type PreviewResult} from '../../../api/preview';
 import {
     HiOutlineArrowPath,
     HiOutlineBookOpen,
+    HiOutlineCheckCircle,
     HiOutlineCircleStack,
     HiOutlineEye,
     HiOutlineInformationCircle,
@@ -36,7 +40,11 @@ import {COL} from '../../../constants/table';
 import {isWithoutSchema} from '../../../constants/datasource';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
 import DsButton from '../../../components/DsButton';
+import DsStatusBadge from '../../../components/DsStatusBadge';
+import type {DsStatusVariant} from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
+import QualityScoreBadge from '../../../components/QualityScoreBadge';
+import {notify} from '../../../utils/notify';
 
 const extractDatasourceId = (node: MetadataTreeNode) => {
     if (node.datasourceId) return node.datasourceId;
@@ -78,6 +86,12 @@ export default function MetadataPage() {
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [detailTab, setDetailTab] = useState('basic');
 
+    // ============ 质量评分（Sprint 6 NG8 质量页签） ============
+    const [qualityScore, setQualityScore] = useState<QualityScore | null>(null);
+    const [qualityRules, setQualityRules] = useState<QualityTableRuleResult[]>([]);
+    const [qualityLoading, setQualityLoading] = useState(false);
+    const [qualityExecuting, setQualityExecuting] = useState(false);
+
     const canPreview = useHasRole(...ALL_ROLES);
 
     const resetDetail = useCallback(() => {
@@ -87,6 +101,8 @@ export default function MetadataPage() {
         setLineageRecords([]);
         setPreviewResult(null);
         setPreviewError(null);
+        setQualityScore(null);
+        setQualityRules([]);
     }, []);
 
     const resetLists = useCallback(() => {
@@ -192,13 +208,18 @@ export default function MetadataPage() {
         const tableId = node.id.replace('table-', '');
         setColumnsLoading(true);
         setLineageLoading(true);
+        setQualityLoading(true);
         try {
-            const [tableResult, columnsResult] = await Promise.all([
+            const [tableResult, columnsResult, scoreResult, ruleResult] = await Promise.all([
                 getMetadataTable(tableId),
                 listMetadataColumns(tableId),
+                getQualityScoreByTable(tableId),
+                getTableQualityRuleResults(tableId),
             ]);
             setSelectedTable(tableResult.data);
             setColumns(columnsResult.data);
+            setQualityScore(scoreResult.data);
+            setQualityRules(ruleResult.data ?? []);
             const table = tableResult.data;
             const sourceType = table.taskSourceType || table.sourceType;
             const isTaskRegistered = ['SYNC', 'SQL', 'PYTHON'].includes(sourceType || '') || table.sourceDagId != null;
@@ -229,8 +250,29 @@ export default function MetadataPage() {
         } finally {
             setColumnsLoading(false);
             setLineageLoading(false);
+            setQualityLoading(false);
         }
     }, []);
+
+    // 立即执行该表全部启用规则（异步投递 worker，执行后刷新评分）
+    const handleQualityExecute = async (tableId: string) => {
+        setQualityExecuting(true);
+        try {
+            await executeTableQualityRules(tableId);
+            notify.success('已触发执行，该表全部启用规则已提交，稍后刷新查看结果');
+            // 执行是异步的，立即重新拉取最新结果（可能仍是旧值，但可提示用户稍后刷新）
+            const [scoreRes, ruleRes] = await Promise.all([
+                getQualityScoreByTable(tableId),
+                getTableQualityRuleResults(tableId),
+            ]);
+            setQualityScore(scoreRes.data);
+            setQualityRules(ruleRes.data ?? []);
+        } catch (e: any) {
+            notify.error(e?.message || '执行失败');
+        } finally {
+            setQualityExecuting(false);
+        }
+    };
 
     useEffect(() => {
         if (!selectedNode) {
@@ -993,6 +1035,160 @@ export default function MetadataPage() {
             </div>
         );
 
+        // ============ 质量页签（Sprint 6 NG8） ============
+        const LEVEL_VARIANT: Record<QualityCheckLevel, DsStatusVariant> = {
+            PASS: 'success',
+            WARNING: 'warning',
+            SEVERE: 'danger',
+            UNAVAILABLE: 'pending',
+        };
+        const renderQualityTab = () => (
+            <div className="space-y-ds-5">
+                {qualityLoading ? (
+                    <div className="flex items-center justify-center py-ds-10 text-ds-small text-ds-text-muted">
+                        加载质量评分中…
+                    </div>
+                ) : (
+                    <>
+                        {/* 评分概览卡片 */}
+                        <div className="flex items-center justify-between flex-wrap gap-ds-4 p-ds-5 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md">
+                            <div className="flex items-center gap-ds-6 flex-wrap">
+                                <QualityScoreBadge score={qualityScore?.score} healthLevel={qualityScore?.healthLevel}/>
+                                <div className="flex items-center gap-ds-5 text-ds-small text-ds-text-secondary">
+                                    <div>
+                                        <div className="text-ds-text-muted">最近检查</div>
+                                        <div className="text-ds-text-primary font-medium whitespace-nowrap">
+                                            {formatDateTime(qualityScore?.lastCheckedAt) || '—'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-ds-text-muted">通过 / 警告 / 严重</div>
+                                        <div className="text-ds-text-primary font-medium">
+                                            <span className="text-ds-success">{qualityScore?.passRules ?? 0}</span>
+                                            {' / '}
+                                            <span className="text-ds-warning">{qualityScore?.warningRules ?? 0}</span>
+                                            {' / '}
+                                            <span className="text-ds-danger">{qualityScore?.severeRules ?? 0}</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-ds-text-muted">启用规则数</div>
+                                        <div className="text-ds-text-primary font-medium">{qualityRules.length}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            {canWrite && (
+                                <DsButton variant="primary" disabled={qualityExecuting} onClick={() => handleQualityExecute(selectedTable.id)}>
+                                    {qualityExecuting ? '执行中…' : '立即执行全部规则'}
+                                </DsButton>
+                            )}
+                        </div>
+
+                        {/* 扣分明细说明 */}
+                        <div className="p-ds-4 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-secondary">
+                            <span className="text-ds-text-primary font-semibold">评分算法：</span>
+                            基础分 = 100 × (通过规则权重和 ÷ 有效规则权重和)；警告/严重规则按权重扣分（每权重扣分值可在「质量评分」页的扣分配置中调整），
+                            存在严重规则强制压至低分区；不可用规则不参与评分，未配置启用规则的表不评分。
+                        </div>
+
+                        {/* 规则最近结果列表 */}
+                        <div>
+                            <h4 className="text-ds-subhead font-semibold text-ds-text-primary mb-ds-2">规则最近结果</h4>
+                            {qualityRules.length === 0 ? (
+                                <div className="text-ds-small text-ds-text-muted py-ds-4 bg-ds-bg-hover rounded-ds-sm text-center">
+                                    该表暂无启用规则，或尚未执行检查
+                                </div>
+                            ) : (
+                                <Table
+                                    rowKey={(r) => r?.ruleId ?? ''}
+                                    columns={[
+                                        {
+                                            title: '规则名称',
+                                            dataIndex: 'ruleName',
+                                            ellipsis: true,
+                                            width: COL.NAME,
+                                            render: (v?: string, r?: QualityTableRuleResult) => (
+                                                <div>
+                                                    <div className="text-ds-small text-ds-text-primary font-medium">{v || '—'}</div>
+                                                    {r?.jobName && (
+                                                        <div className="text-ds-tiny text-ds-text-muted truncate">{r.jobName}</div>
+                                                    )}
+                                                </div>
+                                            ),
+                                        },
+                                        {
+                                            title: '类型',
+                                            dataIndex: 'ruleType',
+                                            width: COL.STATUS,
+                                            render: (v?: string) => (
+                                                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                                                    {v ? (QUALITY_TYPE_LABEL[v as keyof typeof QUALITY_TYPE_LABEL] || v) : '—'}
+                                                </span>
+                                            ),
+                                        },
+                                        {
+                                            title: '检查字段',
+                                            dataIndex: 'columnName',
+                                            width: COL.NAME_COMPACT,
+                                            ellipsis: true,
+                                            render: (v?: string) => (
+                                                <span className="text-ds-small text-ds-text-secondary" title={v}>{v || '—'}</span>
+                                            ),
+                                        },
+                                        {
+                                            title: '权重',
+                                            dataIndex: 'weight',
+                                            width: COL.COUNT,
+                                            align: 'right',
+                                            render: (v?: number) => <span className="text-ds-small">{v ?? '—'}</span>,
+                                        },
+                                        {
+                                            title: '最近结果',
+                                            dataIndex: 'resultValue',
+                                            width: COL.COUNT_NORMAL,
+                                            align: 'right',
+                                            render: (v?: number | string) => (
+                                                <span className="text-ds-small text-ds-text-primary">{v ?? '—'}</span>
+                                            ),
+                                        },
+                                        {
+                                            title: '判定',
+                                            dataIndex: 'resultLevel',
+                                            width: COL.STATUS,
+                                            render: (v?: QualityCheckLevel, r?: QualityTableRuleResult) => (
+                                                v ? (
+                                                    <DsStatusBadge variant={LEVEL_VARIANT[v]} label={QUALITY_CHECK_LEVEL_LABEL[v]}/>
+                                                ) : (
+                                                    <span className="text-ds-small text-ds-text-muted">
+                                                        {r?.success === 0 ? '失败' : '未检查'}
+                                                    </span>
+                                                )
+                                            ),
+                                        },
+                                        {
+                                            title: '最近检查',
+                                            dataIndex: 'lastCheckedAt',
+                                            width: COL.DATETIME_COMPACT,
+                                            render: (v?: string) => (
+                                                <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                                                    {formatDateTime(v) || '—'}
+                                                </span>
+                                            ),
+                                        },
+                                    ]}
+                                    dataSource={qualityRules}
+                                    pagination={false}
+                                    size="small"
+                                    scroll={{x: 700}}
+                                    locale={{emptyText: <DsTableEmpty description="暂无规则结果"/>}}
+                                />
+                            )}
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+
         return (
             <div>
                 <div className="text-ds-small text-ds-text-muted mb-ds-4">
@@ -1049,6 +1245,16 @@ export default function MetadataPage() {
                                 </span>
                             ),
                             children: renderPreview(),
+                        },
+                        {
+                            key: 'quality',
+                            label: (
+                                <span className="flex items-center gap-ds-1">
+                                    <HiOutlineCheckCircle size={14}/>
+                                    质量
+                                </span>
+                            ),
+                            children: renderQualityTab(),
                         },
                     ]}
                 />

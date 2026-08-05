@@ -29,6 +29,7 @@ const QualityTemplatesPage = lazyPage(() => import('../pages/governance/quality-
 const DataQualityPage = lazyPage(() => import('../pages/governance/data-quality'));
 const QualityRulesPage = lazyPage(() => import('../pages/governance/quality-rules'));
 const QualityChecksPage = lazyPage(() => import('../pages/governance/quality-checks'));
+const QualityScoresPage = lazyPage(() => import('../pages/governance/quality-scores'));
 
 export const router = createBrowserRouter([
     {
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
             {path: 'governance/data-quality', element: <DataQualityPage/>},
             {path: 'governance/quality-rules', element: <QualityRulesPage/>},
             {path: 'governance/quality-checks', element: <QualityChecksPage/>},
+            {path: 'governance/quality-scores', element: <QualityScoresPage/>},
         ],
     },
 ]);

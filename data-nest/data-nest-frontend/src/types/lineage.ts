@@ -25,6 +25,12 @@ export interface LineageNodeDTO {
     type?: string;
     /** 是否当前查询的表 */
     current?: boolean;
+    /** 质量评分（0-100，Sprint 6 血缘回填；未配置规则为 null） */
+    qualityScore?: number | null;
+    /** 健康度：EXCELLENT/GOOD/WARNING/BAD */
+    healthLevel?: string | null;
+    /** 短表名 */
+    tableName?: string;
 }
 
 /** 血缘图谱边（source → target），对齐后端 LineageEdgeDTO */

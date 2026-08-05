@@ -19,6 +19,7 @@ import {Spin, Tooltip} from 'antd';
 import DsButton from '../../../../components/DsButton';
 import Drawer from '../../../../components/Drawer';
 import EmptyState from '../../../../components/EmptyState';
+import QualityScoreBadge from '../../../../components/QualityScoreBadge';
 import {getLineageGraph, getLineageImpact, getLineageSource,} from '../../../../api/lineage';
 import {getMetadataTable, searchMetadataTree} from '../../../../api/metadata';
 import type {MetadataTreeNode} from '../../../../types/metadata';
@@ -33,6 +34,9 @@ interface LineageNodeData {
     type?: string;
     current?: boolean;
     highlighted?: boolean;
+    /** Sprint 6 表级质量评分：健康度与评分（后端血缘接口回填；未配置规则为 null） */
+    qualityScore?: number | null;
+    healthLevel?: string | null;
 }
 
 /**
@@ -85,6 +89,9 @@ function TableNode({data}: NodeProps<LineageNodeData>) {
             </Tooltip>
             <div className="text-ds-nano text-ds-text-muted mt-0.5">
                 {data.current ? '当前表' : (data.type ? TYPE_LABEL[data.type] || data.type : data.database || '')}
+            </div>
+            <div className="flex justify-center mt-ds-2">
+                <QualityScoreBadge compact score={data.qualityScore} healthLevel={data.healthLevel}/>
             </div>
             <Handle
                 type="source"
@@ -172,6 +179,8 @@ export default function LineageGraphPage() {
                 type: n.type,
                 current: !!n.current,
                 highlighted: highlightedNodes.has(n.id),
+                qualityScore: n.qualityScore ?? null,
+                healthLevel: n.healthLevel ?? null,
             },
         }));
         const edges: Edge[] = (graph.edges || []).map((e: LineageEdgeDTO) => ({

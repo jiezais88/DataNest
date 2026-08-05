@@ -7,9 +7,11 @@ import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.QualityCheckDetail;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityScore;
+import com.datanest.task.core.entity.QualityScoreConfig;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityCheckDetailMapper;
 import com.datanest.task.core.mapper.QualityRuleMapper;
+import com.datanest.task.core.mapper.QualityScoreConfigMapper;
 import com.datanest.task.core.mapper.QualityScoreMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,24 +47,27 @@ public class ScoreCalculator {
     private final QualityRuleMapper ruleMapper;
     private final QualityCheckDetailMapper detailMapper;
     private final QualityScoreMapper scoreMapper;
+    private final QualityScoreConfigMapper configMapper;
     private final MetadataTableMapper tableMapper;
 
     @Value("${datanest.quality.score.warning-deduct:10}")
-    private int warningDeduct;
+    private int warningDeductDefault;
 
     @Value("${datanest.quality.score.severe-deduct:30}")
-    private int severeDeduct;
+    private int severeDeductDefault;
 
     @Value("${datanest.quality.score.bad-threshold:60}")
-    private int badThreshold;
+    private int badThresholdDefault;
 
     public ScoreCalculator(QualityRuleMapper ruleMapper,
                            QualityCheckDetailMapper detailMapper,
                            QualityScoreMapper scoreMapper,
+                           QualityScoreConfigMapper configMapper,
                            MetadataTableMapper tableMapper) {
         this.ruleMapper = ruleMapper;
         this.detailMapper = detailMapper;
         this.scoreMapper = scoreMapper;
+        this.configMapper = configMapper;
         this.tableMapper = tableMapper;
     }
 
@@ -73,20 +78,42 @@ public class ScoreCalculator {
         if (tableIds == null || tableIds.isEmpty()) {
             return;
         }
+        // 扣分配置单行且不常变：批量计算时只读一次，避免每表重复查库
+        int warningDeduct = warningDeductDefault;
+        int severeDeduct = severeDeductDefault;
+        int badThreshold = badThresholdDefault;
+        QualityScoreConfig config = loadConfig();
+        if (config != null) {
+            if (config.getWarningDeduct() != null) {
+                warningDeduct = config.getWarningDeduct();
+            }
+            if (config.getSevereDeduct() != null) {
+                severeDeduct = config.getSevereDeduct();
+            }
+            if (config.getBadThreshold() != null) {
+                badThreshold = config.getBadThreshold();
+            }
+        }
         for (Long tableId : tableIds.stream().distinct().toList()) {
             try {
-                recalculateForTable(tableId);
+                recalculateForTable(tableId, warningDeduct, severeDeduct, badThreshold);
             } catch (Exception e) {
                 logger.warn("表级评分计算失败: tableId={}, error={}", tableId, e.getMessage());
             }
         }
     }
 
+    /** 读单行扣分配置；无配置行返回 null（调用方用 Nacos/默认兜底）。 */
+    private QualityScoreConfig loadConfig() {
+        return configMapper.selectList(new QueryWrapper<QualityScoreConfig>().orderByAsc("id").last("limit 1"))
+                .stream().findFirst().orElse(null);
+    }
+
     /**
      * 单表评分重算：查该表所有启用规则 → 逐条取最近一次结果 → 加权算分 → upsert。
      * 无有效启用规则（或全部 UNAVAILABLE）时删除/不落行（血缘显示灰色「—」）。
      */
-    private void recalculateForTable(Long tableId) {
+    private void recalculateForTable(Long tableId, int warningDeduct, int severeDeduct, int badThreshold) {
         MetadataTable table = tableMapper.selectById(tableId);
         if (table == null) {
             return;
@@ -145,7 +172,7 @@ public class ScoreCalculator {
                     .subtract(new BigDecimal("0.01")));
             healthLevel = QualityScoreConstants.HEALTH_BAD;
         } else {
-            healthLevel = determineHealth(finalScore);
+            healthLevel = determineHealth(finalScore, badThreshold);
         }
 
         upsert(table, finalScore, healthLevel, passRules, warningRules, severeRules);
@@ -172,15 +199,20 @@ public class ScoreCalculator {
         return BigDecimal.valueOf(w);
     }
 
-    /** 按分数区间映射健康度四档。 */
-    private String determineHealth(BigDecimal score) {
+    /**
+     * 按分数区间映射健康度四档。
+     * <p>
+     * 优秀/良好使用固定区间（85/75）；「一般」下限与「差」分界由全局配置 {@code badThreshold}（低分区阈值）决定，
+     * 默认 60 与常量 {@link QualityScoreConstants#SCORE_WARNING} 一致，调整配置即可动态改变低分区判定。
+     */
+    private String determineHealth(BigDecimal score, int badThreshold) {
         if (score.compareTo(QualityScoreConstants.SCORE_EXCELLENT) >= 0) {
             return QualityScoreConstants.HEALTH_EXCELLENT;
         }
         if (score.compareTo(QualityScoreConstants.SCORE_GOOD) >= 0) {
             return QualityScoreConstants.HEALTH_GOOD;
         }
-        if (score.compareTo(QualityScoreConstants.SCORE_WARNING) >= 0) {
+        if (score.compareTo(BigDecimal.valueOf(badThreshold)) >= 0) {
             return QualityScoreConstants.HEALTH_WARNING;
         }
         return QualityScoreConstants.HEALTH_BAD;

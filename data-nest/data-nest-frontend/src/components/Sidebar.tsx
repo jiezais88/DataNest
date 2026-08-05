@@ -102,6 +102,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 icon: <HiOutlineScale size={18}/>,
                 roles: GOVERNANCE_WRITE_ROLES
             },
+            {
+                label: '质量评分',
+                path: '/governance/quality-scores',
+                icon: <HiOutlineCheckCircle size={18}/>,
+                roles: ALL_ROLES
+            },
         ],
     },
     {

@@ -103,6 +103,7 @@ public enum ErrorCode {
     QUALITY_CHECK_BATCH_NOT_FOUND(4214, "质量检查批次不存在"),
     QUALITY_CHECK_SQL_GENERATE_FAILED(4215, "质量规则校验 SQL 生成失败"),
     QUALITY_CHECK_EXECUTE_FAILED(4216, "质量检查执行失败"),
+    QUALITY_SCORE_CONFIG_INVALID(4217, "质量评分全局配置参数非法"),
 
     // System errors (9xxx)
     INTERNAL_ERROR(9999, "系统内部错误");

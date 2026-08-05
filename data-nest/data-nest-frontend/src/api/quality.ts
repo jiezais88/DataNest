@@ -14,6 +14,10 @@ import type {
     QualityJobCreateRequest,
     QualityJobQueryParams,
     QualityJobUpdateRequest,
+    QualityScore,
+    QualityScoreConfig,
+    QualityScoreQueryParams,
+    QualityTableRuleResult,
 } from '../types/quality';
 import type {PageResult, Result} from '../types/common';
 
@@ -164,4 +168,36 @@ export function getQualityCheckDetail(id: string) {
 /** 模板批量应用（1 模板 + 多表） */
 export function batchCreateQualityRules(data: QualityRuleBatchCreateRequest) {
     return request.post<Result<number>>('/governance/quality/rules/batch', data);
+}
+
+// ============ 表级质量评分（Sprint 6 NG8） ============
+
+/** 单表评分（元数据「质量」页签概览） */
+export function getQualityScoreByTable(tableId: string) {
+    return request.get<Result<QualityScore | null>>(`/governance/quality/scores/table/${tableId}`);
+}
+
+/** 评分列表分页（按关键字/数据源/健康度筛选） */
+export function queryQualityScores(params: QualityScoreQueryParams) {
+    return request.post<Result<PageResult<QualityScore>>>('/governance/quality/scores/page', params);
+}
+
+/** 按表查该表所有启用规则 + 最近一次检查结果（元数据「质量」页签规则结果列表） */
+export function getTableQualityRuleResults(tableId: string) {
+    return request.get<Result<QualityTableRuleResult[]>>(`/governance/quality/scores/table/${tableId}/rules`);
+}
+
+/** 按表执行全部启用规则（异步投递 worker） */
+export function executeTableQualityRules(tableId: string) {
+    return request.post<Result<null>>(`/governance/quality/scores/table/${tableId}/execute`);
+}
+
+/** 读质量评分全局扣分配置（「扣分配置」弹窗回显） */
+export function getQualityScoreConfig() {
+    return request.get<Result<QualityScoreConfig>>('/governance/quality/scores/config');
+}
+
+/** 更新质量评分全局扣分配置 */
+export function updateQualityScoreConfig(data: QualityScoreConfig) {
+    return request.put<Result<null>>('/governance/quality/scores/config', data);
 }

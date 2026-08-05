@@ -29,6 +29,7 @@
 | 告警规则名称 + 质量任务页改名             | ✅ 完成   | alert_rule 加 name（必填/同类型唯一）+ alert_history 加 rule_name；告警中心规则/历史新增名称列；AlertRuleModal 加规则名称输入框；数据质量页改名「质量任务」去统计改副标题，见 §10 |
 | 创建审计字段修复                         | ✅ 完成   | 所有实体 create 入口只设 createdBy/createdAt，去掉 setUpdatedBy/setUpdatedAt；Flyway V3.6.8 去掉 13 张表 updated_at 的 DB 默认值（创建后未修改时 updated_at/updated_by 为 null），见 §12 |
 | 表级质量评分后端                         | ✅ 完成   | 评分跨任务聚合加权计算（quality_score 落库，一张表一行）+ 血缘图谱节点批量回填评分 + 三查询接口；健康度四档区间/扣分算法行业调研后回写 PRD/技术文档，见 §13 |
+| 表级质量评分前端                         | ✅ 完成   | 三个落点全覆盖（独立「质量评分」列表页 + 元数据「质量」页签 + 血缘节点质量徽章）+ 后端补 4 接口（按表规则/按表执行/扣分配置读写）；ScoreCalculator 扣分读库表配置 + 修复 badThreshold 判定 bug，见 §14 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -745,3 +746,56 @@
 - **分页接口**：`POST /quality/scores/page`（healthLevel=WARNING）→ total=1 ✓
 - **血缘回填**：`GET /lineage/graph?tableName=testdb.orders&depth=1` → 节点 `testdb.orders` 回填 `qualityScore:65`/`healthLevel:"WARNING"` ✓（血缘节点表名与 quality_score.table_name 格式一致，匹配验证通过）
 - **清理**：测试任务/4 条测试规则/评分/detail/batch 全部删除，`quality_job`/`quality_rule`/`quality_score`/`quality_check_detail` 归 0。
+
+## 14. 表级质量评分前端（2026-08-05，本次会话）
+
+> **阶段**：在 §13 后端评分基础上完成**三个前端落点全覆盖** + **后端补 4 个接口**。经 code-reviewer 子代理审查并修复 1 个业务逻辑 bug + 若干改进项。
+> **范围确认**（用户 ask_followup）：①评分列表独立菜单页；②元数据详情「质量」页签；③血缘节点质量徽章；④扣分配置可编辑（后端补接口）；⑤良好(GOOD)=绿（按 PRD）。
+
+### 14.1 后端补接口（governance + task-core）
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest-system/.../db/migration/V3.7.0__quality_score_config.sql`（新增） | 建 `quality_score_config` 单行配置表（warning_deduct=10/severe_deduct=30/bad_threshold=60，`INSERT ... WHERE NOT EXISTS` 幂等，`updated_at` 无 DB 默认值对齐审计约定） |
+| task-core entity/mapper：`QualityScoreConfig` + `QualityScoreConfigMapper`（新增） | 全局扣分配置实体/Mapper（单行） |
+| task-core `ScoreCalculator`（修改） | ①扣分值从**库表 `quality_score_config` 读取**（`recalculateForTables` 批量只读一次配置，传入 `recalculateForTable`，避免每表重复查库；`@Value` 作 Nacos/默认兜底）；②`loadConfig` 加 `orderByAsc("id")` 保证单行取值确定性；③**修复 badThreshold 未参与普通健康度 BAD 判定 bug**：`determineHealth` 增参 `badThreshold`，BAD 判定由硬编码 `SCORE_WARNING(60)` 改为 `score < badThreshold`，「一般」下限同用 badThreshold（默认 60 与常量一致，向后兼容） |
+| task-core dto：`QualityTableRuleResultDTO`/`QualityScoreConfigDTO`（新增） | 单表规则+最近结果（ruleId/ruleName/ruleType/jobName/columnName/weight/resultValue/resultLevel/lastCheckedAt/success）、全局配置（warningDeduct/severeDeduct/badThreshold） |
+| task-core `QualityScoreService`（修改） | 新增 `listTableRuleResults`（按表查启用规则 + `latestDetailsByRule` 一次 IN 查 + 内存按 rule_id 取最新一条回填最近结果，jobName 经 `ruleService.listJobNamesByRuleIds` 回填）/`executeTableRules`（逐条 `triggerRule(ruleId,"MANUAL")`，**单条失败 try-catch 不中断，存在失败抛聚合异常**）/`getConfig`/`updateConfig`（含 1-100 上限校验） |
+| task-core `ErrorCode`（修改） | 新增 `QUALITY_SCORE_CONFIG_INVALID(4217)` |
+| governance `QualityScoreController`（修改） | 新增 4 接口：`GET /table/{tableId}/rules`（表规则最近结果，查看角色）、`POST /table/{tableId}/execute`（按表执行，治理员/超管）、`GET /config` + `PUT /config`（扣分配置读写，写治理员/超管） |
+
+### 14.2 前端变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `src/types/quality.ts`（修改） | 新增 `QualityHealthLevel`/`QualityScore`/`QualityScoreQueryParams`/`QualityTableRuleResult`/`QualityScoreConfig` + 常量 `QUALITY_HEALTH_LABEL`(优秀/良好/一般/差)/`QUALITY_HEALTH_OPTIONS`（单一出处） |
+| `src/types/lineage.ts`（修改） | `LineageNodeDTO` 扩展 `qualityScore`/`healthLevel`/`tableName`（对齐后端血缘回填字段） |
+| `src/api/quality.ts`（修改） | 新增 `getQualityScoreByTable`/`queryQualityScores`/`getTableQualityRuleResults`/`executeTableQualityRules`/`getQualityScoreConfig`/`updateQualityScoreConfig`（`/governance/quality/scores/**`） |
+| `src/components/QualityScoreBadge.tsx`（新增） | 评分+健康度徽章单一出处：优秀深绿/良好中绿/一般黄/差红/暂无灰；`compact` 模式（血缘节点小徽章）与完整模式；score 为空显示灰色「—/暂无质量」 |
+| `src/pages/governance/quality-scores/index.tsx`（新增） | 「表级质量评分」独立列表页：数据源/健康度/搜索表名筛选 + 查询/重置 + 分页 + URL 状态同步；列（数据源/表名可点/评分/健康度/通过/警告/严重/最近检查/操作-查看详情）；「查看详情」弹窗（评分概览 + 规则最近结果表格 + 立即执行全部规则）；「评分算法说明」静态弹窗；「扣分配置」弹窗（读 getConfig + 存 updateConfig，仅治理员/超管 canWrite）；执行按钮仅 canWrite 显示 |
+| `src/pages/governance/metadata/index.tsx`（修改） | 新增「质量」tab：评分概览卡片（QualityScoreBadge/最近检查/通过警告严重/启用规则数/立即执行按钮）+ 评分算法说明 + 规则最近结果表格（复用 COL/formatDateTime/DsStatusBadge）；`loadTableDetail` 并行加载评分+规则；执行按钮仅 canWrite |
+| `src/pages/governance/metadata/lineage/LineageGraphPage.tsx`（修改） | `LineageNodeData` 扩展 qualityScore/healthLevel；nodes 构造传入；`TableNode` 类型行下方渲染 `QualityScoreBadge compact`（有分显示评分+等级，无分灰色「—」）；保持 ReactFlow 受控 |
+| `src/router/index.tsx` + `src/components/Sidebar.tsx`（修改） | 「数据治理」组新增「质量评分」菜单（`ALL_ROLES`，HiOutlineCheckCircle）+ `/governance/quality-scores` 懒加载路由 |
+
+### 14.3 Review 结论（code-reviewer 子代理，功能 × 架构 × 效率）
+
+- **已修复（严重）**：①`ScoreCalculator.determineHealth` 原用硬编码 `SCORE_WARNING(60)` 判 BAD，`badThreshold` 仅对 SEVERE 强压生效 → 用户调「低分区阈值」无严重规则的表不生效（§14.1 已改参数化）；②`executeTableRules` 循环触发任一条失败即中断 → 改逐条 try-catch + 聚合异常。
+- **已修复（改进）**：`latestDetailsByRule` 一次 IN 查询 + 内存取最新（避免每规则 N 次查询）；`loadConfig` 加 `orderByAsc` 确定性；config 写入加 1-100 上限校验（前后端）；前端「立即执行全部规则」按钮按 canWrite 隐藏（与后端 403 权限一致）。
+- **架构融洽**：评分类型/常量收敛 `types/quality.ts`；徽章 `QualityScoreBadge` 单一出处三落点复用；复用 DsToolbar/DsFilterSelect/DsModal/DsStatusBadge/Pagination/COL/formatDateTime；血缘保持 ReactFlow 受控。
+- **业务正确**：后端 4 接口 + 血缘回填经网关 API 验证通过（配置读写/按表规则/按表执行/评分分页）；ScoreCalculator 从 DB 读配置在 worker 真实执行验证（`quality_score_config ORDER BY id` 日志确认）。
+- **健康度颜色**：优秀深绿/良好中绿（PRD 良好=绿）/一般黄/差红/暂无灰，`QualityScoreBadge` 与列表页 `DsStatusBadge` 均符合 PRD。
+
+### 14.4 部署
+
+- 编译：`mvn -pl common,task-core,governance,engineering,worker -am clean package -DskipTests` → BUILD SUCCESS。
+- 重建部署：**app-system**（先启，执行 Flyway V3.7.0 建 `quality_score_config`）→ **app-worker / app-engineering / app-governance**（task-core ScoreCalculator/QualityScoreService 改动）+ **app-frontend**（前端）。
+- 前端 `npm run build`（tsc + vite，3007 modules）+ `docker compose build/up app-frontend`，容器 Up，`/governance/quality-scores` 预览正常。
+
+### 14.5 验证记录
+
+- `GET /quality/scores/config` → 10/30/60；`PUT /config` 超限(150) → `code:4217`「不能超过 100」。
+- `GET /quality/scores/table/{tableId}/rules` → 规则列表（jobName/ruleType/weight 齐全，未检查时 resultLevel 为 null）。
+- `POST /quality/scores/table/{tableId}/execute` → 200 触发；worker 日志确认执行链路 + `ScoreCalculator` 读 `quality_score_config` 正常。
+- 血缘 `GET /lineage/graph?tableName=testdb.users` → 节点回填 `qualityScore/healthLevel`（造测试评分记录验证后删除）。
+- **注意**：`testdb.users` 这条测试规则本身 SQL 为空 → 执行 UNAVAILABLE（不落评分），为既有数据问题非本次引入；评分列表空态正常。
+- 测试数据已清理（`quality_score` 造数记录已删）。
