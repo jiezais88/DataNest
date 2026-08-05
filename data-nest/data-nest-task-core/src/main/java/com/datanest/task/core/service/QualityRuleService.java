@@ -587,6 +587,8 @@ public class QualityRuleService {
         dto.setTableId(entity.getTableId());
         MetadataTable table = entity.getTableId() == null ? null : tableMap.get(entity.getTableId());
         dto.setTableName(table == null ? null : RuleSqlGenerator.buildFullTableName(table));
+        dto.setDatabaseName(table == null ? null : table.getDatabaseName());
+        dto.setSchemaName(table == null ? null : table.getSchemaName());
         dto.setDatasourceId(table == null ? null : table.getDatasourceId());
         dto.setDatasourceName(table == null ? null : datasourceNameMap.get(table.getDatasourceId()));
         dto.setColumnName(entity.getColumnName());

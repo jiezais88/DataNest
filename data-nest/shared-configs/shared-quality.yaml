@@ -1,0 +1,12 @@
+# ============================================
+# shared-quality.yaml
+# 质量领域配置：表级质量评分（Sprint 6 NG8）扣分分值与低分区阈值
+# 消费方：worker（ScoreCalculator 评分计算）/ governance（血缘回填、评分查询，按需导入）
+# ============================================
+
+datanest:
+  quality:
+    score:
+      warning-deduct: 10
+      severe-deduct: 30
+      bad-threshold: 60

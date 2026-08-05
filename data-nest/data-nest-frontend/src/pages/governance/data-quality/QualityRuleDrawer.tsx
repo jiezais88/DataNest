@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import Drawer from '../../../components/Drawer';
 import DsButton from '../../../components/DsButton';
 import {
@@ -83,6 +83,9 @@ export default function QualityRuleDrawer({
     const [selectedSchema, setSelectedSchema] = useState('');
     const [tables, setTables] = useState<MetadataTable[]>([]);
     const [tableLoading, setTableLoading] = useState(false);
+    // 编辑回显时的目标表归属数据库 / Schema（form 更新为异步，effect 闭包读不到，用 ref 暂存供各加载 effect 回填级联选中值）
+    const editDatabaseRef = useRef('');
+    const editSchemaRef = useRef('');
 
     const datasourceType = datasourceOptions.find((d) => String(d.id) === String(form.datasourceId))?.type;
     const noSchema = isWithoutSchema(datasourceType);
@@ -127,17 +130,15 @@ export default function QualityRuleDrawer({
                     weight: editItem.weight != null ? String(editItem.weight) : '1',
                     enabled: editItem.enabled ?? 1,
                 });
-                // 编辑回显：tableName 形如 "schema.table"，第一段预设为数据库（有 schema 类型时同为 Schema）
-                const firstSeg = editItem.tableName?.split('.')[0];
-                if (firstSeg) {
-                    setSelectedDatabase(firstSeg);
-                    setSelectedSchema(firstSeg);
-                } else {
-                    setSelectedDatabase('');
-                    setSelectedSchema('');
-                }
+                // 编辑回显：暂存目标表归属数据库/Schema 到 ref，由各加载 effect 在数据库/Schema 列表到达后回填级联选中值
+                editDatabaseRef.current = editItem.databaseName || '';
+                editSchemaRef.current = editItem.schemaName || '';
+                setSelectedDatabase('');
+                setSelectedSchema('');
             } else {
                 setForm({...EMPTY_FORM});
+                editDatabaseRef.current = '';
+                editSchemaRef.current = '';
                 setSelectedDatabase('');
                 setSelectedSchema('');
                 setDatabases([]);
@@ -164,7 +165,9 @@ export default function QualityRuleDrawer({
         updateField('datasourceId', id);
         const ds = datasourceOptions.find((d) => String(d.id) === String(id));
         updateField('datasourceName', ds?.name || '');
-        // 切换数据源时清空已选表及级联状态（表归属发生变化）
+        // 切换数据源时清空已选表及级联状态（表归属发生变化）；同时清空回显 ref，避免误按旧库/Schema 回填
+        editDatabaseRef.current = '';
+        editSchemaRef.current = '';
         updateField('tableId', '');
         updateField('tableName', '');
         updateField('columnName', '');
@@ -184,8 +187,17 @@ export default function QualityRuleDrawer({
         setTables([]);
         setDatabaseLoading(true);
         listMetadataDatabases(form.datasourceId)
-            .then((res) => setDatabases(res.data || []))
-            .catch(() => setDatabases([]))
+            .then((res) => {
+                const dbs = res.data || [];
+                setDatabases(dbs);
+                // 编辑回显：目标表归属库名在数据库列表中存在时回填选中值（避免被清空导致回显失败）
+                const editDb = editDatabaseRef.current;
+                setSelectedDatabase(editDb && dbs.includes(editDb) ? editDb : '');
+            })
+            .catch(() => {
+                setDatabases([]);
+                setSelectedDatabase('');
+            })
             .finally(() => setDatabaseLoading(false));
     }, [open, form.datasourceId]);
 
@@ -204,8 +216,17 @@ export default function QualityRuleDrawer({
         } else {
             setSchemaLoading(true);
             listMetadataSchemas(form.datasourceId, selectedDatabase)
-                .then((res) => setSchemas(res.data || []))
-                .catch(() => setSchemas([]))
+                .then((res) => {
+                    const schemaList = res.data || [];
+                    setSchemas(schemaList);
+                    // 编辑回显：目标表归属 Schema 在列表中存在时回填选中值（避免被清空导致回显失败）
+                    const editSchema = editSchemaRef.current;
+                    setSelectedSchema(editSchema && schemaList.includes(editSchema) ? editSchema : '');
+                })
+                .catch(() => {
+                    setSchemas([]);
+                    setSelectedSchema('');
+                })
                 .finally(() => setSchemaLoading(false));
         }
     }, [open, form.datasourceId, selectedDatabase, noSchema]);

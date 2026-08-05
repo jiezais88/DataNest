@@ -173,6 +173,10 @@ export interface QualityRule {
     tableId?: string;
     /** 对象表名（schema.table，computed 字段） */
     tableName?: string;
+    /** 对象表归属数据库名（经 metadata_table 回填，编辑级联回显数据库下拉） */
+    databaseName?: string;
+    /** 对象表归属 Schema 名（经 metadata_table 回填，有 schema 类型才有值） */
+    schemaName?: string;
     /** 对象表归属数据源 ID（经 metadata_table 回填） */
     datasourceId?: string;
     /** 对象表归属数据源名（内置 Doris 显示 "Doris 数仓"） */

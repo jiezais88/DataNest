@@ -32,6 +32,12 @@ public class QualityRuleDTO {
     /** 目标表名（schema.table，冗余回填，便于展示） */
     private String tableName;
 
+    /** 目标表归属数据库名（经 metadata_table 回填，供前端编辑级联回显数据库下拉） */
+    private String databaseName;
+
+    /** 目标表归属 Schema 名（经 metadata_table 回填，有 schema 类型才有值，供前端级联回显） */
+    private String schemaName;
+
     /** 目标表归属数据源 ID（经 metadata_table 回填，Sprint 7 方案A） */
     private Long datasourceId;
 

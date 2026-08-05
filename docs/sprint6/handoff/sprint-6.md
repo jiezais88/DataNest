@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -28,6 +28,7 @@
 | Sprint 6 分级邮件告警前端                 | ✅ 完成   | 质量检查历史明细卡片展示分级判定（通过/警告/严重/不可用）；告警中心支持「质量任务」对象类型配置/筛选/徽章，见 §9.7 |
 | 告警规则名称 + 质量任务页改名             | ✅ 完成   | alert_rule 加 name（必填/同类型唯一）+ alert_history 加 rule_name；告警中心规则/历史新增名称列；AlertRuleModal 加规则名称输入框；数据质量页改名「质量任务」去统计改副标题，见 §10 |
 | 创建审计字段修复                         | ✅ 完成   | 所有实体 create 入口只设 createdBy/createdAt，去掉 setUpdatedBy/setUpdatedAt；Flyway V3.6.8 去掉 13 张表 updated_at 的 DB 默认值（创建后未修改时 updated_at/updated_by 为 null），见 §12 |
+| 表级质量评分后端                         | ✅ 完成   | 评分跨任务聚合加权计算（quality_score 落库，一张表一行）+ 血缘图谱节点批量回填评分 + 三查询接口；健康度四档区间/扣分算法行业调研后回写 PRD/技术文档，见 §13 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -684,3 +685,63 @@
 - 抽查 `quality_job.updated_at`：`information_schema.columns` 显示 `is_nullable=YES`、`column_default=NULL`（默认值已去掉）。
 - 批量确认 13 张表 `updated_at`：`no_default=t` + `is_nullable=YES` 全部通过。
 - 功能回归（创建接口实际验证）按用户要求跳过，仅完成列定义与迁移验证。
+
+## 13. 表级质量评分后端（2026-08-05）
+
+> **阶段**：NG8「表级质量评分 + 血缘联动」后端完成。评分依赖检查历史（`quality_check_detail`），"检查完→算分→落表→供血缘展示"。本次只做后端，血缘前端徽章渲染后续单独做。
+
+### 13.1 需求与调研（用户确认）
+
+- **评分粒度**：表级评分**跨任务聚合**——一张表可出现在多个质量任务，综合该表**所有启用规则最近一次**检查结果产出 0-100 分。
+- **健康度四档区间**（用户要求调研行业做法后回写文档）：
+  | 健康度 | 分数区间 | 血缘徽章颜色 |
+  |--------|----------|--------------|
+  | EXCELLENT（优秀） | ≥ 85 | 绿 |
+  | GOOD（良好） | 75~84 | 绿 |
+  | WARNING（一般） | 60~74 | 黄 |
+  | BAD（差） | < 60 | 红 |
+  存在 SEVERE 规则强制 BAD 并压入低分区；UNAVAILABLE 规则不参与（剔除权重，与告警语义一致）；未配置启用规则的表不落行（血缘显示灰色「—」）。
+- **扣分算法**（用户要求调研后写进文档）：`总扣分 = Σ(警告权重)×warning-deduct + Σ(严重权重)×severe-deduct`；`最终分 = max(0, 基础分−总扣分)`，基础分 = `100×(通过权重/有效权重)`。
+
+### 13.2 变更清单
+
+| 产物 | 变更 |
+|------|------|
+| `data-nest-system/.../db/migration/V3.6.9__sprint6_quality_score.sql`（新增） | 建 `quality_score` 表（id/table_id/table_name/datasource_id/score/health_level/pass_rules/warning_rules/severe_rules/last_checked_at/updated_at，`uk_quality_score_table(table_id)` 一张表一行 + `idx_datasource_id`）；`updated_at` 不加 DB 默认值（对齐审计约定） |
+| task-core entity：`QualityScore`（新增） | 表级评分实体（score DECIMAL(5,2)/healthLevel/passRules/warningRules/severeRules/lastCheckedAt/updatedAt） |
+| task-core mapper：`QualityScoreMapper`（新增） | BaseMapper；批量 IN 查询由 Service 用 `QueryWrapper.in` 实现（血缘回填一次查） |
+| task-core constant：`QualityScoreConstants`（新增） | 健康度四档常量（EXCELLENT≥85/GOOD≥75/WARNING≥60）+ 满分常量；区间为代码常量（调研确认） |
+| task-core dto：`QualityScoreDTO`/`QualityScoreQueryRequest`（新增） | 评分展示 DTO（含 datasourceName/healthLevelLabel 优秀·良好·一般·差）+ 列表筛选（keyword/datasourceId/healthLevel/page/pageSize） |
+| task-core service：`ScoreCalculator`（新增） | 核心算分：`recalculateForTables(List<Long>)` 逐表跨任务聚合所有启用规则最近一次 `result_level`（按 rule_id 取最近）→ 加权算基础分 → 减警告/严重扣分 → 映射健康度 → upsert；UNAVAILABLE 剔除权重；无有效规则删除评分；`@Value` 注入 warning-deduct(10)/severe-deduct(30)/bad-threshold(60) 带默认值兜底 |
+| task-core service：`QualityScoreService`（新增） | 查询服务：`getByTableId`/`listByTableNames`（血缘批量回填用）/`listPage`（分页，datasourceName 反查 + healthLevelLabel 映射） |
+| task-core service：`QualityCheckService`（修改） | 注入 `ScoreCalculator`；`executeJob` 收尾（finishBatch 后、fireBatchAlert 前）收集本次涉及 tableId 集合调 `recalculateForTables`；`executeRule` 单规则执行后重算该规则所在表（评分与告警基于同一批最新结果） |
+| governance controller：`QualityScoreController`（新增） | `/quality/scores`：GET `/table/{tableId}` 单表、POST `/by-tables` 批量（血缘回填）、POST `/page` 分页；权限与质量查看一致（SUPER_ADMIN/GOVERNANCE_ADMIN/DATA_ENGINEER/DATA_ANALYST） |
+| governance dto：`LineageNodeDTO`（修改） | 新增 `qualityScore`(Integer)/`healthLevel`/`tableName` 字段 |
+| governance service：`LineageService`（修改） | 注入 `QualityScoreService`；`buildTableGraph` 构造完 nodes 后 `fillQualityScores` 用节点表名集合一次 IN 查 `quality_score` 批量回填（避免 N+1），未命中保持 null |
+| `shared-configs/shared-common.yaml`（修改） | 新增 `datanest.quality.score.{warning-deduct:10, severe-deduct:30, bad-threshold:60}`（worker/governance 共同导入）；已重新跑 `middleware-nacos-init` 同步到 Nacos |
+| 文档 | `PRD §6.5.1` 补充健康度四档区间 + 扣分算法明确写法；`技术文档 §3.6/§5.1/§8` 同步健康度区间、ScoreCalculator 实现、表名对齐 `quality_check_detail` |
+
+### 13.3 代码 Review 结论（功能 × 架构 × 效率）
+
+- **已修复（业务正确性）**：初版 `determineHealth` 对 `severeRules>0` 直接返回 BAD，导致后续「严重规则强制压入低分区」的分数封顶逻辑成死代码。重构为 `severeRules>0` 时统一压分（`score=min(score, bad-threshold−0.01)`）+ 标 BAD。
+- **架构融洽**：质量核心（实体/Mapper/DTO/ScoreCalculator/QualityScoreService）全部下沉 task-core（D-T1），governance 只提供 Controller + 血缘回填；评分物化到 `quality_score` 表，血缘高频查询一次 IN 回填避免 N+1（T3）。
+- **实现高效**：`recalculateForTables` distinct 去重；评分重算低频（触发时），血缘查询高频走物化表。
+
+### 13.4 部署
+
+- 编译：`mvn -pl task-core,engineering,worker,governance,system -am clean package` → **BUILD SUCCESS**。
+- 镜像重建部署：**app-system**（先启，执行 Flyway V3.6.9）→ **app-worker / app-engineering / app-governance**，四容器全部 healthy。
+- 需重建 app-worker（质量执行代码在 worker）+ app-engineering（task-core 共享）+ app-governance（评分接口+血缘）+ app-system（Flyway 脚本）。
+- Nacos：重新运行 `middleware-nacos-init` 同步 `shared-common.yaml` 评分配置项。
+
+### 13.5 API 测试记录（业务角度，2026-08-05）
+
+> 用真实可执行数据源（`mysql` 测试源 testdb）走完整业务链路：建任务→建规则→执行→验证评分→血缘→查询。测试数据已清理。
+
+- **评分计算（PASS+WARNING 加权）**：orders 表（weight3 PASS `SELECT 5` + weight1 WARNING `SELECT 7`，阈值 6/8）→ detail result_level=PASS/WARNING；quality_score score=**65.00**、health_level=**WARNING**（基础分 100×3/4=75 − 警告扣分 1×10=10）、pass_rules=1/warning_rules=1 ✓
+- **SEVERE 强制 BAD**：products 表单条 SEVERE 规则（weight2 `SELECT 9`，severe=8）→ score=**0.00**、health_level=**BAD**（基础分 0 − 严重扣分 2×30=60）；加 weight10 PASS 规则后 → score=**23.33**、BAD（基础分 100×10/12=83.33 − 60=23.33，SEVERE 强制压分生效）✓
+- **单表接口**：`GET /quality/scores/table/{tableId}` → score/healthLevel/healthLevelLabel/datasourceName 齐全 ✓
+- **批量接口**：`POST /quality/scores/by-tables` body `["testdb.orders"]` → 命中评分 ✓
+- **分页接口**：`POST /quality/scores/page`（healthLevel=WARNING）→ total=1 ✓
+- **血缘回填**：`GET /lineage/graph?tableName=testdb.orders&depth=1` → 节点 `testdb.orders` 回填 `qualityScore:65`/`healthLevel:"WARNING"` ✓（血缘节点表名与 quality_score.table_name 格式一致，匹配验证通过）
+- **清理**：测试任务/4 条测试规则/评分/detail/batch 全部删除，`quality_job`/`quality_rule`/`quality_score`/`quality_check_detail` 归 0。

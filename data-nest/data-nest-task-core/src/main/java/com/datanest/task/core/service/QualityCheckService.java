@@ -33,6 +33,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -65,6 +66,7 @@ public class QualityCheckService {
     private final DorisSqlExecutor dorisSqlExecutor;
     private final GenericSqlExecutor genericSqlExecutor;
     private final AlertFiringService alertFiringService;
+    private final ScoreCalculator scoreCalculator;
 
     public QualityCheckService(QualityCheckBatchMapper batchMapper,
                                QualityCheckDetailMapper detailMapper,
@@ -75,7 +77,8 @@ public class QualityCheckService {
                                DataSourceConnectionMapper dataSourceMapper,
                                DorisSqlExecutor dorisSqlExecutor,
                                GenericSqlExecutor genericSqlExecutor,
-                               AlertFiringService alertFiringService) {
+                               AlertFiringService alertFiringService,
+                               ScoreCalculator scoreCalculator) {
         this.batchMapper = batchMapper;
         this.detailMapper = detailMapper;
         this.jobMapper = jobMapper;
@@ -86,6 +89,7 @@ public class QualityCheckService {
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.genericSqlExecutor = genericSqlExecutor;
         this.alertFiringService = alertFiringService;
+        this.scoreCalculator = scoreCalculator;
     }
 
     /**
@@ -106,6 +110,7 @@ public class QualityCheckService {
 
         int success = 0;
         int failed = 0;
+        List<Long> tableIds = new ArrayList<>();
         for (QualityRule rule : rules) {
             boolean ok = executeSingleRule(rule, batch.getId());
             if (ok) {
@@ -113,10 +118,15 @@ public class QualityCheckService {
             } else {
                 failed++;
             }
+            if (rule.getTableId() != null) {
+                tableIds.add(rule.getTableId());
+            }
         }
 
         finishBatch(batch, success, failed, null);
         updateJobLastTriggerAt(jobId);
+        // 表级评分：批次收尾后按涉及表跨任务聚合重算，评分与告警基于同一批最新结果
+        scoreCalculator.recalculateForTables(tableIds);
         fireBatchAlert(job, batch);
         logger.info("质量检查任务执行完成: batchId={}, jobId={}, success={}, failed={}", batch.getId(), jobId, success, failed);
         return batch.getId();
@@ -142,6 +152,10 @@ public class QualityCheckService {
 
         boolean ok = executeSingleRule(rule, batch.getId());
         finishBatch(batch, ok ? 1 : 0, ok ? 0 : 1, null);
+        // 表级评分：单规则执行后同样重算该规则所在表，保持评分最新
+        if (rule.getTableId() != null) {
+            scoreCalculator.recalculateForTables(List.of(rule.getTableId()));
+        }
         return batch.getId();
     }
 

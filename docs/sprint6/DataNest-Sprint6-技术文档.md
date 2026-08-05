@@ -250,9 +250,12 @@ PRD 原「每条规则独立 Cron」已在三层模型下 **废除**（见 D1）
 | health_level                              | VARCHAR(20)  | `EXCELLENT`/`GOOD`/`WARNING`/`BAD` |
 | pass_rules / warning_rules / severe_rules | INT          | 最近一次各类规则数                 |
 | last_checked_at                           | TIMESTAMP    | 最近检查时间                       |
-| updated_at                                | TIMESTAMP    | 更新时间                           |
+| updated_at                                | TIMESTAMP    | 更新时间（无 DB 默认值，评分 upsert 时写入） |
 
 > 索引：`uk(table_id)`。一张表一行。
+>
+> **健康度区间**（0-100 分，业界主流对齐，2026-08-05 调研确认）：EXCELLENT ≥ 85；GOOD 75~84；WARNING 60~74；BAD < 60。
+> 存在 SEVERE 规则强制 BAD；未配置启用规则的表不落行。
 
 ### 3.7 标准合规扩展：`compliance_check_result` 加忽略字段
 
@@ -325,15 +328,19 @@ result_value ≥ severe_threshold          → SEVERE
 
 `ScoreCalculator.recalculateForTables(tableIds)`，在每次任务执行后调用：
 
-1. 对每张表，取所有任务下 **启用规则**的最近一次检查结果（`quality_check_history` 按 rule 取最近）。
+1. 对每张表，取所有任务下 **启用规则**的最近一次检查结果。实际执行结果表为 `quality_check_detail`（含 `result_level`），按 `rule_id` 取最近一条（跨任务聚合该表所有启用规则）。
 2. 按 PRD §6.5.1 加权算法：
     - 基础分 = `100 × (通过规则权重之和 / 全部启用规则权重之和)`
-    - 扣分：警告规则按权重 × 警告扣分值；严重规则按权重 × 严重扣分值。
-    - `警告扣分值` / `严重扣分值` / `低分区阈值` 为 **全局配置项**（Nacos 配置，见 §8）。
+    - 总扣分 = `Σ(警告规则权重) × warning-deduct + Σ(严重规则权重) × severe-deduct`
+    - 最终分 = `max(0, 基础分 − 总扣分)`，round 保留 2 位小数
+    - `warning-deduct`（默认 10）/ `severe-deduct`（默认 30）/ `bad-threshold`（默认 60）为 **全局配置项**（Nacos，见 §8）。
+    - 健康度映射：≥ 85 EXCELLENT；75~84 GOOD；60~74 WARNING；< 60 BAD。
     - 存在严重规则 → 强制压至低分区并标记健康度 `BAD`。
-3. 落 `quality_score`（upsert，`uk(table_id)`）。
+3. **UNAVAILABLE 规则处理**：执行失败/数据源不可用（result_level=UNAVAILABLE）不参与评分——不计入通过、不扣分、其权重从分母剔除（与告警「UNAVAILABLE 不告警」语义一致）。
+4. 落 `quality_score`（upsert，`uk(table_id)`）；未配置启用规则的表不落行（血缘显示灰色「—」）。
 
 > 血缘图谱批量回填：`LineageService` 构造完节点后用表名集合 `IN` 查 `quality_score`，一次回填。
+> 调用时机：`QualityCheckService.executeJob` 在 `finishBatch` 之后、`fireBatchAlert` 之前调用，保证评分与告警基于同一批最新结果。
 
 ### 5.2 三种执行时机
 
@@ -465,7 +472,9 @@ result_value ≥ severe_threshold          → SEVERE
 
 ---
 
-## 8. 配置项（Nacos `shared-governance.yaml` 或 `shared-job.yaml`）
+## 8. 配置项（Nacos `shared-common.yaml`，worker 与 governance 共同导入）
+
+> 健康度四档区间（EXCELLENT ≥ 85 / GOOD 75~84 / WARNING 60~74 / BAD < 60）为代码常量（`QualityScoreConstants`），不随 Nacos 配置调整；仅扣分与低分区阈值可配置。
 
 | key                                            | 默认值        | 说明                            |
 |------------------------------------------------|---------------|---------------------------------|

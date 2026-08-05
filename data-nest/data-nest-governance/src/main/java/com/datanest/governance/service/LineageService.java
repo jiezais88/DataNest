@@ -6,13 +6,17 @@ import com.datanest.governance.dto.LineageNodeDTO;
 import com.datanest.task.core.dto.ColumnRef;
 import com.datanest.task.core.dto.LineageColumnLinkDTO;
 import com.datanest.task.core.dto.LineageTableEdge;
+import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.task.core.entity.LineageRecord;
 import com.datanest.task.core.mapper.LineageRecordMapper;
+import com.datanest.task.core.service.QualityScoreService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -20,6 +24,7 @@ import java.util.Set;
  * 血缘写入由 worker 在 SQL/Python/同步任务执行成功后直接落表，
  * governance-service 仅提供查询/展示能力（ADR-S4-003）。
  * Sprint 5：新增表级血缘图谱、影响/溯源分析、字段级血缘链路。
+ * Sprint 6 NG8：血缘图谱节点批量回填表级质量评分。
  */
 @Service
 public class LineageService {
@@ -30,9 +35,12 @@ public class LineageService {
     private static final int MAX_COLUMN_DEPTH = 20;
 
     private final LineageRecordMapper lineageRecordMapper;
+    private final QualityScoreService qualityScoreService;
 
-    public LineageService(LineageRecordMapper lineageRecordMapper) {
+    public LineageService(LineageRecordMapper lineageRecordMapper,
+                          QualityScoreService qualityScoreService) {
         this.lineageRecordMapper = lineageRecordMapper;
+        this.qualityScoreService = qualityScoreService;
     }
 
     public List<LineageRecord> queryByTargetTable(String tableName) {
@@ -141,7 +149,36 @@ public class LineageService {
             }
             currentLevel = nextLevel;
         }
+        fillQualityScores(nodes);
         return new LineageGraphDTO(nodes, edges);
+    }
+
+    /**
+     * 血缘节点批量回填表级质量评分（Sprint 6 NG8）。
+     * 用节点表名集合一次 IN 查 quality_score，避免 N+1；未命中保持 null（前端显示灰色「—」）。
+     */
+    private void fillQualityScores(List<LineageNodeDTO> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return;
+        }
+        List<String> tableNames = nodes.stream().map(LineageNodeDTO::getName).toList();
+        List<QualityScoreDTO> scores = qualityScoreService.listByTableNames(tableNames);
+        if (scores == null || scores.isEmpty()) {
+            return;
+        }
+        Map<String, QualityScoreDTO> byTable = new HashMap<>();
+        for (QualityScoreDTO s : scores) {
+            byTable.put(s.getTableName(), s);
+        }
+        for (LineageNodeDTO node : nodes) {
+            QualityScoreDTO score = byTable.get(node.getName());
+            if (score == null || score.getScore() == null) {
+                continue;
+            }
+            node.setQualityScore(score.getScore().intValue());
+            node.setHealthLevel(score.getHealthLevel());
+            node.setTableName(node.getName());
+        }
     }
 
     private int clampDepth(Integer depth) {
