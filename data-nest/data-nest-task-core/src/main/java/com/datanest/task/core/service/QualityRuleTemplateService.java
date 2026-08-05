@@ -118,9 +118,7 @@ public class QualityRuleTemplateService {
                 request.getEnabled() == null ? 1 : request.getEnabled());
         entity.setBuiltin(0); // 新增模板一律为自定义
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
         templateMapper.insert(entity);
         return toDTO(entity, Map.of());
     }

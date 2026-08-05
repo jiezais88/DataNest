@@ -91,3 +91,27 @@ export const EXEC_PG = {
     pass: 'testpass123',
 };
 
+// ==================== 分级邮件告警（Sprint 6） ====================
+
+/** 分级告警测试数据前缀（质量任务 / 质量规则 / 告警规则） */
+export const ALERT_PREFIX = 'e2e_s6_alert';
+
+/**
+ * 分级告警测试固定 ID 段（9000040000000000000+，独立于质量/执行/自动触发三段）。
+ * 对应 seed.ts 中 seedQualityAlerts 播种的质量任务与质量规则。
+ */
+export const ALERT_JOB_ID = '9000040000000000001';
+export const ALERT_JOB_SEVERE_ONLY_ID = '9000040000000000002';
+export const ALERT_JOB_UNAVAILABLE_ID = '9000040000000000003';
+export const ALERT_JOB_PASS_ID = '9000040000000000004';
+/** 主链路任务（SEVERE_WARNING）下的规则 */
+export const ALERT_RULE_SEVERE_ID = '9000040000000000101';
+export const ALERT_RULE_WARNING_ID = '9000040000000000102';
+/** SEVERE_ONLY 任务下的规则（含严重 + 警告，验证排除警告） */
+export const ALERT_RULE_SO_SEVERE_ID = '9000040000000000201';
+export const ALERT_RULE_SO_WARNING_ID = '9000040000000000202';
+/** UNAVAILABLE 任务下的规则（查不存在表 → SQL 失败） */
+export const ALERT_RULE_UNAVAILABLE_ID = '9000040000000000301';
+/** PASS 任务下的规则（无阈值配置 → 通过不告警） */
+export const ALERT_RULE_PASS_ID = '9000040000000000401';
+

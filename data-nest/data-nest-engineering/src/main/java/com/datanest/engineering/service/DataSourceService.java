@@ -99,9 +99,7 @@ public class DataSourceService {
         entity.setStatus(DataSourceStatus.NORMAL.getCode());
         entity.setAutoCollectOnSave(Boolean.TRUE.equals(request.getAutoCollectOnSave()) ? 1 : 0);
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
 
         dataSourceMapper.insert(entity);
 
@@ -146,9 +144,7 @@ public class DataSourceService {
             task.setDescription("数据源保存时自动创建的元数据采集任务");
             task.setScheduleEnabled(0);
             task.setCreatedBy(currentUserIdOrZero());
-            task.setUpdatedBy(currentUserIdOrZero());
             task.setCreatedAt(now);
-            task.setUpdatedAt(now);
             collectTaskMapper.insert(task);
 
             Integer xxlJobId = schedulerClient.registerJob(workerExecutorAppName, COLLECT_TASK_HANDLER,

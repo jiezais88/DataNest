@@ -54,10 +54,8 @@ public class DagParameterService {
         p.setRequired(Boolean.TRUE.equals(payload.getRequired()) ? 1 : 0);
         p.setDescription(payload.getDescription());
         p.setCreatedBy(currentUserId());
-        p.setUpdatedBy(currentUserId());
         LocalDateTime now = LocalDateTime.now();
         p.setCreatedAt(now);
-        p.setUpdatedAt(now);
         dagParameterMapper.insert(p);
         return toPayload(p);
     }

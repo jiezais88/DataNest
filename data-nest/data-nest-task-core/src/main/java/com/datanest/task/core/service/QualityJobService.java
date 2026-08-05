@@ -134,9 +134,7 @@ public class QualityJobService {
         entity.setAutoTriggerObjectId(request.getAutoTriggerObjectId());
         entity.setAlertLevel(request.getAlertLevel() == null ? "SEVERE_WARNING" : request.getAlertLevel());
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
         jobMapper.insert(entity);
         // 绑定引用的质量规则（多对多）
         ruleService.setJobRules(entity.getId(), request.getRuleIds());

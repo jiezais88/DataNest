@@ -92,9 +92,7 @@ public class SyncJobService {
         entity.setScheduleEnabled(0);
         entity.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.insert(entity);
 
         // XXL-JOB 注册放到事务提交后：DB 回滚时不会产生孤儿调度任务

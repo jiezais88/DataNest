@@ -1,9 +1,11 @@
 import {useEffect, useState} from 'react';
+import {Select} from 'antd';
 import Drawer from '../../../components/Drawer';
 import DsButton from '../../../components/DsButton';
 import {queryQualityRules} from '../../../api/quality';
 import CronPicker from '../../../components/CronPicker';
-import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule} from '../../../types/quality';
+import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule, QualityRuleType} from '../../../types/quality';
+import {QUALITY_TYPE_LABEL} from '../../../types/quality';
 import AutoTriggerSelect from './AutoTriggerSelect';
 
 interface QualityJobFormData {
@@ -16,7 +18,7 @@ interface QualityJobFormData {
     autoTriggerObjectType: AutoTriggerObjectType | '';
     autoTriggerObjectId: string;
     alertLevel: QualityAlertLevel;
-    /** 引用的质量规则 ID 集合（Sprint 7 多对多） */
+    /** 引用的质量规则 ID 集合（多对多） */
     ruleIds: string[];
 }
 
@@ -56,7 +58,7 @@ export default function QualityJobDrawer({
     const [form, setForm] = useState<QualityJobFormData>(EMPTY_FORM);
     const [errors, setErrors] = useState<Partial<Record<keyof QualityJobFormData, string>>>({});
     const [submitting, setSubmitting] = useState(false);
-    // 规则库（供任务引用规则，Sprint 7）
+    // 规则库（供任务引用规则）
     const [ruleOptions, setRuleOptions] = useState<QualityRule[]>([]);
 
     const isEdit = mode === 'edit';
@@ -143,7 +145,7 @@ export default function QualityJobDrawer({
                 autoTriggerObjectType: form.autoTriggerEnabled === 1 ? form.autoTriggerObjectType || undefined : undefined,
                 autoTriggerObjectId: form.autoTriggerEnabled === 1 ? form.autoTriggerObjectId || undefined : undefined,
                 alertLevel: form.alertLevel,
-                // Sprint 7：任务引用的规则集合
+                // 任务引用的规则集合
                 ruleIds: form.ruleIds.length > 0 ? form.ruleIds : undefined,
             };
             await onSubmit(payload);
@@ -294,45 +296,28 @@ export default function QualityJobDrawer({
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                        引用质量规则 <span className="text-ds-nano text-ds-text-muted font-normal">（从规则库选择，可多选，Sprint 7）</span>
+                        引用质量规则 <span className="text-ds-nano text-ds-text-muted font-normal">（从规则库选择，可多选）</span>
                     </label>
-                    {ruleOptions.length === 0 ? (
-                        <p className="text-ds-nano text-ds-text-muted">暂无可用规则，可先到「质量规则」页面创建。</p>
-                    ) : (
-                        <div className="border border-ds-border-subtle rounded-ds-md p-ds-3 max-h-[200px] overflow-auto space-y-ds-1.5">
-                            {ruleOptions.map((r) => {
-                                const checked = form.ruleIds.some((id) => String(id) === String(r.id));
-                                return (
-                                    <label
-                                        key={String(r.id)}
-                                        className={`flex items-center gap-ds-2 px-ds-2 py-ds-1.5 rounded-ds-sm cursor-pointer transition-colors ${
-                                            checked ? 'bg-ds-accent-light' : 'hover:bg-ds-bg-hover'
-                                        }`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            disabled={readOnly}
-                                            onChange={(e) => {
-                                                const id = String(r.id);
-                                                setForm((prev) => ({
-                                                    ...prev,
-                                                    ruleIds: e.target.checked
-                                                        ? [...prev.ruleIds, id]
-                                                        : prev.ruleIds.filter((x) => x !== id),
-                                                }));
-                                            }}
-                                            className="w-4 h-4 rounded border-ds-border-subtle text-ds-accent focus:ring-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex items-center justify-between flex-1 min-w-0">
-                                            <span className="text-ds-small text-ds-text-primary truncate" title={r.name}>{r.name}</span>
-                                            <span className="text-ds-nano text-ds-text-muted ml-ds-2 whitespace-nowrap">{r.type || ''}</span>
-                                        </div>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
+                    <Select
+                        mode="multiple"
+                        showSearch
+                        optionFilterProp="label"
+                        value={form.ruleIds}
+                        onChange={(v) => updateField('ruleIds', v as string[])}
+                        disabled={readOnly}
+                        loading={false}
+                        placeholder={ruleOptions.length === 0 ? '暂无可用规则，可先到「质量规则」页面创建' : '请选择规则（可多选）'}
+                        notFoundContent={ruleOptions.length === 0 ? '暂无可用规则，可先到「质量规则」页面创建' : '无匹配规则'}
+                        options={ruleOptions.map((r) => {
+                            const typeLabel = QUALITY_TYPE_LABEL[r.type as QualityRuleType] || r.type || '';
+                            return {
+                                value: String(r.id),
+                                label: typeLabel ? `${r.name}（${typeLabel}）` : r.name,
+                            };
+                        })}
+                        allowClear
+                        className="w-full"
+                    />
                 </div>
             </div>
         </Drawer>

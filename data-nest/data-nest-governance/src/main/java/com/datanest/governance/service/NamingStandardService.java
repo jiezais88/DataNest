@@ -65,9 +65,7 @@ public class NamingStandardService {
         entity.setEnabled(request.getEnabled());
         entity.setDescription(request.getDescription());
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
         namingStandardMapper.insert(entity);
         return toDTO(entity);
     }

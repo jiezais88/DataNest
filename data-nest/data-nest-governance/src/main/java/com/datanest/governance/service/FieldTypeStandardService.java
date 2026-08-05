@@ -51,9 +51,7 @@ public class FieldTypeStandardService {
         entity.setAllowedTypes(request.getAllowedTypes());
         entity.setDescription(request.getDescription());
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
         fieldTypeStandardMapper.insert(entity);
         return toDTO(entity);
     }

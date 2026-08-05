@@ -180,9 +180,7 @@ public class QualityRuleService {
         entity.setWeight(request.getWeight() == null ? 1 : request.getWeight());
         entity.setEnabled(request.getEnabled() == null ? 1 : request.getEnabled());
         entity.setCreatedBy(currentUserId());
-        entity.setUpdatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
         ruleMapper.insert(entity);
         // 创建时若指定任务，同时写入关联表（历史「任务下建规则」流程兼容）
         if (jobId != null) {
@@ -238,9 +236,7 @@ public class QualityRuleService {
             entity.setWeight(item.getWeight() == null ? 1 : item.getWeight());
             entity.setEnabled(1);
             entity.setCreatedBy(currentUserId);
-            entity.setUpdatedBy(currentUserId);
             entity.setCreatedAt(now);
-            entity.setUpdatedAt(now);
             ruleMapper.insert(entity);
             // 批量应用在任务下进行，写入关联表
             bindJobRule(request.getJobId(), entity.getId());

@@ -106,7 +106,6 @@ public class UserService {
         user.setEnabled(true);
         Long operatorId = currentUserId();
         user.setCreatedBy(operatorId);
-        user.setUpdatedBy(operatorId);
         userMapper.insert(user);
 
         assignRoles(user.getId(), req.roles());

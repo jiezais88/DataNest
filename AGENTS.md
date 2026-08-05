@@ -227,6 +227,7 @@ docker compose up -d --no-deps app-engineering app-worker
   执行是异步的（经 XXL-JOB 投递 app-worker），断言通过轮询 `quality_check_batch` 至终态；修改 seed/helpers 后不需要重启服务，
   但若改了 task-core 执行逻辑需重建 **app-worker**。自动触发用 3 种方式覆盖：真实同步任务成功、真实 DAG 节点成功、播种
   AUTO_TRIGGER 批次记录。
+- **分级邮件告警 E2E（sprint6/quality-alerts.spec.ts，2026-08-05）**：8 用例全绿。**DsModal 弹窗定位用 `getByRole('dialog', {name: title})`**（非 antd `.ant-modal`）。**antd multiple Select 选中后 dropdown 保持打开**，点击弹窗标题（而非 Escape，会同时关闭 DsModal）关闭 dropdown 后再点保存。**告警规则对象需多选覆盖所有链路**（同一对象告警规则才能在多个任务上命中），SPEC 测试中覆盖主链路 + SEVERE_ONLY 两个任务。**MailHog `decodeMimeEncoded` 修复了 RFC 2047 相邻 encoded-word 间空白插入 bug**（sprint5 mailhog.ts 通用修复）：JavaMail 长主题按 ~40 字节拆分，`e2e_s6_alert_main` 被拆成 `e2e_`/`s6_alert_ma`/`in`，未修复时 `find('e2e_s6_alert_main')` 失败。**邮件正文是 quoted-printable**（非 base64），spec 内 `decodeBody` 按 `=XX` 字节还原 + 移除软换行 `=\r\n`。**结果值前端格式化为整数 `4`**（DB 存 `4.000000`），断言 UI 时用 `getByText('4', {exact:true})`。**告警中心历史页首列是「告警时间」**（非对象名称），`rowBy`（按首列匹配）失效，应按对象名称列用 `.filter({hasText: objectName})`；`getByText` 限定在 `historyRow` 内避免命中筛选下拉 `<option>`。**严格模式同名批次**：主链路任务执行两次（主链路 + 幂等）会产 2 行，`rowBy(...).first()` 取最新。
 
 ## 7. 代码与提交约定
 
@@ -234,6 +235,11 @@ docker compose up -d --no-deps app-engineering app-worker
 - 改配置/改接口后，同步检查 yaml、Nacos 配置、注释、测试、前端调用点。
 - 新增依赖时检查作用域：`provided` 依赖需要在消费方显式声明。
 - 保持代码和周围风格一致，注释用中文。
+- **创建审计字段约定（2026-08-05 起生效，V3.6.8）**：所有实体 `create` 入口（含批量 create/DAG 节点）
+  **只设置 `setCreatedBy`/`setCreatedAt`，禁止 `setUpdatedBy`/`setUpdatedAt`**；`updated_at` 列已通过 Flyway
+  `V3.6.8__drop_updated_at_default.sql` 去掉 `DEFAULT CURRENT_TIMESTAMP` 且允许 NULL，因此创建时
+  `updated_by`/`updated_at` 均为 null，仅真正 update/启停/状态变更时才写入。改 `create` 时不要回归加
+  `setUpdatedBy/setUpdatedAt`；新增带审计字段的表时，其 `updated_at` 不要加 DB 默认值（保持一致，否则创建即显示修改时间）。
 - 不要主动运行 `git commit` / `git push`，除非用户明确要求。
 
 ## 8. 后端开发规范

@@ -17,8 +17,12 @@ export interface MailhogMessage {
     Created: string;
 }
 
-/** 解码 MIME encoded-word（=?UTF-8?Q?xxx?= / =?UTF-8?B?xxx?=），Q 编码按 UTF-8 字节还原 */
+/** 解码 MIME encoded-word（=?UTF-8?Q?xxx?= / =?UTF-8?B?xxx?=），Q 编码按 UTF-8 字节还原。
+ *  RFC 2047：由空白分隔的相邻 encoded-word 应忽略空白无缝拼接，否则长主题按段编码时
+ *  解码结果会插入多余空格，导致连续关键词匹配失败。 */
 function decodeMimeEncoded(str: string): string {
+    // 先把相邻 encoded-word 之间的空白移除，再做逐段解码
+    str = str.replace(/\?=\s+(?==\?)/g, '?=');
     return str.replace(/=\?([^?]+)\?([QqBb])\?([^?]*)\?=/g, (_m, _charset, enc, text) => {
         if (enc.toLowerCase() === 'q') {
             const bytes: number[] = [];

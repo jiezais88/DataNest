@@ -87,9 +87,7 @@ public class DagProjectService {
         project.setName(request.getName());
         project.setDescription(request.getDescription());
         project.setCreatedBy(currentUserId());
-        project.setUpdatedBy(currentUserId());
         project.setCreatedAt(LocalDateTime.now());
-        project.setUpdatedAt(LocalDateTime.now());
         dagProjectMapper.insert(project);
 
         // 3. 事务提交后在 DS 创建项目（P0-3）；失败则补偿删除 DB 行，报可重试错误

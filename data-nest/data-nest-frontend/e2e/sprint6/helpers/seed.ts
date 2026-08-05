@@ -17,6 +17,17 @@ import {
     EXEC_DS_PG_NAME,
     EXEC_MYSQL,
     EXEC_PG,
+    ALERT_PREFIX,
+    ALERT_JOB_ID,
+    ALERT_JOB_SEVERE_ONLY_ID,
+    ALERT_JOB_UNAVAILABLE_ID,
+    ALERT_JOB_PASS_ID,
+    ALERT_RULE_SEVERE_ID,
+    ALERT_RULE_WARNING_ID,
+    ALERT_RULE_SO_SEVERE_ID,
+    ALERT_RULE_SO_WARNING_ID,
+    ALERT_RULE_UNAVAILABLE_ID,
+    ALERT_RULE_PASS_ID,
 } from './data';
 
 /**
@@ -322,6 +333,111 @@ export function cleanupExecMetadata(): void {
     psql(`DELETE FROM datasource_connection WHERE id IN (${EXEC_DS_MYSQL_ID}, ${EXEC_DS_PG_ID})`);
 }
 
+// ==================== 分级邮件告警（Sprint 6） ====================
+
+/** 执行数据源固定 ID（与 seedExecMetadata 一致，供规则 SQL 复用） */
+const ALERT_EXEC_DS_MYSQL_ID = '9000020000000000001';
+/** 执行目标表固定 ID（MYSQL 成功表，e2e_s6_orders，COUNT(*)=4） */
+const ALERT_EXEC_TABLE_MYSQL_OK_ID = '9000020000000000011';
+
+/** 计数 SQL 公共前缀（e2e_s6_orders 共 4 行 → value=4） */
+const COUNT_SQL = (table: string) => `SELECT COUNT(*) AS total FROM ${table}`;
+
+/**
+ * 播种分级告警测试元数据（幂等）：
+ * 在 e2e_s6_orders（COUNT(*)=4）上用 CUSTOM_SQL 规则 + warning/severe 阈值产出确定分级：
+ * - 主链路任务 ALERT_JOB_ID（SEVERE_WARNING）：
+ *   - ALERT_RULE_SEVERE_ID：warning=2/severe=3 → value 4 → SEVERE
+ *   - ALERT_RULE_WARNING_ID：warning=3/severe=5 → value 4 → WARNING
+ * - SEVERE_ONLY 任务 ALERT_JOB_SEVERE_ONLY_ID（仅严重，验证排除警告）：
+ *   - ALERT_RULE_SO_SEVERE_ID：warning=2/severe=3 → SEVERE
+ *   - ALERT_RULE_SO_WARNING_ID：warning=3/severe=5 → WARNING（应被排除不告警）
+ * - UNAVAILABLE 任务 ALERT_JOB_UNAVAILABLE_ID：ALERT_RULE_UNAVAILABLE_ID 查不存在表 → SQL 失败 → UNAVAILABLE（不告警）
+ * - PASS 任务 ALERT_JOB_PASS_ID：ALERT_RULE_PASS_ID 无阈值 → PASS（不告警）
+ *
+ * 数据源/表沿用执行层 seedExecMetadata 播种的 MYSQL 执行数据源与 e2e_s6_orders，
+ * 本函数只建质量任务 + 质量规则，不重建数据源/表。
+ */
+export function seedQualityAlerts(): void {
+    // 清理历史（先规则后任务）
+    psql(`DELETE FROM quality_rule WHERE id IN (
+        ${ALERT_RULE_SEVERE_ID}, ${ALERT_RULE_WARNING_ID},
+        ${ALERT_RULE_SO_SEVERE_ID}, ${ALERT_RULE_SO_WARNING_ID},
+        ${ALERT_RULE_UNAVAILABLE_ID}, ${ALERT_RULE_PASS_ID})`);
+    psql(`DELETE FROM quality_job WHERE id IN (
+        ${ALERT_JOB_ID}, ${ALERT_JOB_SEVERE_ONLY_ID},
+        ${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_JOB_PASS_ID})`);
+
+    // 质量任务（4 个）
+    psql(`
+        INSERT INTO quality_job
+        (id, name, description, datasource_id, enabled, scheduled_enabled, auto_trigger_enabled,
+         alert_level, created_at, updated_at)
+        VALUES
+        (${ALERT_JOB_ID}, '${ALERT_PREFIX}_main', 'e2e s6 分级主链路(严重+警告)', ${ALERT_EXEC_DS_MYSQL_ID}, 1, 0, 0,
+         'SEVERE_WARNING', now(), now()),
+        (${ALERT_JOB_SEVERE_ONLY_ID}, '${ALERT_PREFIX}_severe_only', 'e2e s6 仅严重(排除警告)', ${ALERT_EXEC_DS_MYSQL_ID}, 1, 0, 0,
+         'SEVERE_ONLY', now(), now()),
+        (${ALERT_JOB_UNAVAILABLE_ID}, '${ALERT_PREFIX}_unavailable', 'e2e s6 不可用(SQL失败不告警)', ${ALERT_EXEC_DS_MYSQL_ID}, 1, 0, 0,
+         'SEVERE_WARNING', now(), now()),
+        (${ALERT_JOB_PASS_ID}, '${ALERT_PREFIX}_pass', 'e2e s6 通过(不告警)', ${ALERT_EXEC_DS_MYSQL_ID}, 1, 0, 0,
+         'SEVERE_WARNING', now(), now());
+    `);
+
+    // 质量规则（带阈值，CUSTOM_SQL，引用 MYSQL 执行数据源的表）
+    psql(`
+        INSERT INTO quality_rule
+        (id, name, type, table_id, sql_expression, result_metric, warning_threshold, severe_threshold,
+         weight, enabled, created_at, updated_at)
+        VALUES
+        (${ALERT_RULE_SEVERE_ID}, '${ALERT_PREFIX}_severe_rule', 'CUSTOM_SQL', ${ALERT_EXEC_TABLE_MYSQL_OK_ID},
+         '${COUNT_SQL('e2e_s6_orders')}', 'total', 2, 3, 1, 1, now(), now()),
+        (${ALERT_RULE_WARNING_ID}, '${ALERT_PREFIX}_warning_rule', 'CUSTOM_SQL', ${ALERT_EXEC_TABLE_MYSQL_OK_ID},
+         '${COUNT_SQL('e2e_s6_orders')}', 'total', 3, 5, 1, 1, now(), now()),
+        (${ALERT_RULE_SO_SEVERE_ID}, '${ALERT_PREFIX}_so_severe_rule', 'CUSTOM_SQL', ${ALERT_EXEC_TABLE_MYSQL_OK_ID},
+         '${COUNT_SQL('e2e_s6_orders')}', 'total', 2, 3, 1, 1, now(), now()),
+        (${ALERT_RULE_SO_WARNING_ID}, '${ALERT_PREFIX}_so_warning_rule', 'CUSTOM_SQL', ${ALERT_EXEC_TABLE_MYSQL_OK_ID},
+         '${COUNT_SQL('e2e_s6_orders')}', 'total', 3, 5, 1, 1, now(), now()),
+        (${ALERT_RULE_UNAVAILABLE_ID}, '${ALERT_PREFIX}_unavailable_rule', 'CUSTOM_SQL', ${ALERT_EXEC_TABLE_MYSQL_OK_ID},
+         '${COUNT_SQL('e2e_s6_no_such_table')}', 'total', 2, 3, 1, 1, now(), now()),
+        (${ALERT_RULE_PASS_ID}, '${ALERT_PREFIX}_pass_rule', 'CUSTOM_SQL', ${ALERT_EXEC_TABLE_MYSQL_OK_ID},
+         '${COUNT_SQL('e2e_s6_orders')}', 'total', 5, 6, 1, 1, now(), now());
+    `);
+
+    // 任务引用规则（Sprint 7 关联表 quality_job_rule），显式配对
+    psql(`
+        INSERT INTO quality_job_rule (job_id, rule_id) VALUES
+        (${ALERT_JOB_ID}, ${ALERT_RULE_SEVERE_ID}),
+        (${ALERT_JOB_ID}, ${ALERT_RULE_WARNING_ID}),
+        (${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_RULE_SO_SEVERE_ID}),
+        (${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_RULE_SO_WARNING_ID}),
+        (${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_RULE_UNAVAILABLE_ID}),
+        (${ALERT_JOB_PASS_ID}, ${ALERT_RULE_PASS_ID})
+        ON CONFLICT (job_id, rule_id) DO NOTHING;
+    `);
+}
+
+/** 清理分级告警测试数据（质量规则/任务/批次/告警历史，幂等） */
+export function cleanupQualityAlerts(): void {
+    // 先清批次明细/批次（按任务 id）
+    psql(`DELETE FROM quality_check_detail WHERE batch_id IN (
+        SELECT id FROM quality_check_batch WHERE job_id IN (
+            ${ALERT_JOB_ID}, ${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_JOB_PASS_ID}))`);
+    psql(`DELETE FROM quality_check_batch WHERE job_id IN (
+        ${ALERT_JOB_ID}, ${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_JOB_PASS_ID})`);
+    // 告警历史（QUALITY 对象）
+    psql(`DELETE FROM alert_history WHERE object_type = 'QUALITY' AND object_id IN (
+        ${ALERT_JOB_ID}, ${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_JOB_PASS_ID})`);
+    // 规则
+    psql(`DELETE FROM quality_rule WHERE id IN (
+        ${ALERT_RULE_SEVERE_ID}, ${ALERT_RULE_WARNING_ID},
+        ${ALERT_RULE_SO_SEVERE_ID}, ${ALERT_RULE_SO_WARNING_ID},
+        ${ALERT_RULE_UNAVAILABLE_ID}, ${ALERT_RULE_PASS_ID})`);
+    // 任务
+    psql(`DELETE FROM quality_job WHERE id IN (
+        ${ALERT_JOB_ID}, ${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_JOB_PASS_ID})`);
+}
+
 // ==================== 清理 / 播种 ====================
 
 /** 清理全部 Sprint 6 测试数据（幂等） */
@@ -351,6 +467,11 @@ export async function cleanupAll(): Promise<void> {
     } catch (e) {
         console.warn('sprint6 cleanup exec tables:', ERR(e));
     }
+    try {
+        cleanupQualityAlerts();
+    } catch (e) {
+        console.warn('sprint6 cleanup quality alerts:', ERR(e));
+    }
 }
 
 /** 全量播种（globalSetup 调用，幂等） */
@@ -361,4 +482,5 @@ export async function seedAll(): Promise<void> {
     seedSyncJob();
     seedExecTables();
     seedExecMetadata();
+    seedQualityAlerts();
 }

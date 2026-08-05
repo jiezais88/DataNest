@@ -102,9 +102,7 @@ public class DagService {
         dag.setScheduleEnabled(Boolean.TRUE.equals(payload.getScheduleEnabled()) ? 1 : 0);
         dag.setReleaseState("OFFLINE");
         dag.setCreatedBy(currentUserId());
-        dag.setUpdatedBy(currentUserId());
         dag.setCreatedAt(LocalDateTime.now());
-        dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.insert(dag);
 
         // 4. 保存节点 + 边（新建时无已有 code）
@@ -553,9 +551,7 @@ public class DagService {
                 node.setConfig(np.getConfig());
                 node.setDsTaskCode(codeMap.get(np.getNodeId()));
                 node.setCreatedBy(uid);
-                node.setUpdatedBy(uid);
                 node.setCreatedAt(now);
-                node.setUpdatedAt(now);
                 nodes.add(node);
             }
             dagNodeMapper.insertBatch(nodes);

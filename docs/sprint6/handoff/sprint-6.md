@@ -1,6 +1,6 @@
 # Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型），已构建部署
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -27,6 +27,7 @@
 | Sprint 6 分级邮件告警后端                 | ✅ 完成   | 分级判定落库（result_level）+ fireBatch 合并告警 + 告警中心 QUALITY 对象类型，见 §9 |
 | Sprint 6 分级邮件告警前端                 | ✅ 完成   | 质量检查历史明细卡片展示分级判定（通过/警告/严重/不可用）；告警中心支持「质量任务」对象类型配置/筛选/徽章，见 §9.7 |
 | 告警规则名称 + 质量任务页改名             | ✅ 完成   | alert_rule 加 name（必填/同类型唯一）+ alert_history 加 rule_name；告警中心规则/历史新增名称列；AlertRuleModal 加规则名称输入框；数据质量页改名「质量任务」去统计改副标题，见 §10 |
+| 创建审计字段修复                         | ✅ 完成   | 所有实体 create 入口只设 createdBy/createdAt，去掉 setUpdatedBy/setUpdatedAt；Flyway V3.6.8 去掉 13 张表 updated_at 的 DB 默认值（创建后未修改时 updated_at/updated_by 为 null），见 §12 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -543,6 +544,57 @@
 
 **构建部署：** `npm run build`（tsc + vite，3005 modules 通过，无类型错误）→ `docker compose build app-frontend` → `up -d --no-deps app-frontend`，容器 `Up`。
 
+### 9.8 分级邮件告警 E2E 测试（2026-08-05，本次会话）
+
+> 覆盖后端 50e038eb + 前端 ab9d80e 的「分级邮件告警」全链路业务 E2E：UI 创建 QUALITY 告警规则 → 触发分级执行 → DB 断言 result_level / alert_history / alert_sent → MailHog 邮件内容断言 → 负向与幂等。
+
+**测试文件：** `data-nest/data-nest-frontend/e2e/sprint6/e2e/quality-alerts.spec.ts`（新增，8 用例全绿，总耗时 ~55s）。
+
+**测试结构（serial 模式）：**
+| # | 用例 | 覆盖点 |
+|---|------|--------|
+| 1 | UI 创建 QUALITY 告警规则（选质量任务 + 失败 + 接收用户 govAdmin） | AlertRuleModal 对象类型选「质量任务」+ 多对象平铺 Select 选主链路+SEVERE_ONLY 两任务 + FAILURE + UserSelect 选 govAdmin |
+| 2 | 主链路：SEVERE_WARNING 任务执行 → SEVERE+WARNING 分级告警（DB + 邮件） | UI 触发执行 → result_level（SEVERE/WARNING）+ alert_history×2 + alert_sent=1 + MailHog 邮件主题「质量任务『...』执行失败（2 项）」+ 正文 `[严重]`/`[警告]`/`共 2 项` |
+| 3 | 幂等：再次执行主链路任务不重复发告警（alert_history 条数不增） | 紧接主链路（60s 防重窗口内）再次触发，alert_history 条数不变（countRecent + alert_sent 双保险） |
+| 4 | UI 质量检查历史详情：SEVERE/WARNING 分级徽章 | 详情抽屉展示「严重」/`[严重]` 徽章、「警告」徽章 + 结果值 `4` |
+| 5 | UI 告警中心历史页：QUALITY 记录展示 | 历史 tab 按对象类型筛 QUALITY → 2 条历史，「质量任务」徽章、「失败」触发条件、「发送成功」徽章 |
+| 6 | 负向：UNAVAILABLE（SQL 失败）不告警 | 查不存在表 → result_level=UNAVAILABLE → alert_history=0（R2 不误报） |
+| 7 | 负向：PASS（低于阈值）不告警 | result_level=PASS → alert_history=0 |
+| 8 | 负向：SEVERE_ONLY 任务排除 WARNING，只收 SEVERE | 两条明细（SEVERE+WARNING）→ 仅 SEVERE 告警 → alert_history=1 + 邮件「共 1 项 [严重]」不含 [警告] |
+
+**变更清单：**
+
+| 产物 | 变更 |
+|------|------|
+| `e2e/sprint6/e2e/quality-alerts.spec.ts`（新增） | 8 用例全绿（54.8s）：UI 创建告警规则 / 主链路分级告警 / 60s 幂等 / 详情分级徽章 / 告警中心历史页 / 三个负向（UNAVAILABLE/PASS/SEVERE_ONLY）。复用 `Api`/`db`/`poll`/`e2e`/`exec-db`/`encrypt`/`seed`/`Mailhog`；本地实现 `decodeBody`（quoted-printable 解码） |
+| `e2e/sprint6/helpers/data.ts`（修改） | 新增分级告警常量：`ALERT_PREFIX`/`ALERT_JOB_ID`/`ALERT_JOB_SEVERE_ONLY_ID`/`ALERT_JOB_UNAVAILABLE_ID`/`ALERT_JOB_PASS_ID` + 6 条规则 ID（固定 ID 段 `9000040000000000000+`，独立于质量/执行/自动触发三段） |
+| `e2e/sprint6/helpers/seed.ts`（修改） | 新增 `seedQualityAlerts`/`cleanupQualityAlerts`：复用执行数据源 `e2e_s6_orders(COUNT=4)` + CUSTOM_SQL 规则 + 阈值确定产出 SEVERE/WARNING/PASS/UNAVAILABLE；任务-规则通过 `quality_job_rule` 关联；挂 `seedAll`/`cleanupAll` |
+| `e2e/sprint5/helpers/mailhog.ts`（修改） | `decodeMimeEncoded` 修复 RFC 2047 相邻 encoded-word 间空白插入 bug（`\?=\s+(?==\?)/?=` → `?=`），长主题按段编码后 `find('e2e_s6_alert_main')` 能正确匹配（修复前 `e2e_`/`s6_alert_ma` 被空格分隔） |
+
+**数据设计（确定性分级）：** 复用 MYSQL 执行数据源 `e2e_s6_exec_ds` + 表 `e2e_s6_orders(COUNT=4)`；4 个质量任务 + 6 条规则：
+- `e2e_s6_alert_main`（SEVERE_WARNING）：severe_rule(w=2/s=3 → 4≥3 → SEVERE) + warning_rule(w=3/s=5 → 4∈[3,5) → WARNING)
+- `e2e_s6_alert_severe_only`（SEVERE_ONLY）：so_severe_rule(SEVERE) + so_warning_rule(WARNING → 应被排除)
+- `e2e_s6_alert_unavailable`（SEVERE_WARNING）：unavailable_rule(查不存在表 → UNAVAILABLE)
+- `e2e_s6_alert_pass`（SEVERE_WARNING）：pass_rule(w=5/s=6 → 4<5 → PASS)
+
+告警规则（UI 创建）覆盖 main + severe_only 两个任务（让 8 个测试共享一条告警规则）。
+
+**验证结果：**
+- `8 passed (54.8s)` 全绿：主链路 ~3s（DB 断言 + 邮件轮询），UI 详情 ~1.7s，负向 ~1s/个。
+- 容器重建：前端 `dist` 重新构建（ab9d80e 影响 AlertCenterPage/AlertRuleModal hash 变化）+ `npm run build` tsc 校验通过；后端 task-core jar Aug 5 09:13 重新打包 + app-governance/app-worker/app-engineering/app-frontend 镜像重建（发现旧 jar Aug 4 23:27 不含 50e038eb 告警分级代码，按 AGENTS.md 重建修复）。
+
+**踩坑记录：**
+- **DsModal 弹窗定位**：项目自定义 `DsModal` 用 `role="dialog" aria-label={title}`，非 antd `.ant-modal`，最初 `modal.locator('.ant-modal')` 超时；改用 `getByRole('dialog', {name: title})`。
+- **antd multiple Select dropdown 遮挡保存按钮**：选完用户后 dropdown 保持打开，遮挡底部「保存」按钮导致 pointer intercepted。**不能用 Escape 关闭**（会同时关闭 DsModal 弹窗）；改用点击 DsModal 标题关闭 dropdown。
+- **告警规则对象覆盖范围**：原 UI 只选主链路任务作为告警对象，导致 SEVERE_ONLY 任务无告警规则命中 → 0 条 alert_history。改为同时勾选 `e2e_s6_alert_main` + `e2e_s6_alert_severe_only` 两个任务（`alert_rule_object` 多对象表），让一条规则覆盖两条链路。
+- **MIME encoded-word 边界空格**：JavaMail 对长主题按 ~40 字节拆分 encoded-word，`e2e_s6_alert_main` 被拆成 `e2e_`/`s6_alert_ma`/`in` 三段，中间空格插入导致 `find('e2e_s6_alert_main')` 失败（RFC 2047 应忽略）。修复 sprint5 mailhog.ts 的 `decodeMimeEncoded`：预处理 `?=\s+(?==\?)/?=` → `?=`。
+- **正文传输编码（quoted-printable）**：邮件正文是 `Content-Transfer-Encoding: quoted-printable`（非 base64），最初 `Buffer.from(Body,'base64')` 解错；spec 内重写 `decodeBody` 为 quoted-printable 解码（移除软换行 `=\r\n` + `=XX` 字节还原 + UTF-8 字符串）。
+- **strict mode（多批次同名）**：主链路任务执行两次（主链路 + 幂等）→ 质量检查历史页出现 2 行 `e2e_s6_alert_main`，`rowBy` strict mode 失败。`rowBy(...).first()` 取最新。
+- **告警中心历史表首列**：首列是「告警时间」（sentAt），非对象名称或规则名，`rowBy`（按首列匹配）失效。改用 `page.locator('.ant-table-row').filter({hasText: ALERT_JOB_NAME_MAIN})` 匹配对象名称列，并限定 `getByText` 在 `historyRow` 内避免命中筛选下拉 `<option>`。
+- **结果值格式**：DB `result_value='4.000000'`，前端 `Number/格式化` 显示为 `4`；断言从 `4.000000` 改为 `4`。
+
+**清理：** 测试产物（`test-results/`、`e2e-alert-run.log`）已删除。
+
 ## 10. 告警规则名称 + 质量任务页改名（2026-08-05）
 
 > **阶段**：后端（task-core + Flyway）+ 前端协同改动。三个需求：①数据质量页改名「质量任务」并去掉统计、改副标题；②告警规则新增「规则名称」，告警历史回显「告警规则名称」；③告警中心描述统一为「DAG、同步任务、采集任务、质量任务」。
@@ -579,3 +631,56 @@
 - 创建规则缺 name → `7202 必须填写规则名称`；同类型重名 → `7202 同一对象类型下已存在同名告警规则`。
 - 页面：`/governance/data-quality` 标题「质量任务」、无统计卡；告警中心规则/历史含名称列。
 - PowerShell 联调注意：`curl.exe` 传 JSON body 报 9999，用 `Invoke-RestMethod`（与 §8.4 一致）。
+
+## 11. 质量任务表单「引用质量规则」改下拉多选（2026-08-05，纯前端）
+
+> **阶段**：UI 收尾微调。三个需求：①去掉任务表单「引用质量规则」占位里的「Sprint 7」字样；②把 checkbox 列表改为**下拉多选**；③下拉项右侧类型由英文 `COMPLETENESS/UNIQUENESS/...` 改为**中文**。
+
+### 11.1 变更清单（仅前端 `QualityJobDrawer.tsx`）
+
+| 产物 | 变更 |
+|------|------|
+| `src/pages/governance/data-quality/QualityJobDrawer.tsx`（修改） | ①「引用质量规则」副标去掉 `Sprint 7`（`（从规则库选择，可多选，Sprint 7）` → `（从规则库选择，可多选）`）；②原 checkbox 列表替换为 antd `Select mode="multiple"`（`showSearch` + `optionFilterProp="label"` + `allowClear`，view 模式 `disabled`，与项目其它多选 `AlertRuleModal` 一致）；③下拉项 `label` 复用 `QUALITY_TYPE_LABEL[r.type]` 拼 `规则名（类型中文）`（如 `唯一性检查（唯一性）`），不再直接显示英文 type；④空态/无匹配提示保留（`暂无可用规则，可先到「质量规则」页面创建`） |
+| 同文件（修改，注释清理） | 同步去掉 `ruleIds` JSDoc、`handleSubmit` 内注释、`ruleOptions` state 注释里的 `Sprint 7` 标注 |
+
+### 11.2 设计决策
+
+- **下拉项展示**：`name（类型中文）`，`QUALITY_TYPE_LABEL` 为 `types/quality.ts` 单一出处（完整性/唯一性/值域范围/自定义 SQL），类型字段不再暴露后端原始英文枚举。
+- **空态 fallback**：规则库为空时 placeholder 与 notFoundContent 均为「暂无可用规则，可先到『质量规则』页面创建」，引导先建规则。
+
+### 11.3 部署与验证
+
+- `npm run build`（tsc + vite，3005 modules 通过，无 lint/类型错误）→ `docker compose build app-frontend` → `up -d --no-deps app-frontend`，容器 `Up`。
+- **范围说明**：本次仅改 `QualityJobDrawer.tsx` 一个文件；`types/quality.ts` 注释、handoff/PRD/技术文档、e2e 中非用户可见的 `Sprint N` 历史标注**保留不动**（属版本历史说明，不影响用户感知）。
+
+## 12. 创建审计字段修复（2026-08-05，跨模块）
+
+> **阶段**：统一创建审计字段约定——**创建时只设 `createdBy`/`createdAt`，不设 `updatedBy`/`updatedAt`**；并去掉各业务表 `updated_at` 的 DB 默认值，使「创建后未修改」的记录 `updated_at`/`updated_by` 均为 null（前端显示「—」），仅真正 update/启停/状态变更时才写入。
+> **背景**：此前所有 create 入口在创建时就 `setUpdatedBy/setUpdatedAt`（或依赖 DB `DEFAULT CURRENT_TIMESTAMP`），导致新建记录立刻显示「修改人/修改时间」，不符合语义。
+
+### 12.1 变更清单
+
+| 产物 | 变更 |
+|------|------|
+| **代码**：15 处 create 入口去掉 `setUpdatedBy`/`setUpdatedAt`（保留 `setCreatedBy`/`setCreatedAt`） | engineering：`SyncJobService.create`、`DataSourceService.create`、`DataSourceService.autoCreateAndRunCollectTask`（采集任务）、`DagService.create`、`DagService.saveNodesAndEdges`（节点）、`DagProjectService.create`、`DagParameterService.create`；task-core：`QualityRuleService.create`、`QualityRuleService.batchCreate`、`QualityJobService.create`、`QualityRuleTemplateService.create`；governance：`NamingStandardService.create`、`FieldTypeStandardService.create`、`CollectTaskService.create`；system：`UserService.createUser`（仅删 `setUpdatedBy`） |
+| `data-nest-system/.../db/migration/V3.6.8__drop_updated_at_default.sql`（新增） | 去掉 13 张表 `updated_at` 的 `DEFAULT CURRENT_TIMESTAMP` 且 `DROP NOT NULL`（改为可空无默认）：`sync_job`/`datasource_connection`/`collect_task`/`dag_project`/`dag`/`dag_node`/`dag_parameter`/`quality_rule_template`/`quality_job`/`quality_rule`/`naming_standard`/`field_type_standard`/`sys_user`。**历史数据不改动**，仅改列定义 |
+| `AGENTS.md` §7（修改） | 新增「创建审计字段约定」：create 入口只设 createdBy/createdAt，禁止 setUpdatedBy/setUpdatedAt；新增带审计字段的表其 `updated_at` 不要加 DB 默认值 |
+
+### 12.2 关键注意点
+
+- **必须连 DB 默认值一起去掉**：13 张表 `updated_at` 原都带 `DEFAULT CURRENT_TIMESTAMP`，仅删代码 `setUpdatedAt` 无法让 `updated_at` 为 null（创建时仍被 DB 自动填当前时间），需 Flyway `V3.6.8` 同时去掉默认值（用户确认方案）。
+- **真正的 update 保留**：update/启停/toggle/状态变更里的 `setUpdatedBy/setUpdatedAt` 均保留不动（那是真实修改，必须写入）。
+- **`DagProjectService.create`/`SyncJobService.create` 的 afterCommit 回写**：创建后 DS/XXL-JOB 回填（`setDsProjectCode`/`setXxlJobId`）会用 `updateById(fresh)`，属真实业务更新，保留；`fresh` 从 DB 重查，无影响。
+- **UserService 特殊性**：`sys_user.updated_at` 也走 DB 默认值，V3.6.8 去掉默认后创建时 `updated_at`/`updated_by` 均为 null。
+
+### 12.3 部署
+
+- `mvn -pl data-nest-task-core,data-nest-engineering,data-nest-governance,data-nest-system -am clean package -DskipTests` → BUILD SUCCESS。
+- 重建部署 5 容器：**app-system**（先启，执行 Flyway V3.6.8）→ **app-engineering / app-governance / app-worker / app-job**，全部 healthy。
+
+### 12.4 验证记录
+
+- Flyway `V3.6.8` 在 `flyway_schema_history` `success=t`（app-system 启动 healthy 确认迁移成功）。
+- 抽查 `quality_job.updated_at`：`information_schema.columns` 显示 `is_nullable=YES`、`column_default=NULL`（默认值已去掉）。
+- 批量确认 13 张表 `updated_at`：`no_default=t` + `is_nullable=YES` 全部通过。
+- 功能回归（创建接口实际验证）按用户要求跳过，仅完成列定义与迁移验证。

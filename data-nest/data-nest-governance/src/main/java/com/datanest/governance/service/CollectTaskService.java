@@ -91,9 +91,7 @@ public class CollectTaskService {
         task.setDescription(request.getDescription());
         task.setScheduleEnabled(0);
         task.setCreatedBy(currentUserId());
-        task.setUpdatedBy(currentUserId());
         task.setCreatedAt(LocalDateTime.now());
-        task.setUpdatedAt(LocalDateTime.now());
         task.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
 
         collectTaskMapper.insert(task);
