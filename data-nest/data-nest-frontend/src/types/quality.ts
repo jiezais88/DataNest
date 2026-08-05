@@ -341,6 +341,10 @@ export interface QualityCheckQueryParams {
     triggerType?: QualityCheckTriggerType | '';
     /** 批次状态过滤 */
     status?: QualityCheckStatus | '';
+    /** 开始时间下界（"YYYY-MM-DDTHH:mm:ss"），按 startedAt 过滤 */
+    startTimeFrom?: string;
+    /** 开始时间上界（"YYYY-MM-DDTHH:mm:ss"） */
+    startTimeTo?: string;
 }
 
 /** 批次触发方式中文展示（单一出处） */

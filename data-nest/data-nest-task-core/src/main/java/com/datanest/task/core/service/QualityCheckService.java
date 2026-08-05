@@ -592,6 +592,13 @@ public class QualityCheckService {
         if (request.getStatus() != null && !request.getStatus().isBlank()) {
             wrapper.eq("status", request.getStatus());
         }
+        if (request.getStartTimeFrom() != null && !request.getStartTimeFrom().isBlank()
+                && request.getStartTimeTo() != null && !request.getStartTimeTo().isBlank()) {
+            // started_at 是 timestamp 类型，需转 LocalDateTime，否则 PG 报 timestamp >= varchar 类型错误
+            wrapper.between("started_at",
+                    LocalDateTime.parse(request.getStartTimeFrom()),
+                    LocalDateTime.parse(request.getStartTimeTo()));
+        }
         wrapper.orderByDesc("id");
 
         IPage<QualityCheckBatch> page = batchMapper.selectPage(

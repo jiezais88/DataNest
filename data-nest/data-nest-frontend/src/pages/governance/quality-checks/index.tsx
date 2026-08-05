@@ -5,7 +5,8 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {formatDateTime, formatDuration} from '../../../utils/format';
+import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../utils/format';
+import {notify} from '../../../utils/notify';
 import {COL} from '../../../constants/table';
 import {
     getQualityCheckDetail,
@@ -19,6 +20,7 @@ import type {DsStatusVariant} from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsToolbar from '../../../components/DsToolbar';
 import DsFilterSelect from '../../../components/DsFilterSelect';
+import DsRangePicker from '../../../components/DsRangePicker';
 import Pagination from '../../../components/Pagination';
 import {
     QUALITY_CHECK_LEVEL_LABEL,
@@ -78,6 +80,11 @@ export default function QualityChecksPage() {
     const [status, setStatus] = useState<QualityCheckStatus | ''>('');
     const [loading, setLoading] = useState(false);
 
+    // 时间范围：进页用近 7 天默认值；用户选择后立即触发查询（与其他执行历史页一致）
+    const defaultRange = getDefaultTimeRange();
+    const [startTimeFrom, setStartTimeFrom] = useState(defaultRange.from);
+    const [startTimeTo, setStartTimeTo] = useState(defaultRange.to);
+
     // ============ 详情抽屉 ============
     const [detailOpen, setDetailOpen] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -91,13 +98,15 @@ export default function QualityChecksPage() {
                 pageSize,
                 triggerType: triggerType || undefined,
                 status: status || undefined,
+                startTimeFrom: startTimeFrom || undefined,
+                startTimeTo: startTimeTo || undefined,
             });
             setItems(res.data.records);
             setTotal(res.data.total);
         } finally {
             setLoading(false);
         }
-    }, [page, pageSize, triggerType, status]);
+    }, [page, pageSize, triggerType, status, startTimeFrom, startTimeTo]);
 
     useEffect(() => {
         loadChecks();
@@ -113,6 +122,8 @@ export default function QualityChecksPage() {
         const st = p.get('status');
         setTriggerType(TRIGGER_OPTIONS.some(o => o.value === tt) ? (tt as QualityCheckTriggerType) : '');
         setStatus(STATUS_OPTIONS.some(o => o.value === st) ? (st as QualityCheckStatus) : '');
+        setStartTimeFrom(p.get('startTimeFrom') || defaultRange.from);
+        setStartTimeTo(p.get('startTimeTo') || defaultRange.to);
         setPage(Number(p.get('page')) || 1);
         const ps = Number(p.get('pageSize')) || 10;
         if (ps !== 10) setPageSize(ps);
@@ -123,16 +134,20 @@ export default function QualityChecksPage() {
         const next = new URLSearchParams();
         if (triggerType) next.set('triggerType', triggerType);
         if (status) next.set('status', status);
+        if (startTimeFrom) next.set('startTimeFrom', startTimeFrom);
+        if (startTimeTo) next.set('startTimeTo', startTimeTo);
         if (page > 1) next.set('page', String(page));
         if (pageSize !== 10) next.set('pageSize', String(pageSize));
         if (next.toString() === searchParams.toString()) return;
         setSearchParams(next, {replace: true});
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [triggerType, status, page, pageSize]);
+    }, [triggerType, status, startTimeFrom, startTimeTo, page, pageSize]);
 
     const resetFilters = () => {
         setTriggerType('');
         setStatus('');
+        setStartTimeFrom(defaultRange.from);
+        setStartTimeTo(defaultRange.to);
         setPage(1);
     };
 
@@ -285,6 +300,21 @@ export default function QualityChecksPage() {
                             onChange={(v) => setStatus(v as QualityCheckStatus | '')}
                             aria-label="按状态筛选"
                             options={STATUS_OPTIONS}
+                        />
+                        <DsRangePicker
+                            from={startTimeFrom}
+                            to={startTimeTo}
+                            allowClear={false}
+                            onChange={(from, to) => {
+                                // 时间范围必填：清空时提示并保持原值，避免查全部
+                                if (!from || !to) {
+                                    notify.warning('请选择执行时间范围');
+                                    return;
+                                }
+                                setStartTimeFrom(from);
+                                setStartTimeTo(to);
+                                setPage(1);
+                            }}
                         />
                     </DsToolbar>
                 </div>

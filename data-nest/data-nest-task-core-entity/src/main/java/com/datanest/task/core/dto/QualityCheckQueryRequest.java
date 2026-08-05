@@ -22,4 +22,10 @@ public class QualityCheckQueryRequest {
 
     /** 批次状态过滤：RUNNING / SUCCESS / PARTIAL_FAILED / FAILED */
     private String status;
+
+    /** 开始时间下界（ISO 8601 字符串，如 2026-08-02T12:00:00），按 started_at 过滤 */
+    private String startTimeFrom;
+
+    /** 开始时间上界（ISO 8601 字符串） */
+    private String startTimeTo;
 }

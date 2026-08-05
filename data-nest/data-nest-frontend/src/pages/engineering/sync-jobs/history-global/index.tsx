@@ -154,6 +154,11 @@ export default function SyncJobHistoryGlobalPage() {
     const [detailOpen, setDetailOpen] = useState(false);
 
     const handleSearch = () => {
+        // 时间范围必填（与其他执行历史页一致）
+        if (!draftStartTimeFrom || !draftStartTimeTo) {
+            notify.warning('请选择执行时间范围');
+            return;
+        }
         // 从任务列表「历史」跳入时，精确过滤应随查询按钮保留（不要清除 syncJobId/jobName）
         const hasSyncJobId = !!query.syncJobId;
         applyQuery({
@@ -473,6 +478,7 @@ export default function SyncJobHistoryGlobalPage() {
                     <DsRangePicker
                         from={draftStartTimeFrom}
                         to={draftStartTimeTo}
+                        allowClear={false}
                         onChange={(from, to) => {
                             setDraftStartTimeFrom(from);
                             setDraftStartTimeTo(to);

@@ -626,6 +626,7 @@ export default function DagExecutionsGlobalPage() {
                     <DsRangePicker
                         from={draftStartTimeFrom}
                         to={draftStartTimeTo}
+                        allowClear={false}
                         onChange={(from, to) => {
                             setDraftStartTimeFrom(from);
                             setDraftStartTimeTo(to);
