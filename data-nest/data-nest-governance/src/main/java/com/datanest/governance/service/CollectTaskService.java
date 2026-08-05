@@ -367,8 +367,10 @@ public class CollectTaskService {
         dto.setUpdatedAt(task.getUpdatedAt());
         dto.setCreatedBy(task.getCreatedBy());
         dto.setUpdatedBy(task.getUpdatedBy());
-        dto.setCreatedByName(usernameMap.get(task.getCreatedBy()));
-        dto.setUpdatedByName(usernameMap.get(task.getUpdatedBy()));
+        // 用户名映射可能为空（create 时只设 created_by，按审计约定 updated_by 为 null），
+        // 且 Map.of() 构造的不可变 map 不支持 null key 查询，需空安全取值。
+        dto.setCreatedByName(lookupName(usernameMap, task.getCreatedBy()));
+        dto.setUpdatedByName(lookupName(usernameMap, task.getUpdatedBy()));
         return dto;
     }
 
@@ -378,5 +380,10 @@ public class CollectTaskService {
         } catch (Exception e) {
             return 0L;
         }
+    }
+
+    /** 空安全的用户名映射查询：userId 为 null 时直接返回 null，避免不可变 Map.get(null) 抛 NPE。 */
+    private String lookupName(Map<Long, String> usernameMap, Long userId) {
+        return userId == null ? null : usernameMap.get(userId);
     }
 }

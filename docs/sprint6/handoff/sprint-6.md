@@ -799,3 +799,53 @@
 - 血缘 `GET /lineage/graph?tableName=testdb.users` → 节点回填 `qualityScore/healthLevel`（造测试评分记录验证后删除）。
 - **注意**：`testdb.users` 这条测试规则本身 SQL 为空 → 执行 UNAVAILABLE（不落评分），为既有数据问题非本次引入；评分列表空态正常。
 - 测试数据已清理（`quality_score` 造数记录已删）。
+
+## 15. 表级质量评分 E2E（2026-08-05，本次会话）
+
+> **范围确认**（用户 ask_followup）：DB + 前端 UI 全覆盖，API 辅助排查；覆盖**多档评分场景**；新建**独立 spec**（`e2e/sprint6/e2e/quality-scores.spec.ts`）。
+> **结果**：11 用例全绿（24.5s）。
+
+### 15.1 交付物
+
+| 文件 | 变更 |
+|------|------|
+| `e2e/sprint6/e2e/quality-scores.spec.ts` | 新增：11 用例（serial） |
+| `e2e/sprint6/helpers/data.ts` | +评分常量（900005 段：4 表 ID + 7 规则 ID + 物理表名） |
+| `e2e/sprint6/helpers/seed.ts` | +`seedQualityScores`/`cleanupQualityScores`，挂 `seedAll`/`cleanupAll` |
+| `data-nest-governance/.../CollectTaskService.java` | **顺带修复** `toDTO` NPE（见 §15.4） |
+| `docs/sprint6/handoff/sprint-6.md` | 本 §15 |
+
+### 15.2 测试设计（多档评分场景，默认扣分配置 10/30/60）
+
+`seedQualityScores` 在 MYSQL 执行数据源（`EXEC_DS_MYSQL_ID`）建 4 张评分物理表（不同表名满足 `uk_metadata_table_unique`），行数控制 COUNT 值决定分级：
+
+| 表 | COUNT | 规则(weight/阈值 w·s) | 期望 result_level | 期望评分 |
+|---|---|---|---|---|
+| `e2e_s6_score_pass` | 2 | r1(1/3,4) + r2(1/3,4) | 均 PASS | 100.00 EXCELLENT（pass=2） |
+| `e2e_s6_score_warn` | 4 | r1(1/3,5)WARN + r2(4/5,6)PASS | WARN+PASS | base=100×4/5=80−1×10 → **70.00 WARNING**（pass=1/warning=1） |
+| `e2e_s6_score_severe` | 4 | r1(1/2,3)SEVERE + r2(1/5,6)PASS | SEVERE+PASS | 严重强制 BAD，min(50−30,59.99) → **20.00 BAD**（pass=1/severe=1） |
+| `e2e_s6_score_unavail` | 4 | r1 查不存在表 | UNAVAILABLE | **不落评分行**（无有效规则） |
+
+**用例矩阵（11 个）**：
+- **A DB 多档断言**：A1 全通过 100.00/EXCELLENT、A2 警告 70.00/WARNING、A3 严重 20.00/BAD、A4 UNAVAILABLE 不参与不落行（负向）。
+- **B 评分列表页 UI**：B1 表格展示 + 健康度徽章（优秀/一般/差）、B2 表名关键词筛选、B3 健康度筛选（按「差」只显严重表）。
+- **C 详情弹窗 UI**：C1 评分概览 + 规则最近结果（严重/通过判定徽章）。
+- **D 元数据页「质量」tab UI**：D1 评分卡片 + 规则最近结果 + 「立即执行全部规则」按钮（`?tableId=` 自动选中表 → 点「质量」tab）。
+- **E 权限**：E1 工程师可查看评分列表但无「扣分配置」按钮；API `PUT /config` 被拒（非 200）。
+- **F 扣分配置**：F1 弹窗读默认 10/30/60 → 改 warningDeduct=20 保存 → 重算警告表 70→**60.00**（80−20）仍 WARNING（badThreshold=60）→ 恢复默认 + 重算回 70.00。
+
+### 15.3 执行与验证
+
+- **执行方式**：`POST /governance/quality/scores/table/{tableId}/execute` 逐条 MANUAL 投递 worker；异步，测试用 `waitFor` 轮询 `quality_score` 落行且计数达标（`waitScore`）/ `quality_check_detail` 分级到终态（`waitRuleLevel`）。
+- **spec 自带播种**：`ensureTestUsers + seedExecTables + seedExecMetadata + seedQualityScores`，支持 `SKIP_SETUP=1` 独立运行（不依赖 globalSetup 的 Sprint5 播种）。
+- **DB 断言精确**：`quality_score.score/health_level/pass_rules/warning_rules/severe_rules`；UNAVAILABLE 表断言 `quality_score` 无行。
+- **UI 断言**：健康度徽章中文文案（EXCELLENT=优秀 / GOOD=良好 / WARNING=一般 / BAD=差）；「差」筛选 value=`BAD`；详情/扣分配置弹窗 `getByRole('dialog', {name: title})`。
+- **回归**：完整模式全量 sprint6 跑，quality-scores **11/11 全绿**；quality-alerts/jobs/rules 3 个失败为**既有问题**（§15.4），与评分改动无关（单独跑也稳定失败）。
+
+### 15.4 顺带修复：CollectTaskService.toDTO NPE（阻塞 globalSetup）
+
+- **现象**：全量回归时 globalSetup 在 Sprint5 `ensureFailingCollectTask`（`POST /governance/collect-tasks`）报 `9999 系统内部错误`。
+- **根因**：`CollectTaskService.toDTO` 用 `usernameMap.get(task.getUpdatedBy())`，而 `usernameMap` 是 `Map.of()`（`ImmutableCollections.MapN`，**不允许 null key 的 get**）；按审计约定（V3.6.8）create 只设 `created_by` 不设 `updated_by` → `updatedBy=null` → `Map.of().get(null)` 抛 NPE。
+- **修复**：`toDTO` 增加空安全 `lookupName(map, userId)` helper（`userId==null` 直接返回 null）。最小改动，仅 `CollectTaskService.java`。
+- **部署**：`mvn -pl data-nest-governance -am clean package -DskipTests` → `docker compose build/up app-governance`。修复后 collect-tasks 创建 code=200。
+- **注意**：此 NPE 与评分提交无关，是审计约定改动未适配 `Map.of()` 的遗留回归；影响所有依赖 collect-task 播种的 Sprint5 测试。

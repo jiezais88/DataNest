@@ -28,6 +28,22 @@ import {
     ALERT_RULE_SO_WARNING_ID,
     ALERT_RULE_UNAVAILABLE_ID,
     ALERT_RULE_PASS_ID,
+    SCORE_PREFIX,
+    SCORE_TABLE_PASS_ID,
+    SCORE_TABLE_WARN_ID,
+    SCORE_TABLE_SEVERE_ID,
+    SCORE_TABLE_UNAVAIL_ID,
+    SCORE_TABLE_PASS,
+    SCORE_TABLE_WARN,
+    SCORE_TABLE_SEVERE,
+    SCORE_TABLE_UNAVAIL,
+    SCORE_RULE_PASS_1,
+    SCORE_RULE_PASS_2,
+    SCORE_RULE_WARN_1,
+    SCORE_RULE_WARN_PASS,
+    SCORE_RULE_SEVERE_1,
+    SCORE_RULE_SEVERE_PASS,
+    SCORE_RULE_UNAVAIL,
 } from './data';
 
 /**
@@ -438,6 +454,143 @@ export function cleanupQualityAlerts(): void {
         ${ALERT_JOB_ID}, ${ALERT_JOB_SEVERE_ONLY_ID}, ${ALERT_JOB_UNAVAILABLE_ID}, ${ALERT_JOB_PASS_ID})`);
 }
 
+// ==================== 表级质量评分（Sprint 6 NG8） ====================
+
+/** 评分用执行数据源固定 ID（复用执行层 MYSQL 数据源，供规则 SQL 复用） */
+const SCORE_EXEC_DS_MYSQL_ID = '9000020000000000001';
+/** 计数 SQL 公共前缀 */
+const SCORE_COUNT_SQL = (table: string) => `SELECT COUNT(*) AS total FROM ${table}`;
+/** 空表/无结果查询 SQL（U 表查不存在表 → SQL 失败 → UNAVAILABLE） */
+const SCORE_BAD_SQL = `SELECT COUNT(*) AS total FROM ${SCORE_PREFIX}_no_such_table`;
+
+/**
+ * 播种表级质量评分测试元数据（幂等）：
+ * 在 MYSQL 执行数据源（middleware-test-mysql）建 4 张评分物理表，每张表行数不同以控制 COUNT 值；
+ * 再建 4 条 metadata_table（不同物理表名满足唯一约束）+ 7 条启用质量规则。
+ *
+ * 多档评分场景（默认扣分配置 warningDeduct=10 / severeDeduct=30 / badThreshold=60）：
+ * - P 全通过表 SCORE_TABLE_PASS（COUNT=2）：R1/R2 阈值 3/4 → 均 PASS
+ *     基础分=100×2/2=100，扣分 0 → 100.00 EXCELLENT，pass=2
+ * - W 警告表 SCORE_TABLE_WARN（COUNT=4）：R3 阈值 3/5 → WARNING，R4 阈值 5/6 → PASS(weight=4)
+ *     基础分=100×4/(1+4)=80，警告扣 1×10=10 → 70.00 WARNING，pass=1/warning=1
+ * - B 严重表 SCORE_TABLE_SEVERE（COUNT=4）：R5 阈值 2/3 → SEVERE，R6 阈值 5/6 → PASS
+ *     严重强制 BAD，基础分=100×1/2=50，严重扣 1×30=30 → min(20, 59.99)=20.00 BAD，pass=1/severe=1
+ * - U 不可用表 SCORE_TABLE_UNAVAIL：R7 查不存在表 → UNAVAILABLE 不参与 → 无有效规则 → 不落评分行
+ *
+ * 数据源沿用执行层 seedExecMetadata 播种的 MYSQL 执行数据源，本函数只建评分物理表 + 元数据 + 规则。
+ */
+export function seedQualityScores(): void {
+    // 清理历史（先清评分/明细/规则，再清表元数据，最后 DROP 物理表）
+    psql(`DELETE FROM quality_score WHERE table_id IN (
+        ${SCORE_TABLE_PASS_ID}, ${SCORE_TABLE_WARN_ID}, ${SCORE_TABLE_SEVERE_ID}, ${SCORE_TABLE_UNAVAIL_ID})`);
+    psql(`DELETE FROM quality_check_detail WHERE rule_id IN (
+        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
+    psql(`DELETE FROM quality_check_batch WHERE id IN (
+        SELECT DISTINCT batch_id FROM quality_check_detail WHERE rule_id IN (
+            ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+            ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL}))`);
+    psql(`DELETE FROM quality_rule WHERE id IN (
+        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
+    for (const id of [SCORE_TABLE_PASS_ID, SCORE_TABLE_WARN_ID, SCORE_TABLE_SEVERE_ID, SCORE_TABLE_UNAVAIL_ID]) {
+        psql(`DELETE FROM metadata_column WHERE table_id = ${id}`);
+        psql(`DELETE FROM metadata_table WHERE id = ${id}`);
+    }
+
+    // 建评分物理表（不同表名 + 行数控制 COUNT 值）
+    quiet(mysqlExec, `
+        CREATE TABLE IF NOT EXISTS ${SCORE_TABLE_PASS} (
+            id BIGINT PRIMARY KEY, order_no VARCHAR(64), amount DECIMAL(18,2)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    mysqlExec(`DELETE FROM ${SCORE_TABLE_PASS}`);
+    mysqlExec(`INSERT INTO ${SCORE_TABLE_PASS} (id, order_no, amount) VALUES (1,'P1',1.00),(2,'P2',2.00);`);
+
+    quiet(mysqlExec, `
+        CREATE TABLE IF NOT EXISTS ${SCORE_TABLE_WARN} (
+            id BIGINT PRIMARY KEY, order_no VARCHAR(64), amount DECIMAL(18,2)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    mysqlExec(`DELETE FROM ${SCORE_TABLE_WARN}`);
+    mysqlExec(`INSERT INTO ${SCORE_TABLE_WARN} (id, order_no, amount) VALUES (1,'W1',1.00),(2,'W2',2.00),(3,'W3',3.00),(4,'W4',4.00);`);
+
+    quiet(mysqlExec, `
+        CREATE TABLE IF NOT EXISTS ${SCORE_TABLE_SEVERE} (
+            id BIGINT PRIMARY KEY, order_no VARCHAR(64), amount DECIMAL(18,2)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    mysqlExec(`DELETE FROM ${SCORE_TABLE_SEVERE}`);
+    mysqlExec(`INSERT INTO ${SCORE_TABLE_SEVERE} (id, order_no, amount) VALUES (1,'B1',1.00),(2,'B2',2.00),(3,'B3',3.00),(4,'B4',4.00);`);
+
+    quiet(mysqlExec, `
+        CREATE TABLE IF NOT EXISTS ${SCORE_TABLE_UNAVAIL} (
+            id BIGINT PRIMARY KEY, order_no VARCHAR(64), amount DECIMAL(18,2)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    mysqlExec(`DELETE FROM ${SCORE_TABLE_UNAVAIL}`);
+    mysqlExec(`INSERT INTO ${SCORE_TABLE_UNAVAIL} (id, order_no, amount) VALUES (1,'U1',1.00),(2,'U2',2.00),(3,'U3',3.00),(4,'U4',4.00);`);
+
+    // 元数据表（同一 MYSQL 数据源 + testdb，无 schema，不同表名）
+    psql(`
+        INSERT INTO metadata_table
+        (id, datasource_id, database_name, schema_name, table_name, table_comment,
+         source_status, source_type, created_at, updated_at)
+        VALUES
+        (${SCORE_TABLE_PASS_ID}, ${SCORE_EXEC_DS_MYSQL_ID}, 'testdb', NULL, '${SCORE_TABLE_PASS}',
+         'e2e s6 评分全通过表', 'ONLINE', 'EXTERNAL', now(), now()),
+        (${SCORE_TABLE_WARN_ID}, ${SCORE_EXEC_DS_MYSQL_ID}, 'testdb', NULL, '${SCORE_TABLE_WARN}',
+         'e2e s6 评分警告表', 'ONLINE', 'EXTERNAL', now(), now()),
+        (${SCORE_TABLE_SEVERE_ID}, ${SCORE_EXEC_DS_MYSQL_ID}, 'testdb', NULL, '${SCORE_TABLE_SEVERE}',
+         'e2e s6 评分严重表', 'ONLINE', 'EXTERNAL', now(), now()),
+        (${SCORE_TABLE_UNAVAIL_ID}, ${SCORE_EXEC_DS_MYSQL_ID}, 'testdb', NULL, '${SCORE_TABLE_UNAVAIL}',
+         'e2e s6 评分不可用表', 'ONLINE', 'EXTERNAL', now(), now());
+    `);
+
+    // 质量规则（CUSTOM_SQL，COUNT 值由阈值控制分级，weight 控制分值）
+    psql(`
+        INSERT INTO quality_rule
+        (id, name, type, table_id, sql_expression, result_metric, warning_threshold, severe_threshold,
+         weight, enabled, created_at, updated_at)
+        VALUES
+        (${SCORE_RULE_PASS_1}, '${SCORE_PREFIX}_pass_r1', 'CUSTOM_SQL', ${SCORE_TABLE_PASS_ID},
+         '${SCORE_COUNT_SQL(SCORE_TABLE_PASS)}', 'total', 3, 4, 1, 1, now(), now()),
+        (${SCORE_RULE_PASS_2}, '${SCORE_PREFIX}_pass_r2', 'CUSTOM_SQL', ${SCORE_TABLE_PASS_ID},
+         '${SCORE_COUNT_SQL(SCORE_TABLE_PASS)}', 'total', 3, 4, 1, 1, now(), now()),
+        (${SCORE_RULE_WARN_1}, '${SCORE_PREFIX}_warn_r1', 'CUSTOM_SQL', ${SCORE_TABLE_WARN_ID},
+         '${SCORE_COUNT_SQL(SCORE_TABLE_WARN)}', 'total', 3, 5, 1, 1, now(), now()),
+        (${SCORE_RULE_WARN_PASS}, '${SCORE_PREFIX}_warn_r2', 'CUSTOM_SQL', ${SCORE_TABLE_WARN_ID},
+         '${SCORE_COUNT_SQL(SCORE_TABLE_WARN)}', 'total', 5, 6, 4, 1, now(), now()),
+        (${SCORE_RULE_SEVERE_1}, '${SCORE_PREFIX}_severe_r1', 'CUSTOM_SQL', ${SCORE_TABLE_SEVERE_ID},
+         '${SCORE_COUNT_SQL(SCORE_TABLE_SEVERE)}', 'total', 2, 3, 1, 1, now(), now()),
+        (${SCORE_RULE_SEVERE_PASS}, '${SCORE_PREFIX}_severe_r2', 'CUSTOM_SQL', ${SCORE_TABLE_SEVERE_ID},
+         '${SCORE_COUNT_SQL(SCORE_TABLE_SEVERE)}', 'total', 5, 6, 1, 1, now(), now()),
+        (${SCORE_RULE_UNAVAIL}, '${SCORE_PREFIX}_unavail_r1', 'CUSTOM_SQL', ${SCORE_TABLE_UNAVAIL_ID},
+         '${SCORE_BAD_SQL}', 'total', 3, 5, 1, 1, now(), now());
+    `);
+}
+
+/** 清理表级质量评分测试数据（评分/明细/批次/规则/元数据/物理表，幂等） */
+export function cleanupQualityScores(): void {
+    psql(`DELETE FROM quality_score WHERE table_id IN (
+        ${SCORE_TABLE_PASS_ID}, ${SCORE_TABLE_WARN_ID}, ${SCORE_TABLE_SEVERE_ID}, ${SCORE_TABLE_UNAVAIL_ID})`);
+    psql(`DELETE FROM quality_check_detail WHERE rule_id IN (
+        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
+    psql(`DELETE FROM quality_check_batch WHERE id IN (
+        SELECT DISTINCT batch_id FROM quality_check_detail WHERE rule_id IN (
+            ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+            ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL}))`);
+    psql(`DELETE FROM quality_rule WHERE id IN (
+        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
+    for (const id of [SCORE_TABLE_PASS_ID, SCORE_TABLE_WARN_ID, SCORE_TABLE_SEVERE_ID, SCORE_TABLE_UNAVAIL_ID]) {
+        psql(`DELETE FROM metadata_column WHERE table_id = ${id}`);
+        psql(`DELETE FROM metadata_table WHERE id = ${id}`);
+    }
+    quiet(mysqlExec, `DROP TABLE IF EXISTS ${SCORE_TABLE_PASS}, ${SCORE_TABLE_WARN}, ${SCORE_TABLE_SEVERE}, ${SCORE_TABLE_UNAVAIL}`);
+}
+
 // ==================== 清理 / 播种 ====================
 
 /** 清理全部 Sprint 6 测试数据（幂等） */
@@ -472,6 +625,11 @@ export async function cleanupAll(): Promise<void> {
     } catch (e) {
         console.warn('sprint6 cleanup quality alerts:', ERR(e));
     }
+    try {
+        cleanupQualityScores();
+    } catch (e) {
+        console.warn('sprint6 cleanup quality scores:', ERR(e));
+    }
 }
 
 /** 全量播种（globalSetup 调用，幂等） */
@@ -483,4 +641,5 @@ export async function seedAll(): Promise<void> {
     seedExecTables();
     seedExecMetadata();
     seedQualityAlerts();
+    seedQualityScores();
 }

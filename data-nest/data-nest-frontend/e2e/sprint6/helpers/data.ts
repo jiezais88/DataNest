@@ -115,3 +115,33 @@ export const ALERT_RULE_UNAVAILABLE_ID = '9000040000000000301';
 /** PASS 任务下的规则（无阈值配置 → 通过不告警） */
 export const ALERT_RULE_PASS_ID = '9000040000000000401';
 
+// ==================== 表级质量评分（Sprint 6 NG8） ====================
+
+/** 表级质量评分测试数据前缀（物理表名 / 规则名） */
+export const SCORE_PREFIX = 'e2e_s6_score';
+
+/**
+ * 表级质量评分测试固定 ID 段（9000050000000000000+，独立于质量/执行/自动/告警四段）。
+ * 对应 seed.ts 中 seedQualityScores 播种的 4 张评分物理表 + 7 条质量规则。
+ * 复用 MYSQL 执行数据源（EXEC_DS_MYSQL_ID = 9000020000000000001）与 middleware-test-mysql。
+ */
+/** 评分物理表 metadata_table 固定 ID（4 档：全通过 / 警告 / 严重 / 不可用） */
+export const SCORE_TABLE_PASS_ID = '9000050000000000011';
+export const SCORE_TABLE_WARN_ID = '9000050000000000012';
+export const SCORE_TABLE_SEVERE_ID = '9000050000000000013';
+export const SCORE_TABLE_UNAVAIL_ID = '9000050000000000014';
+/** 评分物理表名（不同表名满足 metadata_table 唯一约束，行数控制 COUNT 值决定分级） */
+export const SCORE_TABLE_PASS = 'e2e_s6_score_pass';
+export const SCORE_TABLE_WARN = 'e2e_s6_score_warn';
+export const SCORE_TABLE_SEVERE = 'e2e_s6_score_severe';
+export const SCORE_TABLE_UNAVAIL = 'e2e_s6_score_unavail';
+
+/** 评分规则固定 ID（7 条：P 表 2 全通过；W 表 1 警告+1 通过；B 表 1 严重+1 通过；U 表 1 不可用） */
+export const SCORE_RULE_PASS_1 = '9000050000000000101';
+export const SCORE_RULE_PASS_2 = '9000050000000000102';
+export const SCORE_RULE_WARN_1 = '9000050000000000103';
+export const SCORE_RULE_WARN_PASS = '9000050000000000104';
+export const SCORE_RULE_SEVERE_1 = '9000050000000000105';
+export const SCORE_RULE_SEVERE_PASS = '9000050000000000106';
+export const SCORE_RULE_UNAVAIL = '9000050000000000107';
+
