@@ -1,8 +1,11 @@
 import {expect, type Page, test} from '@playwright/test';
 import {Api} from '../helpers/api';
-import {ADMIN, TEST_USERS, TPL_PREFIX} from '../helpers/data';
-import {psql} from '../helpers/db';
+import {ADMIN, TEST_USERS, TPL_PREFIX, QUALITY_PREFIX, QUALITY_DB, QUALITY_TABLE} from '../helpers/data';
+import {psql, scalar} from '../helpers/db';
 import {gotoAs} from '../helpers/e2e';
+
+/** 元数据数据源 / 表 ID（与 seed.ts 一致，供批量应用选表） */
+const QUALITY_DS_ID = '9000010000000000001';
 
 /**
  * Sprint 6 规则模板库 E2E 测试（页面：/governance/quality-templates）
@@ -20,6 +23,8 @@ import {gotoAs} from '../helpers/e2e';
  */
 
 let admin: Api;
+/** 供模板库「批量应用」绑定的质量任务 */
+let batchJobId = '';
 
 /** 定位当前行：按「模板名称」列精确匹配表格行（避免与类型列文字混淆） */
 function rowBy(page: Page, name: string) {
@@ -47,16 +52,41 @@ async function fillCreateDrawer(page: Page, name: string, opts: { type?: string 
     return drawer;
 }
 
+/** 选表 Modal：选数据源 → 库 → 表 → 确认（单选，供批量应用选表） */
+async function pickTable(page: Page, tableName: string, multiple = false) {
+    const modal = page.getByRole('dialog', {name: multiple ? '选择表（可多选）' : '选择表'});
+    await modal.waitFor({state: 'visible', timeout: 10000});
+    // 数据源（lockDatasource 时自动置为默认值 QUALITY_DS_ID，等待其稳定即可）
+    const dsSelect = modal.getByText('数据源', {exact: true}).locator('..').locator('select');
+    await dsSelect.waitFor({state: 'visible', timeout: 10000});
+    await expect(dsSelect).toHaveValue(QUALITY_DS_ID, {timeout: 10000});
+    // 库
+    await modal.getByText(QUALITY_DB, {exact: true}).click();
+    // 表
+    await modal.getByText(tableName, {exact: true}).click();
+    // 确认
+    await modal.getByRole('button', {name: /确认/}).click();
+}
+
 test.describe.configure({mode: 'serial'});
 
 test.describe('Sprint 6 规则模板库 E2E', () => {
     test.beforeAll(async () => {
         admin = await Api.create();
         await admin.login(ADMIN.username, ADMIN.password);
+        // 建一个批量应用目标任务（模板库页无任务上下文，弹窗内选）
+        const j = await admin.post('/governance/quality/jobs', {
+            name: `${QUALITY_PREFIX}_tpl_batchjob`,
+            description: 's6 templates batch apply target',
+            enabled: 1,
+        });
+        batchJobId = String(j.data?.id ?? j.id);
     });
 
     test.afterAll(async () => {
-        // 清理本测试创建的自定义模板（前缀 e2e_s6）
+        // 清理批量任务关联的规则 + 任务 + 本测试创建的自定义模板
+        psql(`DELETE FROM quality_rule WHERE job_id = '${batchJobId}'`);
+        psql(`DELETE FROM quality_job WHERE id = '${batchJobId}'`);
         psql(`DELETE
               FROM quality_rule_template
               WHERE name LIKE '${TPL_PREFIX}%'`);
@@ -70,12 +100,8 @@ test.describe('Sprint 6 规则模板库 E2E', () => {
         await expect(page.getByRole('heading', {name: '规则模板库'})).toBeVisible({timeout: 15000});
     });
 
-    test('页面加载：统计卡片与内置模板展示', async ({page}) => {
+    test('页面加载：内置模板展示', async ({page}) => {
         await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-templates');
-        // 统计卡片
-        await expect(page.getByText('模板总数', {exact: true})).toBeVisible();
-        await expect(page.getByText('内置模板', {exact: true})).toBeVisible();
-        await expect(page.getByText('自定义模板', {exact: true})).toBeVisible();
         // 内置四类模板在表格中
         await expect(rowBy(page, '完整性检查')).toBeVisible({timeout: 15000});
         await expect(rowBy(page, '唯一性检查')).toBeVisible();
@@ -207,6 +233,43 @@ test.describe('Sprint 6 规则模板库 E2E', () => {
         const row = rowBy(page, '完整性检查');
         await expect(row).toBeVisible({timeout: 15000});
         await expect(row.getByLabel('删除')).toHaveCount(0);
+    });
+
+    test('批量应用：从模板行进入 → 预选模板 + 弹窗内选目标任务 → 生成规则并绑定', async ({page}) => {
+        const rulePrefix = `${QUALITY_PREFIX}_tpl_apply_${Date.now()}`;
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-templates');
+        // 点「完整性检查」行的批量应用按钮
+        const row = rowBy(page, '完整性检查');
+        await expect(row).toBeVisible({timeout: 15000});
+        await row.getByLabel('批量应用').click();
+        const modal = page.getByRole('dialog', {name: '模板批量应用'});
+        await modal.waitFor({state: 'visible', timeout: 10000});
+        // 模板库页无任务上下文 → 弹窗内出现「目标任务」下拉
+        const jobSelect = modal.getByText(/目标任务/).locator('..').locator('select');
+        await jobSelect.waitFor({state: 'visible', timeout: 10000});
+        // 预选当前模板（完整性检查）→ 模板下拉已选中（非空），无需再手动选
+        const templateSelect = modal.getByText(/选择模板/).locator('..').locator('select');
+        await expect(templateSelect).not.toHaveValue('', {timeout: 10000});
+        // 选目标任务
+        await jobSelect.selectOption(batchJobId);
+        // 选数据源（质量数据源，使「选择表」可用）
+        const dsSelect = modal.getByText(/^数据源/).locator('..').locator('select');
+        await dsSelect.selectOption(QUALITY_DS_ID);
+        // 选表（多选）
+        await modal.getByRole('button', {name: '选择表'}).click();
+        await pickTable(page, QUALITY_TABLE, true);
+        // 生成规则
+        await modal.getByRole('button', {name: '生成规则'}).click();
+        await expect(modal).toHaveCount(0, {timeout: 10000});
+        // DB 验证：规则已生成且绑定到该任务，名称含模板语义（完整性 → COMPLETENESS）
+        const count = Number(scalar(
+            `SELECT count(*) FROM quality_rule r
+             JOIN quality_job_rule jr ON jr.rule_id = r.id
+             WHERE jr.job_id = '${batchJobId}' AND r.type = 'COMPLETENESS'`,
+        ));
+        expect(count).toBeGreaterThanOrEqual(1);
+        // 清理本用例生成的规则
+        psql(`DELETE FROM quality_rule WHERE job_id = '${batchJobId}'`);
     });
 
     test('权限：工程师可查看但不可编辑', async ({page}) => {

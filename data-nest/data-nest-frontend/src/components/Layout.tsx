@@ -78,7 +78,7 @@ export default function Layout() {
                 {/* Page content */}
                 <main className="flex-1 min-h-0 overflow-hidden p-ds-6 flex flex-col">
                     <Breadcrumb pathname={location.pathname}/>
-                    <div className="flex-1 min-h-0 overflow-y-auto">
+                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
                         <ErrorBoundary>
                             <Outlet/>
                         </ErrorBoundary>

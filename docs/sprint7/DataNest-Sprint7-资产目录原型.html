@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataNest · 数据资产 · Sprint 7 原型</title>
+<link rel="stylesheet" href="DataNest-Sprint7-资产目录原型.css">
+</head>
+<body>
+
+<!-- ============ 原型切换条 ============ -->
+<div class="prototype-switch">
+  <span class="switch-badge">Sprint7</span>
+  <button data-view="assets" class="active">数据资产</button>
+  <button data-view="asset-detail">资产详情</button>
+  <button data-view="classification">分类体系</button>
+  <button data-view="task-template">任务模板</button>
+  <button data-view="subdag">子DAG参数</button>
+  <button data-view="python-rule">Python规则</button>
+</div>
+
+<!-- ============ 通用图标库（内联 SVG，<use> 引用） ============ -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="i-magnifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+    <symbol id="i-chevron-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.25 4.5l7.5 7.5-7.5 7.5"/></symbol>
+    <symbol id="i-chevron-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15m7.5-7.5h-15"/></symbol>
+    <symbol id="i-xmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"/><path d="M6 6h.008v.008H6V6z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m-3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L18.75 4.971zm-16.5.52c.99-.203 1.99-.377 3-.52m0 0l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.989 5.989 0 01-2.031.352 5.989 5.989 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L5.25 4.971z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.036.84-1.875 1.875-1.875V15"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"/></symbol>
+    <symbol id="i-calculator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008zm0 2.25h.008v.008H8.25V13.5zm0 2.25h.008v.008H8.25v-.008zm2.498-4.5h.007v.008h-.007V13.5zm0 2.25h.007v.008h-.007V15.75zm0 2.25h.007v.008h-.007V18zm2.504-4.5h.008v.008h-.008V13.5zm0 2.25h.008v.008h-.008V15.75zm0 2.25h.008v.008h-.008V18zm2.504-4.5h.01v.008h-.01V13.5zm0 2.25h.008v.008h-.008V15.75zm0 2.25h.008v.008h-.008V18zM4.5 5.25c0-.621.504-1.125 1.125-1.125h12.75c.621 0 1.125.504 1.125 1.125v13.5c0 .621-.504 1.125-1.125 1.125H5.625A1.125 1.125 0 014.5 18.75V5.25z"/></symbol>
+    <symbol id="i-adjust" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></symbol>
+    <!-- 数据源品牌图标（对齐真实 DatabaseTypeIcon：Doris 圆柱 / MySQL 海豚，品牌色豁免 ds token） -->
+    <symbol id="i-doris" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="#1E90FF" stroke-width="2" fill="none"/><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" stroke="#1E90FF" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3" stroke="#1E90FF" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-mysql" viewBox="0 0 24 24" fill="none"><path d="M12 2l9 5v10l-9 5-9-5V7l9-5z" fill="#4479A1" opacity="0.18"/><path d="M12 2l9 5v10l-9 5-9-5V7l9-5z" stroke="#4479A1" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="M12 7v10M7 9.5l10 6M17 9.5L7 15.5" stroke="#4479A1" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============================================================
+     View 1：数据资产（DC-01/02/05 左树右表）
+     ============================================================ -->
+<div class="view" data-view="assets">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 32" role="img" aria-label="DataNest"><defs><linearGradient id="datanest-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#datanest-logo-grad)" stroke="none"/></svg>
+      <span class="logo-text">DataNest</span>
+    </div>
+    <nav class="sb-nav">
+      <div class="sb-group-label">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group-label">数据资产</div>
+      <a class="sb-item active"><svg class="hi"><use href="#i-spark"/></svg>数据资产<span class="sb-new-tag">新</span></a>
+      <div class="sb-group-label">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <div class="sb-group-label">数据开发</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-clipboard"/></svg>任务模板库<span class="sb-new-tag">新</span></a>
+      <div class="sb-group-label">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-clock"/></svg>元数据采集任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-scale"/></svg>数据标准</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-shield"/></svg>标准合规</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-clipboard"/></svg>规则模板库</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-scale"/></svg>质量规则</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量评分</a>
+      <div class="sb-group-label">执行历史</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-clipboard"/></svg>同步执行历史</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-queue"/></svg>DAG 执行历史</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量检查历史</a>
+      <div class="sb-group-label">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>告警中心</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header">
+      <div class="header-user"><span>admin</span><span class="avatar">A</span></div>
+    </header>
+    <main class="layout-main-inner">
+      <nav class="breadcrumb"><span class="bc-current">数据资产</span></nav>
+
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-spark"/></svg>数据资产</h1>
+          <div class="head-sub">一站式发现、检索并了解平台数据表，找得到、看得懂、敢使用。</div>
+        </div>
+      </div>
+
+      <div class="layout-split">
+        <div class="tree-panel">
+          <div class="tree-head"><div class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-folder"/></svg>数据域 / 主题</div></div>
+          <div class="tree-body">
+            <div class="tree-node active"><svg class="hi"><use href="#i-spark"/></svg>全部资产<span class="tree-count">42</span></div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>交易域<span class="tree-count">12</span></div>
+            <div class="tree-children">
+              <div class="tree-leaf active"><svg class="hi"><use href="#i-tag"/></svg>订单<span class="tree-count">5</span></div>
+              <div class="tree-leaf"><svg class="hi"><use href="#i-tag"/></svg>支付<span class="tree-count">4</span></div>
+              <div class="tree-leaf"><svg class="hi"><use href="#i-tag"/></svg>退款<span class="tree-count">3</span></div>
+            </div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>用户域<span class="tree-count">9</span></div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>商品域<span class="tree-count">8</span></div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>营销域<span class="tree-count">6</span></div>
+            <div class="tree-node"><svg class="hi"><use href="#i-tag"/></svg>未分类<span class="tree-count">7</span></div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="card-toolbar">
+            <div class="search-input"><svg class="hi"><use href="#i-magnifier"/></svg><input placeholder="搜索表名 / 注释 / 负责人…"></div>
+            <div class="filter-select"><select><option>全部数据源</option><option>Doris 数仓</option><option>MySQL 业务库</option><option>PostgreSQL 数仓</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+            <div class="filter-select"><select><option>全部健康度</option><option>优秀 / 良好</option><option>警告</option><option>差</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+            <div class="actions">
+              <button class="btn btn-primary">查询</button>
+              <button class="btn btn-default">重置</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <table class="ant-table">
+              <thead class="ant-table-thead"><tr><th style="width:210px">表名</th><th style="width:220px">注释</th><th style="width:120px">数据源</th><th style="width:150px">数据域 / 主题</th><th style="width:110px">负责人</th><th style="width:130px">质量评分</th><th style="width:150px">最近更新</th></tr></thead>
+              <tbody class="ant-table-tbody">
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title"><span class="mono">dwd_orders</span></span></td><td class="cell-strong">用户订单明细表（每日全量）</td><td><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-doris"/></svg><span class="mono">Doris</span></span></td><td><span class="badge badge-info">交易域</span>&nbsp;<span class="badge badge-neutral">订单</span></td><td><span class="inline-flex items-center gap-1"><svg class="hi-sm"><use href="#i-user"/></svg>张三</span></td><td><div class="qs-cell"><span class="qs-score-num" style="color:#15803d">85</span><span class="qs-badge qs-good">良好</span></div></td><td class="cell-muted">2026-08-05 00:30</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title"><span class="mono">dwd_order_items</span></span></td><td class="cell-strong">订单明细项表</td><td><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-doris"/></svg><span class="mono">Doris</span></span></td><td><span class="badge badge-info">交易域</span>&nbsp;<span class="badge badge-neutral">订单</span></td><td><span class="inline-flex items-center gap-1"><svg class="hi-sm"><use href="#i-user"/></svg>李四</span></td><td><div class="qs-cell"><span class="qs-score-num" style="color:#15803d">78</span><span class="qs-badge qs-good">良好</span></div></td><td class="cell-muted">2026-08-05 00:30</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title"><span class="mono">dim_user</span></span></td><td class="cell-strong">用户维度表</td><td><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-doris"/></svg><span class="mono">Doris</span></span></td><td><span class="badge badge-info">用户域</span>&nbsp;<span class="badge badge-neutral">用户基础</span></td><td><span class="inline-flex items-center gap-1"><svg class="hi-sm"><use href="#i-user"/></svg>王五</span></td><td><div class="qs-cell"><span class="qs-score-num" style="color:#15803d">92</span><span class="qs-badge qs-excellent">优秀</span></div></td><td class="cell-muted">2026-08-05 01:00</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title"><span class="mono">ods_orders</span></span></td><td class="cell-strong">订单原始表（未加工）</td><td><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-mysql"/></svg><span class="mono">MySQL</span></span></td><td><span class="badge badge-info">交易域</span>&nbsp;<span class="badge badge-neutral">订单</span></td><td class="cell-muted">—</td><td><div class="qs-cell"><span class="qs-score-num" style="color:#94a3b8">—</span><span class="qs-badge qs-none">暂无质量</span></div></td><td class="cell-muted">实时</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title"><span class="mono">ads_gmv</span></span></td><td class="cell-strong">GMV 指标汇总表</td><td><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-doris"/></svg><span class="mono">Doris</span></span></td><td><span class="badge badge-info">营销域</span>&nbsp;<span class="badge badge-neutral">—</span></td><td><span class="inline-flex items-center gap-1"><svg class="hi-sm"><use href="#i-user"/></svg>赵六</span></td><td><div class="qs-cell"><span class="qs-score-num" style="color:#d97706">64</span><span class="qs-badge qs-warning">一般</span></div></td><td class="cell-muted">2026-08-05 02:00</td></tr>
+                <tr><td><span class="row-title"><span class="mono">dws_user_daily</span></span></td><td class="cell-strong">用户日活跃汇总宽表</td><td><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-doris"/></svg><span class="mono">Doris</span></span></td><td><span class="badge badge-info">用户域</span>&nbsp;<span class="badge badge-neutral">会员</span></td><td><span class="inline-flex items-center gap-1"><svg class="hi-sm"><use href="#i-user"/></svg>钱七</span></td><td><div class="qs-cell"><span class="qs-score-num" style="color:#dc2626">52</span><span class="qs-badge qs-bad">差</span></div></td><td class="cell-muted">2026-08-05 03:00</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot">
+            <div class="pagination">
+              <span class="page-info">共 42 条 / 每页 10 条</span>
+              <div class="page-nav">
+                <button class="page-btn" disabled><svg class="hi"><use href="#i-chevron-r" style="transform:rotate(180deg)"/></svg>上一页</button>
+                <button class="page-btn active">1</button>
+                <button class="page-btn">下一页<svg class="hi"><use href="#i-chevron-r"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 2：资产详情页（DC-02/03/04）
+     ============================================================ -->
+<div class="view" data-view="asset-detail" style="display:none">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 32" role="img" aria-label="DataNest"><defs><linearGradient id="datanest-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#datanest-logo-grad)" stroke="none"/></svg>
+      <span class="logo-text">DataNest</span>
+    </div>
+    <nav class="sb-nav">
+      <div class="sb-group-label">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group-label">数据资产</div>
+      <a class="sb-item active" onclick="switchView('assets')"><svg class="hi"><use href="#i-spark"/></svg>数据资产</a>
+      <div class="sb-group-label">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <div class="sb-group-label">数据开发</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group-label">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量评分</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="layout-main-inner">
+      <nav class="breadcrumb">
+        <a class="bc-link" onclick="switchView('assets')">首页</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link" onclick="switchView('assets')">数据资产</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <span class="bc-current">dwd_orders</span>
+      </nav>
+
+      <div class="detail-path">
+        <span class="mono">dwd</span><span class="sep">/</span><span class="name mono">dwd_orders</span>
+        <span class="badge badge-info">交易域</span><span class="badge badge-neutral">订单</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:6px"><svg class="hi-sm"><use href="#i-user"/></svg>负责人：张三</span>
+      </div>
+
+      <div class="stat-strip">
+        <div class="stat-card"><div class="stat-ic accent"><svg class="hi"><use href="#i-check"/></svg></div><div><div class="stat-num"><span style="color:#15803d">85</span><span class="qs-badge qs-good" style="margin-left:8px;vertical-align:2px">良好</span></div><div class="stat-lbl">质量评分</div></div></div>
+        <div class="stat-card"><div class="stat-ic success"><svg class="hi"><use href="#i-table"/></svg></div><div><div class="stat-num">5</div><div class="stat-lbl">字段数</div></div></div>
+        <div class="stat-card"><div class="stat-ic info"><svg class="hi"><use href="#i-share"/></svg></div><div><div class="stat-num">1 / 2</div><div class="stat-lbl">直接上游 / 下游表</div></div></div>
+        <div class="stat-card"><div class="stat-ic warning"><svg class="hi"><use href="#i-clock"/></svg></div><div><div class="stat-num">每日 00:30</div><div class="stat-lbl">更新频率</div></div></div>
+      </div>
+
+      <div class="ant-tabs">
+        <div class="ant-tabs-nav">
+          <div class="ant-tabs-nav-list">
+            <div class="ant-tabs-tab active" data-tab="basic"><svg class="hi"><use href="#i-info"/></svg>基础信息</div>
+            <div class="ant-tabs-tab" data-tab="columns"><svg class="hi"><use href="#i-list"/></svg>字段列表</div>
+            <div class="ant-tabs-tab" data-tab="lineage"><svg class="hi"><use href="#i-share"/></svg>血缘图谱</div>
+            <div class="ant-tabs-tab" data-tab="quality"><svg class="hi"><use href="#i-check"/></svg>质量</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ant-tabs-content">
+        <div class="tab-panel" data-panel="basic">
+          <div class="info-card">
+            <div class="ic-head"><span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-info"/></svg>表基础信息</span></div>
+            <div class="ic-body">
+              <div class="kv-grid">
+                <div class="kv-item"><div class="kv-label">表全名</div><div class="kv-value mono">dwd.dwd_orders</div></div>
+                <div class="kv-item"><div class="kv-label">表名</div><div class="kv-value mono">dwd_orders</div></div>
+                <div class="kv-item"><div class="kv-label">注释</div><div class="kv-value">用户订单明细表</div></div>
+                <div class="kv-item"><div class="kv-label">数据源</div><div class="kv-value"><span class="inline-flex items-center gap-1"><svg class="hi db-ic"><use href="#i-doris"/></svg>Doris 数仓</span></div></div>
+                <div class="kv-item"><div class="kv-label">Schema</div><div class="kv-value mono">dwd</div></div>
+                <div class="kv-item"><div class="kv-label">字段数</div><div class="kv-value">5</div></div>
+                <div class="kv-item"><div class="kv-label">数据来源</div><div class="kv-value">DAG 任务（SQL 节点）</div></div>
+                <div class="kv-item"><div class="kv-label">负责人</div><div class="kv-value">张三</div></div>
+                <div class="kv-item"><div class="kv-label">更新频率</div><div class="kv-value">每日（00:30）</div></div>
+                <div class="kv-item"><div class="kv-label">最近更新</div><div class="kv-value">2026-08-05 00:30</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="columns" style="display:none">
+          <div class="table-card">
+            <div class="card-body">
+              <table class="ant-table">
+                <thead class="ant-table-thead"><tr><th>字段名</th><th>数据类型</th><th>中文注释</th><th>是否可空</th><th>备注</th></tr></thead>
+                <tbody class="ant-table-tbody">
+                  <tr><td><span class="row-title mono">order_id</span></td><td class="mono">BIGINT</td><td class="cell-strong">订单 ID</td><td>否</td><td class="cell-muted">—</td></tr>
+                  <tr><td><span class="row-title mono">user_id</span></td><td class="mono">BIGINT</td><td class="cell-strong">用户 ID</td><td>否</td><td class="cell-muted">—</td></tr>
+                  <tr><td><span class="row-title mono">amount</span></td><td class="mono">DECIMAL(18,2)</td><td class="cell-strong">订单金额</td><td>否</td><td class="cell-muted">—</td></tr>
+                  <tr><td><span class="row-title mono">status</span></td><td class="mono">VARCHAR(20)</td><td class="cell-strong">订单状态</td><td>否</td><td class="cell-muted">—</td></tr>
+                  <tr><td><span class="row-title mono">created_at</span></td><td class="mono">TIMESTAMP</td><td class="cell-strong">下单时间</td><td>否</td><td class="cell-muted">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="lineage" style="display:none">
+          <div class="lineage">
+            <div class="lg-tag"><svg class="hi-sm"><use href="#i-share"/></svg>表级血缘 · 当前表居中</div>
+            <div class="lg-line" style="left:24px;right:24px"></div>
+            <div class="lg-node source"><svg class="hi"><use href="#i-db"/></svg>ods_orders<span class="qs-badge qs-none" style="padding:1px 6px">暂无</span></div>
+            <div class="lg-node target"><svg class="hi"><use href="#i-table"/></svg>dwd_orders<span class="qs-badge qs-good" style="padding:1px 6px">85 良好</span></div>
+            <div class="lg-node intermediate"><svg class="hi"><use href="#i-table"/></svg>ads_gmv<span class="qs-badge qs-warning" style="padding:1px 6px">64 一般</span></div>
+            <div class="lg-node second"><svg class="hi"><use href="#i-table"/></svg>dws_user_daily<span class="qs-badge qs-bad" style="padding:1px 6px">52 差</span></div>
+            <div class="lg-legend">
+              <span><span class="lg-dot" style="background:var(--ds-danger)"></span>源表</span>
+              <span><span class="lg-dot" style="background:var(--ds-accent)"></span>当前表</span>
+              <span><span class="lg-dot" style="background:var(--ds-success)"></span>下游表</span>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-default"><svg class="hi"><use href="#i-share"/></svg>查看完整血缘图谱</button>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="quality" style="display:none">
+          <div class="info-card" style="margin-bottom:20px">
+            <div class="ic-body" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+              <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap">
+                <div><div class="kv-label" style="font-size:12px;color:var(--ds-text-muted);margin-bottom:4px">最近检查</div><div class="cell-strong">2026-08-05 02:00</div></div>
+                <div><div class="kv-label" style="font-size:12px;color:var(--ds-text-muted);margin-bottom:4px">通过 / 警告 / 严重</div><div class="cell-strong"><span class="text-success">2</span> / <span class="text-warning">1</span> / <span class="text-danger">0</span></div></div>
+                <div><div class="kv-label" style="font-size:12px;color:var(--ds-text-muted);margin-bottom:4px">启用规则数</div><div class="cell-strong">3</div></div>
+              </div>
+              <button class="btn btn-primary"><svg class="hi"><use href="#i-play"/></svg>立即执行全部规则</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            <span class="text-title">规则最近结果</span><span class="text-small">由质量任务聚合展示</span>
+          </div>
+          <div class="table-card">
+            <div class="card-body">
+              <table class="ant-table">
+                <thead class="ant-table-thead"><tr><th>规则名称</th><th>类型</th><th>检查字段</th><th style="text-align:right">权重</th><th style="text-align:right">最近结果</th><th>判定</th><th>最近检查</th></tr></thead>
+                <tbody class="ant-table-tbody">
+                  <tr><td><span class="cell-strong">amount 非空率</span><div class="cell-muted" style="font-size:11px">订单质量任务</div></td><td>完整性</td><td class="mono">amount</td><td style="text-align:right">2</td><td style="text-align:right" class="mono">0.0012</td><td><span class="badge badge-success"><span class="dot"></span>通过</span></td><td class="cell-muted">2026-08-05 02:00</td></tr>
+                  <tr><td><span class="cell-strong">order_id 唯一</span><div class="cell-muted" style="font-size:11px">订单质量任务</div></td><td>唯一性</td><td class="mono">order_id</td><td style="text-align:right">3</td><td style="text-align:right" class="mono">0</td><td><span class="badge badge-success"><span class="dot"></span>通过</span></td><td class="cell-muted">2026-08-05 02:00</td></tr>
+                  <tr><td><span class="cell-strong">金额范围校验</span><div class="cell-muted" style="font-size:11px">订单质量任务</div></td><td>值域范围</td><td class="mono">amount</td><td style="text-align:right">1</td><td style="text-align:right" class="mono">0.015</td><td><span class="badge badge-warning"><span class="dot"></span>警告</span></td><td class="cell-muted">2026-08-05 02:00</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 3：分类体系维护（DC-05）
+     ============================================================ -->
+<div class="view" data-view="classification" style="display:none">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 32" role="img" aria-label="DataNest"><defs><linearGradient id="datanest-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#datanest-logo-grad)" stroke="none"/></svg>
+      <span class="logo-text">DataNest</span>
+    </div>
+    <nav class="sb-nav">
+      <div class="sb-group-label">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group-label">数据资产</div>
+      <a class="sb-item" onclick="switchView('assets')"><svg class="hi"><use href="#i-spark"/></svg>数据资产</a>
+      <a class="sb-item active"><svg class="hi"><use href="#i-tag"/></svg>分类体系维护</a>
+      <div class="sb-group-label">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="layout-main-inner">
+      <nav class="breadcrumb">
+        <a class="bc-link">首页</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link">数据治理</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <span class="bc-current">分类体系维护</span>
+      </nav>
+
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-tag"/></svg>分类体系维护</h1>
+          <div class="head-sub">维护数据域（一级）→ 主题（二级）分类体系，并为数据表分配分类。仅治理员 / 超管可编辑。</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('modal-add-domain')"><svg class="hi"><use href="#i-plus"/></svg>新增数据域</button>
+      </div>
+
+      <div class="layout-split">
+        <div class="tree-panel">
+          <div class="tree-head"><div class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-folder"/></svg>分类树</div></div>
+          <div class="tree-body">
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>全部资产<span class="tree-count">42</span></div>
+            <div class="tree-node active"><svg class="hi"><use href="#i-folder"/></svg>交易域<span class="tree-count">12</span></div>
+            <div class="tree-children">
+              <div class="tree-leaf active"><svg class="hi"><use href="#i-tag"/></svg>订单<span class="tree-count">5</span></div>
+              <div class="tree-leaf"><svg class="hi"><use href="#i-tag"/></svg>支付<span class="tree-count">4</span></div>
+              <div class="tree-leaf"><svg class="hi"><use href="#i-tag"/></svg>退款<span class="tree-count">3</span></div>
+            </div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>用户域<span class="tree-count">9</span></div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>商品域<span class="tree-count">8</span></div>
+            <div class="tree-node"><svg class="hi"><use href="#i-folder"/></svg>营销域<span class="tree-count">6</span></div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="card-toolbar">
+            <div class="flex items-center gap-2"><span class="text-title">交易域 / 订单</span><span class="text-small">（5 张表）</span></div>
+            <div class="actions"><button class="btn btn-default" onclick="openModal('modal-add-domain')"><svg class="hi"><use href="#i-plus"/></svg>新增主题</button></div>
+          </div>
+          <div class="card-body">
+            <table class="ant-table">
+              <thead class="ant-table-thead"><tr><th style="width:200px">表名</th><th>注释</th><th style="width:130px">数据源 / 库</th><th style="width:100px">负责人</th><th style="width:130px">质量评分</th><th style="width:120px;text-align:center">操作</th></tr></thead>
+              <tbody class="ant-table-tbody">
+                <tr><td><span class="row-title mono" onclick="switchView('asset-detail')">dwd_orders</span></td><td class="cell-strong">用户订单明细表</td><td><span class="mono">Doris · dwd</span></td><td>张三</td><td><div class="qs-cell"><span class="qs-score-num" style="color:#15803d">85</span><span class="qs-badge qs-good">良好</span></div></td><td style="text-align:center"><button class="btn btn-ghost btn-sm" onclick="openModal('modal-assign')"><svg class="hi-sm"><use href="#i-pencil"/></svg>负责人</button><button class="btn btn-ghost btn-sm" style="color:var(--ds-danger)"><svg class="hi-sm"><use href="#i-xmark"/></svg>移出</button></td></tr>
+                <tr><td><span class="row-title mono">dwd_order_items</span></td><td class="cell-strong">订单明细项表</td><td><span class="mono">Doris · dwd</span></td><td>李四</td><td><div class="qs-cell"><span class="qs-score-num" style="color:#15803d">78</span><span class="qs-badge qs-good">良好</span></div></td><td style="text-align:center"><button class="btn btn-ghost btn-sm"><svg class="hi-sm"><use href="#i-pencil"/></svg>负责人</button><button class="btn btn-ghost btn-sm" style="color:var(--ds-danger)"><svg class="hi-sm"><use href="#i-xmark"/></svg>移出</button></td></tr>
+                <tr><td><span class="row-title mono">ods_orders</span></td><td class="cell-strong">订单原始表</td><td><span class="mono">MySQL · ods</span></td><td class="cell-muted">—</td><td><div class="qs-cell"><span class="qs-score-num" style="color:#94a3b8">—</span><span class="qs-badge qs-none">暂无质量</span></div></td><td style="text-align:center"><button class="btn btn-ghost btn-sm"><svg class="hi-sm"><use href="#i-pencil"/></svg>负责人</button><button class="btn btn-ghost btn-sm" style="color:var(--ds-danger)"><svg class="hi-sm"><use href="#i-xmark"/></svg>移出</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot">
+            <button class="btn btn-default" onclick="openModal('modal-assign')"><svg class="hi"><use href="#i-plus"/></svg>分配表到此分类</button>
+            <span class="text-small">删除「订单」主题前需先移出全部引用表（引用校验）</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-mask" id="modal-add-domain" style="display:none">
+    <div class="modal" style="width:420px">
+      <div class="modal-head"><span class="ttl">新增数据域</span><button class="hi-icon-btn" onclick="closeModal('modal-add-domain')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+      <div class="modal-body">
+        <div class="form-item"><div class="fi-label">名称 <span class="req">*</span></div><input class="form-input" placeholder="如：交易域 / 订单"></div>
+        <div class="form-item"><div class="fi-label">上级（主题时选数据域）</div>
+          <div class="filter-select" style="width:100%"><select style="width:100%"><option>— 作为一级数据域 —</option><option>交易域</option><option>用户域</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+        </div>
+        <div class="form-item"><div class="fi-label">排序</div><input class="form-input" value="0"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-default" onclick="closeModal('modal-add-domain')">取消</button>
+        <button class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="modal-assign" style="display:none">
+    <div class="modal" style="width:680px">
+      <div class="modal-head"><span class="ttl">分配表到「交易域 / 订单」</span><button class="hi-icon-btn" onclick="closeModal('modal-assign')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+      <div class="modal-body">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <div class="search-input"><svg class="hi"><use href="#i-magnifier"/></svg><input placeholder="搜索表名…"></div>
+          <div class="filter-select"><select><option>全部数据源</option><option>Doris 数仓</option><option>MySQL 业务库</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+        </div>
+        <table class="ant-table">
+          <thead class="ant-table-thead"><tr><th style="width:36px"><input type="checkbox"></th><th>表名</th><th>注释</th><th>数据源 / 库</th><th>当前分类</th></tr></thead>
+          <tbody class="ant-table-tbody">
+            <tr><td><input type="checkbox" checked></td><td class="mono cell-strong">ads_order_summary</td><td class="cell-strong">订单汇总</td><td class="mono">Doris · ads</td><td><span class="badge badge-neutral">未分类</span></td></tr>
+            <tr><td><input type="checkbox" checked></td><td class="mono cell-strong">dws_order_wide</td><td class="cell-strong">订单宽表</td><td class="mono">Doris · dws</td><td><span class="badge badge-neutral">未分类</span></td></tr>
+            <tr><td><input type="checkbox"></td><td class="mono cell-strong">ods_payment</td><td class="cell-strong">支付流水</td><td class="mono">MySQL · ods</td><td><span class="badge badge-info">交易域</span> <span class="badge badge-neutral">支付</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-foot">
+        <span class="text-small" style="margin-right:auto">已选 2 张表</span>
+        <button class="btn btn-default" onclick="closeModal('modal-assign')">取消</button>
+        <button class="btn btn-primary">批量分配（2）</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 4：任务模板库（DD-09）
+     ============================================================ -->
+<div class="view" data-view="task-template" style="display:none">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 32" role="img" aria-label="DataNest"><defs><linearGradient id="datanest-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#datanest-logo-grad)" stroke="none"/></svg>
+      <span class="logo-text">DataNest</span>
+    </div>
+    <nav class="sb-nav">
+      <div class="sb-group-label">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group-label">数据开发</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <a class="sb-item active"><svg class="hi"><use href="#i-clipboard"/></svg>任务模板库<span class="sb-new-tag">新</span></a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="layout-main-inner">
+      <nav class="breadcrumb">
+        <a class="bc-link">首页</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link">数据开发</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <span class="bc-current">任务模板库</span>
+      </nav>
+
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-clipboard"/></svg>任务模板库</h1>
+          <div class="head-sub">常用数据开发任务模板，从模板一键创建任务。区别于「质量规则模板库」——本库面向同步 / SQL / 导出任务。</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('modal-new-template')"><svg class="hi"><use href="#i-plus"/></svg>新增自定义模板</button>
+      </div>
+
+      <div class="table-card">
+        <div class="card-toolbar">
+          <div class="segmented">
+            <span class="seg-item active">全部</span>
+            <span class="seg-item">同步任务</span>
+            <span class="seg-item">SQL 任务</span>
+            <span class="seg-item">数据导出</span>
+          </div>
+          <div class="actions"><span class="text-small">内置 3 · 自定义 2</span></div>
+        </div>
+        <div class="card-body">
+          <table class="ant-table">
+            <thead class="ant-table-thead"><tr><th style="width:180px">模板名称</th><th style="width:90px">类型</th><th style="width:70px">来源</th><th>说明</th><th style="width:130px">占位参数</th><th style="width:80px">状态</th><th style="width:90px">创建人</th><th style="width:170px">创建时间</th><th style="width:120px;text-align:center">操作</th></tr></thead>
+            <tbody class="ant-table-tbody">
+              <tr><td><span class="cell-strong">数据同步</span></td><td><span class="mono-badge">SYNC</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">源→目标整表 / 增量同步，含字段映射占位符</td><td class="mono cell-muted">{source_table} {target_db}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm" onclick="openModal('modal-create-sync')"><svg class="hi-sm"><use href="#i-play"/></svg>一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">参数化 SQL 转换</span></td><td><span class="mono-badge">SQL</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">读 Doris / MySQL 执行 SQL 转换，结果写目标表</td><td class="mono cell-muted">{biz_date} {sql}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">数据导出</span></td><td><span class="mono-badge">EXPORT</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">按 SQL 导出 CSV / Excel 到指定位置</td><td class="mono cell-muted">{cron} {path}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">订单表每日同步</span></td><td><span class="mono-badge">SYNC</span></td><td><span class="badge badge-neutral">自定义</span></td><td class="cell-muted">张三保存：订单相关表整表同步 + 增量字段 + 每日 02:00</td><td class="mono cell-muted">{source_table} {schedule_cron}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>张三</td><td class="cell-muted">2026-08-03 14:22</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">GMV 汇总刷新</span></td><td><span class="mono-badge">SQL</span></td><td><span class="badge badge-neutral">自定义</span></td><td class="cell-muted">李四保存：刷新 ads_gmv 汇总 SQL，每日 03:00</td><td class="mono cell-muted">{biz_date}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>李四</td><td class="cell-muted">2026-08-04 09:40</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-foot">
+          <div class="pagination">
+            <span class="page-info">共 5 条 / 每页 10 条</span>
+            <div class="page-nav">
+              <button class="page-btn">上一页</button><button class="page-btn active">1</button><button class="page-btn">下一页</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notice"><svg class="hi"><use href="#i-info"/></svg><span class="text-small">模板被删除不影响已创建任务（快照式）；内置模板禁删，可复制为自定义后修改。</span></div>
+    </main>
+  </div>
+
+  <div class="modal-mask" id="modal-create-sync" style="display:none">
+    <div class="modal" style="width:520px">
+      <div class="modal-head"><span class="ttl">从模板创建：数据同步</span><button class="hi-icon-btn" onclick="closeModal('modal-create-sync')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+      <div class="modal-body">
+        <div class="form-item"><div class="fi-label">任务名称 <span class="req">*</span></div><input class="form-input" placeholder="如：dwd_orders 每日同步"></div>
+        <div class="form-item"><div class="fi-label">源表 <span class="req">*</span> <span class="text-small" style="font-weight:400">（{source_table}）</span></div><input class="form-input mono" value="ods.orders"></div>
+        <div class="form-item"><div class="fi-label">目标库 <span class="req">*</span> <span class="text-small" style="font-weight:400">（{target_db}）</span></div><input class="form-input mono" value="dwd"></div>
+        <div class="form-item"><div class="fi-label">调度 Cron <span class="text-small" style="font-weight:400">（{schedule_cron}）</span></div><input class="form-input mono" value="0 30 0 * * ?"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-default" onclick="closeModal('modal-create-sync')">取消</button>
+        <button class="btn btn-primary">生成任务草稿</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="modal-new-template" style="display:none">
+    <div class="modal" style="width:520px">
+      <div class="modal-head"><span class="ttl">新增自定义模板</span><button class="hi-icon-btn" onclick="closeModal('modal-new-template')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+      <div class="modal-body">
+        <div class="form-item"><div class="fi-label">模板名称 <span class="req">*</span></div><input class="form-input" placeholder="如：订单表每日同步"></div>
+        <div class="form-item"><div class="fi-label">任务类型</div>
+          <div class="filter-select" style="width:100%"><select style="width:100%"><option>数据同步（SYNC）</option><option>SQL 任务</option><option>数据导出（EXPORT）</option><option>采集任务（COLLECT）</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+        </div>
+        <div class="form-item"><div class="fi-label">模板说明</div><textarea class="form-textarea" placeholder="描述模板用途与占位符说明…" style="min-height:72px"></textarea></div>
+        <div class="form-item"><div class="fi-label">从已配置任务另存</div>
+          <div class="filter-select" style="width:100%"><select style="width:100%"><option>— 手动配置模板内容 —</option><option>dwd_orders 每日同步</option><option>GMV 汇总刷新</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-default" onclick="closeModal('modal-new-template')">取消</button>
+        <button class="btn btn-primary">保存模板</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 5：子 DAG 参数下发（NG5）
+     ============================================================ -->
+<div class="view" data-view="subdag" style="display:none">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 32" role="img" aria-label="DataNest"><defs><linearGradient id="datanest-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#datanest-logo-grad)" stroke="none"/></svg>
+      <span class="logo-text">DataNest</span>
+    </div>
+    <nav class="sb-nav">
+      <div class="sb-group-label">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group-label">数据开发</div>
+      <a class="sb-item active"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="layout-main-inner">
+      <nav class="breadcrumb">
+        <a class="bc-link">首页</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link">数据开发</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link">项目管理</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <span class="bc-current">交易 DAG</span>
+      </nav>
+
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-folder"/></svg>交易 DAG 编辑</h1>
+          <div class="head-sub">为子 DAG 节点配置「主 DAG 参数 → 子 DAG 参数」单向下发（NG5）。点击画布中的子 DAG 节点打开配置弹窗。</div>
+        </div>
+      </div>
+
+      <div class="info-card" style="padding:24px;min-height:320px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;background:var(--ds-bg-subtle)">
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center">
+          <div style="padding:14px 22px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--ds-bg-surface);text-align:center;box-shadow:var(--ds-shadow-xs)">
+            <div class="flex items-center gap-2"><svg class="hi" style="color:var(--ds-info)"><use href="#i-db"/></svg><span class="cell-strong">同步订单</span></div>
+            <div class="text-nano" style="margin-top:4px">SYNC</div>
+          </div>
+          <svg class="hi" style="color:var(--ds-text-disabled)"><use href="#i-arrow-r"/></svg>
+          <div style="padding:14px 22px;border:2px solid var(--ds-accent);border-radius:var(--ds-radius-md);background:var(--ds-accent-subtle);text-align:center;cursor:pointer;box-shadow:var(--ds-shadow-sm)" onclick="openModal('modal-subdag')">
+            <div class="flex items-center gap-2"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-folder"/></svg><span class="cell-strong" style="color:var(--ds-accent)">交易子流程</span></div>
+            <div class="text-nano" style="margin-top:4px;color:var(--ds-accent)">SUB_DAG</div>
+          </div>
+          <svg class="hi" style="color:var(--ds-text-disabled)"><use href="#i-arrow-r"/></svg>
+          <div style="padding:14px 22px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--ds-bg-surface);text-align:center;box-shadow:var(--ds-shadow-xs)">
+            <div class="flex items-center gap-2"><svg class="hi" style="color:var(--ds-info)"><use href="#i-code"/></svg><span class="cell-strong">汇总 GMV</span></div>
+            <div class="text-nano" style="margin-top:4px">SQL</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('modal-subdag')"><svg class="hi"><use href="#i-cog"/></svg>打开「子 DAG 配置」弹窗</button>
+        <div class="flex items-center gap-2 text-small"><svg class="hi-sm"><use href="#i-info"/></svg>仅支持主 DAG → 子 DAG 参数下发；子 DAG 结果回传（双向透传）本期不做。</div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-mask" id="modal-subdag" style="display:none">
+    <div class="modal" style="width:640px">
+      <div class="modal-head"><span class="ttl">子 DAG 配置</span><button class="hi-icon-btn" onclick="closeModal('modal-subdag')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+      <div class="modal-body">
+        <div class="form-item"><div class="fi-label">节点名称 <span class="req">*</span></div><input class="form-input" value="交易子流程"></div>
+        <div class="form-item"><div class="fi-label">选择子 DAG <span class="req">*</span></div>
+          <div class="filter-select" style="width:100%"><select style="width:100%"><option>交易 DAG</option><option>用户 DAG</option><option>商品 DAG</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+          <div class="fi-hint">仅显示同项目、已启用、且不会造成循环引用的 DAG。</div>
+        </div>
+        <div class="form-item"><div class="fi-label">执行方式</div>
+          <div style="display:flex;gap:20px;font-size:13px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="exec" checked>同步执行 <span class="text-small">等待完成</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="exec">异步执行 <span class="text-small">触发后继续</span></label>
+          </div>
+        </div>
+
+        <div class="form-group-title"><svg class="hi"><use href="#i-cog"/></svg>参数下发（可选）</div>
+        <div class="form-item" style="margin-bottom:8px">
+          <table class="param-map">
+            <thead><tr><th style="width:38%">主 DAG 参数</th><th style="width:10%"></th><th style="width:38%">子 DAG 参数</th><th style="width:14%"></th></tr></thead>
+            <tbody>
+              <tr><td><span class="var-src">${biz_date}</span></td><td><svg class="hi-sm"><use href="#i-arrow-r"/></svg></td><td><span class="var-dst">${sub_date}</span></td><td><button class="hi-icon-btn danger"><svg class="hi-sm"><use href="#i-trash"/></svg></button></td></tr>
+              <tr><td><span class="var-src">${env}</span></td><td><svg class="hi-sm"><use href="#i-arrow-r"/></svg></td><td><span class="var-dst">${env}</span></td><td><button class="hi-icon-btn danger"><svg class="hi-sm"><use href="#i-trash"/></svg></button></td></tr>
+            </tbody>
+          </table>
+          <button class="btn btn-default btn-sm" style="margin-top:12px"><svg class="hi-sm"><use href="#i-plus"/></svg>添加映射</button>
+          <div class="fi-hint" style="margin-top:8px">主参数需在主 DAG 已声明参数或系统变量（biz_date / current_time）中存在；子参数名在映射内唯一。</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-default" onclick="closeModal('modal-subdag')">取消</button>
+        <button class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 6：Python 质量规则（DG-10）
+     ============================================================ -->
+<div class="view" data-view="python-rule" style="display:none">
+  <aside class="sidebar">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 32" role="img" aria-label="DataNest"><defs><linearGradient id="datanest-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#datanest-logo-grad)" stroke="none"/></svg>
+      <span class="logo-text">DataNest</span>
+    </div>
+    <nav class="sb-nav">
+      <div class="sb-group-label">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group-label">数据资产</div>
+      <a class="sb-item" onclick="switchView('assets')"><svg class="hi"><use href="#i-spark"/></svg>数据资产</a>
+      <div class="sb-group-label">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-clipboard"/></svg>规则模板库</a>
+      <a class="sb-item active"><svg class="hi"><use href="#i-scale"/></svg>质量规则</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="layout-main-inner">
+      <nav class="breadcrumb">
+        <a class="bc-link">首页</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link">数据治理</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <a class="bc-link">质量规则</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
+        <span class="bc-current">新增规则</span>
+      </nav>
+
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-code"/></svg>新增质量规则</h1>
+          <div class="head-sub">质量规则类型新增「Python」——通过 Python 脚本对目标表数据做复杂校验，返回统计值并按阈值分级。</div>
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="ic-body" style="max-width:860px">
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--ds-accent-subtle);border:1px solid #c7d7fe;border-radius:var(--ds-radius-md);margin-bottom:24px">
+            <svg class="hi" style="color:var(--ds-accent)"><use href="#i-info"/></svg>
+            <span class="text-small" style="color:var(--ds-text-secondary)">规则类型已从四类扩展为五类：完整性 / 唯一性 / 值域范围 / 自定义 SQL / <b>Python</b>。</span>
+          </div>
+
+          <div class="form-item"><div class="fi-label">规则名称 <span class="req">*</span></div><input class="form-input" value="金额波动 Python 校验" style="max-width:420px"></div>
+
+          <div class="form-item"><div class="fi-label">规则类型 <span class="req">*</span></div>
+            <div class="filter-select" style="width:100%;max-width:420px"><select style="width:100%"><option>完整性（COMPLETENESS）</option><option>唯一性（UNIQUENESS）</option><option>值域范围（RANGE）</option><option>自定义 SQL（CUSTOM_SQL）</option><option selected>Python</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+          </div>
+
+          <div class="form-item"><div class="fi-label">选择数据源 <span class="req">*</span></div>
+            <div class="filter-select" style="width:100%;max-width:420px"><select style="width:100%"><option>Doris 数仓</option><option>MySQL 业务库</option><option>PostgreSQL 数仓</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+            <div class="fi-hint">先选数据源，再在下方选择该数据源下的表。</div>
+          </div>
+
+          <div class="form-item"><div class="fi-label">目标表 <span class="req">*</span></div>
+            <div class="filter-select" style="width:100%;max-width:420px"><select style="width:100%"><option>dwd.orders</option><option>dwd.order_items</option><option>dim.user</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+          </div>
+
+          <div class="form-item"><div class="fi-label">检查字段 <span class="text-small" style="font-weight:400">（可选，Python 脚本内通过 read_table 拉取该表数据）</span></div><input class="form-input mono" value="amount" style="max-width:420px"></div>
+
+          <div class="form-item">
+            <div class="fi-label">Python 脚本 <span class="req">*</span></div>
+            <div class="code-editor">
+              <div class="ce-bar">
+                <span style="display:flex;align-items:center;gap:8px"><span class="dots"><span class="dot" style="background:#f87171"></span><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#34d399"></span></span>def check(df)</span>
+                <span>python · 沙箱执行</span>
+              </div>
+              <div class="ce-body"><span class="k">def</span> <span class="f">check</span>(df):
+    <span class="c">"""接收目标表 DataFrame，返回 {'指标名': 数值}"""</span>
+    <span class="k">import</span> pandas <span class="k">as</span> pd
+    <span class="k">if</span> df.empty:
+        <span class="k">return</span> {<span class="s">'null_rate'</span>: <span class="f">0.0</span>}
+    <span class="c"># 计算金额字段空值率</span>
+    null_rate = df[<span class="s">'amount'</span>].isnull().mean()
+    <span class="k">return</span> {<span class="s">'null_rate'</span>: null_rate}</div>
+            </div>
+            <div class="fi-hint">约定：`def check(df)` 接收目标表 DataFrame；内部可调用 `read_table(table, where=None, limit=None)` 按需采样；返回 dict 统计值。</div>
+          </div>
+
+          <div class="form-item"><div class="fi-label">返回指标（结果指标）<span class="req">*</span></div><input class="form-input mono" value="null_rate" style="max-width:420px"><div class="fi-hint">从脚本返回 dict 中选择一个键作为结果指标，用于后续阈值分级判定。</div></div>
+
+          <div class="form-item"><div class="fi-label">阈值判定</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div style="flex:1;min-width:120px"><div class="fi-label" style="font-size:12px;font-weight:500">警告阈值</div><input class="form-input" value="0.01"></div>
+              <div style="flex:1;min-width:120px"><div class="fi-label" style="font-size:12px;font-weight:500">严重阈值</div><input class="form-input" value="0.05"></div>
+              <div style="flex:1;min-width:120px"><div class="fi-label" style="font-size:12px;font-weight:500">权重</div><input class="form-input" value="2"></div>
+            </div>
+            <div class="fi-hint">判定：value &lt; 警告 → 通过；警告 ≤ value &lt; 严重 → 警告；value ≥ 严重 → 严重；脚本失败 → 不可用（不告警）。</div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:24px;padding-top:20px;border-top:1px solid var(--ds-border)">
+            <button class="btn btn-default"><svg class="hi"><use href="#i-play"/></svg>测试脚本</button>
+            <button class="btn btn-primary"><svg class="hi"><use href="#i-check"/></svg>保存规则</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="DataNest-Sprint7-资产目录原型.js"></script>
+</body>
+</html>

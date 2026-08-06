@@ -441,11 +441,11 @@ export default function StandardCompliancePage() {
 
     // ============ 渲染 ============
     return (
-        <div className="flex flex-col">
-            <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
+        <div className="flex flex-col overflow-x-hidden">
+            <div className="flex items-center justify-between mb-ds-4 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">标准合规</h1>
-                    <p className="text-ds-small text-ds-text-muted mt-ds-1">
+                    <p className="text-ds-small text-ds-text-muted mt-ds-0.5">
                         对照命名规范与字段类型标准扫描元数据，管理不合规问题清单
                     </p>
                 </div>
@@ -464,21 +464,21 @@ export default function StandardCompliancePage() {
             </div>
 
             {/* 三格统计 */}
-            <div className="grid grid-cols-3 gap-ds-4 mb-ds-5 flex-shrink-0">
+            <div className="grid grid-cols-3 gap-ds-4 mb-ds-4 flex-shrink-0">
                 {statCards.map((card) => (
                     <div
                         key={card.label}
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-4 flex items-center gap-ds-4"
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 flex items-center gap-ds-3"
                         title={card.tip}
                     >
-                        <div className={`w-11 h-11 rounded-ds-md flex items-center justify-center flex-shrink-0 ${card.iconBg}`}>
+                        <div className={`w-10 h-10 rounded-ds-md flex items-center justify-center flex-shrink-0 ${card.iconBg}`}>
                             {card.icon}
                         </div>
                         <div className="min-w-0">
                             <div className={`text-ds-display font-bold leading-none ${card.accent}`}>
                                 {card.value}
                             </div>
-                            <div className="text-ds-small text-ds-text-muted mt-ds-1.5">{card.label}</div>
+                            <div className="text-ds-small text-ds-text-muted mt-ds-1">{card.label}</div>
                         </div>
                     </div>
                 ))}
@@ -486,7 +486,7 @@ export default function StandardCompliancePage() {
 
             {/* 扫描结果清单 */}
             <div className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
-                <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
+                <div className="p-ds-2 border-b border-ds-border-subtle flex-shrink-0">
                     <DsToolbar
                         extra={(
                             <>

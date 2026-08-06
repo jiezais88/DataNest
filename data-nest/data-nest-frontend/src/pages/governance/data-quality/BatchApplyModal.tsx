@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import DsButton from '../../../components/DsButton';
 import DsModal from '../../../components/DsModal';
-import {listQualityTemplates} from '../../../api/quality';
+import {listQualityTemplates, queryQualityJobs} from '../../../api/quality';
 import {listMetadataColumns, listMetadataDatasourceIds} from '../../../api/metadata';
 import {QUALITY_TYPE_LABEL} from '../../../types/quality';
 import type {QualityRuleTemplate, QualityRuleBatchCreateRequest, RuleBatchItem} from '../../../types/quality';
@@ -14,20 +14,26 @@ interface BatchApplyItem extends RuleBatchItem {
 
 interface BatchApplyModalProps {
     open: boolean;
-    /** 所属质量任务 */
-    jobId: string;
+    /** 所属质量任务；为空时在弹窗内选择（供规则模板库页使用） */
+    jobId?: string;
+    /** 预选模板 ID（供规则模板库页从某行「批量应用」进入时预选当前模板） */
+    initialTemplateId?: string;
     onClose: () => void;
     onSubmit: (payload: QualityRuleBatchCreateRequest) => Promise<unknown>;
 }
 
 export default function BatchApplyModal({
                                             open,
-                                            jobId,
+                                            jobId = '',
+                                            initialTemplateId = '',
                                             onClose,
                                             onSubmit,
                                         }: BatchApplyModalProps) {
     const [templates, setTemplates] = useState<QualityRuleTemplate[]>([]);
     const [templateId, setTemplateId] = useState<string>('');
+    /** 弹窗内选择的任务（仅当外部未传 jobId 时使用） */
+    const [selectedJobId, setSelectedJobId] = useState<string>('');
+    const [jobOptions, setJobOptions] = useState<{id: string; name: string}[]>([]);
     /** 目标数据源（仅已采集元数据的数据源；先选数据源再选表） */
     const [datasourceId, setDatasourceId] = useState<string>('');
     const [datasourceOptions, setDatasourceOptions] = useState<MetadataDatasource[]>([]);
@@ -49,12 +55,22 @@ export default function BatchApplyModal({
         listMetadataDatasourceIds()
             .then((res) => setDatasourceOptions(res.data || []))
             .catch(() => setDatasourceOptions([]));
-        setTemplateId('');
+        // 外部未指定任务时，加载任务下拉供弹窗内选择
+        if (!jobId) {
+            queryQualityJobs({page: 1, pageSize: 1000})
+                .then((res) => setJobOptions((res.data.records || []).map((j) => ({
+                    id: String(j.id),
+                    name: j.name,
+                }))))
+                .catch(() => setJobOptions([]));
+        }
+        setSelectedJobId('');
+        setTemplateId(initialTemplateId);
         setDatasourceId('');
         setItems([]);
         setColumnsMap({});
         setErrors('');
-    }, [open]);
+    }, [open, jobId, initialTemplateId]);
 
     // 切换数据源时清空已选表（表归属发生变化）
     const handleDatasourceChange = (id: string) => {
@@ -102,6 +118,10 @@ export default function BatchApplyModal({
     const isCustomSql = selectedTemplate?.type === 'CUSTOM_SQL';
 
     const validate = (): boolean => {
+        if (!jobId && !selectedJobId) {
+            setErrors('请选择目标任务');
+            return false;
+        }
         if (!templateId) {
             setErrors('请选择模板');
             return false;
@@ -135,7 +155,7 @@ export default function BatchApplyModal({
         setSubmitting(true);
         try {
             const payload: QualityRuleBatchCreateRequest = {
-                jobId,
+                jobId: jobId || selectedJobId,
                 templateId,
                 items: items.map((i) => ({
                     tableId: i.tableId,
@@ -177,6 +197,29 @@ export default function BatchApplyModal({
                 }
             >
                 <div className="space-y-ds-4">
+                    {!jobId && (
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                目标任务 <span className="text-ds-danger">*</span>
+                            </label>
+                            <select
+                                value={selectedJobId}
+                                onChange={(e) => {
+                                    setSelectedJobId(e.target.value);
+                                    setErrors('');
+                                }}
+                                className={selectClass}
+                            >
+                                <option value="">请选择目标任务</option>
+                                {jobOptions.map((j) => (
+                                    <option key={j.id} value={j.id}>{j.name}</option>
+                                ))}
+                            </select>
+                            <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                批量生成的规则将绑定到该质量任务
+                            </p>
+                        </div>
+                    )}
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             选择模板 <span className="text-ds-danger">*</span>

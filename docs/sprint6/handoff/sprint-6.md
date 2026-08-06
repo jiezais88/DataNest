@@ -1,6 +1,6 @@
 ﻿# Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）；**标准合规检查 E2E 完成**（15 用例全绿：判定/统计/UI/忽略/导出/权限/定时 handler，业务视角端到端验证，见 §22）
+> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）；**标准合规检查 E2E 完成**（15 用例全绿：判定/统计/UI/忽略/导出/权限/定时 handler，业务视角端到端验证，见 §22）；**规则模板库批量应用接线完成**（后端 /rules/batch + batchCreateQualityRules + BatchApplyModal 早已就绪且 quality-rules 页已接入，仅模板库页按钮仍为占位提示；已接线 + BatchApplyModal 扩展：jobId 可选+弹窗内选目标任务、支持 initialTemplateId 预选模板，E2E 13 passed 见 §23）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -39,6 +39,7 @@
 | 质量检查历史清理定时任务                | ✅ 完成   | 新增 QualityCheckHistoryCleanupHandler（cron 04:30，保留 30 天，级联删 batch+detail），已注册 XXL-JOB，见 §18 |
 | 删除补全 + 引用明细提示（后端+前端）   | ✅ 完成   | 删 DAG 清血缘、删质量任务评分方案1、被阻止删除返回引用名称列表；前端 ReferenceListModal 接入各删除页，见 §19 |
 | 标准合规检查 E2E（业务视角）            | ✅ 完成   | 15 用例全绿：判定（4 不合规：1 表命名+2 列命名+1 字段类型）/统计/UI/忽略/导出/权限/定时 handler（XXL-JOB 真实触发），见 §22 |
+| 规则模板库批量应用接线                   | ✅ 完成   | 模板库页「批量应用」从占位提示接线为真实 BatchApplyModal（扩展 jobId 可选+弹窗内选任务、initialTemplateId 预选模板）；quality-templates E2E 13 passed，见 §23 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -93,7 +94,7 @@
 | `data-nest-common`：`ErrorCode`（修改）                                                                                | 新增 4 个质量错误码：`QUALITY_TEMPLATE_NOT_FOUND(4201)/NAME_EXISTS(4202)/TYPE_INVALID(4203)/BUILTIN_NOT_DELETE(4204)`                            |
 | `data-nest-frontend`：`src/types/quality.ts`（新增）                                                                   | 质量模板类型定义（`QualityTemplateType`/`QualityRuleTemplate`/创建/更新/查询 DTO）                                                               |
 | `data-nest-frontend`：`src/api/quality.ts`（新增）                                                                     | 模板 6 个接口封装（列表/分页/新增/编辑/删除/启停），对接 `/governance/quality/templates`                                                         |
-| `data-nest-frontend`：`src/pages/governance/quality-templates/index.tsx` + `QualityTemplateDrawer.tsx`（新增）         | 规则模板库页面（统计卡片/搜索/类型·来源·状态筛选/表格/分页/详情·编辑 Drawer/删除 ConfirmDialog/启停/批量应用占位提示）                           |
+| `data-nest-frontend`：`src/pages/governance/quality-templates/index.tsx` + `QualityTemplateDrawer.tsx`（新增）         | 规则模板库页面（搜索/类型·来源·状态筛选/表格/分页/详情·编辑 Drawer/删除 ConfirmDialog/启停/批量应用，§23 已接线真实批量应用）                           |
 | `data-nest-frontend`：`Sidebar.tsx`（修改）                                                                            | 「数据治理」分组新增「规则模板库」菜单（`GOVERNANCE_WRITE_ROLES`），路由 `/governance/quality-templates`                                         |
 | `data-nest-frontend`：`router/index.tsx` + `utils/breadcrumb.ts`（修改）                                               | 新增 `/governance/quality-templates` 懒加载路由 + leaf 面包屑条目                                                                                |
 | `data-nest-system/.../db/migration/V3.6.1__sprint6_quality_job_rule.sql`（新增）                                       | 建 `quality_job` + `quality_rule` 两张配置层表（本次只建配置层两表；批次/历史/评分表留执行批）                                                    |
@@ -1297,4 +1298,32 @@ data-nest-common
 
 ### 22.6 待办（后续）
 
-- 质量规则页「批量应用」接线、删除用户、合规结果历史清理定时任务（沿用 §19.6/§20.6 待办，未新增）。
+- 删除用户、合规结果历史清理定时任务（沿用 §19.6/§20.6 待办，未新增）。
+
+## 23. 规则模板库「批量应用」接线（2026-08-05，本次会话）
+
+> **背景**：用户反馈模板库页「批量应用」仍提示「开发中，后端接口尚未就绪」。排查确认：后端 `POST /governance/quality/rules/batch`（`QualityRuleService.batchCreate`）、前端 `batchCreateQualityRules`、`BatchApplyModal` **早已就绪**，且 `quality-rules` 页已完整接入「模板批量应用」；**仅规则模板库页 `quality-templates` 的「批量应用」按钮仍为 `notify.info` 占位**。属前后端不一致，本次接线。
+
+### 23.1 根因
+
+- 前后端 batch 链路完整（§17.7 review 修复 + §19/§20 已接入），只有模板库页按钮没接线。
+
+### 23.2 改动
+
+| 文件 | 改动 |
+|------|------|
+| `BatchApplyModal.tsx`（共享组件，向后兼容） | `jobId` 改为可选：为空时弹窗内显示「目标任务」下拉（`queryQualityJobs`），提交用 `jobId \|\| selectedJobId`；新增 `initialTemplateId` 支持预选模板；新增任务校验（无外部 jobId 须选任务） |
+| `quality-templates/index.tsx` | `handleBatchApply` 从占位改为打开 `BatchApplyModal`（传当前模板为 `initialTemplateId`）；新增 `handleBatchSubmit` 调 `batchCreateQualityRules`；挂载弹窗 |
+| `quality-templates.spec.ts` | 新增「批量应用」用例：点模板行批量应用 → 弹窗打开 + 预选模板 → 弹窗内选目标任务 → 选数据源/表 → 生成规则并绑定任务（DB 断言 COMPLETENESS 规则关联任务） |
+
+> `quality-rules` 页传 `jobId`（有值）+ 不传 `initialTemplateId`，行为不变（不显示任务下拉）。
+
+### 23.3 验证
+
+- `npm run build`（TSC_EXIT=0）+ `quality-templates` 整个 spec **13 passed**（含新增批量应用用例 + 既有用例不回归）。
+- **部署坑（必记）**：前端 Dockerfile 是 `COPY dist/`，**不执行构建**。改源码后必须先 `npm run build` 生成新 `dist/`，再 `docker compose build app-frontend` + `up -d`，否则新代码不进产物（`docker compose build` 直接 `--no-cache` 也无济于事，因为 COPY 的是旧 dist）。
+
+### 23.4 附带修正：过时断言
+
+- `quality-templates.spec.ts`「页面加载」用例原断言「模板总数/内置模板/自定义模板」统计卡片，但当前页面已无该卡片（页面重构移除），属既有过时断言，已移除统计卡片断言、保留内置模板展示断言。
+- `quality-rules.spec.ts` 批量应用用例在 `goRulesTab` 用旧 `选择质量任务` aria-label（已改名 `按所属任务筛选`），属 §15.5 已记录的过时断言，与本次改动无关，暂留待维护。

@@ -5,6 +5,7 @@ import type {ColumnsType} from 'antd/es/table';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
 import {
+    batchCreateQualityRules,
     createQualityTemplate,
     deleteQualityTemplate,
     queryQualityTemplates,
@@ -31,6 +32,7 @@ import type {QualityRuleTemplate, QualityRuleTemplateCreateRequest, QualityTempl
 import {formatDateTime} from '../../../utils/format';
 import {COL} from '../../../constants/table';
 import QualityTemplateDrawer, {TYPE_OPTIONS} from './QualityTemplateDrawer';
+import BatchApplyModal from '../data-quality/BatchApplyModal';
 
 /** 模板类型中文名 */
 const TYPE_LABEL: Record<QualityTemplateType, string> = {
@@ -65,6 +67,10 @@ export default function QualityTemplatesPage() {
     const [deleteTarget, setDeleteTarget] = useState<QualityRuleTemplate | null>(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    /** 批量应用弹窗（模板库页无任务上下文，jobId 留空由弹窗内选择） */
+    const [batchOpen, setBatchOpen] = useState(false);
+    const [batchTemplateId, setBatchTemplateId] = useState<string>('');
 
     const loadTemplates = useCallback(async () => {
         setLoading(true);
@@ -147,8 +153,14 @@ export default function QualityTemplatesPage() {
     }, []);
 
     const handleBatchApply = useCallback((item: QualityRuleTemplate) => {
-        notify.info(`「${item.name}」批量应用功能开发中，后端接口尚未就绪`);
+        setBatchTemplateId(String(item.id));
+        setBatchOpen(true);
     }, []);
+
+    const handleBatchSubmit = async (payload: Parameters<typeof batchCreateQualityRules>[0]) => {
+        await batchCreateQualityRules(payload);
+        notify.success('规则批量应用成功');
+    };
 
     const columns = useMemo<ColumnsType<QualityRuleTemplate>>(() => [
         {
@@ -408,6 +420,14 @@ export default function QualityTemplatesPage() {
                     setEditItem(null);
                 }}
                 onSubmit={handleSubmit}
+            />
+
+            <BatchApplyModal
+                open={batchOpen}
+                jobId=""
+                initialTemplateId={batchTemplateId}
+                onClose={() => setBatchOpen(false)}
+                onSubmit={handleBatchSubmit}
             />
 
             <ConfirmDialog
