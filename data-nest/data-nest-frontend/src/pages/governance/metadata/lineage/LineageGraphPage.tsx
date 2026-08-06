@@ -1,7 +1,7 @@
 // Sprint 5：血缘图谱页（元数据表详情 → 「血缘图谱」按钮进入）
 // 表级图谱 ReactFlow 渲染；支持影响分析/溯源分析高亮、展开层级、字段级血缘下钻。
 // 路由：/governance/metadata/lineage?tableId=xxx&tableName=db.table
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import ReactFlow, {
     Background,
@@ -11,8 +11,10 @@ import ReactFlow, {
     type Node,
     type NodeProps,
     Position,
+    ReactFlowProvider,
     useEdgesState,
     useNodesState,
+    useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Spin, Tooltip} from 'antd';
@@ -107,8 +109,9 @@ const nodeTypes = {table: TableNode};
 
 type AnalysisMode = 'impact' | 'source' | null;
 
-export default function LineageGraphPage() {
+function LineageGraphPageInner() {
     const navigate = useNavigate();
+    const {fitView} = useReactFlow();
     const [searchParams] = useSearchParams();
     const tableIdParam = searchParams.get('tableId') || '';
     const tableNameParam = searchParams.get('tableName') || '';
@@ -122,6 +125,10 @@ export default function LineageGraphPage() {
     const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
     const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
     const [fieldOpen, setFieldOpen] = useState(false);
+
+    // 进入血缘时的来源表 ID：点击节点切换后 URL 不再带 tableId（仅 tableName），
+    // 「← 返回」始终回到来源表的「血缘图谱」tab，不做血缘内逐级回退。
+    const originTableIdRef = useRef(tableIdParam);
 
     // 从 URL 读取并兜底解析 tableName（仅 URL 有 tableId 时）
     useEffect(() => {
@@ -206,7 +213,13 @@ export default function LineageGraphPage() {
     useEffect(() => {
         setRfNodes(computed.nodes);
         setRfEdges(computed.edges);
-    }, [computed, setRfNodes, setRfEdges]);
+        // 切换中心表（节点数据变化）后主动适配视口：ReactFlow 的 fitView 只在挂载时执行一次，
+        // 同一路由内 nodes 变化（如点击节点切到大图→小图）不会自动重新适配，导致新图渲染到视口外而「空白」。
+        if (computed.nodes.length > 0) {
+            // 等 ReactFlow 用新 nodes 渲染后再 fitView，否则新图位置可能仍在视口外
+            setTimeout(() => fitView({padding: 0.2, maxZoom: 0.9, duration: 300}), 50);
+        }
+    }, [computed, setRfNodes, setRfEdges, fitView]);
 
     const resetHighlights = useCallback(() => {
         setHighlightedNodes(new Set());
@@ -272,8 +285,10 @@ export default function LineageGraphPage() {
     }, [navigate]);
 
     const handleBack = () => {
-        if (tableId) {
-            navigate(`/governance/metadata?tableId=${tableId}`);
+        // 始终回到进入来源表的「血缘图谱」tab（不做血缘内逐级回退）
+        const originId = originTableIdRef.current;
+        if (originId) {
+            navigate(`/governance/metadata?tableId=${originId}&tab=lineage`);
         } else {
             navigate('/governance/metadata');
         }
@@ -393,5 +408,14 @@ export default function LineageGraphPage() {
                 )}
             </Drawer>
         </div>
+    );
+}
+
+// 外层包 ReactFlowProvider：useReactFlow()（fitView 等）必须在 Provider 内才能使用。
+export default function LineageGraphPage() {
+    return (
+        <ReactFlowProvider>
+            <LineageGraphPageInner/>
+        </ReactFlowProvider>
     );
 }

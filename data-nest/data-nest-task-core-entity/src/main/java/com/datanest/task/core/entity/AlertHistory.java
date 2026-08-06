@@ -25,6 +25,9 @@ public class AlertHistory {
 
     private Long objectId;
 
+    /** 关联的质量检查批次 ID（质量对象告警时落库，便于批次详情反查告警记录；非质量告警为 NULL） */
+    private Long qualityBatchId;
+
     /** FAILURE / TIMEOUT / SUCCESS */
     private String alertType;
 
@@ -42,4 +45,7 @@ public class AlertHistory {
 
     /** 告警规则名称（冗余落库；规则删除后历史仍保留名称） */
     private String ruleName;
+
+    /** 告警聚合明细（质量批次告警落库：每行一条命中规则「等级 + 规则名 + 详情」；非质量告警为 NULL） */
+    private String summary;
 }

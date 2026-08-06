@@ -18,6 +18,8 @@ interface QualityJobFormData {
     autoTriggerObjectType: AutoTriggerObjectType | '';
     autoTriggerObjectId: string;
     alertLevel: QualityAlertLevel;
+    /** 执行超时阈值（分钟），null/0 = 不启用超时检测；>0 表示超过该分钟数仍 RUNNING 即触发 TIMEOUT 告警 */
+    timeoutMinutes: number | null;
     /** 引用的质量规则 ID 集合（多对多） */
     ruleIds: string[];
 }
@@ -32,6 +34,7 @@ const EMPTY_FORM: QualityJobFormData = {
     autoTriggerObjectType: '',
     autoTriggerObjectId: '',
     alertLevel: 'SEVERE_WARNING',
+    timeoutMinutes: null,
     ruleIds: [],
 };
 
@@ -98,6 +101,7 @@ export default function QualityJobDrawer({
                     autoTriggerObjectType: editItem.autoTriggerObjectType || '',
                     autoTriggerObjectId: editItem.autoTriggerObjectId || '',
                     alertLevel: editItem.alertLevel || 'SEVERE_WARNING',
+                    timeoutMinutes: editItem.timeoutMinutes ?? null,
                     ruleIds: editItem.ruleIds || [],
                 });
             } else {
@@ -145,6 +149,8 @@ export default function QualityJobDrawer({
                 autoTriggerObjectType: form.autoTriggerEnabled === 1 ? form.autoTriggerObjectType || undefined : undefined,
                 autoTriggerObjectId: form.autoTriggerEnabled === 1 ? form.autoTriggerObjectId || undefined : undefined,
                 alertLevel: form.alertLevel,
+                // 执行超时阈值：null/undefined = 不启用；>0 启用
+                timeoutMinutes: form.timeoutMinutes && form.timeoutMinutes > 0 ? form.timeoutMinutes : undefined,
                 // 任务引用的规则集合
                 ruleIds: form.ruleIds.length > 0 ? form.ruleIds : undefined,
             };
@@ -296,6 +302,25 @@ export default function QualityJobDrawer({
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                        执行超时（分钟）
+                    </label>
+                    <input
+                        type="number"
+                        min={1}
+                        placeholder="留空 = 不启用超时检测"
+                        value={form.timeoutMinutes ?? ''}
+                        onChange={(e) => {
+                            const v = e.target.value;
+                            updateField('timeoutMinutes', v === '' ? null : Math.max(1, Number(v) || 1));
+                        }}
+                        disabled={readOnly}
+                        className={selectClass}
+                    />
+                    <p className="mt-ds-1 text-ds-nano text-ds-text-muted">批次执行超过该分钟数仍 RUNNING 时触发 TIMEOUT 告警；不填则不检测</p>
+                </div>
+
+                <div>
+                    <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         引用质量规则 <span className="text-ds-nano text-ds-text-muted font-normal">（从规则库选择，可多选）</span>
                     </label>
                     <Select
@@ -310,10 +335,18 @@ export default function QualityJobDrawer({
                         notFoundContent={ruleOptions.length === 0 ? '暂无可用规则，可先到「质量规则」页面创建' : '无匹配规则'}
                         options={ruleOptions.map((r) => {
                             const typeLabel = QUALITY_TYPE_LABEL[r.type as QualityRuleType] || r.type || '';
-                            return {
-                                value: String(r.id),
-                                label: typeLabel ? `${r.name}（${typeLabel}）` : r.name,
-                            };
+                            // 回显完整可读信息：规则名（类型 · 表名 · 阈值区间），便于确认引用正确性
+                            const detailParts: string[] = [];
+                            if (typeLabel) detailParts.push(typeLabel);
+                            if (r.tableName) detailParts.push(r.tableName);
+                            if (r.warningThreshold != null || r.severeThreshold != null) {
+                                const th: string[] = [];
+                                if (r.warningThreshold != null) th.push(`告警≥${r.warningThreshold}`);
+                                if (r.severeThreshold != null) th.push(`严重≥${r.severeThreshold}`);
+                                detailParts.push(th.join(' · '));
+                            }
+                            const label = detailParts.length > 0 ? `${r.name}（${detailParts.join(' · ')}）` : r.name;
+                            return {value: String(r.id), label};
                         })}
                         allowClear
                         className="w-full"

@@ -312,11 +312,19 @@ export default function DataQualityPage() {
         {
             title: '自动触发',
             dataIndex: 'autoTriggerEnabled',
-            width: 100,
+            width: 160,
             render: (autoTriggerEnabled: number, item) => (
                 autoTriggerEnabled === 1 ? (
-                    <span className="text-ds-small text-ds-text-secondary">
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
                         {item.autoTriggerObjectType ? AUTO_TRIGGER_TYPE_LABEL[item.autoTriggerObjectType] : '—'}
+                        {item.autoTriggerObjectName ? (
+                            <span
+                                title={item.autoTriggerObjectName}
+                                className="text-ds-text-primary font-medium"
+                            >
+                                （{item.autoTriggerObjectName}）
+                            </span>
+                        ) : null}
                     </span>
                 ) : (
                     <span className="text-ds-small text-ds-text-muted">未开启</span>

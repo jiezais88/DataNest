@@ -41,6 +41,9 @@
 | 标准合规检查 E2E（业务视角）            | ✅ 完成   | 15 用例全绿：判定（4 不合规：1 表命名+2 列命名+1 字段类型）/统计/UI/忽略/导出/权限/定时 handler（XXL-JOB 真实触发），见 §22 |
 | 规则模板库批量应用接线                   | ✅ 完成   | 模板库页「批量应用」从占位提示接线为真实 BatchApplyModal（扩展 jobId 可选+弹窗内选任务、initialTemplateId 预选模板）；quality-templates E2E 13 passed，见 §23 |
 | 规则执行 SQL 生成修复 + 测试补齐       | ✅ 完成   | 修复质量规则执行全「不可用」（前端模板必选 + CUSTOM_SQL 替换 {table} + 整表完整性非法 COUNT()）；补齐血缘徽章/定时触发两覆盖缺口；对齐重跑过时测试，Sprint 6 全量 E2E **83 passed**，见 §24 |
+| 质量模块 6 项 UX 增强                   | ✅ 完成   | 四档彩色计数列（与成功/失败并存）+ 规则阈值/判定依据显示（含邮件）+ 单规则定位到规则名（表名）+ 质量任务绑定对象名 + 合规导出文件名产品化 + 质量任务规则回显详情 + 批次详情告警触发对应（Flyway V3.8.1 加 quality_batch_id），后端 API 自测 6 项通过，见 §25 |
+| 血缘质量徽章演示数据                   | ✅ 完成   | 向 quality_score 造 5 条四档健康度数据（关联血缘中心表 test_source_orders 上下游），血缘图谱节点彩色徽章可见，见 §25.6 |
+| 质量批次告警一条一记录                 | ✅ 完成   | 批次收尾只落一条 alert_history，命中多条规则聚合进 summary（Flyway V3.8.2 加 summary 列），前端 AlertSection 解析命中规则列表，API 自测通过，见 §25.7 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -113,6 +116,13 @@
 | `data-nest-frontend`：`src/pages/governance/data-quality/`（新增 7 个文件）                                             | 「数据质量」页：`index.tsx`（双页签）+ `QualityJobDrawer` + `QualityRuleDrawer` + `BatchApplyModal` + `TableSelectModal` + `AutoTriggerSelect` |
 | `data-nest-frontend`：`Sidebar.tsx` + `router/index.tsx` + `utils/breadcrumb.ts`（修改）                                | 数据治理分组新增「数据质量」菜单（`GOVERNANCE_WRITE_ROLES`，路由 `/governance/data-quality`）+ 懒加载路由 + leaf 面包屑 |
 | `data-nest-frontend`：数据质量页面部署                                                                                  | `npm run build` + `docker compose build app-frontend` + `up -d`，SPA fallback 与懒加载 chunk 验证通过                 |
+| `task-core-entity`：DTO/实体（修改）                                                                                    | `QualityCheckBatchDTO` 加 passCount/warningCount/severeCount/unavailableCount + alertHistories；`QualityCheckDetailDTO` 加 warningThreshold/severeThreshold；`QualityJobDTO` 加 autoTriggerObjectName；`AlertHistory` 加 qualityBatchId，见 §25 |
+| `task-core`：`QualityCheckService`（修改）                                                                               | toBatchDTO 按 result_level 聚合四档；toDetailDTO 经 ruleId 回填阈值；executeRule 单规则 jobName 改「规则名（表名）」；fireBatchAlert 传 batchId；getBatchDetail 反查告警记录；buildDetailDesc 带阈值+档位，见 §25 |
+| `data-nest-alert`：`AlertFiringService`（修改）                                                                          | fireBatch 新增带 batchId 的 5 参重载（旧 4 参委托），saveHistory 落 quality_batch_id，见 §25 |
+| `task-core-governance`：`QualityJobService`（修改）                                                                      | 注入 SyncJobMapper/CollectTaskMapper/DagMapper，toDTO 回填 autoTriggerObjectName，见 §25 |
+| `data-nest-system`：Flyway `V3.8.1__alert_history_quality_batch_id.sql`（新增）                                          | alert_history 加 quality_batch_id BIGINT + 索引；版本号大于库内最高 3.8.0，见 §25 |
+| `governance`：`DataStandardController`（修改）                                                                           | 合规导出文件名产品化为 `DataNest-标准合规检查-<yyyyMMdd>.csv`（ASCII 兜底 + RFC5987 中文），见 §25 |
+| `data-nest-frontend`：`types/quality.ts` + `quality-checks/index.tsx` + `data-quality/index.tsx` + `QualityJobDrawer.tsx`（修改） | 四档彩色计数列、告警记录区块（AlertSection）、DetailCard 判定依据、质量任务绑定对象名列、引用规则回显详情，见 §25 |
 
 ### 📌 Sprint 7 方案A · 质量规则「先选数据源再选表」改造（2026-08-04 追加）
 
@@ -1388,3 +1398,78 @@ data-nest-common
 ### 24.5 测试跑慢的根因（供后续避免）
 
 playwright 默认单用例超时 **240s**，而上述 spec 长期因过时断言失败，每轮「跑→240s 超时→修→再跑」循环极慢。本次临时用 `--timeout=60000` 加速迭代，并一次性对齐结构后，**单个 spec 1~2 分钟跑完、全量 83 用例约 4 分钟**。后续改前端结构时应同步更新对应 E2E，勿再留「已知残留」红测试。
+
+---
+
+## 25. 质量模块 6 项 UX 增强（2026-08-06，产品反馈落地）
+
+> 起因：用户从产品角度提出 6 个 UX 反馈，核心是「让质量检查历史从『对任务负责』转向『对用户负责』」。全部为增量增强（新增展示字段/信息闭环），**不改评分/分级算法、不改既有字段语义**。后端 API 自测 6 项全部通过。
+
+### 25.1 反馈与落地方案（用户已确认全部 6 项一起做）
+
+| # | 反馈 | 落地方案 | 改动范围 |
+|---|------|----------|----------|
+| 1 | 规则明细显示判定依据（阈值/说明） | 批次详情 DetailCard 新增「判定依据」行（结果值+阈值区间+命中档位，如 `结果值 0.85 ｜ 警告≥0.30 · 严重≥0.60 → 严重`）；告警邮件正文同步带阈值 | 后端 QualityCheckDetailDTO 加 warningThreshold/severeThreshold，toDetailDTO 经 ruleId 回填；AlertFiringService 经 buildDetailDesc 带出；前端 DetailCard |
+| 2 | 检查历史列表四档分级彩色计数 | **保留「成功/失败」列，新增「通过/警告/严重/不可用」四档彩色计数列**（两列并存，分别反映执行层与判定层语义） | 后端 QualityCheckBatchDTO 加 passCount/warningCount/severeCount/unavailableCount，toBatchDTO 按 result_level 聚合；前端列表新列 |
+| 2/③ | 单规则执行定位到具体规则 | 单规则批次 jobName 从「单规则执行」改为「规则名（表名）」 | 后端 QualityCheckService.executeRule 在明细落库后按 ruleName+tableName 更新 jobName |
+| 3 | 质量任务显示绑定对象名（同步任务/DAG/采集） | QualityJobDTO 加 autoTriggerObjectName，QualityJobService 直接注入 entity 层 SyncJobMapper/CollectTaskMapper/DagMapper 按 objectType 回填 | 后端 QualityJobDTO + QualityJobService；前端质量任务列表「自动触发」列显示「类型（对象名）」 |
+| 4 | 标准合规导出文件名产品化 | 文件名改为 `DataNest-标准合规检查-<yyyyMMdd>.csv`（ASCII 兜底 + RFC5987 中文编码） | 后端 DataStandardController export |
+| 5 | 质量任务回显规则完整信息 | 质量任务抽屉「引用质量规则」option 增强为「规则名（类型 · 表名 · 阈值区间）」 | 纯前端 QualityJobDrawer |
+| 6 | 批次详情展示告警触发对应 | 批次详情新增「告警记录」区块：是否触发告警 + 命中告警规则名 + 发送状态 + 解释文案（批次状态=执行是否成功，告警仅针对达标等级，不可用不告警防误报） | 后端 alert_history 加 quality_batch_id 列 + AlertFiringService 落库 + 批次详情回填 alertHistories；前端 AlertSection |
+
+### 25.2 后端实现要点
+
+- **Flyway `V3.8.1__alert_history_quality_batch_id.sql`**：`alert_history` 加 `quality_batch_id BIGINT` + 索引 `idx_alert_history_quality_batch`。版本号须大于库内最高 `3.8.0`（Sprint 7 资产目录已占用 3.8.0，勿用 3.7.x）。历史告警该列为 NULL（不破坏既有查询）。
+- **AlertFiringService.fireBatch**：新增 5 参重载（带 `Long batchId`），旧 4 参签名委托（batchId=null），避免破坏 DAG/同步任务/采集任务告警调用；`saveHistory` 8 参版本落 `quality_batch_id`。`QualityCheckService.fireBatchAlert` 传 `batch.getId()`。
+- **批次详情回填告警**：`QualityCheckService.getBatchDetail` 按 `quality_batch_id` 反查 `alert_history` 回填到 `QualityCheckBatchDTO.alertHistories`（列表页用 QueryWrapper 查询）。
+- **邮件阈值**：`QualityCheckService.buildDetailDesc` 经 ruleId 查 QualityRule 拼「阈值:警告≥x · 严重≥y → 档位」，`AlertItem.detail()` 已在邮件正文逐条列出，无需改 AlertFiringService 邮件模板。
+
+### 25.3 前端实现要点
+
+- `types/quality.ts`：`QualityCheckBatch` 加 passCount/warningCount/severeCount/unavailableCount + alertHistories；`QualityCheckDetail` 加 warningThreshold/severeThreshold；`QualityJob` 加 autoTriggerObjectName；新增 `QualityBatchAlertHistory` 接口。
+- `quality-checks/index.tsx`：列表「成功/失败」列后新增四档彩色计数列；详情抽屉加 `AlertSection`（告警记录区块，含已触发徽章 + 规则名 + 解释文案）；DetailCard 加「判定依据」行。
+- `data-quality/index.tsx`：「自动触发」列显示「类型（对象名）」。
+- `QualityJobDrawer.tsx`：「引用质量规则」option 增强为「规则名（类型 · 表名 · 阈值区间）」。
+- 前端 build 用 `tsc -b`（严格），曾遇 `section` 标签未闭合报错（AlertSection 插入时重复 section 片段），修复后 EXITCODE=0。
+
+### 25.4 验证结果（后端 API 自测 6 项全部通过）
+
+| 项 | 验证方式 | 结果 |
+|----|----------|------|
+| 四档计数 | 批次列表返回 passCount/warningCount/severeCount/unavailableCount | ✅（批次 3 规则 → 1通过/1警告/1严重） |
+| 阈值回填 | 批次详情 detail 带 warningThreshold=0.01/severeThreshold=0.05 | ✅（结果值 1.0 ≥ 严重阈值 → 严重） |
+| 批次↔告警 | 手动触发绑定 QUALITY 告警规则的任务，alert_history 落 quality_batch_id=2085220742135713793，批次详情回填 2 条告警记录（质量任务失败告警/FAILURE/SUCCESS） | ✅ |
+| 单规则定位 | 触发单规则执行，jobName 更新为「订单表整表完整性检查（orders）」 | ✅ |
+| 对象名回填 | 质量任务「同步自动质量检查」返回 autoTriggerObjectName=同步任务名 | ✅ |
+| 导出文件名 | Content-Disposition 含 `filename="DataNest-compliance-check-20260806.csv"; filename*=UTF-8''DataNest-标准合规检查-20260806.csv` | ✅ |
+
+### 25.5 构建/部署
+
+- 改到 task-core 拆分层（entity/alert/task-core-governance/task-core）+ governance + system → 全量 `mvn clean package -DskipTests` + 重建 `app-system app-governance app-engineering app-worker app-job` 5 容器，均 healthy；Flyway V3.8.1 成功应用。
+- 前端改 4 个文件 → `npm run build`（tsc -b 通过）+ 重建 `app-frontend`。
+- 前端验证：质量检查历史页 `/governance/quality-checks` 返回 HTTP 200。
+
+### 25.6 血缘质量徽章演示数据（2026-08-06，UX 需求 1「造些数据让我看看」）
+
+> 用户想直接看到血缘图谱节点的质量徽章效果。血缘徽章机制：血缘图谱节点名（`lineage_record` 的 source/target 全名）按 `quality_score.table_name` 精确匹配，匹配上显示彩色评分徽章（优/良/一般/差），否则灰色「—」。据此向 `quality_score` 造了 5 条记录（覆盖四档健康度），并补建对应 `metadata_table` 记录。
+
+- **造数据内容**（均关联血缘图谱中心表 `datanest.test_source_orders` 的上下游）：
+  - `datanest.test_source_orders` → EXCELLENT 98（绿）
+  - `datanest.test_source_logs` → GOOD 85（绿）
+  - `datanest.test_lineage_target_s4_0802171037_8180` → WARNING 65（黄）
+  - `datanest.test_lineage_target_s4_0802171309_9bd0` → BAD 42（红）
+  - `datanest.test_lineage_target_s4_0802172150_4e38` → GOOD 88（绿，复用已有 metadata_table id=2083914699480739842）
+- **造法**：给 4 个未注册的表补建 `metadata_table`（datasource_id=-1 内置 Doris，database_name=datanest），再插 `quality_score`（幂等 `WHERE NOT EXISTS`）。血缘图谱接口只按 `table_name` 匹配，不 join metadata_table，故 `table_id` 关联保证数据完整。
+- **验证**：`GET /api/governance/lineage/graph?tableName=datanest.test_source_orders&depth=1` 返回中心表 qualityScore=98/EXCELLENT + 3 个目标表（WARNING 65 / BAD 42 / GOOD 88），其余未命中节点保持 null（前端灰色「—」）。前端血缘页 `/governance/metadata/lineage?tableName=datanest.test_source_orders` HTTP 200。
+- **清理方式**：`DELETE FROM quality_score WHERE id IN (9000300000000000001,9000300000000000002,9000300000000000003,9000300000000000004,9000300000000000005); DELETE FROM metadata_table WHERE id IN (9000200000000000001,9000200000000000002,9000200000000000003,9000200000000000004);`
+
+### 25.7 质量批次告警「一个批次一条告警记录」（2026-08-06，UX 需求 2）
+
+> 原实现：批次收尾时每条命中规则写一条 `alert_history`，一个批次对应多条告警记录。用户要求：**多个规则触发告警也只记录一条告警记录，且记录里体现触发了哪些规则**。已改为一个批次一条告警，命中规则聚合进 `summary` 字段。
+
+- **Flyway `V3.8.2__alert_history_summary.sql`**：`alert_history` 加 `summary TEXT`（存聚合明细，每行一条规则「[等级] 规则名: 详情」）。版本号须大于库内最高 `3.8.1`。
+- **AlertFiringService.fireBatch**：落库改为**只写一条** `alert_history`（不再循环逐条）；`buildBatchSummary(items)` 把本次命中的多条规则聚合为多行存 `summary`；`saveHistory` 的 summary 从仅 log 改为落库实体字段。
+- **AlertHistory 实体**：加 `summary` 字段。
+- **前端 `quality-checks/index.tsx`**：`AlertSection` 改为取告警第一条为主记录，从 `summary` 按行解析出「命中规则（等级 + 规则名）」徽章列表；`QualityBatchAlertHistory` 加 `summary`。
+- **验证**：手动触发质量任务「核心业务表完整性检查」（SEVERE_WARNING），批次 3 条规则（警告+严重+通过），命中 2 条（警告+严重），`alert_history` **只落 1 条**且 `summary` 聚合 2 行（`[警告] 订单表整表完整性检查...→WARNING \n [严重] 订单表异常金额检查...→SEVERE`）。批次详情接口回填 `alertHistories[0].summary` 完整。旧实现同场景落 2 条，新实现正确收敛为 1 条。
+- **构建**：改到 alert/task-core-entity/task-core/system → 全量 `mvn clean package -DskipTests` + 重建 5 容器（Flyway V3.8.2 成功应用 success=t）；前端改 2 文件 → `npm run build`（EXITCODE=0）+ 重建 app-frontend。

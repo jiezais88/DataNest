@@ -1,0 +1,1 @@
+ALTER TABLE quality_job ADD COLUMN timeout_minutes INT NULL;

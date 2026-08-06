@@ -57,6 +57,10 @@ export interface AlertHistory {
     objectName?: string;
     /** 告警规则名称（冗余/联查，规则删除后仍保留） */
     ruleName?: string;
+    /** 质量批次告警聚合明细（每行一条「[等级] 规则名: 详情」），仅质量任务告警有值 */
+    summary?: string;
+    /** 关联的质量检查批次 ID（质量任务告警时回填） */
+    qualityBatchId?: string;
 }
 
 /** 用户选择器选项（仅返回已填写邮箱的用户） */

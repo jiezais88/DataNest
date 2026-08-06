@@ -20,6 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -156,9 +158,14 @@ public class DataStandardController {
     @PostMapping("/compliance-check/export")
     public ResponseEntity<byte[]> exportComplianceCheck(@RequestBody ComplianceCheckRequest request) {
         String csv = complianceCheckService.export(request);
-        String filename = "compliance_check_" + System.currentTimeMillis() + ".csv";
+        // 产品化文件名：DataNest-标准合规检查-日期.csv；ASCII 兜底 + RFC5987 中文编码
+        String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String filename = "DataNest-标准合规检查-" + date + ".csv";
+        String asciiFilename = "DataNest-compliance-check-" + date + ".csv";
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
+                                + java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8))
                 .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
                 .body(csv.getBytes(StandardCharsets.UTF_8));
     }

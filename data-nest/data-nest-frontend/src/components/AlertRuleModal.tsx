@@ -376,6 +376,15 @@ export default function AlertRuleModal({
                                 </label>
                             ))}
                         </div>
+                        {objectType === 'QUALITY' && (
+                            <div
+                                className="mt-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2 text-ds-nano text-ds-text-muted leading-relaxed">
+                                <p className="font-semibold text-ds-text-secondary mb-0.5">质量任务触发语义说明</p>
+                                <p>• 失败：批次中存在达到任务告警等级（严重/警告）的检查项</p>
+                                <p>• 成功：批次全部检查项通过且执行成功</p>
+                                <p>• 超时：任务配置了超时阈值（编辑任务 → 执行超时），批次执行超过该分钟数仍 RUNNING 即触发；未配置则永不触发</p>
+                            </div>
+                        )}
                     </div>
 
                     <div>

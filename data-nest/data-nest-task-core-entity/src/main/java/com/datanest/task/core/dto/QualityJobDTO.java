@@ -35,7 +35,13 @@ public class QualityJobDTO {
 
     private Long autoTriggerObjectId;
 
+    /** 自动触发绑定对象名称（同步任务/DAG 节点/采集任务，经 objectId 回填） */
+    private String autoTriggerObjectName;
+
     private String alertLevel;
+
+    /** 执行超时阈值（分钟），null = 不启用超时检测 */
+    private Integer timeoutMinutes;
 
     private LocalDateTime lastTriggerAt;
 

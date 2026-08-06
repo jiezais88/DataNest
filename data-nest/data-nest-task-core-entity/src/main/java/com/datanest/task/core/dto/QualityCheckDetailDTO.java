@@ -32,6 +32,12 @@ public class QualityCheckDetailDTO {
     /** 分级判定：PASS / WARNING / SEVERE / UNAVAILABLE */
     private String resultLevel;
 
+    /** 警告阈值（判定依据，经 ruleId 回填，便于展示"为什么严重"） */
+    private BigDecimal warningThreshold;
+
+    /** 严重阈值（判定依据，经 ruleId 回填） */
+    private BigDecimal severeThreshold;
+
     /** 1 成功，0 失败 */
     private Integer success;
 

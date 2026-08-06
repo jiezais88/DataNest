@@ -89,10 +89,14 @@ public class AlertFiringService {
     }
 
     private void saveHistory(AlertRule rule, Long objectId, String objectName, String alertType, String recipients, String sendStatus) {
-        saveHistory(rule, objectId, objectName, alertType, recipients, sendStatus, null);
+        saveHistory(rule, objectId, objectName, alertType, recipients, sendStatus, null, null);
     }
 
     private void saveHistory(AlertRule rule, Long objectId, String objectName, String alertType, String recipients, String sendStatus, String summary) {
+        saveHistory(rule, objectId, objectName, alertType, recipients, sendStatus, summary, null);
+    }
+
+    private void saveHistory(AlertRule rule, Long objectId, String objectName, String alertType, String recipients, String sendStatus, String summary, Long qualityBatchId) {
         try {
             AlertHistory history = new AlertHistory();
             history.setId(IdWorker.getId());
@@ -100,14 +104,13 @@ public class AlertFiringService {
             history.setRuleName(rule.getName());
             history.setObjectType(rule.getObjectType());
             history.setObjectId(objectId);
+            history.setQualityBatchId(qualityBatchId);
             history.setAlertType(alertType);
             history.setRecipients(recipients);
             history.setSendStatus(sendStatus);
             history.setSentAt(LocalDateTime.now());
+            history.setSummary(summary);
             alertHistoryMapper.insert(history);
-            if (StringUtils.hasText(summary)) {
-                logger.info("告警历史记录明细: ruleId={}, summary={}", rule.getId(), summary);
-            }
         } catch (Exception e) {
             logger.error("告警历史写入失败: ruleId={}", rule.getId(), e);
         }
@@ -174,17 +177,41 @@ public class AlertFiringService {
     }
 
     /**
-     * 批量合并告警：同一次执行批次的多条异常合并为**一封邮件**发送，并为每条异常写一条 alert_history。
+     * 批量合并告警：同一次执行批次的多条异常合并为**一封邮件**发送，并**只写一条** alert_history。
      * <p>
      * 区别于 {@link #fire}（单对象单条），fireBatch 汇总 items 到同一封邮件正文逐条列出；
      * 用于质量检查批次收尾时，同一任务下达到告警等级的规则明细统一通知。
+     * <p>
+     * 一个批次只落一条告警记录（一个批次对应一条告警），
+     * 命中的多条规则通过 {@code summary} 字段聚合（每行一条规则：等级 + 规则名 + 详情），
+     * rule_name 存「首个规则名 + 共 n 条」，供批次详情反查展示触发了哪些规则。
      * <p>
      * 幂等：与 fire 一致按「对象 + 触发类型」60s 窗口防重（countRecent），
      * 批次级幂等由调用侧以 alert_sent 标记额外兜底。
      *
      * @return true 表示命中规则并已处理（含幂等跳过）；false 表示无规则/未启用/未命中触发条件/无有效收件人。
      */
+    /**
+     * 兼容旧签名：不关联质量批次（非质量对象告警使用）。
+     */
     public boolean fireBatch(String objectType, Long objectId, String alertType, List<AlertItem> items) {
+        return fireBatch(objectType, objectId, alertType, items, null);
+    }
+
+    /**
+     * 批量合并告警（质量批次关联版）：同一次执行批次的多条异常合并为**一封邮件**发送，并**只写一条** alert_history。
+     * <p>
+     * 一个批次只落一条告警记录（一个批次对应一条告警），
+     * 命中的多条规则通过 {@code summary} 字段聚合（每行一条规则：等级 + 规则名 + 详情），
+     * rule_name 存「首个规则名 + 共 n 条」，供批次详情反查展示触发了哪些规则。
+     * <p>
+     * 幂等：与 fire 一致按「对象 + 触发类型」60s 窗口防重（countRecent），
+     * 批次级幂等由调用侧以 alert_sent 标记额外兜底。
+     *
+     * @param batchId 关联的质量检查批次 ID（质量对象告警时传入，供批次详情反查告警记录；非质量告警传 null）
+     * @return true 表示命中规则并已处理（含幂等跳过）；false 表示无规则/未启用/未命中触发条件/无有效收件人。
+     */
+    public boolean fireBatch(String objectType, Long objectId, String alertType, List<AlertItem> items, Long batchId) {
         if (items == null || items.isEmpty()) {
             return false;
         }
@@ -222,10 +249,8 @@ public class AlertFiringService {
                     objectType, objectId, alertType, e);
         }
         String sendStatus = sent ? AlertConstants.SEND_STATUS_SUCCESS : AlertConstants.SEND_STATUS_FAILED;
-        for (AlertItem item : items) {
-            saveHistory(rule, objectId, objectName, alertType, recipients, sendStatus,
-                    buildItemSummary(item));
-        }
+        // 一个批次只落一条告警记录：summary 存每条命中规则明细多行（等级 + 规则名 + 详情），体现本次触发了哪些规则
+        saveHistory(rule, objectId, objectName, alertType, recipients, sendStatus, buildBatchSummary(items), batchId);
         return true;
     }
 
@@ -260,9 +285,26 @@ public class AlertFiringService {
         return sb.toString();
     }
 
-    /** 单条 history 记录异常摘要（等级 + 规则名）。 */
-    private String buildItemSummary(AlertItem item) {
-        return "[" + displayLevel(item.level()) + "] " + safeName(item.ruleName());
+    /**
+     * 批次告警聚合明细：把本次触发的多条规则汇总为多行字符串（每行一条规则）。
+     * 存于 alert_history.summary，供批次详情展示「触发了哪些规则」。
+     * 行格式：{@code [等级] 规则名: 详情}（详情可空）。
+     */
+    private String buildBatchSummary(List<AlertItem> items) {
+        if (items == null || items.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (AlertItem item : items) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append('[').append(displayLevel(item.level())).append("] ").append(safeName(item.ruleName()));
+            if (StringUtils.hasText(item.detail())) {
+                sb.append(": ").append(item.detail());
+            }
+        }
+        return sb.toString();
     }
 
     private String displayLevel(String level) {

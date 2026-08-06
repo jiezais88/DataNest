@@ -25,10 +25,13 @@ import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityScore;
 import com.datanest.task.core.mapper.AlertRuleMapper;
 import com.datanest.task.core.mapper.AlertRuleObjectMapper;
+import com.datanest.task.core.mapper.CollectTaskMapper;
+import com.datanest.task.core.mapper.DagMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import com.datanest.task.core.mapper.QualityJobRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityScoreMapper;
+import com.datanest.task.core.mapper.SyncJobMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,6 +79,9 @@ public class QualityJobService {
     private final QualityJobRuleMapper qualityJobRuleMapper;
     private final QualityRuleMapper qualityRuleMapper;
     private final QualityScoreMapper qualityScoreMapper;
+    private final SyncJobMapper syncJobMapper;
+    private final CollectTaskMapper collectTaskMapper;
+    private final DagMapper dagMapper;
 
     public QualityJobService(QualityJobMapper jobMapper,
                              QualityRuleService ruleService,
@@ -86,7 +92,10 @@ public class QualityJobService {
                              AlertRuleMapper alertRuleMapper,
                              QualityJobRuleMapper qualityJobRuleMapper,
                              QualityRuleMapper qualityRuleMapper,
-                             QualityScoreMapper qualityScoreMapper) {
+                             QualityScoreMapper qualityScoreMapper,
+                             SyncJobMapper syncJobMapper,
+                             CollectTaskMapper collectTaskMapper,
+                             DagMapper dagMapper) {
         this.jobMapper = jobMapper;
         this.ruleService = ruleService;
         this.sysUserService = sysUserService;
@@ -97,6 +106,9 @@ public class QualityJobService {
         this.qualityJobRuleMapper = qualityJobRuleMapper;
         this.qualityRuleMapper = qualityRuleMapper;
         this.qualityScoreMapper = qualityScoreMapper;
+        this.syncJobMapper = syncJobMapper;
+        this.collectTaskMapper = collectTaskMapper;
+        this.dagMapper = dagMapper;
     }
 
     // ==================== 查询 ====================
@@ -159,6 +171,7 @@ public class QualityJobService {
         entity.setAutoTriggerObjectType(request.getAutoTriggerObjectType());
         entity.setAutoTriggerObjectId(request.getAutoTriggerObjectId());
         entity.setAlertLevel(request.getAlertLevel() == null ? "SEVERE_WARNING" : request.getAlertLevel());
+        entity.setTimeoutMinutes(request.getTimeoutMinutes());
         entity.setCreatedBy(currentUserId());
         entity.setCreatedAt(LocalDateTime.now());
         jobMapper.insert(entity);
@@ -222,6 +235,10 @@ public class QualityJobService {
         }
         if (request.getAlertLevel() != null) {
             wrapper.set("alert_level", request.getAlertLevel());
+        }
+        // timeoutMinutes：null 不更新（保留原值）；传值（包含 0=禁用）则覆盖
+        if (request.getTimeoutMinutes() != null) {
+            wrapper.set("timeout_minutes", request.getTimeoutMinutes());
         }
         wrapper.set("updated_by", currentUserId());
         wrapper.set("updated_at", LocalDateTime.now());
@@ -458,7 +475,10 @@ public class QualityJobService {
         dto.setAutoTriggerEnabled(entity.getAutoTriggerEnabled());
         dto.setAutoTriggerObjectType(entity.getAutoTriggerObjectType());
         dto.setAutoTriggerObjectId(entity.getAutoTriggerObjectId());
+        // 回填自动触发绑定对象名（同步任务/DAG 节点/采集任务），便于列表/详情直观展示绑定关系
+        dto.setAutoTriggerObjectName(resolveAutoTriggerObjectName(entity));
         dto.setAlertLevel(entity.getAlertLevel());
+        dto.setTimeoutMinutes(entity.getTimeoutMinutes());
         dto.setLastTriggerAt(entity.getLastTriggerAt());
         dto.setScheduleStatusBadge(resolveScheduleBadge(entity));
         dto.setRuleCount(ruleCountMap.getOrDefault(entity.getId(), 0L));
@@ -469,6 +489,32 @@ public class QualityJobService {
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         return dto;
+    }
+
+    /** 解析自动触发绑定对象名称：DAG_NODE → dag.name；SYNC_JOB → sync_job.name；COLLECT_TASK → collect_task.name。 */
+    private String resolveAutoTriggerObjectName(QualityJob job) {
+        if (job.getAutoTriggerObjectId() == null) {
+            return null;
+        }
+        String type = job.getAutoTriggerObjectType();
+        Long objectId = job.getAutoTriggerObjectId();
+        try {
+            if ("SYNC_JOB".equals(type)) {
+                var obj = syncJobMapper.selectById(objectId);
+                return obj == null ? null : obj.getName();
+            }
+            if ("COLLECT_TASK".equals(type)) {
+                var obj = collectTaskMapper.selectById(objectId);
+                return obj == null ? null : obj.getName();
+            }
+            if ("DAG_NODE".equals(type)) {
+                var obj = dagMapper.selectById(objectId);
+                return obj == null ? null : obj.getName();
+            }
+        } catch (Exception e) {
+            logger.warn("解析质量任务自动触发对象名失败: jobId={}, type={}, objectId={}", job.getId(), type, objectId, e);
+        }
+        return null;
     }
 
     private Map<Long, Long> loadRuleCounts(List<QualityJob> records) {

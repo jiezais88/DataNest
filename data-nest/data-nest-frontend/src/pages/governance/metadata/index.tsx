@@ -58,6 +58,7 @@ export default function MetadataPage() {
     const tableIdParam = searchParams.get('tableId');
     const columnIdParam = searchParams.get('columnId');
     const fromCompliance = searchParams.get('from') === 'compliance';
+    const tabParam = searchParams.get('tab');
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -153,6 +154,13 @@ export default function MetadataPage() {
             cancelled = true;
         };
     }, [tableIdParam, columnIdParam]);
+
+    // 血缘图谱「← 返回」进入时定位到「血缘图谱」页签（URL ?tab=lineage）
+    useEffect(() => {
+        if (tabParam === 'lineage' && tableIdParam) {
+            setDetailTab('lineage');
+        }
+    }, [tabParam, tableIdParam]);
 
     const expandAncestors = (node: MetadataTreeNode) => {
         const next = new Set(expanded);

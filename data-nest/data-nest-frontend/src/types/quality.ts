@@ -75,8 +75,12 @@ export interface QualityJob {
     autoTriggerObjectType?: AutoTriggerObjectType;
     /** 自动触发对象 ID（DAG 节点主键 / 同步任务主键 / 采集任务主键） */
     autoTriggerObjectId?: string;
+    /** 自动触发绑定对象名称（同步任务/DAG 节点/采集任务，后端经 objectId 回填） */
+    autoTriggerObjectName?: string;
     /** 告警触发等级 */
     alertLevel: QualityAlertLevel;
+    /** 执行超时阈值（分钟），空 = 不启用超时检测；>0 表示超过该分钟数仍 RUNNING 即触发 TIMEOUT 告警 */
+    timeoutMinutes?: number;
     /** 规则数量（列表 computed 字段） */
     ruleCount?: number;
     /** 调度状态徽章（后端 computed：已启用 / 已停用 / —） */
@@ -104,6 +108,8 @@ export interface QualityJobCreateRequest {
     autoTriggerObjectType?: AutoTriggerObjectType;
     autoTriggerObjectId?: string;
     alertLevel?: QualityAlertLevel;
+    /** 执行超时阈值（分钟），必须 ≥ 1 */
+    timeoutMinutes?: number;
     /** 引用的质量规则 ID 集合（Sprint 7） */
     ruleIds?: string[];
 }
@@ -119,6 +125,8 @@ export interface QualityJobUpdateRequest {
     autoTriggerObjectType?: AutoTriggerObjectType;
     autoTriggerObjectId?: string;
     alertLevel?: QualityAlertLevel;
+    /** 执行超时阈值（分钟），null 不更新；≥0 覆盖（0 = 禁用） */
+    timeoutMinutes?: number;
     /** 引用的质量规则 ID 集合（全量覆盖，Sprint 7） */
     ruleIds?: string[];
 }
@@ -301,9 +309,37 @@ export interface QualityCheckBatch {
     successCount?: number;
     /** 失败规则数 */
     failedCount?: number;
+    /** 通过规则数（按 result_level=PASS 聚合，判定层） */
+    passCount?: number;
+    /** 警告规则数（按 result_level=WARNING 聚合） */
+    warningCount?: number;
+    /** 严重规则数（按 result_level=SEVERE 聚合） */
+    severeCount?: number;
+    /** 不可用规则数（按 result_level=UNAVAILABLE 聚合） */
+    unavailableCount?: number;
     /** 规则明细（仅详情接口回填） */
     details?: QualityCheckDetail[];
+    /** 关联的告警记录（仅详情接口回填，按 quality_batch_id 反查 alert_history） */
+    alertHistories?: QualityBatchAlertHistory[];
     createdAt?: string;
+}
+
+/** 批次关联的告警记录（对齐后端 AlertHistory，批次详情反查回填） */
+export interface QualityBatchAlertHistory {
+    id?: string;
+    /** 告警规则 ID */
+    alertRuleId?: string;
+    /** 告警规则名（冗余落库，规则删除后仍保留） */
+    ruleName?: string;
+    /** 告警类型：FAILURE / TIMEOUT / SUCCESS */
+    alertType?: string;
+    /** 接收邮箱列表，分号分隔 */
+    recipients?: string;
+    /** 发送状态：SUCCESS / FAILED */
+    sendStatus?: string;
+    sentAt?: string;
+    /** 批次告警聚合明细（每行一条命中规则「等级 + 规则名 + 详情」，一个批次只落一条告警记录） */
+    summary?: string;
 }
 
 /** 质量检查规则明细（对齐后端 QualityCheckDetailDTO） */
@@ -323,6 +359,10 @@ export interface QualityCheckDetail {
     resultValue?: number | string;
     /** 分级判定：通过 / 警告 / 严重 / 不可用（Sprint 6 分级告警） */
     resultLevel?: QualityCheckLevel;
+    /** 警告阈值（判定依据，经 ruleId 回填，展示"为什么判严重"） */
+    warningThreshold?: number | string;
+    /** 严重阈值（判定依据，经 ruleId 回填） */
+    severeThreshold?: number | string;
     /** 1 成功，0 失败 */
     success?: number;
     errorMessage?: string;

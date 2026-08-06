@@ -51,6 +51,9 @@ public class QualityJob {
     /** 告警触发等级：SEVERE_ONLY / SEVERE_WARNING */
     private String alertLevel;
 
+    /** 执行超时阈值（分钟），null = 不启用超时检测（Sprint 6+） */
+    private Integer timeoutMinutes;
+
     /** 最近一次触发时间 */
     private LocalDateTime lastTriggerAt;
 

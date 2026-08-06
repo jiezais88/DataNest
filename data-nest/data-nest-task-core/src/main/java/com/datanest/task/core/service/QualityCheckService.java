@@ -18,6 +18,8 @@ import com.datanest.task.core.entity.QualityCheckDetail;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
+import com.datanest.task.core.entity.AlertHistory;
+import com.datanest.task.core.mapper.AlertHistoryMapper;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityCheckBatchMapper;
@@ -36,6 +38,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 质量检查执行核心（Sprint 8 执行层）。
@@ -56,11 +64,26 @@ public class QualityCheckService {
     /** 内置 Doris 数据源 ID 标记（metadata_table.datasource_id = -1 时走 DorisSqlExecutor） */
     private static final long DORIS_DATASOURCE_ID = -1L;
 
+    /** 批次执行超时检测调度器（守护线程，不阻止 JVM 退出） */
+    private static final ScheduledExecutorService TIMEOUT_SCHEDULER = Executors.newScheduledThreadPool(2, new java.util.concurrent.ThreadFactory() {
+        private final AtomicInteger seq = new AtomicInteger();
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "quality-timeout-" + seq.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        }
+    });
+
+    /** 批次 ID → 等待中的超时检测任务；批次正常结束/异常时移除并取消，避免误判为超时 */
+    private static final ConcurrentHashMap<Long, ScheduledFuture<?>> BATCH_TIMEOUTS = new ConcurrentHashMap<>();
+
     private final QualityCheckBatchMapper batchMapper;
     private final QualityCheckDetailMapper detailMapper;
     private final QualityJobMapper jobMapper;
     private final QualityRuleMapper ruleMapper;
     private final QualityRuleTemplateMapper templateMapper;
+    private final AlertHistoryMapper alertHistoryMapper;
     private final MetadataTableMapper tableMapper;
     private final DataSourceConnectionMapper dataSourceMapper;
     private final DorisSqlExecutor dorisSqlExecutor;
@@ -73,6 +96,7 @@ public class QualityCheckService {
                                QualityJobMapper jobMapper,
                                QualityRuleMapper ruleMapper,
                                QualityRuleTemplateMapper templateMapper,
+                               AlertHistoryMapper alertHistoryMapper,
                                MetadataTableMapper tableMapper,
                                DataSourceConnectionMapper dataSourceMapper,
                                DorisSqlExecutor dorisSqlExecutor,
@@ -84,6 +108,7 @@ public class QualityCheckService {
         this.jobMapper = jobMapper;
         this.ruleMapper = ruleMapper;
         this.templateMapper = templateMapper;
+        this.alertHistoryMapper = alertHistoryMapper;
         this.tableMapper = tableMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.dorisSqlExecutor = dorisSqlExecutor;
@@ -102,34 +127,86 @@ public class QualityCheckService {
         QualityCheckBatch batch = initBatch(job, triggerType);
         logger.info("质量检查任务开始执行: batchId={}, jobId={}, triggerType={}", batch.getId(), jobId, triggerType);
 
-        // 取任务引用且启用的规则（经 quality_job_rule 关联表）
-        List<QualityRule> rules = listEnabledRulesByJob(jobId);
-        if (rules.isEmpty()) {
-            logger.warn("质量检查任务无启用规则: batchId={}, jobId={}", batch.getId(), jobId);
-        }
+        // 执行超时检测：任务配置了 timeoutMinutes 时，到点后若批次仍 RUNNING 则触发 TIMEOUT 告警。
+        // 注意：不取消正在执行的规则（避免 SQL 中断风险），让后台自然跑完；超时只触发告警，不改批次终态。
+        scheduleTimeoutWatch(job, batch.getId());
 
-        int success = 0;
-        int failed = 0;
-        List<Long> tableIds = new ArrayList<>();
-        for (QualityRule rule : rules) {
-            boolean ok = executeSingleRule(rule, batch.getId());
-            if (ok) {
-                success++;
-            } else {
-                failed++;
+        try {
+            // 取任务引用且启用的规则（经 quality_job_rule 关联表）
+            List<QualityRule> rules = listEnabledRulesByJob(jobId);
+            if (rules.isEmpty()) {
+                logger.warn("质量检查任务无启用规则: batchId={}, jobId={}", batch.getId(), jobId);
             }
-            if (rule.getTableId() != null) {
-                tableIds.add(rule.getTableId());
-            }
-        }
 
-        finishBatch(batch, success, failed, null);
-        updateJobLastTriggerAt(jobId);
-        // 表级评分：批次收尾后按涉及表跨任务聚合重算，评分与告警基于同一批最新结果
-        scoreCalculator.recalculateForTables(tableIds);
-        fireBatchAlert(job, batch);
-        logger.info("质量检查任务执行完成: batchId={}, jobId={}, success={}, failed={}", batch.getId(), jobId, success, failed);
-        return batch.getId();
+            int success = 0;
+            int failed = 0;
+            List<Long> tableIds = new ArrayList<>();
+            for (QualityRule rule : rules) {
+                boolean ok = executeSingleRule(rule, batch.getId());
+                if (ok) {
+                    success++;
+                } else {
+                    failed++;
+                }
+                if (rule.getTableId() != null) {
+                    tableIds.add(rule.getTableId());
+                }
+            }
+
+            finishBatch(batch, success, failed, null);
+            updateJobLastTriggerAt(jobId);
+            // 表级评分：批次收尾后按涉及表跨任务聚合重算，评分与告警基于同一批最新结果
+            scoreCalculator.recalculateForTables(tableIds);
+            fireBatchAlert(job, batch);
+            logger.info("质量检查任务执行完成: batchId={}, jobId={}, success={}, failed={}", batch.getId(), jobId, success, failed);
+            return batch.getId();
+        } finally {
+            // 无论正常完成或异常，都取消超时检测，避免超时回调误判
+            cancelTimeoutWatch(batch.getId());
+        }
+    }
+
+    /**
+     * 注册批次超时检测：到点后检查批次是否仍 RUNNING，若是则触发 TIMEOUT 告警。
+     */
+    private void scheduleTimeoutWatch(QualityJob job, Long batchId) {
+        Integer minutes = job.getTimeoutMinutes();
+        if (minutes == null || minutes <= 0) {
+            return;
+        }
+        ScheduledFuture<?> sf = TIMEOUT_SCHEDULER.schedule(() -> checkAndFireTimeout(job, batchId, minutes),
+                minutes, TimeUnit.MINUTES);
+        BATCH_TIMEOUTS.put(batchId, sf);
+    }
+
+    private void cancelTimeoutWatch(Long batchId) {
+        ScheduledFuture<?> sf = BATCH_TIMEOUTS.remove(batchId);
+        if (sf != null) {
+            sf.cancel(false);
+        }
+    }
+
+    /**
+     * 超时检测回调：批次仍 RUNNING → 触发 TIMEOUT 告警（用 fire 单条，无明细聚合）。
+     * 幂等依赖 AlertFiringService.countRecent 60s 防重。
+     */
+    private void checkAndFireTimeout(QualityJob job, Long batchId, Integer minutes) {
+        try {
+            QualityCheckBatch b = batchMapper.selectById(batchId);
+            if (b == null) {
+                return;
+            }
+            // 已结束的批次不算超时（执行可能在超时点前完成）
+            if (!"RUNNING".equalsIgnoreCase(b.getStatus())) {
+                return;
+            }
+            logger.warn("质量任务执行超时: jobId={}, batchId={}, timeoutMinutes={}", job.getId(), batchId, minutes);
+            alertFiringService.fire(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+                    AlertConstants.ALERT_TIMEOUT,
+                    "执行超时：超过 " + minutes + " 分钟仍未完成");
+        } catch (Exception e) {
+            logger.error("质量任务超时检测失败: jobId={}, batchId={}", job.getId(), batchId, e);
+        }
     }
 
     /**
@@ -142,6 +219,7 @@ public class QualityCheckService {
         QualityJob job = rule.getJobId() == null ? null : jobMapper.selectById(rule.getJobId());
         QualityCheckBatch batch = new QualityCheckBatch();
         batch.setJobId(null);
+        // 单规则执行：先落临时 jobName，明细落库后按规则名+表名更新，便于用户定位是哪个规则
         batch.setJobName(job == null ? "单规则执行" : job.getName());
         batch.setTriggerType(triggerType);
         batch.setStatus("RUNNING");
@@ -152,6 +230,18 @@ public class QualityCheckService {
 
         boolean ok = executeSingleRule(rule, batch.getId());
         finishBatch(batch, ok ? 1 : 0, ok ? 0 : 1, null);
+        // 单规则定位：用明细里的规则名 + 目标表名更新批次任务名（对用户展示"规则名（表名）"）
+        if (rule.getTableId() != null) {
+            MetadataTable table = tableMapper.selectById(rule.getTableId());
+            String tableName = table == null ? null : table.getTableName();
+            String displayName = (tableName == null || tableName.isBlank())
+                    ? rule.getName()
+                    : rule.getName() + "（" + tableName + "）";
+            QualityCheckBatch update = new QualityCheckBatch();
+            update.setId(batch.getId());
+            update.setJobName(displayName);
+            batchMapper.updateById(update);
+        }
         // 表级评分：单规则执行后同样重算该规则所在表，保持评分最新
         if (rule.getTableId() != null) {
             scoreCalculator.recalculateForTables(List.of(rule.getTableId()));
@@ -497,10 +587,13 @@ public class QualityCheckService {
      * <ul>
      *   <li>任务未配置 alert_level（SEVERE_ONLY / SEVERE_WARNING）→ 不触发</li>
      *   <li>批次已发送（alert_sent=1）→ 跳过（幂等）</li>
-     *   <li>按任务触发等级过滤达到等级的明细：SEVERE/UNAVAILABLE 必触发；WARNING 仅在 SEVERE_WARNING 时触发</li>
-     *   <li>合并为一条邮件（fireBatch），写 alert_history</li>
+     *   <li>按任务触发等级过滤达到等级的明细：SEVERE 必触发；WARNING 仅在 SEVERE_WARNING 时触发</li>
+     *   <li>达到等级的明细非空 → 发「失败」类告警（ALERT_FAILURE）</li>
+     *   <li>无达到等级的明细且批次全部执行成功（SUCCESS）→ 发「成功」通知（ALERT_SUCCESS），
+     *       表示质量检查全部通过；执行失败/部分失败（PARTIAL_FAILED/FAILED）不发成功通知</li>
+     *   <li>合并为一条邮件（fireBatch），只写一条 alert_history（summary 聚合本次命中的多条规则）</li>
      * </ul>
-     * 告警实际是否发出由 alert_rule（QUALITY 类型 + 接收用户）决定；未配置规则则静默跳过。
+     * 告警实际是否发出由 alert_rule（QUALITY 类型 + 接收用户 + 触发条件）决定；未配置规则则静默跳过。
      */
     private void fireBatchAlert(QualityJob job, QualityCheckBatch batch) {
         if (job == null || batch == null) {
@@ -524,12 +617,20 @@ public class QualityCheckService {
             }
             items.add(new AlertFiringService.AlertItem(d.getResultLevel(), d.getRuleName(), buildDetailDesc(d)));
         }
-        if (items.isEmpty()) {
-            return;
-        }
         try {
-            alertFiringService.fireBatch(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
-                    AlertConstants.ALERT_FAILURE, items);
+            if (!items.isEmpty()) {
+                // 失败类：存在达到任务告警等级的规则 → 发「失败」告警
+                alertFiringService.fireBatch(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+                        AlertConstants.ALERT_FAILURE, items, batch.getId());
+            } else if ("SUCCESS".equalsIgnoreCase(batch.getStatus())) {
+                // 成功类：批次全部执行成功且判定层无达到告警等级的规则 → 发「成功」通知
+                // （执行失败/部分失败不发成功通知，避免误报）
+                List<AlertFiringService.AlertItem> okItems = details.stream()
+                        .map(d -> new AlertFiringService.AlertItem(d.getResultLevel(), d.getRuleName(), buildDetailDesc(d)))
+                        .toList();
+                alertFiringService.fireBatch(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+                        AlertConstants.ALERT_SUCCESS, okItems, batch.getId());
+            }
         } catch (Exception e) {
             logger.warn("质量分级告警触发失败: jobId={}, batchId={}", job.getId(), batch.getId(), e);
         } finally {
@@ -555,17 +656,90 @@ public class QualityCheckService {
         return false;
     }
 
-    /** 构建单条异常明细描述（用于邮件正文/告警详情）。 */
+    /** 规则类型 → 中文展示（与前端 QUALITY_TYPE_LABEL 对齐），避免邮件/告警详情出现英文枚举 */
+    private static final java.util.Map<String, String> RULE_TYPE_LABEL = java.util.Map.of(
+            "COMPLETENESS", "完整性",
+            "UNIQUENESS", "唯一性",
+            "RANGE", "值域范围",
+            "CUSTOM_SQL", "自定义 SQL"
+    );
+
+    /** 判定等级 → 中文展示（与前端 QUALITY_CHECK_LEVEL_LABEL 对齐） */
+    private static final java.util.Map<String, String> LEVEL_LABEL = java.util.Map.of(
+            AlertConstants.QUALITY_LEVEL_PASS, "通过",
+            AlertConstants.QUALITY_LEVEL_WARNING, "警告",
+            AlertConstants.QUALITY_LEVEL_SEVERE, "严重",
+            AlertConstants.QUALITY_LEVEL_UNAVAILABLE, "不可用"
+    );
+
+    /**
+     * 数字格式化：去尾零 + 最多 4 位小数（避免 0.166670 / 1.000000 这种长尾零看着乱）。
+     * null 返回 null。
+     */
+    private static String formatNumber(BigDecimal v) {
+        if (v == null) return null;
+        BigDecimal stripped = v.stripTrailingZeros();
+        String s;
+        if (stripped.scale() <= 0) {
+            // 整数（如 1.000000 → 1）
+            s = stripped.toBigInteger().toString();
+        } else if (stripped.scale() > 4) {
+            s = stripped.setScale(4, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+        } else {
+            s = stripped.toPlainString();
+        }
+        return s;
+    }
+
+    /**
+     * 构建单条命中明细描述（用于邮件正文/告警详情 summary）。
+     * <p>
+     * 输出格式示例：{@code 类型:完整性 ｜ 结果值:0.1667 ｜ 阈值:警告≥0 · 严重≥0.2 → 警告}
+     * <ul>
+     *   <li>类型与等级用中文（避免英文枚举出现在用户界面/邮件）</li>
+     *   <li>字段用全角竖线「｜」分隔，便于前端按段解析并结构化展示</li>
+     *   <li>数字去尾零 + 最多 4 位小数，避免 0.166670 / 1.000000 这种长尾零看着乱</li>
+     * </ul>
+     */
     private String buildDetailDesc(QualityCheckDetail d) {
         StringBuilder sb = new StringBuilder();
+        boolean first = true;
         if (d.getRuleType() != null) {
-            sb.append("类型:").append(d.getRuleType());
+            sb.append("类型:").append(RULE_TYPE_LABEL.getOrDefault(d.getRuleType(), d.getRuleType()));
+            first = false;
         }
-        if (d.getResultValue() != null) {
-            sb.append(", 结果值:").append(d.getResultValue());
+        String valueText = formatNumber(d.getResultValue());
+        if (valueText != null) {
+            if (!first) sb.append(" ｜ ");
+            sb.append("结果值:").append(valueText);
+            first = false;
+        }
+        // 判定依据：阈值区间 + 命中档位，让收件人无需进系统即可理解"为什么判严重"
+        if (d.getRuleId() != null) {
+            QualityRule rule = ruleMapper.selectById(d.getRuleId());
+            if (rule != null && (rule.getWarningThreshold() != null || rule.getSevereThreshold() != null)) {
+                if (!first) sb.append(" ｜ ");
+                sb.append("阈值:");
+                boolean firstTh = true;
+                String warnText = formatNumber(rule.getWarningThreshold());
+                if (warnText != null) {
+                    sb.append("警告≥").append(warnText);
+                    firstTh = false;
+                }
+                String sevText = formatNumber(rule.getSevereThreshold());
+                if (sevText != null) {
+                    if (!firstTh) sb.append(" · ");
+                    sb.append("严重≥").append(sevText);
+                }
+                // 末尾追加命中档位（中文，与前端徽章对应；用户反馈"只是把英文换成中文，不要去掉内容"）
+                if (d.getResultLevel() != null) {
+                    sb.append(" → ").append(LEVEL_LABEL.getOrDefault(d.getResultLevel(), d.getResultLevel()));
+                }
+            }
         }
         if (d.getErrorMessage() != null && !d.getErrorMessage().isBlank()) {
-            sb.append(", 错误:").append(d.getErrorMessage());
+            if (!first) sb.append(" ｜ ");
+            sb.append("错误:").append(d.getErrorMessage());
         }
         return sb.length() == 0 ? null : sb.toString();
     }
@@ -637,6 +811,9 @@ public class QualityCheckService {
                 .map(this::toDetailDTO)
                 .toList();
         dto.setDetails(details);
+        // 告警对应：按 quality_batch_id 反查本批次触发的告警记录（含规则名/发送状态/时间），供详情展示
+        dto.setAlertHistories(alertHistoryMapper.selectList(new QueryWrapper<AlertHistory>()
+                .eq("quality_batch_id", batchId).orderByAsc("sent_at")));
         return dto;
     }
 
@@ -652,11 +829,29 @@ public class QualityCheckService {
         dto.setDurationMs(batch.getDurationMs());
         dto.setErrorMessage(batch.getErrorMessage());
         dto.setCreatedAt(batch.getCreatedAt());
-        // 汇总规则数/成功/失败
+        // 汇总规则数/成功/失败（执行层语义：SQL 是否跑成功）
         List<QualityCheckDetail> details = listDetailsByBatch(batch.getId());
         dto.setRuleCount(details.size());
         dto.setSuccessCount((int) details.stream().filter(d -> d.getSuccess() != null && d.getSuccess() == 1).count());
         dto.setFailedCount(details.size() - (dto.getSuccessCount() == null ? 0 : dto.getSuccessCount()));
+        // 汇总分级四档计数（判定层语义：结果是否达标，与成功/失败列并存）
+        int pass = 0, warning = 0, severe = 0, unavailable = 0;
+        for (QualityCheckDetail d : details) {
+            String level = d.getResultLevel();
+            if (AlertConstants.QUALITY_LEVEL_PASS.equals(level)) {
+                pass++;
+            } else if (AlertConstants.QUALITY_LEVEL_WARNING.equals(level)) {
+                warning++;
+            } else if (AlertConstants.QUALITY_LEVEL_SEVERE.equals(level)) {
+                severe++;
+            } else if (AlertConstants.QUALITY_LEVEL_UNAVAILABLE.equals(level)) {
+                unavailable++;
+            }
+        }
+        dto.setPassCount(pass);
+        dto.setWarningCount(warning);
+        dto.setSevereCount(severe);
+        dto.setUnavailableCount(unavailable);
         return dto;
     }
 
@@ -679,6 +874,14 @@ public class QualityCheckService {
             MetadataTable table = tableMapper.selectById(detail.getTableId());
             if (table != null) {
                 dto.setTableName(table.getTableName());
+            }
+        }
+        // 判定依据：经规则回填阈值，供前端展示"为什么判严重"
+        if (detail.getRuleId() != null) {
+            QualityRule rule = ruleMapper.selectById(detail.getRuleId());
+            if (rule != null) {
+                dto.setWarningThreshold(rule.getWarningThreshold());
+                dto.setSevereThreshold(rule.getSevereThreshold());
             }
         }
         return dto;

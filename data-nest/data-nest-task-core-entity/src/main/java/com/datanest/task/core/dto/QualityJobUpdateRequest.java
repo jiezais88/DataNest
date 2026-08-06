@@ -1,6 +1,7 @@
 package com.datanest.task.core.dto;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -40,6 +41,10 @@ public class QualityJobUpdateRequest {
 
     @Pattern(regexp = "^(SEVERE_ONLY|SEVERE_WARNING)?$", message = "告警等级非法（仅支持 SEVERE_ONLY / SEVERE_WARNING）")
     private String alertLevel;
+
+    /** 执行超时阈值（分钟），null/不传 = 不更新该字段（保留原值）；>0 才生效（0 视为禁用超时） */
+    @Min(value = 0, message = "超时阈值必须 ≥ 0")
+    private Integer timeoutMinutes;
 
     /** 引用的质量规则 ID 集合（全量覆盖关联，Sprint 7 新增） */
     private List<Long> ruleIds;

@@ -29,6 +29,7 @@ import {
     QUALITY_TYPE_LABEL,
 } from '../../../types/quality';
 import type {
+    QualityBatchAlertHistory,
     QualityCheckBatch,
     QualityCheckDetail,
     QualityCheckLevel,
@@ -212,6 +213,22 @@ export default function QualityChecksPage() {
                     <span className="text-ds-text-muted"> / </span>
                     {item.failedCount ?? 0}
                     <span className="text-ds-danger"> 失败</span>
+                </span>
+            ),
+        },
+        {
+            title: '通过/警告/严重/不可用',
+            key: 'levelCounts',
+            width: 210,
+            render: (_, item) => (
+                <span className="text-ds-small whitespace-nowrap">
+                    <span className="text-ds-success">{item.passCount ?? 0} 通过</span>
+                    <span className="text-ds-text-muted"> / </span>
+                    <span className="text-ds-warning">{item.warningCount ?? 0} 警告</span>
+                    <span className="text-ds-text-muted"> / </span>
+                    <span className="text-ds-danger">{item.severeCount ?? 0} 严重</span>
+                    <span className="text-ds-text-muted"> / </span>
+                    <span className="text-ds-text-muted">{item.unavailableCount ?? 0} 不可用</span>
                 </span>
             ),
         },
@@ -409,6 +426,8 @@ function QualityCheckDetailView({loading, detail}: { loading: boolean; detail: Q
                 </section>
             )}
 
+            <AlertSection alerts={detail.alertHistories ?? []}/>
+
             <section>
                 <h3 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">
                     规则明细（{details.length}）
@@ -427,15 +446,40 @@ function QualityCheckDetailView({loading, detail}: { loading: boolean; detail: Q
     );
 }
 
+/** 数字去尾零 + 最多 4 位小数（对齐后端 QualityCheckService.formatNumber，避免 0.166670 / 1.000000 长尾零） */
+function formatNumber(v: number | string | null | undefined): string {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = typeof v === 'string' ? Number(v) : v;
+    if (!Number.isFinite(n)) return String(v);
+    // 用 toFixed(6) 拿到原始精度再剥尾零；整数走 toString
+    if (Math.trunc(n) === n) return n.toString();
+    const fixed = n.toFixed(6);
+    // 去尾零 + 最多 4 位
+    const trimmed = fixed.replace(/0+$/, '').replace(/\.$/, '');
+    if (!trimmed.includes('.')) return trimmed;
+    const [intPart, decPart] = trimmed.split('.');
+    return decPart.length > 4 ? `${intPart}.${decPart.slice(0, 4)}` : trimmed;
+}
+
 function DetailCard({d}: { d: QualityCheckDetail }) {
     const level = d.resultLevel as QualityCheckLevel | undefined;
     const levelLabel = level ? (QUALITY_CHECK_LEVEL_LABEL[level] || level) : '—';
     const levelVariant = level ? (LEVEL_VARIANT[level] || 'pending') : 'pending';
-    const fields = [
-        {label: '规则类型', value: d.ruleType ? (QUALITY_TYPE_LABEL[d.ruleType] || d.ruleType) : '—'},
-        {label: '目标表', value: d.tableName || '—'},
-        {label: '结果指标', value: d.resultMetric || '—'},
-        {label: '结果值', value: d.resultValue != null ? String(d.resultValue) : '—'},
+    // 判定依据：阈值区间 + 命中档位，完整短语单行展示（独占一行不被拆词，hover title 看完整）
+    const hasThreshold = d.warningThreshold != null || d.severeThreshold != null;
+    const thresholdText = (() => {
+        if (!hasThreshold) return null;
+        const parts: string[] = [];
+        if (d.warningThreshold != null) parts.push(`警告≥${formatNumber(d.warningThreshold)}`);
+        if (d.severeThreshold != null) parts.push(`严重≥${formatNumber(d.severeThreshold)}`);
+        const base = parts.join(' · ');
+        return level ? `${base} → ${levelLabel}` : base;
+    })();
+    const fields: {label: string; value: string; mono: boolean}[] = [
+        {label: '规则类型', value: d.ruleType ? (QUALITY_TYPE_LABEL[d.ruleType] || d.ruleType) : '—', mono: false},
+        {label: '目标表', value: d.tableName || '—', mono: false},
+        {label: '结果指标', value: d.resultMetric || '—', mono: true},
+        {label: '结果值', value: d.resultValue != null ? formatNumber(d.resultValue) : '—', mono: true},
     ];
 
     return (
@@ -448,10 +492,22 @@ function DetailCard({d}: { d: QualityCheckDetail }) {
                 {fields.map((f) => (
                     <div key={f.label}>
                         <p className="text-ds-caption text-ds-text-muted">{f.label}</p>
-                        <p className="text-ds-small text-ds-text-primary mt-ds-0.5 font-mono break-all">{f.value}</p>
+                        <p className={`text-ds-small text-ds-text-primary mt-ds-0.5 ${f.mono ? 'font-mono break-all' : 'break-words'}`}>{f.value}</p>
                     </div>
                 ))}
             </div>
+            {/* 判定依据独占一行：完整短语不换行，溢出截断 + hover title 看全文 */}
+            {thresholdText && (
+                <div className="border-t border-ds-border-subtle pt-ds-2 mt-ds-1">
+                    <p className="text-ds-caption text-ds-text-muted">判定依据</p>
+                    <p
+                        className="text-ds-small text-ds-text-primary mt-ds-0.5 whitespace-nowrap overflow-hidden text-ellipsis font-mono"
+                        title={thresholdText}
+                    >
+                        {thresholdText}
+                    </p>
+                </div>
+            )}
             {d.errorMessage && (
                 <pre className="p-ds-2 bg-ds-danger-light border border-ds-border-subtle rounded-ds-sm text-ds-caption text-ds-danger font-mono whitespace-pre-wrap break-all mb-ds-2">
                     {d.errorMessage}
@@ -466,5 +522,94 @@ function DetailCard({d}: { d: QualityCheckDetail }) {
                 </details>
             )}
         </div>
+    );
+}
+
+/** 命中规则行解析结果：等级 + 规则名 */
+interface HitRule {
+    level: QualityCheckLevel;
+    ruleName: string;
+}
+
+/**
+ * 从告警聚合明细（summary，每行一条「[等级] 规则名: 详情」）解析出命中的规则列表。
+ */
+function parseHitRules(alert: QualityBatchAlertHistory | undefined): HitRule[] {
+    if (!alert?.summary) return [];
+    const levelSet: QualityCheckLevel[] = ['SEVERE', 'WARNING', 'UNAVAILABLE', 'PASS'];
+    return alert.summary
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            const m = line.match(/^\[(.*?)\]\s*(.*?)(?::|$)/);
+            const levelRaw = (m?.[1] || '').trim().toUpperCase();
+            const level = (levelSet.find((l) => l === levelRaw) ||
+                (m?.[1] || '').trim() as QualityCheckLevel) || 'SEVERE';
+            return {level, ruleName: (m?.[2] || line).trim()};
+        })
+        .filter((r) => r.ruleName);
+}
+
+/**
+ * 告警记录区块（反馈 ⑥ + UX 需求 2）：展示该批次收尾是否触发告警、命中哪几条规则。
+ * 一个批次只对应一条告警记录（alerts 通常 1 条），命中的多条规则由该条的 summary 聚合展示。
+ * 附解释文案，澄清「批次状态（执行是否成功）」与「告警（是否达标）」是两回事，
+ * 且不可用（UNAVAILABLE/SQL 失败）不触发告警（防误报）。
+ */
+function AlertSection({alerts}: { alerts: QualityBatchAlertHistory[] }) {
+    if (!alerts || alerts.length === 0) {
+        return null;
+    }
+    // 一个批次一条告警记录，取第一条作为主记录展示
+    const primary = alerts[0];
+    const hasSuccess = primary.sendStatus === 'SUCCESS';
+    const hasFailed = primary.sendStatus !== 'SUCCESS';
+    const hitRules = parseHitRules(primary);
+
+    return (
+        <section>
+            <h3 className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">
+                告警记录
+                {hasSuccess && (
+                    <DsStatusBadge label="已触发" variant="success"/>
+                )}
+                {!hasSuccess && hasFailed && (
+                    <DsStatusBadge label="触发但发送失败" variant="warning"/>
+                )}
+                <span className="text-ds-caption text-ds-text-muted font-normal ml-ds-2">
+                    {formatDateTime(primary.sentAt)}
+                </span>
+            </h3>
+            <div className="bg-ds-bg-hover rounded-ds-sm p-ds-4 space-y-ds-3">
+                {hitRules.length > 0 && (
+                    <div>
+                        <p className="text-ds-caption text-ds-text-muted">命中规则（{hitRules.length}）</p>
+                        <div className="flex flex-wrap gap-ds-2 mt-ds-1.5">
+                            {hitRules.map((r, i) => (
+                                <span
+                                    key={i}
+                                    className={`inline-flex items-center rounded-full px-ds-2 py-0.5 text-ds-small font-medium ${
+                                        r.level === 'SEVERE'
+                                            ? 'bg-ds-danger-light text-ds-danger'
+                                            : 'bg-ds-warning-light text-ds-warning'
+                                    }`}
+                                >
+                                    <span className="mr-ds-1 opacity-70">[{QUALITY_CHECK_LEVEL_LABEL[r.level] || r.level}]</span>
+                                    {r.ruleName}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <div>
+                    <p className="text-ds-caption text-ds-text-muted">触发说明</p>
+                    <p className="text-ds-small text-ds-text-primary mt-ds-1 leading-relaxed">
+                        本批次收尾已触发告警，命中 {hitRules.length} 条规则。批次状态表示任务是否执行成功；
+                        告警仅针对达到告警等级的规则（严重/警告），不可用（SQL 失败）不触发告警以防误报。
+                    </p>
+                </div>
+            </div>
+        </section>
     );
 }

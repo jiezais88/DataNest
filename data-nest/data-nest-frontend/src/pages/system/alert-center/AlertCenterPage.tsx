@@ -73,6 +73,42 @@ const TRIGGER_LABEL: Record<AlertTriggerType, string> = {
     SUCCESS: '成功',
 };
 
+/** 质量批次告警 summary 逐行解析（每行一条「[等级] 规则名: 详情」），返回展示行 */
+function parseQualitySummary(summary?: string): {level: string; ruleName: string; parts: {key: string; value: string}[]}[] {
+    if (!summary) return [];
+    return summary.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+        const m = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+        const level = m ? m[1].trim() : '';
+        const rest = m ? m[2] : line;
+        // 「[等级] 规则名: 详情」，按首个全角冒号或半角冒号拆出规则名与详情
+        const sepIdx = rest.indexOf('：') >= 0 ? rest.indexOf('：') : rest.indexOf(':');
+        const ruleName = sepIdx > 0 ? rest.slice(0, sepIdx).trim() : rest.trim();
+        const detail = sepIdx > 0 ? rest.slice(sepIdx + 1).trim() : '';
+        // 详情按全角竖线「｜」拆字段（对齐后端 buildDetailDesc 输出格式：类型:完整性 ｜ 结果值:0.166670 ｜ 阈值:...）
+        const parts = detail ? detail.split('｜').map(p => p.trim()).filter(Boolean).map(p => {
+            const ci = p.indexOf(':') >= 0 ? p.indexOf(':') : p.indexOf('：');
+            return ci > 0 ? {key: p.slice(0, ci).trim(), value: p.slice(ci + 1).trim()} : {key: '', value: p};
+        }) : [];
+        return {level, ruleName, parts};
+    });
+}
+
+/** 质量等级显示名（对齐 QUALITY_CHECK_LEVEL_LABEL 语义） */
+const QUALITY_LEVEL_TEXT: Record<string, string> = {
+    PASS: '通过',
+    WARNING: '警告',
+    SEVERE: '严重',
+    UNAVAILABLE: '不可用',
+};
+
+/** 质量等级徽章变体 */
+const QUALITY_LEVEL_VARIANT: Record<string, string> = {
+    PASS: 'bg-ds-success-light text-ds-success',
+    WARNING: 'bg-ds-warning-light text-ds-warning',
+    SEVERE: 'bg-ds-danger-light text-ds-danger',
+    UNAVAILABLE: 'bg-ds-bg-hover text-ds-text-muted',
+};
+
 function objectTypeBadge(type: AlertObjectType) {
     const variant = type === 'SYNC_JOB' ? 'accent'
         : type === 'COLLECT_TASK' ? 'success'
@@ -703,6 +739,39 @@ export default function AlertCenterPage() {
                                 ? <DsStatusBadge variant="danger" label="发送失败"/>
                                 : <DsStatusBadge variant="success" label="发送成功"/>}
                         </span>
+
+                        {detailHistory.objectType === 'QUALITY' && detailHistory.summary && (
+                            <>
+                                <span className="text-ds-text-muted align-top">命中规则</span>
+                                <div className="space-y-ds-2">
+                                    {parseQualitySummary(detailHistory.summary).map((row, idx) => (
+                                        <div key={idx}
+                                             className="bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2">
+                                            <div className="flex items-center gap-ds-2 mb-ds-1.5">
+                                                <span
+                                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge whitespace-nowrap shrink-0 ${
+                                                        QUALITY_LEVEL_VARIANT[row.level] || 'bg-ds-bg-hover text-ds-text-muted'
+                                                    }`}
+                                                >
+                                                    {QUALITY_LEVEL_TEXT[row.level] || row.level || '—'}
+                                                </span>
+                                                <span className="text-ds-small font-semibold text-ds-text-primary break-words">{row.ruleName || '—'}</span>
+                                            </div>
+                                            {row.parts.length > 0 && (
+                                                <div className="grid grid-cols-[auto_1fr] gap-x-ds-3 gap-y-ds-1 text-ds-small">
+                                                    {row.parts.map((p, i) => (
+                                                        <div key={i} className="contents">
+                                                            <span className="text-ds-text-muted whitespace-nowrap">{p.key}</span>
+                                                            <span className="text-ds-text-primary whitespace-nowrap overflow-hidden text-ellipsis" title={p.value || ''}>{p.value || '—'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
             </DsModal>

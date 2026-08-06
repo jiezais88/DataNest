@@ -42,8 +42,23 @@ public class QualityCheckBatchDTO {
     /** 失败规则数 */
     private Integer failedCount;
 
+    /** 通过规则数（按 result_level=PASS 聚合，判定层） */
+    private Integer passCount;
+
+    /** 警告规则数（按 result_level=WARNING 聚合，判定层） */
+    private Integer warningCount;
+
+    /** 严重规则数（按 result_level=SEVERE 聚合，判定层） */
+    private Integer severeCount;
+
+    /** 不可用规则数（按 result_level=UNAVAILABLE 聚合，判定层） */
+    private Integer unavailableCount;
+
     /** 明细列表（仅详情接口回填） */
     private List<QualityCheckDetailDTO> details;
+
+    /** 关联的告警记录（仅详情接口回填，按 quality_batch_id 反查 alert_history） */
+    private List<com.datanest.task.core.entity.AlertHistory> alertHistories;
 
     private LocalDateTime createdAt;
 }
