@@ -2,11 +2,18 @@ import {useEffect, useState} from 'react';
 import DsButton from '../../../components/DsButton';
 import DsModal from '../../../components/DsModal';
 import {listQualityTemplates, queryQualityJobs} from '../../../api/quality';
-import {listMetadataColumns, listMetadataDatasourceIds} from '../../../api/metadata';
+import {
+    listMetadataColumns,
+    listMetadataDatasourceIds,
+    listMetadataDatabases,
+    listMetadataSchemas,
+    listMetadataTables,
+    listMetadataTablesWithoutSchema,
+} from '../../../api/metadata';
+import {isWithoutSchema} from '../../../constants/datasource';
 import {QUALITY_TYPE_LABEL} from '../../../types/quality';
 import type {QualityRuleTemplate, QualityRuleBatchCreateRequest, RuleBatchItem} from '../../../types/quality';
 import type {MetadataColumn, MetadataDatasource, MetadataTable} from '../../../types/metadata';
-import TableSelectModal from './TableSelectModal';
 
 interface BatchApplyItem extends RuleBatchItem {
     tableName: string;
@@ -38,12 +45,23 @@ export default function BatchApplyModal({
     const [datasourceId, setDatasourceId] = useState<string>('');
     const [datasourceOptions, setDatasourceOptions] = useState<MetadataDatasource[]>([]);
     const [items, setItems] = useState<BatchApplyItem[]>([]);
-    const [tableSelectOpen, setTableSelectOpen] = useState(false);
     const [columnsMap, setColumnsMap] = useState<Record<string, MetadataColumn[]>>({});
     const [submitting, setSubmitting] = useState(false);
     const [errors, setErrors] = useState<string>('');
 
+    // 主弹窗内嵌库/表两列选择（取消子弹窗）
+    const [databases, setDatabases] = useState<string[]>([]);
+    const [databaseLoading, setDatabaseLoading] = useState(false);
+    const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
+    const [schemas, setSchemas] = useState<string[]>([]);
+    const [schemaLoading, setSchemaLoading] = useState(false);
+    const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
+    const [tables, setTables] = useState<MetadataTable[]>([]);
+    const [tableLoading, setTableLoading] = useState(false);
+
     const selectedTemplate = templates.find((t) => String(t.id) === String(templateId));
+    const datasourceType = datasourceOptions.find((d) => String(d.id) === String(datasourceId))?.type;
+    const noSchema = isWithoutSchema(datasourceType);
 
     useEffect(() => {
         if (!open) return;
@@ -70,15 +88,58 @@ export default function BatchApplyModal({
         setItems([]);
         setColumnsMap({});
         setErrors('');
+        setSelectedDatabase(null);
+        setSelectedSchema(null);
+        setSchemas([]);
+        setTables([]);
+        setDatabases([]);
     }, [open, jobId, initialTemplateId]);
 
-    // 切换数据源时清空已选表（表归属发生变化）
+    // 切换数据源时清空库/表与已选表，并加载数据库列表
     const handleDatasourceChange = (id: string) => {
         setDatasourceId(id);
         setItems([]);
         setColumnsMap({});
         setErrors('');
+        setSelectedDatabase(null);
+        setSelectedSchema(null);
+        setSchemas([]);
+        setTables([]);
+        setDatabases([]);
+        if (!id) return;
+        setDatabaseLoading(true);
+        listMetadataDatabases(id)
+            .then((res) => setDatabases(res.data || []))
+            .finally(() => setDatabaseLoading(false));
     };
+
+    // 选数据库后：无 Schema 类型直接加载表，否则加载 Schema
+    useEffect(() => {
+        if (!open || !datasourceId || !selectedDatabase) return;
+        setSelectedSchema(null);
+        setSchemas([]);
+        setTables([]);
+        if (noSchema) {
+            setTableLoading(true);
+            listMetadataTablesWithoutSchema(datasourceId, selectedDatabase)
+                .then((res) => setTables(res.data || []))
+                .finally(() => setTableLoading(false));
+        } else {
+            setSchemaLoading(true);
+            listMetadataSchemas(datasourceId, selectedDatabase)
+                .then((res) => setSchemas(res.data || []))
+                .finally(() => setSchemaLoading(false));
+        }
+    }, [open, datasourceId, selectedDatabase, noSchema]);
+
+    // 选 Schema 后加载表
+    useEffect(() => {
+        if (!open || !datasourceId || !selectedDatabase || !selectedSchema || noSchema) return;
+        setTableLoading(true);
+        listMetadataTables(datasourceId, selectedDatabase, selectedSchema)
+            .then((res) => setTables(res.data || []))
+            .finally(() => setTableLoading(false));
+    }, [open, datasourceId, selectedDatabase, selectedSchema, noSchema]);
 
     const loadColumns = (tableId: string) => {
         if (columnsMap[tableId]) return;
@@ -89,20 +150,22 @@ export default function BatchApplyModal({
             .catch(() => setColumnsMap((prev) => ({...prev, [tableId]: []})));
     };
 
-    const handleTablesSelected = (tables: MetadataTable[]) => {
+    const isTablePicked = (id: string) => items.some((i) => String(i.tableId) === String(id));
+
+    /** 内嵌表列勾选：多选切换，回填 items 并预取字段 */
+    const toggleTable = (table: MetadataTable) => {
+        const id = String(table.id);
         setItems((prev) => {
-            const next = [...prev];
-            tables.forEach((t) => {
-                const id = String(t.id);
-                if (!next.some((i) => String(i.tableId) === id)) {
-                    const tableName = t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
-                    next.push({tableId: id, tableName, weight: 1});
-                }
-            });
-            return next;
+            const exists = prev.some((i) => String(i.tableId) === id);
+            if (exists) {
+                return prev.filter((i) => String(i.tableId) !== id);
+            }
+            const tableName = table.schemaName ? `${table.schemaName}.${table.tableName}` : table.tableName;
+            return [...prev, {tableId: id, tableName, weight: 1}];
         });
-        tables.forEach((t) => loadColumns(String(t.id)));
-        setTableSelectOpen(false);
+        if (!isTablePicked(id)) {
+            loadColumns(id);
+        }
     };
 
     const removeItem = (tableId: string) => {
@@ -176,6 +239,80 @@ export default function BatchApplyModal({
 
     const inputClass = 'w-full px-ds-3 py-ds-1.5 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors';
     const selectClass = 'w-full px-ds-3 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent';
+
+    // 内嵌两列选择面板：数据库列（+Schema 列）→ 表列（多选勾表）
+    const renderColumn = (title: string, selectedKey: string | null, onSelect: (key: string) => void) => {
+        const list = title === '数据库'
+            ? databases
+            : title === 'Schema'
+                ? schemas
+                : tables.map((t) => (t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName));
+        return (
+            <div className="flex min-h-[220px] flex-1 flex-col border border-ds-border-subtle rounded-ds-md overflow-hidden">
+                <div className="px-ds-3 py-ds-2 bg-ds-bg-hover border-b border-ds-border-subtle text-ds-small font-semibold text-ds-text-secondary">
+                    {title}
+                </div>
+                <div className="max-h-[260px] overflow-y-auto p-ds-2">
+                    {list.length === 0 && (
+                        <div className="px-ds-2 py-ds-4 text-ds-nano text-ds-text-muted">
+                            {title === '数据库' ? '暂无数据库' : '请先选择上一级'}
+                        </div>
+                    )}
+                    {list.map((key) => {
+                        const active = selectedKey === key;
+                        return (
+                            <div
+                                key={key}
+                                onClick={() => onSelect(key)}
+                                className={`cursor-pointer rounded-ds-sm px-ds-2 py-ds-1.5 text-ds-small transition-colors ${
+                                    active ? 'bg-ds-accent text-white' : 'text-ds-text-primary hover:bg-ds-bg-hover'
+                                }`}
+                            >
+                                {key}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    const renderTableColumn = () => {
+        const pickedIds = new Set(items.map((i) => String(i.tableId)));
+        return (
+            <div className="flex min-h-[220px] flex-1 flex-col border border-ds-border-subtle rounded-ds-md overflow-hidden">
+                <div className="px-ds-3 py-ds-2 bg-ds-bg-hover border-b border-ds-border-subtle text-ds-small font-semibold text-ds-text-secondary">
+                    选择表
+                </div>
+                <div className="max-h-[260px] overflow-y-auto p-ds-2">
+                    {tableLoading ? (
+                        <div className="px-ds-2 py-ds-4 text-ds-nano text-ds-text-muted">加载中...</div>
+                    ) : tables.length === 0 ? (
+                        <div className="px-ds-2 py-ds-4 text-ds-nano text-ds-text-muted">
+                            {selectedDatabase ? '暂无表' : '请先选择数据库'}
+                        </div>
+                    ) : (
+                        tables.map((t) => {
+                            const id = String(t.id);
+                            const name = t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName;
+                            const picked = pickedIds.has(id);
+                            return (
+                                <div
+                                    key={id}
+                                    onClick={() => toggleTable(t)}
+                                    className={`cursor-pointer rounded-ds-sm px-ds-2 py-ds-1.5 text-ds-small transition-colors ${
+                                        picked ? 'bg-ds-accent text-white' : 'text-ds-text-primary hover:bg-ds-bg-hover'
+                                    }`}
+                                >
+                                    {name}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <>
@@ -266,13 +403,19 @@ export default function BatchApplyModal({
                         </p>
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div>
                         <label className="text-ds-small font-semibold text-ds-text-secondary">
-                            目标表 {items.length > 0 && `（已选 ${items.length} 张）`}
+                            选择目标表 {items.length > 0 && `（已选 ${items.length} 张）`}
                         </label>
-                        <DsButton variant="secondary" onClick={() => setTableSelectOpen(true)} disabled={!templateId || !datasourceId}>
-                            选择表
-                        </DsButton>
+                        {datasourceId ? (
+                            <div className="mt-ds-2 flex gap-ds-2">
+                                {renderColumn('数据库', selectedDatabase, (k) => setSelectedDatabase(k))}
+                                {!noSchema && renderColumn('Schema', selectedSchema, (k) => setSelectedSchema(k))}
+                                {renderTableColumn()}
+                            </div>
+                        ) : (
+                            <p className="text-ds-caption text-ds-text-muted py-ds-4">请先选择数据源，再选择目标表</p>
+                        )}
                     </div>
 
                     {items.length === 0 ? (
@@ -384,16 +527,6 @@ export default function BatchApplyModal({
                     {errors && <p className="text-ds-nano text-ds-danger">{errors}</p>}
                 </div>
             </DsModal>
-
-            <TableSelectModal
-                open={tableSelectOpen}
-                onClose={() => setTableSelectOpen(false)}
-                defaultDatasourceId={datasourceId}
-                lockDatasource
-                selectedTables={[]}
-                multiple
-                onConfirm={handleTablesSelected}
-            />
         </>
     );
 }

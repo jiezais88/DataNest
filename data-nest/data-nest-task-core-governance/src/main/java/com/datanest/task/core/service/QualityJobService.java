@@ -164,7 +164,26 @@ public class QualityJobService {
         jobMapper.insert(entity);
         // 绑定引用的质量规则（多对多）
         ruleService.setJobRules(entity.getId(), request.getRuleIds());
+        // 创建即开启定时调度：scheduledEnabled=1 且配置了 cron 时，事务内同步注册 XXL-JOB；
+        // 注册失败抛错 → 事务回滚（任务不落库），前端可见错误，避免「任务在但 XXL-JOB 没注册」的不一致。
+        boolean scheduleOnCreate = entity.getScheduledEnabled() != null && entity.getScheduledEnabled() == 1
+                && StringUtils.hasText(entity.getCron());
+        if (scheduleOnCreate) {
+            registerSchedule(entity);
+        }
         return getById(entity.getId());
+    }
+
+    /**
+     * 为任务注册/启动独立的 XXL-JOB（worker 组，带自身 cron），并写回 xxl_job_id。
+     * 事务内同步调用（不再 afterCommit 静默吞异常）：注册失败抛 BusinessException 使事务回滚，保证 DB 与调度一致。
+     */
+    private void registerSchedule(QualityJob entity) {
+        Integer xxlJobId = schedulerClient.registerJob(workerAppName, HANDLER_NAME, entity.getId(),
+                entity.getName(), entity.getCron(), TRIGGER_TYPE_CRON, true, 0, 0);
+        jobMapper.update(null, new UpdateWrapper<QualityJob>()
+                .eq("id", entity.getId()).set("xxl_job_id", xxlJobId));
+        logger.info("注册质量任务定时调度: jobId={}, xxlJobId={}, cron={}", entity.getId(), xxlJobId, entity.getCron());
     }
 
     @Transactional
@@ -329,7 +348,8 @@ public class QualityJobService {
 
     /**
      * 开启调度（scheduled_enabled=1）：为任务注册/启动一个独立的 XXL-JOB（worker 组，带自身 cron）。
-     * cron 为空时抛错；注册/启动放在事务提交后，避免 DB 回滚产生孤儿调度任务。
+     * cron 为空时抛错；注册/启动在事务内同步执行——失败抛 BusinessException 使事务回滚（scheduled_enabled 不置 1），
+     * 保证 DB 与 XXL-JOB 一致且前端可见错误。
      */
     @Transactional
     public void startSchedule(Long id) {
@@ -337,33 +357,19 @@ public class QualityJobService {
         if (!StringUtils.hasText(entity.getCron())) {
             throw new BusinessException(ErrorCode.QUALITY_JOB_CRON_REQUIRED, "未配置 Cron 表达式，无法开启调度");
         }
+        Integer oldXxlJobId = entity.getXxlJobId();
+        if (oldXxlJobId == null) {
+            // 同步注册（失败抛错 → 事务回滚，scheduled_enabled 不置 1）
+            registerSchedule(entity);
+        } else {
+            schedulerClient.startJob(oldXxlJobId);
+        }
         UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", id)
                 .set("scheduled_enabled", 1)
                 .set("updated_by", currentUserId())
                 .set("updated_at", LocalDateTime.now());
         jobMapper.update(null, wrapper);
-
-        Integer oldXxlJobId = entity.getXxlJobId();
-        String name = entity.getName();
-        String cron = entity.getCron();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    if (oldXxlJobId == null) {
-                        Integer newXxlJobId = schedulerClient.registerJob(workerAppName, HANDLER_NAME, id, name,
-                                cron, TRIGGER_TYPE_CRON, true, 0, 0);
-                        jobMapper.update(null, new UpdateWrapper<QualityJob>()
-                                .eq("id", id).set("xxl_job_id", newXxlJobId));
-                    } else {
-                        schedulerClient.startJob(oldXxlJobId);
-                    }
-                } catch (Exception e) {
-                    logger.warn("开启调度时注册/启动 XXL-JOB 失败（不影响已提交的 DB 数据）: jobId={}", id, e);
-                }
-            }
-        });
     }
 
     /**

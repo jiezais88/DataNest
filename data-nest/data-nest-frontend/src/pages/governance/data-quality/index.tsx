@@ -377,26 +377,37 @@ export default function DataQualityPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: COL.OPERATION_4,
+            width: COL.OPERATION_3,
             render: (_, item) => (
-                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                    <Tooltip title="执行">
-                        <DsIconButton
-                            tone="accent"
-                            onClick={() => handleExecuteJob(item)}
-                            disabled={executingId === item.id}
-                            aria-label="执行"
-                        >
-                            <HiOutlinePlay size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
-                    <Tooltip title="详情">
-                        <DsIconButton tone="accent" onClick={() => openJobView(item)} aria-label="详情">
-                            <HiOutlineEye size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
+                <div className="flex flex-col items-center justify-center gap-y-1 whitespace-nowrap">
+                    {/* 主操作：执行 / 详情 / 编辑 */}
+                    <div className="flex items-center justify-center gap-1">
+                        <Tooltip title="执行">
+                            <DsIconButton
+                                tone="accent"
+                                onClick={() => handleExecuteJob(item)}
+                                disabled={executingId === item.id}
+                                aria-label="执行"
+                            >
+                                <HiOutlinePlay size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                        <Tooltip title="详情">
+                            <DsIconButton tone="accent" onClick={() => openJobView(item)} aria-label="详情">
+                                <HiOutlineEye size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                        {canWrite && (
+                            <Tooltip title="编辑">
+                                <DsIconButton tone="accent" onClick={() => openJobEdit(item)} aria-label="编辑">
+                                    <HiOutlinePencilSquare size={14}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        )}
+                    </div>
+                    {/* 次要操作：启用 / 调度 / 删除 */}
                     {canWrite && (
-                        <>
+                        <div className="flex items-center justify-center gap-1">
                             <Tooltip title={item.enabled === 1 ? '停用' : '启用'}>
                                 <DsIconButton
                                     tone="success"
@@ -421,11 +432,6 @@ export default function DataQualityPage() {
                                     </DsIconButton>
                                 </Tooltip>
                             )}
-                            <Tooltip title="编辑">
-                                <DsIconButton tone="accent" onClick={() => openJobEdit(item)} aria-label="编辑">
-                                    <HiOutlinePencilSquare size={14}/>
-                                </DsIconButton>
-                            </Tooltip>
                             <Tooltip title="删除">
                                 <DsIconButton
                                     tone="danger"
@@ -438,7 +444,7 @@ export default function DataQualityPage() {
                                     <HiOutlineTrash size={14}/>
                                 </DsIconButton>
                             </Tooltip>
-                        </>
+                        </div>
                     )}
                 </div>
             ),
