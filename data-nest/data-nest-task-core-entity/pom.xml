@@ -22,6 +22,12 @@
             <artifactId>data-nest-common</artifactId>
         </dependency>
 
+        <!-- DataNest Alert API（QualityCheckBatchDTO.alertHistories 远程反查 DTO） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-alert-api</artifactId>
+        </dependency>
+
         <!-- Spring Context (provided by consumers) -->
         <dependency>
             <groupId>org.springframework</groupId>

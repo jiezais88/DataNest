@@ -16,13 +16,18 @@ import java.util.List;
  * 找出绑定该对象且启用了自动触发的质量任务，逐个触发执行（AUTO_TRIGGER）。
  * 触发失败不影响主任务执行结果（整体 try-catch 包裹，仅记日志）。
  * <p>
- * 实现 {@link QualityAutoTriggerPort} 接口（定义于告警模块），供告警执行链路通过接口注入调用，
- * 保持依赖方向单向（本模块 → 告警模块接口）。
+ * 微服务化改造：告警域已迁出为独立 alert-service，原告警模块的自动触发端口接口随之删除，
+ * 本类不再实现该接口；DAG 节点的自动触发由 alert-service 经 governance 内部接口回调本方法。
  */
 @Service
-public class QualityAutoTriggerService implements QualityAutoTriggerPort {
+public class QualityAutoTriggerService {
 
     private static final Logger logger = LoggerFactory.getLogger(QualityAutoTriggerService.class);
+
+    /** 自动触发对象类型（与 quality_job.auto_trigger_object_type 对应） */
+    public static final String OBJECT_TYPE_DAG_NODE = "DAG_NODE";
+    public static final String OBJECT_TYPE_SYNC_JOB = "SYNC_JOB";
+    public static final String OBJECT_TYPE_COLLECT_TASK = "COLLECT_TASK";
 
     private static final String TRIGGER_TYPE_AUTO = "AUTO_TRIGGER";
 

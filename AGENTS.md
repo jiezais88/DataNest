@@ -26,15 +26,19 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 核心模块
 
-> **task-core 拆分（2026-08-05 三步重构）**：原 `data-nest-task-core` 按依赖分层拆为 **4 个模块**，**包名 `com.datanest.task.core.*` 全部保持不变**（零 import 改动）。依赖链：`common ← task-core-entity ← alert ← task-core-governance ← task-core`。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**，新模块经 task-core 传递获得，各消费方 pom 无需改动。详见 `docs/agent/architecture.md`。
+> **task-core 拆分（2026-08-05 三步重构）**：原 `data-nest-task-core` 按依赖分层拆分，**包名 `com.datanest.task.core.*` 保持不变**。依赖链：`common ← task-core-entity ← task-core-governance ← task-core`。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**。详见 `docs/agent/architecture.md`。
+>
+> **微服务化改造（2026-08-06 起，进行中）**：共享 jar 进程内调用 → OpenFeign + Nacos 远程调用 + 按域拆库（最终一致性，无分布式事务无 MQ）。总方案与进度见 `docs/microservices-refactor/handoff.md`（跨会话恢复先读它）。**阶段 1 已完成**：告警域独立为 `data-nest-alert-service`（app-alert），原 `data-nest-alert` 模块已删除。
 
 | 模块 | 说明 |
 |------|------|
-| `data-nest-common` | 公共组件（SchedulerClient 等），最底层底座 |
-| `data-nest-task-core-entity` | 共享实体/mapper/constant/dto 底座 + `SysUserService`。被所有消费方共用 |
-| `data-nest-alert` | 告警域（AlertFiringService 等）+ 接口 `QualityAutoTriggerPort`（解耦 alert↔governance） |
+| `data-nest-common` | 公共组件（SchedulerClient、InternalTokenFilter/Feign 拦截器等），最底层底座 |
+| `data-nest-task-core-entity` | 共享实体/mapper/constant/dto 底座 + `SysUserService`（告警类已迁出）。被所有消费方共用 |
 | `data-nest-task-core-governance` | 治理编排服务（QualityRuleService 等） |
-| `data-nest-task-core` | 纯执行内核（SyncJobExecutorService/QualityCheckService 等） |
+| `data-nest-task-core` | 纯执行内核（SyncJobExecutorService/QualityCheckService 等；告警调用经 alert-api Feign） |
+| `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
+| `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（阶段 1 仅内部端点骨架，后续阶段扩充）。app-alert 依赖 |
+| `data-nest-alert-service` | **独立告警服务**（app-alert，com.datanest.alert.*）：告警规则/历史/触发/邮件 + dag_alert_config/history |
 | `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API） |
 | `data-nest-worker` | Addax 实际执行方（质量检查执行 handler 也在 worker） |
 | `data-nest-governance` | 数据治理服务（元数据、数据标准、质量/评分 Controller） |
@@ -42,13 +46,14 @@ DataNest 是一个数据平台，技术栈如下：
 | `data-nest-system` | 认证、用户、权限 |
 | `data-nest-gateway` | 网关入口 |
 
-> **依赖方向规则**：`alert` 不能依赖 `task-core-governance`（会成环）。告警侧调用治理域自动触发时，通过 `alert` 内接口 `QualityAutoTriggerPort`，由 `task-core-governance` 的 `QualityAutoTriggerService implements` 实现。
+> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。Feign 调用必须 try-catch 容错（最终一致性）；删除前置校验类调用采用失败关闭。
 
 ### 核心容器
 
 | 容器 | 说明 |
 |------|------|
 | `app-engineering` / `app-worker` / `app-governance` / `app-job` / `app-system` / `app-gateway` | 对应六个后端服务 |
+| `app-alert` | 独立告警服务（容器端口 8088，**不暴露宿主机端口**：对外走 gateway `/api/alert/**`，容器间 Feign 走 datanest-net） |
 | `middleware-mysql` | MySQL：Nacos、XXL-JOB、DolphinScheduler、业务库 |
 | `middleware-postgres` | PostgreSQL：业务主库 |
 | `middleware-nacos` / `middleware-xxljob` / `middleware-redis` | Nacos / XXL-JOB Admin / Redis |
@@ -86,16 +91,16 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 关键原则
 
-- **task-core 拆分为 4 模块**（entity/alert/task-core-governance/task-core），是 engineering、governance、worker、job、system 的 **共享底座**。
-- 消费方只显式依赖 `data-nest-task-core`（经其传递获得 entity/alert/governance 模块），消费方 pom 无需显式声明新模块。
-- **构建顺序**：Maven 按 `<modules>` 声明顺序构建，`data-nest-task-core` 依赖其余 3 个新模块，所以模块顺序必须是 `common → task-core-entity → alert → task-core-governance → task-core`（已在根 pom 配置）。
-- **只要改到 `data-nest-task-core`（含任一拆分模块），必须同时重新编译并部署所有消费方**（至少 engineering 和 worker；若涉及治理/告警/质量还需 governance/job/system），否则执行节点还是旧代码。命令见下。
+- **task-core 拆分为 3 个共享模块**（entity/task-core-governance/task-core），是 engineering、governance、worker、job、system 的 **共享底座**（原第 4 个模块 alert 已独立为 app-alert 服务）。
+- 消费方只显式依赖 `data-nest-task-core`（经其传递获得 entity/governance 模块）；告警调用另依赖 `data-nest-alert-api`（Feign 契约）。
+- **构建顺序**：Maven 按 `<modules>` 声明顺序构建，顺序为 `common → *-api → task-core-entity → task-core-governance → task-core → 各服务`（已在根 pom 配置）。
+- **只要改到 `data-nest-task-core`（含任一拆分模块），必须同时重新编译并部署所有消费方**（至少 engineering 和 worker；若涉及治理/质量还需 governance/job/system），否则执行节点还是旧代码。命令见下。
 
 ### 常用命令
 
 ```bash
 cd data-nest
-# 全量构建（含拆分出的 4 个 task-core 模块）
+# 全量构建
 mvn clean package -DskipTests -q
 # 只构建 task-core 及主要消费方（engineering/worker）
 mvn -pl data-nest-task-core,data-nest-engineering,data-nest-worker -am clean package -DskipTests -q
@@ -103,7 +108,7 @@ docker compose build app-engineering app-worker
 docker compose up -d --no-deps app-engineering app-worker
 ```
 
-> `-am`（also make）会自动把 `task-core` 依赖的 `task-core-entity/alert/task-core-governance` 一并构建。
+> `-am`（also make）会自动把 `task-core` 依赖的 `task-core-entity/task-core-governance` 及各 api 模块一并构建。
 
 ### 注意
 
@@ -176,11 +181,17 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需重启对应服务。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
 
-### 告警
+### 告警（2026-08-06 起已独立为 app-alert 服务）
 
-- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 `data-nest-alert` 模块是 **compile** 依赖，经 task-core → alert 传递给所有消费方（pom 无需再声明）。但各服务仍需 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则 `MailService` 报"未配置 JavaMailSender"（历史表仍记录，邮件实际没发）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`（空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
-- **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**（`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
-- **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改 `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含 QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。
+- **告警域全部在 app-alert**（`data-nest-alert-service`，com.datanest.alert.*）：规则 CRUD、触发（fire/fireBatch）、DAG 告警、邮件、dag_alert_config/history。前端路径 `/api/alert/**`（规则/历史/by-object/dag-alert-config），旧的 `/api/system/alert-rules`、`/api/engineering/*/alert-rule` 等已下线。
+- **邮件只需 app-alert 配**：`MAIL_*` 环境变量和 `shared-alert.yaml` 已从 engineering/worker/job 撤掉（本地 MailHog 仍需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`）。其它服务不再有 MailService。
+- **触发链路全部经 Feign**（契约 `data-nest-alert-api`，端点 `/alert/internal/**`）：同步/采集/质量 fire → worker 内 task-core 执行器调 AlertApi；DAG SUCCESS/FAILURE → task-core `RemoteDagFinishedListener` → `/alert/internal/dag-finished`（端点内部同时完成质量自动触发：engineering 解析 dag_node.id → governance auto-trigger）；TIMEOUT → job `DagNodeTimeoutAlertHandler`（阈值经 `/alert/internal/dag-alert-config/resolve` 获取）。排查告警问题**先看 app-alert 日志**，再看调用方容器日志的 Feign 异常。
+- **内部调用鉴权**：`/internal/**` 端点由 common 的 `InternalTokenFilter` 校验 `X-Internal-Token`（配置 `datanest.internal.token`，Nacos `shared-internal.yaml`；为空则放行）。Feign 侧由 `InternalTokenFeignInterceptor` 自动加头。注意只拦截以 `/internal/` 开头的路径，DS 回调 `/dev/internal/**` 不受影响。
+- **Feign lb:// 必须有 `spring-cloud-starter-loadbalancer`**：否则启动报 `No Feign Client for loadBalancing defined`（engineering/worker/job 已补）。**新服务必须显式声明 `spring-boot-starter-validation`**（common 中是 provided，GlobalExceptionHandler 需要，否则 `NoClassDefFoundError: jakarta/validation/ConstraintViolationException`）。
+- **启动类 scanBasePackages 只追加 `com.datanest.common.internal`**：扫整个 `com.datanest.common` 会误装配 `SchedulerClient`（`@Value("${xxl.job.admin.addresses}")` 无默认值，未引 shared-xxljob 的服务启动失败）。
+- **`alert_rule.object_type` 有数据库 CHECK 约束**：含 `DAG/SYNC_JOB/COLLECT_TASK/QUALITY`（V3.6.6 已重建）。新增对象类型需同步改约束 + app-alert 的 `AlertRuleService.validate()` 白名单。
+- **告警跨域数据经 Feign 反查**：对象名/下拉（engineering、governance 的 `/internal/objects/names`、`/internal/alert-objects/options`）、收件人邮箱/用户名（system 的 `/internal/users/emails|usernames`）。远端失败均降级（warn + 空值），不阻断告警发送。
+- **遗留**：app-alert 的 `selectHistoryPage` 仍有跨表 LEFT JOIN（dag/sync_job/collect_task/quality_job），同库期间正常，**拆库（阶段 5）前必须改为 Feign 反查**。
 
 ### DAG / 条件节点
 

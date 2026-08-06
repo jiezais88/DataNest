@@ -1,6 +1,8 @@
 package com.datanest.task.core.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.alert.api.AlertApi;
+import com.datanest.alert.api.dto.AlertFireRequest;
 import com.datanest.common.constant.DataSourceStatus;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.constant.MetadataSourceStatus;
@@ -36,14 +38,14 @@ public class CollectExecutor {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final ExtractorFactory extractorFactory;
-    private final AlertFiringService alertFiringService;
+    private final AlertApi alertApi;
     private final QualityAutoTriggerService qualityAutoTriggerService;
 
     public CollectExecutor(CollectTaskMapper collectTaskMapper, CollectHistoryMapper collectHistoryMapper,
                            CollectExecutionLogMapper logMapper, CollectChangeDetailMapper changeDetailMapper,
                            DataSourceConnectionMapper dataSourceConnectionMapper, MetadataTableMapper metadataTableMapper,
                            MetadataColumnMapper metadataColumnMapper, ExtractorFactory extractorFactory,
-                           AlertFiringService alertFiringService,
+                           AlertApi alertApi,
                            QualityAutoTriggerService qualityAutoTriggerService) {
         this.collectTaskMapper = collectTaskMapper;
         this.collectHistoryMapper = collectHistoryMapper;
@@ -53,7 +55,7 @@ public class CollectExecutor {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.extractorFactory = extractorFactory;
-        this.alertFiringService = alertFiringService;
+        this.alertApi = alertApi;
         this.qualityAutoTriggerService = qualityAutoTriggerService;
     }
 
@@ -199,9 +201,9 @@ public class CollectExecutor {
                 addedColumns, updatedColumns, deletedColumns, errorMessage, lastStatus);
         updateTaskStatus(task, history, lastStatus);
 
-        // Sprint 5：采集任务成功/失败告警（按 alert_rule 配置；手动停止不发告警）
+        // Sprint 5：采集任务成功/失败告警（按 alert_rule 配置，经 alert-service 远程触发；手动停止不发告警）
         if (ExecutionStatus.SUCCESS.getCode().equals(lastStatus)) {
-            alertFiringService.fire("COLLECT_TASK", taskId, "SUCCESS",
+            fireAlert("COLLECT_TASK", taskId, "SUCCESS",
                     "采集完成：表 " + tableCount + "，字段 " + columnCount);
             // Sprint 8：采集任务成功后触发绑定的质量任务自动检查（失败不影响采集结果）
             try {
@@ -211,11 +213,33 @@ public class CollectExecutor {
                 logger.error("质量任务自动触发失败（不影响采集结果）: taskId={}", taskId, e);
             }
         } else if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
-            alertFiringService.fire("COLLECT_TASK", taskId, "FAILURE", errorMessage);
+            fireAlert("COLLECT_TASK", taskId, "FAILURE", errorMessage);
         }
 
         if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
             throw new RuntimeException(errorMessage);
+        }
+    }
+
+    /**
+     * 经 alert-service 远程触发告警（Feign）。
+     * 失败仅记 error 按「未发送」处理，不影响主执行流程（最终一致）。
+     *
+     * @return 是否发送成功（Result 拆信封；异常按 false）
+     */
+    private boolean fireAlert(String objectType, Long objectId, String alertType, String detail) {
+        try {
+            AlertFireRequest request = new AlertFireRequest();
+            request.setObjectType(objectType);
+            request.setObjectId(objectId);
+            request.setAlertType(alertType);
+            request.setDetail(detail);
+            var result = alertApi.fire(request);
+            return result != null && Boolean.TRUE.equals(result.data());
+        } catch (Exception e) {
+            logger.error("告警远程触发失败（按未发送处理，不影响采集结果）: type={}, objectId={}, alertType={}",
+                    objectType, objectId, alertType, e);
+            return false;
         }
     }
 

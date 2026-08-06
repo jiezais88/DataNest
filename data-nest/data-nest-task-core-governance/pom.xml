@@ -28,10 +28,10 @@
             <artifactId>data-nest-task-core-entity</artifactId>
         </dependency>
 
-        <!-- DataNest Alert（QualityAutoTriggerService 实现 QualityAutoTriggerPort 接口） -->
+        <!-- DataNest Alert API（微服务化改造：QualityJobService 告警引用校验经 Feign） -->
         <dependency>
             <groupId>com.datanest</groupId>
-            <artifactId>data-nest-alert</artifactId>
+            <artifactId>data-nest-alert-api</artifactId>
         </dependency>
 
         <!-- Spring Context (provided by consumers) -->

@@ -162,19 +162,21 @@ export const rollbackDagVersion = (dagId: string | number, versionNo: number) =>
 
 // =================== 按 DAG 告警配置（Sprint 4） ===================
 // 按 DAG 读取时后端会回退全局默认配置：响应 dagId 为 null 即表示当前继承全局配置
+// 微服务化后由 app-alert 提供：/alert/dag-alert-config/dags/{dagId}
 
 export const getDagAlertConfig = (dagId: string | number) =>
-    request.get<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`).then(r => r.data);
+    request.get<Result<DagAlertConfig>>(`/alert/dag-alert-config/dags/${dagId}`).then(r => r.data);
 export const putDagAlertConfig = (dagId: string | number, data: DagAlertConfig) =>
-    request.put<Result<DagAlertConfig>>(`/engineering/dev/dags/${dagId}/alert-config`, data).then(r => r.data);
+    request.put<Result<DagAlertConfig>>(`/alert/dag-alert-config/dags/${dagId}`, data).then(r => r.data);
 
 // =================== 按 DAG 告警规则（Sprint 5，alert_rule 统一数据源） ===================
 // 与全局告警中心同一数据源，任何入口修改实时同步
+// 微服务化后统一走 app-alert 的 /alert/rules/by-object?objectType=DAG
 
 export const getDagAlertRule = (dagId: string | number) =>
-    request.get<Result<AlertRuleDTO>>(`/engineering/dev/dags/${dagId}/alert-rule`).then(r => r.data);
+    request.get<Result<AlertRuleDTO>>('/alert/rules/by-object', {params: {objectType: 'DAG', objectId: dagId}}).then(r => r.data);
 export const putDagAlertRule = (dagId: string | number, data: AlertRuleDTO) =>
-    request.put<Result<AlertRuleDTO>>(`/engineering/dev/dags/${dagId}/alert-rule`, data).then(r => r.data);
+    request.put<Result<AlertRuleDTO>>('/alert/rules/by-object', data, {params: {objectType: 'DAG', objectId: dagId}}).then(r => r.data);
 
 // =================== 节点实时日志（Sprint 4） ===================
 // 注意：节点日志统一走 /dag-executions/{executionId}/nodes/{nodeId}/logs

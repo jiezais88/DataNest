@@ -13,6 +13,7 @@ spring:
       - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-internal.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:

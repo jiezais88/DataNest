@@ -28,6 +28,24 @@
             <artifactId>data-nest-task-core</artifactId>
         </dependency>
 
+        <!-- DataNest Alert API（微服务化改造：告警域调用切换为 Feign） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-alert-api</artifactId>
+        </dependency>
+
+        <!-- Feign lb:// 服务发现调用必需 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
+        <!-- DataNest Engineering API（内部接口复用契约 DTO） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-engineering-api</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -13,12 +13,16 @@
 
     <modules>
         <module>data-nest-common</module>
+        <module>data-nest-alert-api</module>
+        <module>data-nest-system-api</module>
+        <module>data-nest-engineering-api</module>
+        <module>data-nest-governance-api</module>
         <module>data-nest-task-core-entity</module>
-        <module>data-nest-alert</module>
         <module>data-nest-task-core-governance</module>
         <module>data-nest-task-core</module>
         <module>data-nest-gateway</module>
         <module>data-nest-system</module>
+        <module>data-nest-alert-service</module>
         <module>data-nest-engineering</module>
         <module>data-nest-governance</module>
         <module>data-nest-worker</module>
@@ -133,17 +137,38 @@
                 <version>${project.version}</version>
             </dependency>
 
+            <!-- DataNest Alert API（微服务化改造：告警服务 Feign 契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-alert-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest System API（微服务化改造：系统服务 Feign 契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-system-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Engineering API（微服务化改造：工程服务 Feign 契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-engineering-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Governance API（微服务化改造：治理服务 Feign 契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-governance-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- DataNest Task Core Entity -->
             <dependency>
                 <groupId>com.datanest</groupId>
                 <artifactId>data-nest-task-core-entity</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
-            <!-- DataNest Alert -->
-            <dependency>
-                <groupId>com.datanest</groupId>
-                <artifactId>data-nest-alert</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -158,6 +183,13 @@
             <dependency>
                 <groupId>com.datanest</groupId>
                 <artifactId>data-nest-task-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Alert Service（微服务化改造：独立告警服务） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-alert-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

@@ -59,3 +59,9 @@ spring:
                 - Path=/api/worker/**
               filters:
                 - StripPrefix=1
+            - id: alert-service
+              uri: lb://data-nest-alert
+              predicates:
+                - Path=/api/alert/**
+              filters:
+                - StripPrefix=1

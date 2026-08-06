@@ -6,13 +6,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.alert.api.AlertApi;
 import com.datanest.engineering.dto.DagProjectCreateRequest;
 import com.datanest.engineering.dto.DagProjectDTO;
 import com.datanest.engineering.dto.DagProjectUpdateRequest;
 import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
-import com.datanest.task.core.service.AlertRuleService;
 import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,17 +46,13 @@ public class DagProjectService {
     private final NodeExecutionMapper nodeExecutionMapper;
     private final DolphinSchedulerClient dolphinSchedulerClient;
     private final SysUserService sysUserService;
-    private final AlertRuleService alertRuleService;
-    private final DagAlertConfigMapper dagAlertConfigMapper;
-    private final DagAlertHistoryMapper dagAlertHistoryMapper;
+    private final AlertApi alertApi;
 
     public DagProjectService(DagProjectMapper dagProjectMapper, DagMapper dagMapper,
                              DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                              DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                              DolphinSchedulerClient dolphinSchedulerClient, SysUserService sysUserService,
-                             AlertRuleService alertRuleService,
-                             DagAlertConfigMapper dagAlertConfigMapper,
-                             DagAlertHistoryMapper dagAlertHistoryMapper) {
+                             AlertApi alertApi) {
         this.dagProjectMapper = dagProjectMapper;
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
@@ -65,9 +61,7 @@ public class DagProjectService {
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.dolphinSchedulerClient = dolphinSchedulerClient;
         this.sysUserService = sysUserService;
-        this.alertRuleService = alertRuleService;
-        this.dagAlertConfigMapper = dagAlertConfigMapper;
-        this.dagAlertHistoryMapper = dagAlertHistoryMapper;
+        this.alertApi = alertApi;
     }
 
     /**
@@ -164,17 +158,16 @@ public class DagProjectService {
             dagEdgeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagEdge>().eq("dag_id", dagId));
             // 级联删除执行历史（与 DagService.delete 对齐：先删 node_execution 再删 dag_execution）
             List<DagExecution> executions = dagExecutionMapper.selectByDagId(dagId);
-            if (executions != null && !executions.isEmpty()) {
-                List<Long> executionIds = executions.stream().map(DagExecution::getId).toList();
+            List<Long> executionIds = executions == null ? List.of()
+                    : executions.stream().map(DagExecution::getId).toList();
+            if (!executionIds.isEmpty()) {
                 nodeExecutionMapper.delete(new QueryWrapper<NodeExecution>().in("execution_id", executionIds));
-                // Sprint 5 P0：级联删除 Sprint 4 DAG 告警发送历史（按 execution_id）
-                dagAlertHistoryMapper.delete(new QueryWrapper<DagAlertHistory>().in("execution_id", executionIds));
                 dagExecutionMapper.delete(new QueryWrapper<DagExecution>().eq("dag_id", dagId));
             }
-            // Sprint 5 P0：级联删除通用告警规则及 Sprint 4 DAG 告警配置
-            alertRuleService.deleteByObject(AlertConstants.OBJECT_TYPE_DAG, dagId);
-            dagAlertConfigMapper.delete(new QueryWrapper<DagAlertConfig>().eq("dag_id", dagId));
             dagMapper.deleteById(dagId);
+            // 微服务化改造：告警域数据（规则/配置/发送历史）改由 alert-service 远程级联清理；
+            // 原来同事务，现在接受最终一致——远程失败仅记 warn，不阻断主删除流程
+            cleanupAlertData(dagId, executionIds);
         }
 
         // 3. 删 DB 项目
@@ -220,6 +213,22 @@ public class DagProjectService {
     /** 删除项目时需要延后到事务提交后清理的 DS 侧引用快照 */
     private record DagDsRef(Long dagId, String dagName, String releaseState,
                             Long dsScheduleId, Long dsProcessDefinitionCode) {
+    }
+
+    /**
+     * 经 alert-service 远程级联清理 DAG 的告警域数据：告警规则（PRD §7）、dag_alert_config、
+     * dag_alert_history（按 execution_id）。远程失败仅记 warn，不阻断主删除流程（最终一致）。
+     */
+    private void cleanupAlertData(Long dagId, List<Long> executionIds) {
+        try {
+            alertApi.deleteRuleByObject(AlertConstants.OBJECT_TYPE_DAG, dagId);
+            alertApi.deleteDagAlertConfigByDag(dagId);
+            if (!executionIds.isEmpty()) {
+                alertApi.deleteDagAlertHistoriesByExecutions(executionIds);
+            }
+        } catch (Exception e) {
+            logger.warn("DAG 告警数据远程级联清理失败（接受最终一致，不阻断删除）: dagId={}", dagId, e);
+        }
     }
 
     public DagProjectDTO getById(Long id) {

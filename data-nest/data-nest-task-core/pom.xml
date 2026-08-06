@@ -28,10 +28,10 @@
             <artifactId>data-nest-task-core-entity</artifactId>
         </dependency>
 
-        <!-- DataNest Alert（执行类依赖 AlertFiringService 等告警服务） -->
+        <!-- DataNest Alert API（微服务化改造：执行类经 Feign 远程触发告警） -->
         <dependency>
             <groupId>com.datanest</groupId>
-            <artifactId>data-nest-alert</artifactId>
+            <artifactId>data-nest-alert-api</artifactId>
         </dependency>
 
         <!-- DataNest Task Core Governance（执行内核调用质量自动触发等治理编排服务） -->
@@ -149,13 +149,6 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- Sprint 4：邮件告警（由消费方提供 JavaMailSender） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
             <scope>provided</scope>
         </dependency>
     </dependencies>

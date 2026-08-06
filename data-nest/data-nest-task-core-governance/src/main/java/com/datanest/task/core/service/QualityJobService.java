@@ -8,7 +8,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.Result;
 import com.datanest.common.scheduler.SchedulerClient;
+import com.datanest.alert.api.AlertApi;
 import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityJobCreateRequest;
 import org.slf4j.Logger;
@@ -17,14 +19,10 @@ import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
-import com.datanest.task.core.entity.AlertRule;
-import com.datanest.task.core.entity.AlertRuleObject;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityJobRule;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityScore;
-import com.datanest.task.core.mapper.AlertRuleMapper;
-import com.datanest.task.core.mapper.AlertRuleObjectMapper;
 import com.datanest.task.core.mapper.CollectTaskMapper;
 import com.datanest.task.core.mapper.DagMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
@@ -74,8 +72,7 @@ public class QualityJobService {
     private final SysUserService sysUserService;
     private final QualityCheckTriggerService triggerService;
     private final SchedulerClient schedulerClient;
-    private final AlertRuleObjectMapper alertRuleObjectMapper;
-    private final AlertRuleMapper alertRuleMapper;
+    private final AlertApi alertApi;
     private final QualityJobRuleMapper qualityJobRuleMapper;
     private final QualityRuleMapper qualityRuleMapper;
     private final QualityScoreMapper qualityScoreMapper;
@@ -88,8 +85,7 @@ public class QualityJobService {
                              SysUserService sysUserService,
                              QualityCheckTriggerService triggerService,
                              SchedulerClient schedulerClient,
-                             AlertRuleObjectMapper alertRuleObjectMapper,
-                             AlertRuleMapper alertRuleMapper,
+                             AlertApi alertApi,
                              QualityJobRuleMapper qualityJobRuleMapper,
                              QualityRuleMapper qualityRuleMapper,
                              QualityScoreMapper qualityScoreMapper,
@@ -101,8 +97,7 @@ public class QualityJobService {
         this.sysUserService = sysUserService;
         this.triggerService = triggerService;
         this.schedulerClient = schedulerClient;
-        this.alertRuleObjectMapper = alertRuleObjectMapper;
-        this.alertRuleMapper = alertRuleMapper;
+        this.alertApi = alertApi;
         this.qualityJobRuleMapper = qualityJobRuleMapper;
         this.qualityRuleMapper = qualityRuleMapper;
         this.qualityScoreMapper = qualityScoreMapper;
@@ -281,12 +276,17 @@ public class QualityJobService {
     public void delete(Long id) {
         QualityJob entity = requireJob(id);
         // 删除关联校验：若任务已被告警规则绑定（对象类型 QUALITY），阻止删除，并返回具体告警规则名称
-        List<AlertRuleObject> alertObjects = alertRuleObjectMapper.selectByObject(AlertConstants.OBJECT_TYPE_QUALITY, id);
-        if (!alertObjects.isEmpty()) {
-            List<String> alertRuleNames = alertRuleMapper.selectBatchIds(
-                            alertObjects.stream().map(AlertRuleObject::getAlertRuleId).toList())
-                    .stream().map(AlertRule::getName)
-                    .toList();
+        // 微服务化改造：引用校验经 alert-service 远程查询；远程不可用时失败关闭（阻止删除并提示重试），
+        // 避免跳过校验误删仍被引用的任务
+        List<String> alertRuleNames;
+        try {
+            Result<List<String>> alertResult = alertApi.listRuleNamesByObject(AlertConstants.OBJECT_TYPE_QUALITY, id);
+            alertRuleNames = alertResult == null || alertResult.data() == null ? List.of() : alertResult.data();
+        } catch (Exception e) {
+            logger.error("质量任务告警规则引用远程校验失败: jobId={}", id, e);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "告警规则引用校验失败，请稍后重试");
+        }
+        if (!alertRuleNames.isEmpty()) {
             throw new BusinessException(ErrorCode.HAS_REFERENCES,
                     "质量任务已被告警规则引用，请先删除相关告警规则", alertRuleNames);
         }

@@ -3,6 +3,8 @@ package com.datanest.task.core.service;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.datanest.alert.api.AlertApi;
+import com.datanest.alert.api.dto.AlertFireRequest;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -38,7 +40,7 @@ public class SyncJobExecutorService {
     private final AddaxJobService addaxJobService;
     private final MetadataRegistrationService metadataRegistrationService;
     private final SyncJobRetryService syncJobRetryService;
-    private final AlertFiringService alertFiringService;
+    private final AlertApi alertApi;
     private final QualityAutoTriggerService qualityAutoTriggerService;
 
     public SyncJobExecutorService(SyncJobMapper syncJobMapper,
@@ -47,7 +49,7 @@ public class SyncJobExecutorService {
                                   AddaxJobService addaxJobService,
                                   MetadataRegistrationService metadataRegistrationService,
                                   SyncJobRetryService syncJobRetryService,
-                                  AlertFiringService alertFiringService,
+                                  AlertApi alertApi,
                                   QualityAutoTriggerService qualityAutoTriggerService) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
@@ -55,7 +57,7 @@ public class SyncJobExecutorService {
         this.addaxJobService = addaxJobService;
         this.metadataRegistrationService = metadataRegistrationService;
         this.syncJobRetryService = syncJobRetryService;
-        this.alertFiringService = alertFiringService;
+        this.alertApi = alertApi;
         this.qualityAutoTriggerService = qualityAutoTriggerService;
     }
 
@@ -96,8 +98,8 @@ public class SyncJobExecutorService {
                 logger.error("Doris 元数据注册失败（不影响本次同步结果）: syncJobId={}", syncJobId, e);
                 logError(history, lineCounter, "同步成功，但 Doris 元数据注册失败: " + e.getMessage());
             }
-            // Sprint 5：同步任务成功告警（按 alert_rule 配置）
-            alertFiringService.fire("SYNC_JOB", syncJobId, "SUCCESS", "同步任务执行成功，写入 "
+            // Sprint 5：同步任务成功告警（按 alert_rule 配置，经 alert-service 远程触发）
+            fireAlert("SYNC_JOB", syncJobId, "SUCCESS", "同步任务执行成功，写入 "
                     + result.writeRows() + " 行");
             // Sprint 8：同步任务成功后触发绑定的质量任务自动检查
             triggerQualityOnSuccess(QualityAutoTriggerService.OBJECT_TYPE_SYNC_JOB, syncJobId);
@@ -118,8 +120,8 @@ public class SyncJobExecutorService {
         updateExecutionStatus(job, ExecutionStatus.FAILED.getCode());
         updateJobLastExecute(job, history.getId());
         logError(history, lineCounter, "同步任务最终失败");
-        // Sprint 5：同步任务失败告警（按 alert_rule 配置）
-        alertFiringService.fire("SYNC_JOB", syncJobId, "FAILURE", result.errorMessage());
+        // Sprint 5：同步任务失败告警（按 alert_rule 配置，经 alert-service 远程触发）
+        fireAlert("SYNC_JOB", syncJobId, "FAILURE", result.errorMessage());
         // 失败收尾：剩余重试次数 > 0 时在历史记录上登记 next_retry_at，由 job 模块周期扫描触发
         try {
             syncJobRetryService.registerRetryIfNeeded(job, history);
@@ -136,6 +138,28 @@ public class SyncJobExecutorService {
             qualityAutoTriggerService.triggerOnSuccess(objectType, objectId);
         } catch (Exception e) {
             logger.error("质量任务自动触发失败（不影响同步结果）: type={}, objectId={}", objectType, objectId, e);
+        }
+    }
+
+    /**
+     * 经 alert-service 远程触发告警（Feign）。
+     * 失败仅记 error 按「未发送」处理，不影响主执行流程（最终一致）。
+     *
+     * @return 是否发送成功（Result 拆信封；异常按 false）
+     */
+    private boolean fireAlert(String objectType, Long objectId, String alertType, String detail) {
+        try {
+            AlertFireRequest request = new AlertFireRequest();
+            request.setObjectType(objectType);
+            request.setObjectId(objectId);
+            request.setAlertType(alertType);
+            request.setDetail(detail);
+            var result = alertApi.fire(request);
+            return result != null && Boolean.TRUE.equals(result.data());
+        } catch (Exception e) {
+            logger.error("告警远程触发失败（按未发送处理，不影响任务执行结果）: type={}, objectId={}, alertType={}",
+                    objectType, objectId, alertType, e);
+            return false;
         }
     }
 

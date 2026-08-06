@@ -1,9 +1,9 @@
 // Sprint 5：告警规则配置弹窗（全局通用，供告警中心 + DAG/同步任务/采集任务快捷入口复用）
-// 三种模式：
-//  - create：全局告警中心新增规则 → POST /system/alert-rules
-//  - edit：全局告警中心编辑已有规则 → PUT /system/alert-rules/{id}
+// 三种模式（微服务化后统一走 app-alert）：
+//  - create：全局告警中心新增规则 → POST /alert/alert-rules
+//  - edit：全局告警中心编辑已有规则 → PUT /alert/alert-rules/{id}
 //  - quick：业务模块快捷入口（DAG/同步任务/采集任务），对象类型与对象锁定 →
-//           PUT /engineering/sync-jobs/{id}/alert-rule 等；新建未保存 DAG 走本地草稿
+//           PUT /alert/rules/by-object?objectType=...&objectId=...；新建未保存 DAG 走本地草稿
 import {useEffect, useMemo, useState} from 'react';
 import {Select, Spin, Switch, TreeSelect} from 'antd';
 import DsButton from './DsButton';

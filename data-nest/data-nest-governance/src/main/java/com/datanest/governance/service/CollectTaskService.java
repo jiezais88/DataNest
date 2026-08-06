@@ -11,6 +11,7 @@ import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.alert.api.AlertApi;
 import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
@@ -24,7 +25,6 @@ import com.datanest.task.core.mapper.CollectChangeDetailMapper;
 import com.datanest.task.core.mapper.CollectExecutionLogMapper;
 import com.datanest.task.core.mapper.CollectHistoryMapper;
 import com.datanest.task.core.mapper.CollectTaskMapper;
-import com.datanest.task.core.service.AlertRuleService;
 import com.datanest.task.core.service.SysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,21 +56,21 @@ public class CollectTaskService {
     private final CollectExecutionLogMapper collectExecutionLogMapper;
     private final CollectChangeDetailMapper changeDetailMapper;
     private final SysUserService sysUserService;
-    private final AlertRuleService alertRuleService;
+    private final AlertApi alertApi;
 
     public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService,
                               CollectHistoryMapper collectHistoryMapper,
                               CollectExecutionLogMapper collectExecutionLogMapper,
                               CollectChangeDetailMapper changeDetailMapper,
                               SysUserService sysUserService,
-                              AlertRuleService alertRuleService) {
+                              AlertApi alertApi) {
         this.collectTaskMapper = collectTaskMapper;
         this.schedulerService = schedulerService;
         this.collectHistoryMapper = collectHistoryMapper;
         this.collectExecutionLogMapper = collectExecutionLogMapper;
         this.changeDetailMapper = changeDetailMapper;
         this.sysUserService = sysUserService;
-        this.alertRuleService = alertRuleService;
+        this.alertApi = alertApi;
     }
 
     @Transactional
@@ -226,9 +226,15 @@ public class CollectTaskService {
         }
         collectExecutionLogMapper.delete(new QueryWrapper<CollectExecutionLog>().eq("task_id", id));
         collectHistoryMapper.delete(new QueryWrapper<CollectHistory>().eq("task_id", id));
-        // Sprint 5：删除采集任务时级联删除关联告警规则（PRD §7）
-        alertRuleService.deleteByObject(AlertConstants.OBJECT_TYPE_COLLECT_TASK, id);
         collectTaskMapper.deleteById(id);
+        // Sprint 5：删除采集任务时级联删除关联告警规则（PRD §7）
+        // 微服务化改造：改由 alert-service 远程清理；原来同事务，现在接受最终一致，
+        // 远程失败仅记 warn，不阻断主删除流程
+        try {
+            alertApi.deleteRuleByObject(AlertConstants.OBJECT_TYPE_COLLECT_TASK, id);
+        } catch (Exception e) {
+            logger.warn("采集任务告警规则远程级联删除失败（接受最终一致，不阻断删除）: taskId={}", id, e);
+        }
 
         if (xxlJobId != null) {
             // 注销调度移到事务提交后执行，避免 DB 回滚后在调度中心留下孤儿任务

@@ -57,8 +57,8 @@ public class QualityCheckBatchDTO {
     /** 明细列表（仅详情接口回填） */
     private List<QualityCheckDetailDTO> details;
 
-    /** 关联的告警记录（仅详情接口回填，按 quality_batch_id 反查 alert_history） */
-    private List<com.datanest.task.core.entity.AlertHistory> alertHistories;
+    /** 关联的告警记录（仅详情接口回填，经 alert-service 按 quality_batch_id 远程反查） */
+    private List<com.datanest.alert.api.dto.AlertHistoryDTO> alertHistories;
 
     private LocalDateTime createdAt;
 }

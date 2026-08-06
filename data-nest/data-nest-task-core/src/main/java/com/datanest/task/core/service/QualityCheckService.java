@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.alert.api.AlertApi;
+import com.datanest.alert.api.dto.AlertFireBatchRequest;
+import com.datanest.alert.api.dto.AlertFireRequest;
+import com.datanest.alert.api.dto.AlertItem;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
@@ -18,8 +22,6 @@ import com.datanest.task.core.entity.QualityCheckDetail;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
-import com.datanest.task.core.entity.AlertHistory;
-import com.datanest.task.core.mapper.AlertHistoryMapper;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityCheckBatchMapper;
@@ -83,12 +85,11 @@ public class QualityCheckService {
     private final QualityJobMapper jobMapper;
     private final QualityRuleMapper ruleMapper;
     private final QualityRuleTemplateMapper templateMapper;
-    private final AlertHistoryMapper alertHistoryMapper;
     private final MetadataTableMapper tableMapper;
     private final DataSourceConnectionMapper dataSourceMapper;
     private final DorisSqlExecutor dorisSqlExecutor;
     private final GenericSqlExecutor genericSqlExecutor;
-    private final AlertFiringService alertFiringService;
+    private final AlertApi alertApi;
     private final ScoreCalculator scoreCalculator;
 
     public QualityCheckService(QualityCheckBatchMapper batchMapper,
@@ -96,24 +97,22 @@ public class QualityCheckService {
                                QualityJobMapper jobMapper,
                                QualityRuleMapper ruleMapper,
                                QualityRuleTemplateMapper templateMapper,
-                               AlertHistoryMapper alertHistoryMapper,
                                MetadataTableMapper tableMapper,
                                DataSourceConnectionMapper dataSourceMapper,
                                DorisSqlExecutor dorisSqlExecutor,
                                GenericSqlExecutor genericSqlExecutor,
-                               AlertFiringService alertFiringService,
+                               AlertApi alertApi,
                                ScoreCalculator scoreCalculator) {
         this.batchMapper = batchMapper;
         this.detailMapper = detailMapper;
         this.jobMapper = jobMapper;
         this.ruleMapper = ruleMapper;
         this.templateMapper = templateMapper;
-        this.alertHistoryMapper = alertHistoryMapper;
         this.tableMapper = tableMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.genericSqlExecutor = genericSqlExecutor;
-        this.alertFiringService = alertFiringService;
+        this.alertApi = alertApi;
         this.scoreCalculator = scoreCalculator;
     }
 
@@ -188,7 +187,7 @@ public class QualityCheckService {
 
     /**
      * 超时检测回调：批次仍 RUNNING → 触发 TIMEOUT 告警（用 fire 单条，无明细聚合）。
-     * 幂等依赖 AlertFiringService.countRecent 60s 防重。
+     * 幂等依赖 alert-service 的 countRecent 60s 防重。
      */
     private void checkAndFireTimeout(QualityJob job, Long batchId, Integer minutes) {
         try {
@@ -201,7 +200,7 @@ public class QualityCheckService {
                 return;
             }
             logger.warn("质量任务执行超时: jobId={}, batchId={}, timeoutMinutes={}", job.getId(), batchId, minutes);
-            alertFiringService.fire(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+            fireAlert(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
                     AlertConstants.ALERT_TIMEOUT,
                     "执行超时：超过 " + minutes + " 分钟仍未完成");
         } catch (Exception e) {
@@ -610,25 +609,25 @@ public class QualityCheckService {
             return;
         }
         boolean severeOnly = "SEVERE_ONLY".equalsIgnoreCase(job.getAlertLevel());
-        List<AlertFiringService.AlertItem> items = new java.util.ArrayList<>();
+        List<AlertItem> items = new java.util.ArrayList<>();
         for (QualityCheckDetail d : details) {
             if (!isAlertable(d.getResultLevel(), severeOnly)) {
                 continue;
             }
-            items.add(new AlertFiringService.AlertItem(d.getResultLevel(), d.getRuleName(), buildDetailDesc(d)));
+            items.add(toAlertItem(d));
         }
         try {
             if (!items.isEmpty()) {
                 // 失败类：存在达到任务告警等级的规则 → 发「失败」告警
-                alertFiringService.fireBatch(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+                fireBatchAlert(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
                         AlertConstants.ALERT_FAILURE, items, batch.getId());
             } else if ("SUCCESS".equalsIgnoreCase(batch.getStatus())) {
                 // 成功类：批次全部执行成功且判定层无达到告警等级的规则 → 发「成功」通知
                 // （执行失败/部分失败不发成功通知，避免误报）
-                List<AlertFiringService.AlertItem> okItems = details.stream()
-                        .map(d -> new AlertFiringService.AlertItem(d.getResultLevel(), d.getRuleName(), buildDetailDesc(d)))
+                List<AlertItem> okItems = details.stream()
+                        .map(this::toAlertItem)
                         .toList();
-                alertFiringService.fireBatch(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+                fireBatchAlert(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
                         AlertConstants.ALERT_SUCCESS, okItems, batch.getId());
             }
         } catch (Exception e) {
@@ -637,6 +636,55 @@ public class QualityCheckService {
             // 无论是否命中规则，本批次都标记为已处理，避免重复尝试
             markAlertSent(batch.getId());
         }
+    }
+
+    /** 质量明细 → alert-api 批量告警条目 */
+    private AlertItem toAlertItem(QualityCheckDetail d) {
+        AlertItem item = new AlertItem();
+        item.setLevel(d.getResultLevel());
+        item.setRuleName(d.getRuleName());
+        item.setDetail(buildDetailDesc(d));
+        return item;
+    }
+
+    /**
+     * 经 alert-service 远程触发单条告警（Feign）。
+     * 失败仅记 error 按「未发送」处理，不影响主执行流程（最终一致）。
+     *
+     * @return 是否发送成功（Result 拆信封；异常按 false）
+     */
+    private boolean fireAlert(String objectType, Long objectId, String alertType, String detail) {
+        try {
+            AlertFireRequest request = new AlertFireRequest();
+            request.setObjectType(objectType);
+            request.setObjectId(objectId);
+            request.setAlertType(alertType);
+            request.setDetail(detail);
+            var result = alertApi.fire(request);
+            return result != null && Boolean.TRUE.equals(result.data());
+        } catch (Exception e) {
+            logger.error("告警远程触发失败（按未发送处理）: type={}, objectId={}, alertType={}",
+                    objectType, objectId, alertType, e);
+            return false;
+        }
+    }
+
+    /**
+     * 经 alert-service 远程批量触发告警（Feign，含质量批次 batchId）。
+     * 失败仅记 error 按「未发送」处理，不影响主执行流程（最终一致）。
+     *
+     * @return 是否发送成功（Result 拆信封；异常按 false）
+     */
+    private boolean fireBatchAlert(String objectType, Long objectId, String alertType,
+                                   List<AlertItem> items, Long batchId) {
+        AlertFireBatchRequest request = new AlertFireBatchRequest();
+        request.setObjectType(objectType);
+        request.setObjectId(objectId);
+        request.setAlertType(alertType);
+        request.setItems(items);
+        request.setBatchId(batchId);
+        var result = alertApi.fireBatch(request);
+        return result != null && Boolean.TRUE.equals(result.data());
     }
 
     /**
@@ -811,10 +859,21 @@ public class QualityCheckService {
                 .map(this::toDetailDTO)
                 .toList();
         dto.setDetails(details);
-        // 告警对应：按 quality_batch_id 反查本批次触发的告警记录（含规则名/发送状态/时间），供详情展示
-        dto.setAlertHistories(alertHistoryMapper.selectList(new QueryWrapper<AlertHistory>()
-                .eq("quality_batch_id", batchId).orderByAsc("sent_at")));
+        // 告警对应：经 alert-service 按 quality_batch_id 远程反查本批次触发的告警记录
+        // （含规则名/发送状态/时间），供详情展示；远程失败降级为空列表，不阻断详情查询
+        dto.setAlertHistories(listAlertHistories(batchId));
         return dto;
+    }
+
+    /** 远程反查批次告警记录（Feign）；失败仅记 error 并返回空列表 */
+    private List<com.datanest.alert.api.dto.AlertHistoryDTO> listAlertHistories(Long batchId) {
+        try {
+            var result = alertApi.listByQualityBatch(batchId);
+            return result != null && result.data() != null ? result.data() : List.of();
+        } catch (Exception e) {
+            logger.error("批次告警记录远程查询失败（降级为空）: batchId={}", batchId, e);
+            return List.of();
+        }
     }
 
     private QualityCheckBatchDTO toBatchDTO(QualityCheckBatch batch) {

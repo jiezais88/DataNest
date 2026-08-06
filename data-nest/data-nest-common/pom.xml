@@ -64,6 +64,13 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- OpenFeign（optional，仅用于编译内部调用令牌 Feign 拦截器，消费方按需引入） -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

@@ -438,6 +438,56 @@ services:
       - datanest-net
 
   # ============================================
+  # Alert — 告警中心服务（告警规则/历史 + 邮件发送收拢于此）
+  # ============================================
+  app-alert:
+    build:
+      context: .
+      dockerfile: docker/alert.Dockerfile
+    container_name: datanest-app-alert
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
+      - NACOS_PORT=8848
+      - NACOS_USERNAME=nacos
+      - NACOS_PASSWORD=nacos
+      - PG_HOST=middleware-postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest
+      - REDIS_HOST=middleware-redis
+      - REDIS_PORT=6379
+      # MailHog 本地邮件测试
+      - MAIL_HOST=datanest-mailhog
+      - MAIL_PORT=1025
+      - MAIL_USERNAME=mailhog
+      - MAIL_PASSWORD=mailhog
+      - MAIL_FROM=test@datanest.local
+      - ALERT_ENABLED=true
+    # 不暴露宿主机端口：对外统一走 gateway /api/alert/**，容器间 Feign 走 datanest-net:8088
+    depends_on:
+      mailhog:
+        condition: service_started
+      middleware-nacos:
+        condition: service_healthy
+      middleware-nacos-init:
+        condition: service_completed_successfully
+      middleware-postgres:
+        condition: service_healthy
+      middleware-redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8088" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
   # DolphinScheduler 3.4.2 — DAG 调度与执行引擎
   # Master + Worker + API + Alert 分离架构
   # 注册中心：Zookeeper（必须）
@@ -579,13 +629,6 @@ services:
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
-      # MailHog 本地邮件测试
-      - MAIL_HOST=datanest-mailhog
-      - MAIL_PORT=1025
-      - MAIL_USERNAME=mailhog
-      - MAIL_PASSWORD=mailhog
-      - MAIL_FROM=test@datanest.local
-      - ALERT_ENABLED=true
     # ADR-S3-012：回调走 gateway（app-gateway:8080/api/worker/dev/internal/**），
     # 不再直连 engineering 8082。Docker 内网 gateway 与 app-worker 在同 datanest-net。
     depends_on:
@@ -682,13 +725,6 @@ services:
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
-      # MailHog 本地邮件测试
-      - MAIL_HOST=datanest-mailhog
-      - MAIL_PORT=1025
-      - MAIL_USERNAME=mailhog
-      - MAIL_PASSWORD=mailhog
-      - MAIL_FROM=test@datanest.local
-      - ALERT_ENABLED=true
     depends_on:
       mailhog:
         condition: service_started
@@ -741,13 +777,6 @@ services:
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
       - XXL_JOB_PORT=8080
-      # MailHog 本地邮件测试
-      - MAIL_HOST=datanest-mailhog
-      - MAIL_PORT=1025
-      - MAIL_USERNAME=mailhog
-      - MAIL_PASSWORD=mailhog
-      - MAIL_FROM=test@datanest.local
-      - ALERT_ENABLED=true
     depends_on:
       mailhog:
         condition: service_started
