@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================
+  logback-spring.xml（全后端公用，生产级）
+  位置：data-nest-common/src/main/resources
+  生效方式：随 common 进入所有消费方服务 classpath 根，Spring Boot 自动加载。
+  覆盖规则：某服务如需自定义，在自身 resources 放同名 logback-spring.xml 即可（classes 目录优先于依赖 jar）。
+
+  设计要点：
+  1. console + 文件双通道：docker logs 为在线排查入口，容器内文件供 detail 回溯（注意：容器重建文件即丢，
+     长期留存需挂载卷或接日志采集，届时仅需挂载，无需改本配置）。
+  2. 文件输出全部走 AsyncAppender 异步队列：磁盘 IO 不阻塞业务线程；队列满时丢弃事件而非阻塞业务（neverBlock），
+     discardingThreshold=0 表示不主动丢弃 INFO 以下事件。
+  3. ERROR 单独滚动文件：生产排障第一入口，避免在全量日志里翻找。
+  4. 滚动策略：按天 + 单文件 100MB 双维度滚动、gzip 压缩、保留 30 天、总量上限防爆磁盘。
+  5. 日志级别不写死：由 Nacos shared-common.yaml 的 logging.level.* 控制
+     （Boot 的 LoggingApplicationListener 对自定义 logback 配置继续生效）。
+  6. 文件路径/文件名外置：logging.file.path 可经 Nacos/环境覆盖；文件名带 spring.application.name 区分服务。
+  ============================================
+-->
+<configuration>
+
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="app"/>
+    <!-- 默认 ./logs（容器工作目录下可写；本地开发同样可写）。生产挂载卷时经 logging.file.path 覆盖 -->
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="./logs"/>
+
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"/>
+
+    <!-- console：在线排查主入口（docker logs）。不用 ANSI 颜色，docker logs 里会变成乱码控制符 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 全量滚动文件 -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}.log</file>
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ERROR 单独滚动文件（生产排障第一入口） -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!--
+      异步队列包裹文件输出：业务线程只写内存队列即返回，磁盘 IO 由 appender 线程完成。
+      queueSize=8192：突发流量缓冲；neverBlock=true：队列满时丢弃事件而非阻塞业务线程（保可用性）；
+      discardingThreshold=0：不因队列水位主动丢弃 INFO/DEBUG（默认 20% 水位会丢，生产上改为不丢）。
+      includeCallerData 保持默认 false：异步下拿调用方行号代价高，排障靠 logger 名足够。
+      注意：一个 AsyncAppender 只能挂一个 appender（logback 硬限制），文件与错误文件各包一层。
+    -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>8192</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+    <appender name="ASYNC_ERROR_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>2048</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="ERROR_FILE"/>
+    </appender>
+
+    <root level="info">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+        <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
+
+</configuration>

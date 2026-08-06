@@ -61,3 +61,10 @@ management:
   info:
     env:
       enabled: true
+
+# Sprint 7 F1：数据资产目录
+datanest:
+  asset:
+    search:
+      # 资产搜索结果裁剪上限（对齐 searchTree 的 MAX_SEARCH_RESULTS 保护）
+      max-results: 200

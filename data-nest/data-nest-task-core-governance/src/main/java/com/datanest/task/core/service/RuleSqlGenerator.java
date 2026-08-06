@@ -39,19 +39,30 @@ public final class RuleSqlGenerator {
      */
     public static String generate(QualityRuleTemplate template, MetadataTable table,
                                   String columnName, BigDecimal rangeMin, BigDecimal rangeMax, String customSql) {
+        String result;
         if (template == null) {
-            return customSql;
+            // 无模板（如自定义 SQL 规则未选模板）：仅替换 {table} 占位符，其余按用户 SQL 原样返回
+            result = customSql;
+        } else if (isCustomSql(template)) {
+            // CUSTOM_SQL 模板：模板无 sql_template，直接采用用户 SQL，仅替换 {table}
+            result = customSql;
+        } else {
+            String sqlTemplate = template.getSqlTemplate();
+            if (!StringUtils.hasText(sqlTemplate)) {
+                result = customSql;
+            } else {
+                result = sqlTemplate;
+            }
         }
-        if (isCustomSql(template)) {
-            return customSql;
+        if (result == null) {
+            return null;
         }
-        String sqlTemplate = template.getSqlTemplate();
-        if (!StringUtils.hasText(sqlTemplate)) {
-            return customSql;
-        }
-        String result = sqlTemplate;
         result = result.replace("{table}", buildFullTableName(table));
-        result = result.replace("{column}", columnName == null ? "" : columnName);
+        // {column} 仅在显式指定检查字段时替换；整表检查/未指定列时保留占位符，
+        // 由执行层检测到残留占位符后跳过该规则（避免生成 COUNT() 等非法 SQL）
+        if (StringUtils.hasText(columnName)) {
+            result = result.replace("{column}", columnName);
+        }
         result = result.replace("{min}", rangeMin == null ? "" : rangeMin.stripTrailingZeros().toPlainString());
         result = result.replace("{max}", rangeMax == null ? "" : rangeMax.stripTrailingZeros().toPlainString());
         return result;

@@ -31,4 +31,11 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             " AND email IS NOT NULL AND email != ''" +
             "</script>")
     List<SysUser> selectEmailsByIds(@Param("ids") Collection<Long> ids);
+
+    /**
+     * Sprint 7 F1：按用户名模糊查询 userId 列表，用于资产搜索的「负责人」维度匹配。
+     * LIMIT 防止常见词关键词导致全表返回。
+     */
+    @Select("SELECT id FROM sys_user WHERE username LIKE CONCAT('%', #{keyword}, '%') LIMIT 50")
+    List<Long> selectIdsByUsernameKeyword(@Param("keyword") String keyword);
 }

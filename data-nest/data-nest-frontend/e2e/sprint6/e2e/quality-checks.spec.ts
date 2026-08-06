@@ -5,6 +5,7 @@ import {psql, scalar} from '../helpers/db';
 import {mysqlScalar, pgScalar, doris, quiet} from '../helpers/exec-db';
 import {waitFor} from '../helpers/poll';
 import {gotoAs} from '../helpers/e2e';
+import {XxlClient} from '../helpers/xxl';
 
 // sprint5 helpers：复用 DAG 创建 / 执行（真实执行已由 sprint5 验证可行）
 import {getProjectId, waitDagDsSynced, runDag} from '../../sprint5/helpers/dag';
@@ -415,5 +416,82 @@ test.describe('Sprint 8 质量检查自动触发', () => {
 
         // 清理 DAG
         await admin.del(`/engineering/dev/dags/${dag.id}`);
+    });
+});
+
+// ==================== C. 定时触发（SCHEDULED） ====================
+
+test.describe('Sprint 8 质量检查定时触发', () => {
+    // 质量任务注册到 data-nest-worker 执行器组，handler=qualityCheckExecuteHandler，executorParam=纯 jobId
+    const WORKER_APPNAME = 'data-nest-worker';
+    const HANDLER = 'qualityCheckExecuteHandler';
+
+    test.beforeAll(async () => {
+        admin = await Api.create();
+        await admin.login(ADMIN.username, ADMIN.password);
+        psql(`DELETE FROM quality_check_detail WHERE batch_id IN (SELECT id FROM quality_check_batch WHERE job_name LIKE '${EXEC_PREFIX}%')`);
+        psql(`DELETE FROM quality_check_batch WHERE job_name LIKE '${EXEC_PREFIX}%'`);
+        psql(`DELETE FROM quality_rule WHERE job_id IN (SELECT id FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%')`);
+        psql(`DELETE FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%'`);
+    });
+
+    test.afterAll(async () => {
+        psql(`DELETE FROM quality_check_detail WHERE batch_id IN (SELECT id FROM quality_check_batch WHERE job_name LIKE '${EXEC_PREFIX}%')`);
+        psql(`DELETE FROM quality_check_batch WHERE job_name LIKE '${EXEC_PREFIX}%'`);
+        psql(`DELETE FROM quality_rule WHERE job_id IN (SELECT id FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%')`);
+        psql(`DELETE FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%'`);
+        await admin.dispose();
+    });
+
+    test('定时任务：创建即注册 XXL-JOB，trigger 后落 SCHEDULED 批次', async () => {
+        // 建定时质量任务（cron=每天 0 点，避免立即到点；创建时自动注册 XXL-JOB）
+        const job = await admin.post('/governance/quality/jobs', {
+            name: `${EXEC_PREFIX}_scheduled_job`, description: 's8 scheduled',
+            datasourceId: EXEC_DS_MYSQL_ID, enabled: 1, scheduledEnabled: 1, cron: '0 0 0 * * ?',
+            autoTriggerEnabled: 0, alertLevel: 'SEVERE_WARNING',
+        });
+        const jobId = String(job.id);
+        await createCustomRule(admin, jobId, `${EXEC_PREFIX}_scheduled_rule`,
+            EXEC_TABLE_MYSQL_OK_ID, `SELECT COUNT(*) AS total FROM ${EXEC_TABLE}`, 'total');
+
+        // 校验 XXL-JOB 已注册：按 handler + executorParam(纯 jobId) 精确定位
+        const xxl = await XxlClient.create();
+        let xxlJobId = 0;
+        try {
+            xxlJobId = await xxl.findJobIdByHandlerAndParam(WORKER_APPNAME, HANDLER, jobId);
+        } finally {
+            await xxl.dispose();
+        }
+        expect(xxlJobId).toBeGreaterThan(0);
+
+        // 手动触发一次（executorParam=纯 jobId，等价定时触发；handler 对无冒号 param 按 SCHEDULED）
+        const xxl2 = await XxlClient.create();
+        try {
+            await xxl2.trigger(xxlJobId, jobId);
+        } finally {
+            await xxl2.dispose();
+        }
+
+        // 轮询 SCHEDULED 批次进入终态，断言触发方式=定时
+        const batch = await waitFor(
+            async () => {
+                const id = scalar(`SELECT id FROM quality_check_batch
+                                    WHERE job_id=${jobId} AND trigger_type='SCHEDULED' ORDER BY id DESC LIMIT 1`);
+                if (!id) return null;
+                return {
+                    id,
+                    status: scalar(`SELECT status FROM quality_check_batch WHERE id=${id}`) ?? 'RUNNING',
+                    trigger: scalar(`SELECT trigger_type FROM quality_check_batch WHERE id=${id}`) ?? '',
+                };
+            },
+            (b) => b != null && b.status !== 'RUNNING',
+            {timeoutMs: 120_000, label: 'SCHEDULED 批次进入终态'},
+        ) as unknown as {id: string; status: string; trigger: string};
+
+        expect(batch.trigger).toBe('SCHEDULED');
+        expect(batch.status).toBe('SUCCESS');
+
+        // 关闭调度（stopSchedule：停止 XXL-JOB，避免残留定时任务）
+        await admin.post(`/governance/quality/jobs/${jobId}/schedule/stop`);
     });
 });

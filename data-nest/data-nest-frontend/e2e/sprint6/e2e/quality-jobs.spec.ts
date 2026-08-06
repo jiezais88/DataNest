@@ -35,38 +35,30 @@ function rowBy(page: Page, name: string) {
     });
 }
 
-/** 新增质量任务 Drawer：填写并保存（仅名称必填，其余可选） */
+/** 新增质量任务 Drawer：填写并保存（仅名称必填，其余可选；触发方式为按钮单选） */
 async function fillJobCreateDrawer(
     page: Page,
     name: string,
-    opts: { datasourceId?: string; cron?: string; autoTriggerSyncJob?: boolean } = {},
+    opts: { cron?: string; autoTriggerSyncJob?: boolean } = {},
 ) {
     const drawer = page.getByRole('dialog', {name: '新增质量任务'});
     await drawer.waitFor({state: 'visible', timeout: 10000});
     // 任务名称（placeholder 定位，唯一）
     await drawer.getByPlaceholder('例如：核心业务表完整性检查').fill(name);
-    // 可选：数据源范围
-    if (opts.datasourceId) {
-        await drawer
-            .getByText('数据源范围', {exact: true})
-            .locator('..')
-            .locator('select')
-            .selectOption(opts.datasourceId);
-    }
-    // 可选：定时调度 + Cron
+    // 可选：Cron 定时（点「Cron 定时」按钮 + CronPicker 预设「每天凌晨 2 点」= 0 0 2 * * ?）
     if (opts.cron) {
-        await drawer.locator('input[type="checkbox"]').nth(1).check();
-        await drawer.getByPlaceholder('例如：0 0 2 * * ?').fill(opts.cron);
+        await drawer.getByRole('button', {name: 'Cron 定时'}).click();
+        await drawer.getByRole('button', {name: '每天凌晨 2 点'}).click();
     }
     // 可选：自动触发绑定同步任务
     if (opts.autoTriggerSyncJob) {
-        await drawer.locator('input[type="checkbox"]').nth(2).check();
+        await drawer.getByRole('button', {name: '自动触发'}).click();
         // 绑定对象类型 → 同步任务
-        const typeSelect = drawer
+        await drawer
             .getByText('绑定对象类型', {exact: true})
             .locator('..')
-            .locator('select');
-        await typeSelect.selectOption('SYNC_JOB');
+            .locator('select')
+            .selectOption('SYNC_JOB');
         // 同步任务下拉（label 含必填星号，用正则匹配）
         const syncSelect = drawer
             .getByText(/同步任务/)
@@ -105,48 +97,34 @@ test.describe('Sprint 6 质量任务 E2E', () => {
         await admin.dispose();
     });
 
-    test('页面加载：统计卡片 + 质量任务 Tab 列表', async ({page}) => {
+    test('页面加载：质量任务列表', async ({page}) => {
         await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
-        // 统计卡片
-        await expect(page.getByText('全部任务', {exact: true})).toBeVisible();
-        await expect(page.getByText('已启用', {exact: true})).toBeVisible();
-        await expect(page.getByText('已停用', {exact: true})).toBeVisible();
-        // 基础任务出现
+        // 标题与基础任务出现
+        await expect(page.getByRole('heading', {name: '质量任务'})).toBeVisible({timeout: 15000});
         await expect(rowBy(page, `${QUALITY_PREFIX}_job1`)).toBeVisible({timeout: 15000});
         await expect(rowBy(page, `${QUALITY_PREFIX}_job2`)).toBeVisible();
-    });
-
-    test('Tab 切换：切到质量规则后再切回', async ({page}) => {
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
-        await page.getByRole('button', {name: '质量规则'}).click();
-        // 质量规则 Tab：需先选任务
-        await expect(page.getByLabel('选择质量任务')).toBeVisible({timeout: 15000});
-        await page.getByRole('button', {name: '质量任务'}).click();
-        await expect(rowBy(page, `${QUALITY_PREFIX}_job1`)).toBeVisible({timeout: 15000});
     });
 
     test('新增质量任务：必填名称，保存后列表出现', async ({page}) => {
         const name = `${QUALITY_PREFIX}_新增_${Date.now()}`;
         await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
         await page.getByRole('button', {name: '新增质量任务'}).first().click();
-        const drawer = await fillJobCreateDrawer(page, name, {datasourceId: QUALITY_DS_ID});
+        const drawer = await fillJobCreateDrawer(page, name);
         await drawer.getByRole('button', {name: '保存'}).click();
         await expect(drawer).toHaveCount(0, {timeout: 10000});
         const row = rowBy(page, name);
         await expect(row).toBeVisible({timeout: 15000});
         await expect(row.getByText('启用', {exact: true})).toBeVisible();
-        // 数据源范围列展示数据源名
-        await expect(row.getByText(QUALITY_DS_NAME, {exact: true})).toBeVisible();
     });
 
-    test('新增质量任务：定时调度勾选但未填 Cron → 校验错误', async ({page}) => {
+    test('新增质量任务：Cron 定时但未填 Cron → 校验错误', async ({page}) => {
         await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
         await page.getByRole('button', {name: '新增质量任务'}).first().click();
         const drawer = page.getByRole('dialog', {name: '新增质量任务'});
         await drawer.waitFor({state: 'visible', timeout: 10000});
         await drawer.getByPlaceholder('例如：核心业务表完整性检查').fill(`${QUALITY_PREFIX}_cron_bad_${Date.now()}`);
-        // 勾选定时调度但不填 Cron
-        await drawer.locator('input[type="checkbox"]').nth(1).check();
+        // 点「Cron 定时」按钮但不填 Cron
+        await drawer.getByRole('button', {name: 'Cron 定时'}).click();
         await drawer.getByRole('button', {name: '保存'}).click();
         await expect(drawer.getByText('开启定时调度时请输入 Cron 表达式')).toBeVisible();
         // Drawer 未关闭
@@ -263,7 +241,7 @@ test.describe('Sprint 6 质量任务 E2E', () => {
 
     test('权限：工程师可查看但不可编辑质量任务', async ({page}) => {
         await gotoAs(page, TEST_USERS.engineer.username, TEST_USERS.engineer.password, '/governance/data-quality');
-        await expect(page.getByRole('heading', {name: '数据质量'})).toBeVisible();
+        await expect(page.getByRole('heading', {name: '质量任务'})).toBeVisible();
         const row = rowBy(page, `${QUALITY_PREFIX}_job1`);
         await expect(row).toBeVisible({timeout: 15000});
         // 无新增按钮

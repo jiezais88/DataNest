@@ -177,6 +177,8 @@ public class QualityCheckService {
         try {
             String sql = generateSql(rule);
             detail.setExecutedSql(sql);
+            // 模板类规则若残留占位符（如整表完整性未指定检查字段，{column} 未替换）则跳过，避免执行非法 SQL
+            assertNoUnresolvedPlaceholder(sql, rule);
             BigDecimal value = executeAndExtract(rule, sql);
             detail.setResultValue(value);
             detail.setResultLevel(determineLevel(rule, value));
@@ -246,6 +248,22 @@ public class QualityCheckService {
             return generateSql(rule);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * 校验生成的 SQL 无残留占位符（{column}/{min}/{max} 等）。
+     * 模板类规则未指定检查字段时（如整表完整性检查），{column} 不会被替换，
+     * 若直接执行会生成 COUNT() 等非法 SQL，故在此拦截并标记规则为不可用。
+     */
+    private void assertNoUnresolvedPlaceholder(String sql, QualityRule rule) {
+        if (sql == null || sql.isBlank()) {
+            return;
+        }
+        int braceStart = sql.indexOf('{');
+        if (braceStart >= 0 && sql.indexOf('}', braceStart) > braceStart) {
+            throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
+                    "规则「" + rule.getName() + "」未指定检查字段，无法生成有效校验 SQL，请编辑规则补充检查字段");
         }
     }
 

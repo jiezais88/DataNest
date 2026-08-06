@@ -52,20 +52,18 @@ async function fillCreateDrawer(page: Page, name: string, opts: { type?: string 
     return drawer;
 }
 
-/** 选表 Modal：选数据源 → 库 → 表 → 确认（单选，供批量应用选表） */
-async function pickTable(page: Page, tableName: string, multiple = false) {
-    const modal = page.getByRole('dialog', {name: multiple ? '选择表（可多选）' : '选择表'});
+/** 批量应用弹窗内嵌选表：点数据库列 → 点表列（多选 toggle） */
+async function pickTableInBatchModal(page: Page) {
+    const modal = page.getByRole('dialog', {name: '模板批量应用'});
     await modal.waitFor({state: 'visible', timeout: 10000});
-    // 数据源（lockDatasource 时自动置为默认值 QUALITY_DS_ID，等待其稳定即可）
-    const dsSelect = modal.getByText('数据源', {exact: true}).locator('..').locator('select');
-    await dsSelect.waitFor({state: 'visible', timeout: 10000});
-    await expect(dsSelect).toHaveValue(QUALITY_DS_ID, {timeout: 10000});
-    // 库
-    await modal.getByText(QUALITY_DB, {exact: true}).click();
-    // 表
-    await modal.getByText(tableName, {exact: true}).click();
-    // 确认
-    await modal.getByRole('button', {name: /确认/}).click();
+    // 数据库列点击
+    const dbCell = modal.getByText(QUALITY_DB, {exact: true});
+    await dbCell.waitFor({state: 'visible', timeout: 10000});
+    await dbCell.click();
+    // 表列点击
+    const tableCell = modal.getByText(QUALITY_TABLE, {exact: true});
+    await tableCell.waitFor({state: 'visible', timeout: 10000});
+    await tableCell.click();
 }
 
 test.describe.configure({mode: 'serial'});
@@ -252,12 +250,11 @@ test.describe('Sprint 6 规则模板库 E2E', () => {
         await expect(templateSelect).not.toHaveValue('', {timeout: 10000});
         // 选目标任务
         await jobSelect.selectOption(batchJobId);
-        // 选数据源（质量数据源，使「选择表」可用）
+        // 选数据源（质量数据源，使表列可用）
         const dsSelect = modal.getByText(/^数据源/).locator('..').locator('select');
         await dsSelect.selectOption(QUALITY_DS_ID);
-        // 选表（多选）
-        await modal.getByRole('button', {name: '选择表'}).click();
-        await pickTable(page, QUALITY_TABLE, true);
+        // 内嵌选表：点数据库列 → 点表列（多选 toggle）
+        await pickTableInBatchModal(page);
         // 生成规则
         await modal.getByRole('button', {name: '生成规则'}).click();
         await expect(modal).toHaveCount(0, {timeout: 10000});

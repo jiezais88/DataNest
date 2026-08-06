@@ -48,6 +48,15 @@ public class MetadataTable {
 
     private Long lastCollectHistoryId;
 
+    /** Sprint 7 F1：数据域（一级分类名，冗余存名称便于展示） */
+    private String dataDomain;
+
+    /** Sprint 7 F1：主题（二级分类名，冗余存名称） */
+    private String dataTopic;
+
+    /** Sprint 7 F1：表负责人用户 ID（关联 sys_user.id） */
+    private Long ownerUserId;
+
     @TableField(exist = false)
     private Integer columnCount;
 
@@ -62,6 +71,10 @@ public class MetadataTable {
 
     @TableField(exist = false)
     private String datasourceType;
+
+    /** Sprint 7 F1：负责人用户名（回填展示用） */
+    @TableField(exist = false)
+    private String ownerName;
 
     private Long createdBy;
 

@@ -108,3 +108,13 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - 数据库、Redis、Doris、XXL-JOB、Addax、安全等配置走 Nacos `shared-configs`。
 - 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
 - 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。
+
+## 10. 日志
+
+- **公用 logback 配置（生产级）**：`data-nest-common/src/main/resources/logback-spring.xml`，随 common 进入全部后端服务（gateway/system/engineering/governance/worker/job）classpath 根自动生效。
+- **三通道**：console（docker logs 在线排查）+ 全量滚动文件 + ERROR 单独滚动文件（排障第一入口）；文件输出全部走 **AsyncAppender 异步队列**（queueSize 8192、`neverBlock=true` 队列满丢弃不阻塞业务、`discardingThreshold=0` 不主动丢 INFO）。
+- **滚动策略**：按天 + 单文件 100MB、gzip、保留 30 天、总量上限（全量 3GB / 错误 1GB）。
+- **文件位置**：默认 `./logs/<服务名>.log`（容器工作目录下），可经 `logging.file.path`（Nacos）覆盖；**容器重建文件即丢**，长期留存需挂卷或接日志采集。
+- **日志级别不写死在 logback 文件**：仍由 Nacos `shared-common.yaml` 的 `logging.level.*` 控制（Boot 的 `LoggingApplicationListener` 对自定义 logback 配置继续生效）。
+- 某服务需自定义日志时，在自身 `src/main/resources` 放同名 `logback-spring.xml` 覆盖（classes 目录优先于依赖 jar）。
+- 改动该文件等于改 common，**必须全量重建所有后端服务镜像**才生效。

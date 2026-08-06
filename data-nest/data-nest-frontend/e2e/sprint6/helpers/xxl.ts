@@ -59,10 +59,10 @@ export class XxlClient {
     }
 
     /** 按 handler 名查找任务，返回 jobId（含 executorHandler 匹配校验） */
-    async findJobIdByHandler(executorHandler = XXL_HANDLER_COMPLIANCE): Promise<number> {
-        const jobGroup = await this.findJobGroup();
+    async findJobIdByHandler(executorHandler = XXL_HANDLER_COMPLIANCE, appName = EXECUTOR_APPNAME): Promise<number> {
+        const jobGroup = await this.findJobGroup(appName);
         if (jobGroup == null) {
-            throw new Error(`XXL-JOB 执行器分组不存在: appname=data-nest-job`);
+            throw new Error(`XXL-JOB 执行器分组不存在: appname=${appName}`);
         }
         const json = await this.get(
             `/jobinfo/pageList?jobGroup=${jobGroup}&triggerStatus=-1&jobDesc=&executorHandler=${encodeURIComponent(executorHandler)}&author=&offset=0&pagesize=100`,
@@ -70,7 +70,27 @@ export class XxlClient {
         const list = this.extractPageList(json);
         const job = list.find((j) => j.executorHandler === executorHandler);
         if (!job) {
-            throw new Error(`XXL-JOB 平台任务未找到: executorHandler=${executorHandler}`);
+            throw new Error(`XXL-JOB 平台任务未找到: executorHandler=${executorHandler}, appName=${appName}`);
+        }
+        return Number(job.id);
+    }
+
+    /**
+     * 按执行器分组 + handler + executorParam 精确查找任务（质量任务定时注册的 executorParam = 业务 jobId）。
+     * 质量任务注册在执行器组 data-nest-worker，handler=qualityCheckExecuteHandler，param=纯 jobId。
+     */
+    async findJobIdByHandlerAndParam(appName: string, executorHandler: string, executorParam: string): Promise<number> {
+        const jobGroup = await this.findJobGroup(appName);
+        if (jobGroup == null) {
+            throw new Error(`XXL-JOB 执行器分组不存在: appname=${appName}`);
+        }
+        const json = await this.get(
+            `/jobinfo/pageList?jobGroup=${jobGroup}&triggerStatus=-1&jobDesc=&executorHandler=${encodeURIComponent(executorHandler)}&author=&offset=0&pagesize=100`,
+        );
+        const list = this.extractPageList(json);
+        const job = list.find((j) => j.executorHandler === executorHandler && String(j.executorParam) === executorParam);
+        if (!job) {
+            throw new Error(`XXL-JOB 任务未找到: appName=${appName}, handler=${executorHandler}, executorParam=${executorParam}`);
         }
         return Number(job.id);
     }

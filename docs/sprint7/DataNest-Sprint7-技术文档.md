@@ -233,6 +233,7 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 - **分类浏览**：左侧分类树（DOMAIN → TOPIC），右侧列出该分类下资产卡片（按 `data_domain`/`data_topic` 匹配），支持按质量评分排序、按数据源筛选。
 - **未分类**：`data_domain` 为空的表归入「未分类」节点。
 - **删除校验**：删除分类前查询 `metadata_table` 是否仍有引用（`data_domain=data_domain OR data_topic=...`），有则提示先解除分配（PRD §7）。
+- **改名级联**（2026-08-06 用户确认）：重命名分类时同步 UPDATE `metadata_table` 冗余的 `data_domain`/`data_topic`，保证冗余名称一致。
 
 ### 4.4 子 DAG 参数下发（NG5）
 
@@ -416,3 +417,4 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 > **版本记录**
 > - v1.0 (2026-08-05)：基于 PRD v1.0、代码现状核验与用户确认的技术决策（资产目录复用 governance、血缘/搜索/Python 三方案由我定）编写。
 > - v1.1 (2026-08-05)：用户确认 Python 质量规则数据拉取采用**方案 B（通用连接注入）**——`PythonExecutor` 连接注入层从 Doris 专用抽象为通用 `conn.json` + 沙箱 `read_table` helper；更新 §1 D4、§4.6、§7 配置、§8 B1（消解）、§9 实现清单。
+> - v1.2 (2026-08-06)：F1 后端落地。补充 §4.3 分类**改名级联更新** metadata_table 冗余名（用户确认）；实现侧新增 `browse` 的 `uncategorized` 参数、`ErrorCode` 4007–4010、`QualityScoreService.mapByTableIds` 批量方法。

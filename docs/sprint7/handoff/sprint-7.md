@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 7 规划/设计（PRD + 技术设计文档已完成，后端/前端实现未开始）
+> **更新时间**：2026-08-06 | **阶段**：F1 后端已完成（curl 自测通过）→ 待 F1 前端/E2E 或并行启动 F2
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -17,9 +17,11 @@
 | Sprint 7 PRD                             | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-PRD.md`（v1.0）                                                |
 | Sprint 7 技术设计                        | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-技术文档.md`（v1.0，含 4 个技术决策 D1~D4）                     |
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
-| 后端实现（资产目录/模板/质量增强/子DAG） | ⏳ 未开始 | 见 §9 实现清单                                                                                |
-| 前端实现（数据资产页/详情页/分类/模板）  | ⏳ 未开始 | 见 §9 实现清单                                                                                |
-| 联调验证                                 | ⏳ 未开始 | 接口先 Postman/curl 自测再联调前端                                                             |
+| **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | 🔄 后端完成 | 后端 ✅（2026-08-06，curl 自测通过，见 §6.1）；前端 3 页 + E2E 待后续会话                |
+| **F2 任务模板库**（DD-09）               | ⏳ 未开始 | 前后端+测试闭环（见 §6.2）                                                                     |
+| **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
+| **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
+| 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
 | Sprint 7 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
 
 ## 3. 关键决策（用户已确认）
@@ -48,10 +50,22 @@
 
 | 文档/产物                                                             | 变更说明                                                                                              |
 |------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| **F1 后端实现（2026-08-06，本段为开发阶段新增）**                      | 见下方「F1 后端变更明细」                                                                             |
 | `docs/sprint7/DataNest-Sprint7-PRD.md`（新增）                        | Sprint 7 数据资产目录产品文档 v1.0（12 章，对齐 Sprint6 PRD 范本；复用 vs 新增边界经代码核验）        |
 | `docs/sprint7/DataNest-Sprint7-技术文档.md`（新增）                   | Sprint 7 技术设计文档 v1.0（11 章，含 4 个技术决策、数据模型、接口、实现清单）；v1.1 补充 Python 数据拉取方案 B（通用连接注入） |
 | `docs/sprint7/handoff/sprint-7.md`（新增）                            | 本 Handoff                                                                                            |
 | `docs/sprint7/DataNest-Sprint7-资产目录原型.{css,html,js}`（修正）    | UI 原型高保真对齐真实前端：token/组件/侧边栏/表格/徽章等逐项修正（见下「原型对齐要点」）                |
+
+**F1 后端变更明细（2026-08-06，curl 自测通过）**
+- `data-nest-system/.../db/migration/V3.8.0__sprint7_asset_catalog.sql`（新增）：`asset_classification` 表（uk(level,name) + 2 索引，`updated_at` 无默认值）+ `metadata_table` 加 `data_domain`/`data_topic`/`owner_user_id`。已应用（flyway_schema_history 3.8.0 success）。
+- `data-nest-task-core-entity`：`MetadataTable` 加 3 持久化字段 + `ownerName`（exist=false）；新增 `AssetClassification` entity（含 LEVEL_DOMAIN/LEVEL_TOPIC 常量、children exist=false）+ `AssetClassificationMapper`；`MetadataTableMapper` 两处手写列清单加新列 + 新增 `searchAssetTables`（多维搜索，script foreach）；`MetadataColumnMapper.selectTableIdsByColumnKeyword`；`SysUserMapper.selectIdsByUsernameKeyword` + `SysUserService.findUserIdsByNameKeyword`。
+- `data-nest-task-core-governance`：`QualityScoreService.mapByTableIds(Collection<Long>)` 批量方法。
+- `data-nest-common`：`ErrorCode` 治理段新增 4007/4008/4009/4010。
+- `data-nest-governance`：`AssetCatalogController`（`/assets`，8 端点）+ `AssetCatalogService` + DTO×5（`AssetSearchItemDTO`/`AssetClassificationDTO`/`ClassificationSaveRequest`/`AssignClassificationRequest`/`AssignOwnerRequest`）。
+- `data-nest/shared-configs/shared-common.yaml`：`datanest.asset.search.max-results: 200`（`@Value` 默认值兜底，未刷 Nacos 库）。
+- 与技术文档的偏差：① 分类重命名策略经用户确认为**级联更新** metadata_table 冗余名（技术文档 §3.1 只写了删除校验）；② `browse` 增加 `uncategorized=true` 参数实现「未分类」浏览（PRD §6.4）；③ 搜索得分实现为表名 100（前缀 +20）/注释 60/字段 40/负责人 20，与技术文档 §4.1 示例权重一致。
+- 部署：全量 `mvn clean package` + 重建 app-system/governance/engineering/worker/job 并 up，全部 healthy（镜像时间戳已核验）。
+- 自测环境残留数据：`asset_classification` 有「交易域（含主题：订单）/用户域」；`metadata_table` 的 orders/order_items 已分配交易域·订单，orders 负责人=admin。**E2E 种子数据可直接复用或清理后重建**。
 
 **原型对齐要点（2026-08-05-06，对照真实前端源码 + 自动化截图逐项修正）**
 - **自动化截图对比**：曾用临时 Playwright Python 脚本（已删）截真实前端 3 页（`/governance/metadata` 展开树、`/governance/data-quality`、`/governance/quality-templates`）+ 截原型 5 视图（assets/classification/task-template/subdag/python-rule）逐屏对比。脚本核心要点已固化到 `docs/agent/prototype-guide.md §7`（UI 登录、press Enter 提交、flex 滚动诊断等）。
@@ -85,47 +99,132 @@
 | B3 | 分类体系删除校验 SQL                | 删除分类时按 `data_domain`/`data_topic` 匹配 `metadata_table` 引用        | 明确   |
 | B4 | 任务模板 config_template JSON 结构  | 同步/SQL/导出/采集四类任务的 config_template 具体字段占位                 | 待细化 |
 
-## 6. Next Action
+## 6. 开发分阶段计划
+
+> **划分原则**：按功能块切分，**每块 = 后端 → 前端 → 测试 完整闭环**，全部验证通过后再进入下一块。不做"先全部后端、再全部前端"的横切。
+> **顺序**：F1（P0 主功能）优先；F2/F3/F4 为顺带增强，按**从易到难**（纯新增独立 → 改共享实体但简单 → 需 task-core + worker 镜像改造）。
+> **每块验证口径**：① 后端 Postman/curl 自测 → ② 前端联调 → ③ 新建 `e2e/sprint7/e2e/*.spec.ts` 跑通 → ④ 更新本 Handoff 状态看板。
+
+---
 
 ### ✅ 已完成（规划/设计）
 
 - [x] Sprint 7 PRD（`DataNest-Sprint7-PRD.md` v1.0）
 - [x] Sprint 7 技术设计（`DataNest-Sprint7-技术文档.md` v1.0）
 - [x] 代码现状核验：搜索仅表名、子DAG不支持透传、质量类型无PYTHON、元数据无分类/负责人字段、PythonExecutor 沙箱已存在、Flyway 最高 V3.7.1
+- [x] UI 原型高保真对齐（见 §4）
 
-### ⏳ 待做（后端实现）
+---
 
-- [ ] Flyway `V3.8.0`（`asset_classification` + `metadata_table` 加 `data_domain`/`data_topic`/`owner_user_id`）
-- [ ] Flyway `V3.8.1`（`task_template` 任务模板库）
-- [ ] Flyway `V3.8.2`（`quality_rule_template.type` CHECK 加 PYTHON + `python_template`/`python_script` 字段）
-- [ ] task-core-entity：`MetadataTable` 扩展字段；新增 `AssetClassification` entity/mapper；`SubDagNodeConfig` 加 `paramMappings`
-- [ ] governance `AssetCatalogService`/`AssetCatalogController`（`/assets/search`、分类维护、分类浏览、分配分类/负责人）
-- [ ] engineering `TaskTemplateService`/`TaskTemplateController`（任务模板 CRUD + 一键创建）
-- [ ] governance 质量增强：模板/规则支持 PYTHON；`QualityCheckService` PYTHON 执行链路（§4.6）
-- [ ] task-core `PythonExecutor` 改造（方案 B）：连接注入层抽象为通用连接注入（`conn.json`）+ 沙箱 helper 增 `read_table`（保留 `read_doris_table`/`write_doris_table` 向后兼容）
-- [ ] worker 镜像：预装 Python 数据源驱动（pymysql/psycopg2/cx_Oracle，按需）
-- [ ] engineering `DagService`/`SubDagTriggerController` 子 DAG 参数下发链路
+### 6.1 F1 资产目录（P0，核心块）🔄 后端完成（2026-08-06）
 
-### ⏳ 待做（前端实现）
+**范围**：DC-01 搜索 / DC-02 详情聚合 / DC-03 血缘嵌入 / DC-04 质量展示 / DC-05 分类浏览。
+**块内依赖**：Flyway → task-core-entity → governance 服务 → 前端 3 页 → 联调。
 
-- [ ] `Sidebar.tsx` 新增「数据资产」顶级入口（ALL_ROLES）+「任务模板」（ENGINEERING_WRITE_ROLES）
-- [ ] `router/index.tsx` 新增 `/assets`、`/assets/:tableId`、`/engineering/task-templates`
-- [ ] 数据资产首页（大搜索框 + 分类树 + 资产卡片流，复用 `QualityScoreBadge`）
-- [ ] 资产详情页（基础信息/字段/血缘/质量四页签；血缘页签复用 `getLineageGraph` + 精简 ReactFlow）
+**后端**（✅ 全部完成，curl 自测通过）
+- [x] Flyway `V3.8.0`：`asset_classification` 表 + `metadata_table` 加 `data_domain`/`data_topic`/`owner_user_id`（已应用，库中验证成功）
+- [x] task-core-entity：`MetadataTable` 扩展 3 字段 + `ownerName`（exist=false）；新增 `AssetClassification` entity/mapper；`MetadataTableMapper` 两个手写 `@Select` 列清单已同步加新列 + 新增 `searchAssetTables`（多维搜索 SQL）；`MetadataColumnMapper.selectTableIdsByColumnKeyword`；`SysUserService.findUserIdsByNameKeyword`
+- [x] task-core-governance：`QualityScoreService.mapByTableIds`（批量回填，避免 N+1）
+- [x] common：`ErrorCode` 新增 4007 CLASSIFICATION_NOT_FOUND / 4008 NAME_EXISTS / 4009 IN_USE / 4010 PARENT_INVALID
+- [x] governance `AssetCatalogService`/`AssetCatalogController`（`/assets`）：`GET /search`（五维命中 + 相关度：表名 100+前缀 20/注释 60/字段 40/负责人 20）、分类树/CRUD（**改名级联更新 metadata_table 冗余名，用户确认**；删除校验引用 4009）、`GET /browse`（domain/topic/datasourceId/uncategorized/sort=score，分页）、`PUT /tables/{id}/classification`、`PUT /tables/{id}/owner`（类级四角色 OR，写接口治理员/超管）
+- [x] `shared-configs/shared-common.yaml` 加 `datanest.asset.search.max-results: 200`（`@Value` 默认值兜底，Nacos 库未刷）
+- [x] **全量重建并部署** app-system（Flyway V3.8.0 ✅）+ governance/engineering/worker/job，全部 healthy，镜像时间戳已确认
+- [x] curl 自测全过：分类 CRUD/树、4007/4008/4009/4010 校验、四维搜索命中与 score 排序（前缀 120>表名 100>注释 60>字段 40>负责人 20）、质量分/健康度/负责人名/数据源回填、browse 分页/sort=score/未分类、改名级联（交易域→交易→改回均一致）、删除引用拦截 + 无引用可删、无 token 1004
+
+**前端**（⏳ 待后续会话）
+- [ ] `Sidebar.tsx` 新增「数据资产」顶级入口（ALL_ROLES）+ `router/index.tsx` 新增 `/assets`、`/assets/:tableId`
+- [ ] 数据资产首页（大搜索框 + 分类树 + 资产卡片流，复用 `QualityScoreBadge`/`DsStatusBadge`/`Pagination`）
+- [ ] 资产详情页四页签（基础信息/字段/血缘/质量；血缘页签复用 `getLineageGraph` + 精简 ReactFlow，不改造现有 `LineageGraphPage`）
 - [ ] 分类体系维护 + 表分配分类/负责人
-- [ ] 任务模板库页（列表/新增/一键创建）
-- [ ] 质量规则表单扩展 PYTHON 类型（`types/quality.ts` 扩展 `QualityTemplateType`/`QUALITY_TYPE_LABEL`/`QUALITY_TYPE_OPTIONS`）
 
-### ⏳ 待做（验证/收尾）
+**测试**（后端自测 ✅ / E2E ⏳）
+- [x] 后端 Postman/curl 自测：`/assets/search`、分类 CRUD、分配分类/负责人、改名级联、删除校验（见上）
+- [ ] 新建 `e2e/sprint7/e2e/asset-catalog.spec.ts`（搜索→详情→分类 主链路）
+- [ ] F1 全块闭环后 §2 看板置 ✅（当前标 🔄）
 
-- [x] UI 原型（已对照真实前端 token/组件高保真对齐，见 §4）
-- [ ] 后端接口 Postman/curl 自测（`/assets/search`、分类维护、任务模板、PYTHON 规则、子DAG 参数下发）
-- [ ] 前端联调 + 构建部署（app-governance / app-engineering / app-worker / app-frontend）
+---
+
+### 6.2 F2 任务模板库（DD-09）⏳ 未开始
+
+**范围**：任务模板 CRUD + 一键创建。
+**块内依赖**：Flyway → task-core-entity → engineering 服务 → 前端 1 页 → 联调。
+
+**后端**
+- [ ] Flyway `V3.8.1`：`task_template` 表（`updated_at` 无默认值）
+- [ ] task-core-entity：新增 `TaskTemplate` entity/mapper
+- [ ] engineering `TaskTemplateService`/`TaskTemplateController`：模板 CRUD + 一键创建（按 config_template 生成真实同步/SQL/导出/采集任务）
+- [ ] 重建 engineering + worker + 受影响消费方
+
+**前端**
+- [ ] `Sidebar.tsx` 新增「任务模板」（ENGINEERING_WRITE_ROLES）+ `router/index.tsx` 新增 `/engineering/task-templates`
+- [ ] 任务模板库页（列表/新增/一键创建，对齐原型 `task-template` 视图：segmented 分组 + 内置/自定义徽章）
+
+**测试**
+- [ ] 后端 Postman/curl 自测：模板 CRUD、一键创建后 sync_job 落库
+- [ ] 新建 `e2e/sprint7/e2e/task-templates.spec.ts`
+- [ ] 更新 §2 看板：F2 置 ✅
+
+> **待细化**：B4 `config_template` JSON 结构（同步/SQL/导出/采集四类占位）——开始 F2 后端前需先定。
+
+---
+
+### 6.3 F3 子 DAG 参数下发（NG5）⏳ 未开始
+
+**范围**：主 DAG → 子 DAG 参数单向透传（`paramMappings`）。
+**无需迁移**（`dag_node.config` 为 TEXT JSON，向后兼容；旧数据 paramMappings=null 视为不传参）。
+
+**后端**
+- [ ] task-core-entity：`SubDagNodeConfig` 加 `paramMappings: List<ParamMapping>`（DTO 字段，config JSON 持久化，无新 Controller）
+- [ ] engineering `DagService`/`SubDagTriggerController`：触发子 DAG 时在主 DAG 执行上下文扩展参数下发链路（§4.4）
+- [ ] 重建 engineering + worker
+
+**前端**
+- [ ] 子 DAG 节点配置面板：编辑 `paramMappings`（主参数 → 子参数映射，原型 `subdag` 视图）
+- [ ] 对齐 DAG 编辑页现有节点配置 UI 风格
+
+**测试**
+- [ ] 后端 Postman/curl 自测：主 DAG 配 paramMappings → 触发 → 子 DAG 执行上下文收到透传参数
+- [ ] 新建 `e2e/sprint7/e2e/subdag-param.spec.ts`（或并入 control-flow）
+- [ ] 更新 §2 看板：F3 置 ✅
+
+---
+
+### 6.4 F4 Python 质量规则（DG-10）⏳ 未开始
+
+**范围**：新增 PYTHON 规则类型 + 强化自定义 SQL。**最复杂，放最后**。
+**块内依赖**：Flyway → task-core PythonExecutor 改造（方案 B）→ worker 镜像 → governance 质量增强 → 前端表单 → 联调。
+
+**后端**
+- [ ] Flyway `V3.8.2`：`quality_rule_template.type` CHECK drop 重建加 `PYTHON`（对齐 V3.6.6）+ `python_template`/`python_script` 字段
+- [ ] task-core `PythonExecutor` 改造（方案 B）：连接注入层从 Doris 写死抽象为通用 `conn.json` + 沙箱 helper 增 `read_table(table, where, limit)`（保留 `read_doris_table`/`write_doris_table` 向后兼容）
+- [ ] worker 镜像：预装 Python 数据源驱动（pymysql/psycopg2/cx_Oracle，按需）
+- [ ] governance 质量增强：`QualityTemplateController`/`QualityRuleController` 支持 PYTHON；`QualityCheckService` PYTHON 执行链路（§4.6，脚本返回 dict 取 `result_metric`，复用 `determineLevel`，失败落 `UNAVAILABLE`）；强化 CUSTOM_SQL（`RuleSqlGenerator` 模板化 + 多指标 + preview-sql 增强）
+- [ ] 重建 governance + worker + job + system
+
+**前端**
+- [ ] `types/quality.ts` 扩展 `QualityTemplateType`/`QUALITY_TYPE_LABEL`/`QUALITY_TYPE_OPTIONS` 加 PYTHON
+- [ ] 质量规则表单扩展 PYTHON 类型（Python 脚本编辑区，对齐原型 `python-rule` 视图）
+- [ ] 质量模板库支持 PYTHON 模板
+
+**测试**
+- [ ] 后端 Postman/curl 自测：PYTHON 规则新建 + 执行（Doris/MySQL 驱动拉数 + 沙箱执行）+ CUSTOM_SQL 强化
+- [ ] 新建 `e2e/sprint7/e2e/quality-python.spec.ts`
+- [ ] 更新 §2 看板：F4 置 ✅
+
+---
+
+### 6.5 收尾（全部块完成后）
+
+- [ ] 全量回归：`docker compose up -d` 全部服务 + 前端 build + 各块 E2E 全跑
+- [ ] 代码审查 + 更新 AGENTS.md / docs/agent（如需）
+- [ ] 更新 §2 看板全部置 ✅ + 本文档归档
 
 ## 7. 备注 / 已知坑提醒
 
-- **构建规则**：只要改到 task-core 共享模块（entity 字段扩展等），必须同时重建所有消费方（至少 engineering + worker；涉及治理/质量还需 governance/job/system）。本 Sprint 扩展了 task-core-entity 的 `MetadataTable`/`SubDagNodeConfig`，需全量重建。
+- **构建规则**：只要改到 task-core 共享模块（entity 字段扩展等），必须同时重建所有消费方（至少 engineering + worker；涉及治理/质量还需 governance/job/system）。F1 改 `MetadataTable`、F2 加 `TaskTemplate`、F3 改 `SubDagNodeConfig`、F4 改 `PythonExecutor`——**每块都需全量重建对应容器**。
 - **Flyway**：最新脚本编号 `V3.7.1`，新脚本必须从 `V3.8.0` 起；`quality_rule_template.type` CHECK 约束扩展需 drop 重建（对齐 V3.6.6 做法）；统一紧凑单行风格，禁格式化工具拆行。
 - **审计字段**（AGENTS.md §7）：新增表 `asset_classification`/`task_template` 的 `updated_at` 不要加 DB 默认值，create 只设 `created_by`/`created_at`。
 - **搜索性能**：资产多维搜索需处理千级表规模（R1），先 LIKE + 首屏防抖，量大再上全文索引。
 - **Python 规则**：执行失败落 `result_level=UNAVAILABLE`（不告警、不参与评分，对齐 Sprint 6 R2）；复用 PythonExecutor 超时/内存限制。
+- **F3 无迁移**：`dag_node.config` 为 TEXT JSON，`paramMappings` 新增字段向后兼容，勿新增 DB 迁移脚本。
+- **每块独立验证**：F2 完成后即可部署上线（不与 F1 耦合），无需等全部块完成。

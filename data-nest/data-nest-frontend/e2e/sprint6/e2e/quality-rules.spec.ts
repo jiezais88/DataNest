@@ -33,28 +33,27 @@ function rowBy(page: Page, name: string) {
     });
 }
 
-/** 选表 Modal：选数据源 → 库 → 表 → 确认（单选） */
-async function pickTable(page: Page, tableName: string, multiple = false) {
-    const modal = page.getByRole('dialog', {name: multiple ? '选择表（可多选）' : '选择表'});
+/** 批量应用弹窗内嵌选表：选数据源 → 点数据库列 → 点表列（多选 toggle） */
+async function pickTableInBatchModal(page: Page, tableName: string) {
+    const modal = page.getByRole('dialog', {name: '模板批量应用'});
     await modal.waitFor({state: 'visible', timeout: 10000});
-    // 数据源下拉（若默认未选中则显式选择）
-    const dsSelect = modal.getByText('数据源', {exact: true}).locator('..').locator('select');
-    const curVal = await dsSelect.inputValue();
-    if (curVal !== QUALITY_DS_ID) {
-        await dsSelect.selectOption(QUALITY_DS_ID);
-    }
-    // 库
-    await modal.getByText(QUALITY_DB, {exact: true}).click();
-    // 表
-    await modal.getByText(tableName, {exact: true}).click();
-    // 确认
-    await modal.getByRole('button', {name: /确认/}).click();
+    // 数据源下拉（label「数据源 *」）
+    const dsSelect = modal.getByText(/^数据源/).locator('..').locator('select');
+    await dsSelect.waitFor({state: 'visible', timeout: 10000});
+    await dsSelect.selectOption(QUALITY_DS_ID);
+    // 数据库列点击
+    const dbCell = modal.getByText(QUALITY_DB, {exact: true});
+    await dbCell.waitFor({state: 'visible', timeout: 10000});
+    await dbCell.click();
+    // 表列点击
+    const tableCell = modal.getByText(tableName, {exact: true});
+    await tableCell.waitFor({state: 'visible', timeout: 10000});
+    await tableCell.click();
 }
 
-/** 在质量规则 Tab 中：切换到规则 Tab 并选中指定任务 */
+/** 进入质量规则独立页 /governance/quality-rules 并选中指定任务 */
 async function goRulesTab(page: Page, jobId: string) {
-    await page.getByRole('button', {name: '质量规则'}).click();
-    const select = page.getByLabel('选择质量任务');
+    const select = page.getByLabel('按所属任务筛选');
     await select.waitFor({state: 'visible', timeout: 10000});
     await select.selectOption(jobId);
 }
@@ -79,14 +78,37 @@ async function fillRuleCreateDrawer(
         await typeSelect.waitFor({state: 'visible', timeout: 10000});
         await typeSelect.selectOption(type);
     }
-    // 目标表
-    await drawer.getByRole('button', {name: '选择表'}).click();
-    await pickTable(page, QUALITY_TABLE);
+    // 规则模板（模板类规则必选；CUSTOM_SQL 不显示该下拉）
+    if (type !== 'CUSTOM_SQL') {
+        const templateSelect = drawer
+            .getByText(/规则模板/)
+            .locator('..')
+            .locator('select');
+        await templateSelect.waitFor({state: 'visible', timeout: 10000});
+        const tplRegex = type === 'UNIQUENESS' ? /唯一性检查/ : type === 'RANGE' ? /值域范围检查/ : /完整性检查/;
+        const tplOption = templateSelect.locator('option').filter({hasText: tplRegex}).first();
+        await tplOption.waitFor({state: 'attached', timeout: 10000});
+        const tplValue = (await tplOption.getAttribute('value'))!;
+        await templateSelect.selectOption(tplValue);
+    }
+    // 目标表（内嵌级联：数据源 → 数据库 → 目标表；测试数据源为无 Schema 的 MYSQL）
+    await drawer.getByText(/^数据源/).locator('..').locator('select').selectOption(QUALITY_DS_ID);
+    const dbSelect = drawer.getByText(/^数据库/).locator('..').locator('select');
+    await dbSelect.waitFor({state: 'visible', timeout: 10000});
+    await dbSelect.selectOption({label: QUALITY_DB});
+    const tableSelect = drawer.getByText(/^目标表/).locator('..').locator('select');
+    await tableSelect.waitFor({state: 'visible', timeout: 10000});
+    await tableSelect.selectOption({label: QUALITY_TABLE});
     // 检查字段（UNIQUENESS / RANGE / 按字段 COMPLETENESS）
     if (opts.columnName) {
-        const fieldSelect = drawer.getByText(/检查字段/).locator('..').locator('select');
+        // COMPLETENESS 的 label 为「检查方式 *」，需先点「按字段检查」按钮再选字段；UNIQUENESS/RANGE 的 label 为「检查字段 *」
+        const fieldLabel = type === 'COMPLETENESS' ? /检查方式/ : /检查字段/;
+        if (type === 'COMPLETENESS') {
+            await drawer.getByRole('button', {name: '按字段检查'}).click();
+        }
+        const fieldSelect = drawer.getByText(fieldLabel).locator('..').locator('select');
         await fieldSelect.waitFor({state: 'visible', timeout: 10000});
-        await fieldSelect.selectOption(opts.columnName);
+        await fieldSelect.selectOption({label: opts.columnName});
     }
     // 自定义 SQL
     if (opts.sql) {
@@ -134,10 +156,10 @@ test.describe('Sprint 6 质量规则 E2E', () => {
             alertLevel: 'SEVERE_WARNING',
         });
         batchJobId = String(bj.id);
-        // 预建一条规则（COMPLETENESS 整表），供详情/编辑/启停/删除
+        // 预建一条规则（COMPLETENESS 按字段 + 模板），供详情/编辑/启停/删除
         await admin.post('/governance/quality/rules', {
-            jobId, name: preName, type: 'COMPLETENESS', tableId: QUALITY_TABLE_ID,
-            checkField: 0, warningThreshold: 0.5, severeThreshold: 0.8, resultMetric: 'null_rate',
+            jobId, name: preName, type: 'COMPLETENESS', templateId: 1, tableId: QUALITY_TABLE_ID,
+            checkField: 1, columnName: 'id', warningThreshold: 0.5, severeThreshold: 0.8, resultMetric: 'null_rate',
             weight: 1, enabled: 1,
         });
     });
@@ -149,7 +171,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     });
 
     test('质量规则 Tab：选任务后展示该任务规则', async ({page}) => {
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         // 预建规则出现
         await expect(rowBy(page, preName)).toBeVisible({timeout: 15000});
@@ -157,25 +179,26 @@ test.describe('Sprint 6 质量规则 E2E', () => {
         await expect(rowBy(page, preName).getByText('完整性', {exact: true})).toBeVisible();
         // 对象表
         await expect(rowBy(page, preName).getByText(QUALITY_TABLE, {exact: true})).toBeVisible();
-        // 整表检查（COMPLETENESS 非按字段）
-        await expect(rowBy(page, preName).getByText('整表', {exact: true})).toBeVisible();
+        // 检查字段（COMPLETENESS 按字段 id）
+        await expect(rowBy(page, preName).getByText('id', {exact: true})).toBeVisible();
     });
 
-    test('新增规则：COMPLETENESS 整表检查', async ({page}) => {
+    test('新增规则：COMPLETENESS 按字段检查', async ({page}) => {
         const name = `${QUALITY_PREFIX}_rule_comp_${Date.now()}`;
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         await page.getByRole('button', {name: '新增规则'}).first().click();
-        const drawer = await fillRuleCreateDrawer(page, name, {thresholds: ['0.5', '0.8']});
+        const drawer = await fillRuleCreateDrawer(page, name, {columnName: 'id', thresholds: ['0.5', '0.8']});
         await drawer.getByRole('button', {name: '保存'}).click();
         const row = rowBy(page, name);
         await expect(row).toBeVisible({timeout: 15000});
         await expect(row.getByText('完整性', {exact: true})).toBeVisible();
+        await expect(row.getByText('id', {exact: true})).toBeVisible();
     });
 
     test('新增规则：UNIQUENESS 选字段', async ({page}) => {
         const name = `${QUALITY_PREFIX}_rule_uniq_${Date.now()}`;
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         await page.getByRole('button', {name: '新增规则'}).first().click();
         const drawer = await fillRuleCreateDrawer(page, name, {type: 'UNIQUENESS', columnName: 'id', thresholds: ['0.5', '0.8']});
@@ -190,7 +213,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     test('新增规则：CUSTOM_SQL 自定义校验', async ({page}) => {
         const name = `${QUALITY_PREFIX}_rule_custom_${Date.now()}`;
         const sql = `SELECT COUNT(*) AS total FROM ${QUALITY_TABLE}`;
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         await page.getByRole('button', {name: '新增规则'}).first().click();
         const drawer = await fillRuleCreateDrawer(page, name, {type: 'CUSTOM_SQL', sql});
@@ -202,7 +225,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
 
     test('预览 SQL：CUSTOM_SQL 规则展开执行 SQL', async ({page}) => {
         const sql = `SELECT COUNT(*) AS total FROM ${QUALITY_TABLE}`;
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         // 复用上面创建的 CUSTOM_SQL 规则（若无则断言至少存在一条 CUSTOM_SQL）
         const customRow = page.locator('.ant-table-row').filter({
@@ -218,7 +241,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     });
 
     test('详情查看：只读展示规则信息', async ({page}) => {
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         const row = rowBy(page, preName);
         await expect(row).toBeVisible({timeout: 15000});
@@ -231,7 +254,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
 
     test('编辑规则：修改名称并保存', async ({page}) => {
         const newName = `${QUALITY_PREFIX}_pre_rule_改_${Date.now()}`;
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         const row = rowBy(page, preName);
         await expect(row).toBeVisible({timeout: 15000});
@@ -251,7 +274,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     });
 
     test('启停规则：停用后状态变停用，可恢复', async ({page}) => {
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         const row = rowBy(page, preName);
         await expect(row).toBeVisible({timeout: 15000});
@@ -265,10 +288,10 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     test('删除规则：ConfirmDialog 确认删除', async ({page}) => {
         const name = `${QUALITY_PREFIX}_rule_del_${Date.now()}`;
         await admin.post('/governance/quality/rules', {
-            jobId, name, type: 'COMPLETENESS', tableId: QUALITY_TABLE_ID,
-            checkField: 0, warningThreshold: 0.5, severeThreshold: 0.8, weight: 1, enabled: 1,
+            jobId, name, type: 'COMPLETENESS', templateId: 1, tableId: QUALITY_TABLE_ID,
+            checkField: 1, columnName: 'id', warningThreshold: 0.5, severeThreshold: 0.8, weight: 1, enabled: 1,
         });
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         const row = rowBy(page, name);
         await expect(row).toBeVisible({timeout: 15000});
@@ -280,7 +303,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     });
 
     test('模板批量应用：选内置完整性模板 + 选表 → 生成规则', async ({page}) => {
-        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-rules');
         await goRulesTab(page, batchJobId);
         // batchJob 初始无规则
         await expect(page.locator('.ant-table-row')).toHaveCount(0, {timeout: 15000});
@@ -294,9 +317,8 @@ test.describe('Sprint 6 质量规则 E2E', () => {
             .locator('select');
         await templateSelect.waitFor({state: 'visible', timeout: 10000});
         await templateSelect.selectOption({label: '完整性检查'});
-        // 选表（多选）
-        await modal.getByRole('button', {name: '选择表'}).click();
-        await pickTable(page, QUALITY_TABLE, true);
+        // 内嵌选表（选数据源 → 点数据库 → 点表）
+        await pickTableInBatchModal(page, QUALITY_TABLE);
         // 生成规则
         await modal.getByRole('button', {name: '生成规则'}).click();
         await expect(modal).toHaveCount(0, {timeout: 10000});
@@ -306,7 +328,7 @@ test.describe('Sprint 6 质量规则 E2E', () => {
     });
 
     test('权限：工程师可查看但不可编辑质量规则', async ({page}) => {
-        await gotoAs(page, TEST_USERS.engineer.username, TEST_USERS.engineer.password, '/governance/data-quality');
+        await gotoAs(page, TEST_USERS.engineer.username, TEST_USERS.engineer.password, '/governance/quality-rules');
         await goRulesTab(page, jobId);
         const row = rowBy(page, preName);
         await expect(row).toBeVisible({timeout: 15000});

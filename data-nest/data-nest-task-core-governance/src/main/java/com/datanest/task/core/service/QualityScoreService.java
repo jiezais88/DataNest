@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,20 @@ public class QualityScoreService {
         List<QualityScore> list = scoreMapper.selectList(new QueryWrapper<QualityScore>()
                 .in("table_name", tableNames));
         return list.stream().map(this::toDTO).toList();
+    }
+
+    /** Sprint 7 F1：按 tableId 集合批量查，返回 tableId → 评分 映射（资产搜索/浏览回填，避免 N+1）。 */
+    public Map<Long, QualityScoreDTO> mapByTableIds(Collection<Long> tableIds) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> validIds = tableIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (validIds.isEmpty()) {
+            return Map.of();
+        }
+        List<QualityScore> list = scoreMapper.selectList(new QueryWrapper<QualityScore>()
+                .in("table_id", validIds));
+        return list.stream().collect(Collectors.toMap(QualityScore::getTableId, this::toDTO, (a, b) -> a));
     }
 
     /** 评分列表分页（按关键字/数据源/健康度筛选）。 */

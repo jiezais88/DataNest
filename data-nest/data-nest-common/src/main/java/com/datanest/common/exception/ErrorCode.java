@@ -33,6 +33,12 @@ public enum ErrorCode {
     HISTORY_NOT_FOUND(4005, "采集历史不存在"),
     METADATA_NOT_FOUND(4006, "元数据不存在"),
 
+    // Asset catalog errors — Sprint 7 数据资产目录
+    CLASSIFICATION_NOT_FOUND(4007, "分类不存在"),
+    CLASSIFICATION_NAME_EXISTS(4008, "同级分类名称已存在"),
+    CLASSIFICATION_IN_USE(4009, "分类仍被元数据表引用，请先解除分配"),
+    CLASSIFICATION_PARENT_INVALID(4010, "父分类非法（主题必须挂在数据域下）"),
+
     // Data standard errors (5xxx)
     NAMING_STANDARD_NOT_FOUND(5001, "命名规范不存在"),
     NAMING_STANDARD_NAME_EXISTS(5002, "命名规范名称已存在"),

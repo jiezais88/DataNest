@@ -26,6 +26,9 @@ public class QualityRuleUpdateRequest {
     @Pattern(regexp = "^(COMPLETENESS|UNIQUENESS|RANGE|CUSTOM_SQL)$", message = "规则类型非法")
     private String type;
 
+    /** 来源模板（模板类规则必填；CUSTOM_SQL 可不填，用用户 SQL） */
+    private Long templateId;
+
     /** 目标表（更新时可改） */
     private Long tableId;
 

@@ -161,6 +161,11 @@ public class QualityRuleService {
         MetadataTable table = requireTable(request.getTableId());
         QualityRuleTemplate template = request.getTemplateId() == null
                 ? null : templateMapper.selectById(request.getTemplateId());
+        // 模板类规则（完整性/唯一性/值域）必须关联模板，否则执行时无 SQL 可生成（CUSTOM_SQL 用用户 SQL）
+        if (!"CUSTOM_SQL".equals(request.getType()) && template == null) {
+            throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_NOT_FOUND,
+                    "规则类型 " + request.getType() + " 必须选择对应规则模板");
+        }
 
         String name = request.getName().trim();
         if (countByName(name) > 0) {
@@ -299,11 +304,20 @@ public class QualityRuleService {
         if (request.getTableId() != null) {
             requireTable(request.getTableId());
         }
+        // 模板类规则（完整性/唯一性/值域）必须关联模板，否则执行时无 SQL 可生成（CUSTOM_SQL 用用户 SQL）
+        if (!"CUSTOM_SQL".equals(request.getType())) {
+            if (request.getTemplateId() == null) {
+                throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_NOT_FOUND,
+                        "规则类型 " + request.getType() + " 必须选择对应规则模板");
+            }
+            requireTemplate(request.getTemplateId());
+        }
 
         // 更新语义：全量覆盖（规则编辑表单前端总是全量提交，DTO @AssertTrue 强校验完整数据；
         // RANGE 必填 columnName/rangeMin/rangeMax，非 RANGE 清理值域）
         entity.setName(name);
         entity.setType(request.getType().trim().toUpperCase());
+        entity.setTemplateId(request.getTemplateId());
         if (request.getTableId() != null) {
             entity.setTableId(request.getTableId());
         }

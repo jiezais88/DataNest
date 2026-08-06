@@ -12,11 +12,14 @@ import {
 import {isWithoutSchema} from '../../../constants/datasource';
 import type {MetadataColumn, MetadataTable, MetadataDatasource} from '../../../types/metadata';
 import {QUALITY_TYPE_OPTIONS} from '../../../types/quality';
-import type {QualityRule, QualityRuleCreateRequest, QualityRuleType} from '../../../types/quality';
+import {listQualityTemplates} from '../../../api/quality';
+import type {QualityRule, QualityRuleCreateRequest, QualityRuleTemplate, QualityRuleType} from '../../../types/quality';
 
 interface QualityRuleFormData {
     name: string;
     type: QualityRuleType;
+    /** 来源模板（模板类规则必填；CUSTOM_SQL 可不填，用用户 SQL） */
+    templateId: string;
     /** 目标表归属数据源（Sprint 7 方案A：表单级显式字段） */
     datasourceId: string;
     datasourceName: string;
@@ -35,6 +38,7 @@ interface QualityRuleFormData {
 const EMPTY_FORM: QualityRuleFormData = {
     name: '',
     type: 'COMPLETENESS',
+    templateId: '',
     datasourceId: '',
     datasourceName: '',
     tableId: '',
@@ -72,6 +76,9 @@ export default function QualityRuleDrawer({
     const [submitting, setSubmitting] = useState(false);
     const [columns, setColumns] = useState<MetadataColumn[]>([]);
     const [columnsLoading, setColumnsLoading] = useState(false);
+    /** 可选模板（按规则类型联动，仅启用；模板类规则必选） */
+    const [templates, setTemplates] = useState<QualityRuleTemplate[]>([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
     /** 可选数据源（仅已采集元数据的数据源） */
     const [datasourceOptions, setDatasourceOptions] = useState<MetadataDatasource[]>([]);
     // 行内选表级联：数据库 / Schema / 表
@@ -117,6 +124,7 @@ export default function QualityRuleDrawer({
                 setForm({
                     name: editItem.name,
                     type: editItem.type,
+                    templateId: editItem.templateId ? String(editItem.templateId) : '',
                     datasourceId: editItem.datasourceId ? String(editItem.datasourceId) : '',
                     datasourceName: editItem.datasourceName || '',
                     tableId: editItem.tableId || '',
@@ -152,6 +160,31 @@ export default function QualityRuleDrawer({
                 .catch(() => setDatasourceOptions([]));
         }
     }, [open, editItem]);
+
+    // 规则类型变化：按类型加载对应模板（模板类规则必选；CUSTOM_SQL 无模板依赖）
+    useEffect(() => {
+        if (!open || readOnly) return;
+        const type = form.type;
+        if (type === 'CUSTOM_SQL') {
+            setTemplates([]);
+            updateField('templateId', '');
+            return;
+        }
+        setTemplatesLoading(true);
+        listQualityTemplates(type)
+            .then((res) => {
+                const list = res.data || [];
+                setTemplates(list);
+                // 若当前已选模板不在新列表（类型变更后失效），清空
+                setForm((prev) => {
+                    const stillValid = list.some((t) => String(t.id) === String(prev.templateId));
+                    return stillValid ? prev : {...prev, templateId: ''};
+                });
+            })
+            .catch(() => setTemplates([]))
+            .finally(() => setTemplatesLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, form.type, readOnly]);
 
     const updateField = <K extends keyof QualityRuleFormData>(field: K, value: QualityRuleFormData[K]) => {
         if (readOnly) return;
@@ -250,6 +283,7 @@ export default function QualityRuleDrawer({
     const validate = (): boolean => {
         const nextErrors: Partial<Record<keyof QualityRuleFormData, string>> = {};
         if (!form.name.trim()) nextErrors.name = '请输入规则名称';
+        if (!isCustomSql && !form.templateId) nextErrors.templateId = '请选择规则模板';
         if (!form.datasourceId) nextErrors.datasourceId = '请选择数据源';
         if (!form.tableId) nextErrors.tableId = '请选择目标表';
         if (needsColumn && !form.columnName.trim()) nextErrors.columnName = '请选择检查字段';
@@ -275,7 +309,7 @@ export default function QualityRuleDrawer({
             const payload: QualityRuleCreateRequest = {
                 // Sprint 7：规则可独立创建，jobId 为空则不下发（避免后端按空串校验任务）
                 jobId: effectiveJobId || undefined,
-                templateId: editItem?.templateId,
+                templateId: form.templateId || undefined,
                 name: form.name.trim(),
                 type: form.type,
                 tableId: form.tableId,
@@ -354,6 +388,34 @@ export default function QualityRuleDrawer({
                             ))}
                         </select>
                     </div>
+
+                    {!isCustomSql && (
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                规则模板 <span className="text-ds-danger">*</span>
+                            </label>
+                            <select
+                                value={form.templateId}
+                                onChange={(e) => updateField('templateId', e.target.value)}
+                                disabled={readOnly || templatesLoading}
+                                className={selectClass}
+                            >
+                                <option value="">
+                                    {templatesLoading ? '加载模板中...' : '请选择规则模板'}
+                                </option>
+                                {templates.map((t) => (
+                                    <option key={String(t.id)} value={String(t.id)}>
+                                        {t.name}（{t.resultMetric || t.type}）
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                完整性/唯一性/值域规则需关联模板以生成校验 SQL
+                            </p>
+                            {errors.templateId &&
+                                <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.templateId}</p>}
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">

@@ -44,4 +44,14 @@ public class SysUserService {
         }
         return map;
     }
+
+    /**
+     * Sprint 7 F1：按用户名模糊查询 userId 列表（资产搜索「负责人」维度）。
+     */
+    public List<Long> findUserIdsByNameKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        return sysUserMapper.selectIdsByUsernameKeyword(keyword.trim());
+    }
 }

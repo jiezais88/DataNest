@@ -1,6 +1,6 @@
 ﻿# Sprint 6 Handoff
 
-> **更新时间**：2026-08-05 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）；**标准合规检查 E2E 完成**（15 用例全绿：判定/统计/UI/忽略/导出/权限/定时 handler，业务视角端到端验证，见 §22）；**规则模板库批量应用接线完成**（后端 /rules/batch + batchCreateQualityRules + BatchApplyModal 早已就绪且 quality-rules 页已接入，仅模板库页按钮仍为占位提示；已接线 + BatchApplyModal 扩展：jobId 可选+弹窗内选目标任务、支持 initialTemplateId 预选模板，E2E 13 passed 见 §23）
+> **更新时间**：2026-08-06 | **阶段**：Sprint 6 分级邮件告警前端完成（检查历史分级判定展示 + 告警中心 QUALITY 对象类型）＋质量任务表单「引用质量规则」改下拉多选，已构建部署。另完成「创建审计字段修复」（创建时不再设 updatedBy/updatedAt，Flyway V3.6.8 去 updated_at DB 默认值，见 §12）。**表级质量评分后端完成**（评分跨任务聚合加权计算 + quality_score 落库 + 血缘回填 + 三查询接口 + 健康度区间/扣分算法调研回写文档，见 §13）。**task-core 三步拆分重构完成**（原 task-core 拆为 entity/alert/task-core-governance/task-core 4 模块，包名不变，新增 QualityAutoTriggerPort 接口解耦，全量编译 + 5 容器重建 + API 回归通过，见 §16）。**标准合规检查后端扩展完成**（合规逻辑下沉 task-core、忽略/取消忽略、分页、导出 CSV、全局定时扫描、放开工程师查看/忽略/导出权限、修 violationType bug，Flyway V3.7.1，5 容器部署 + 双角色 API 自测通过，见 §17）；**模板批量应用后端 review 修复**（重名校验 + 批量插入，见 §17.7）；**GlobalExceptionHandler 修复 404 误报 500 + 运行扫描权限收回**（common 改动重建 5 容器，见 §17.8b）；**级联删除/删除校验补全 + 质量检查历史清理定时任务**（删数据源/模板/质量任务被引用校验 HAS_REFERENCES + 新增 QualityCheckHistoryCleanupHandler cron 04:30，见 §18）；**删除补全 + 被阻止删除返回引用明细**（产品审视确认「保留历史」；删 DAG 清血缘、删质量任务评分方案1、字段类型标准/同步任务/DAG/质量任务删除返回引用名称列表；前端 ReferenceListModal + 各删除页接入，见 §19）；质量报告（DG-07）本轮不做；**标准合规检查前端完成**（新增独立「标准合规」菜单页：三格统计 + 扫描结果清单 + 忽略/取消忽略 + 导出 + 立即扫描；废弃数据标准页 sessionStorage 方案；后端补 summary 接口 + page 扩展 violationType/ignored=2，见 §20）；**标准合规检查 E2E 完成**（15 用例全绿：判定/统计/UI/忽略/导出/权限/定时 handler，业务视角端到端验证，见 §22）；**规则模板库批量应用接线完成**（后端 /rules/batch + batchCreateQualityRules + BatchApplyModal 早已就绪且 quality-rules 页已接入，仅模板库页按钮仍为占位提示；已接线 + BatchApplyModal 扩展：jobId 可选+弹窗内选目标任务、支持 initialTemplateId 预选模板，E2E 13 passed 见 §23）；**规则执行 SQL 生成修复 + 测试补齐**（修复质量规则执行全「不可用」的 3 个根因：前端无模板必选、CUSTOM_SQL 未替换 {table}、整表完整性生成非法 COUNT()；对齐重跑全套测试 + 补血缘徽章/定时触发两缺口，Sprint 6 全量 E2E **83 passed**，见 §24）
 > **Sprint 主题**：数据质量管理
 
 ## 1. Sprint 目标
@@ -40,6 +40,7 @@
 | 删除补全 + 引用明细提示（后端+前端）   | ✅ 完成   | 删 DAG 清血缘、删质量任务评分方案1、被阻止删除返回引用名称列表；前端 ReferenceListModal 接入各删除页，见 §19 |
 | 标准合规检查 E2E（业务视角）            | ✅ 完成   | 15 用例全绿：判定（4 不合规：1 表命名+2 列命名+1 字段类型）/统计/UI/忽略/导出/权限/定时 handler（XXL-JOB 真实触发），见 §22 |
 | 规则模板库批量应用接线                   | ✅ 完成   | 模板库页「批量应用」从占位提示接线为真实 BatchApplyModal（扩展 jobId 可选+弹窗内选任务、initialTemplateId 预选模板）；quality-templates E2E 13 passed，见 §23 |
+| 规则执行 SQL 生成修复 + 测试补齐       | ✅ 完成   | 修复质量规则执行全「不可用」（前端模板必选 + CUSTOM_SQL 替换 {table} + 整表完整性非法 COUNT()）；补齐血缘徽章/定时触发两覆盖缺口；对齐重跑过时测试，Sprint 6 全量 E2E **83 passed**，见 §24 |
 
 ## 3. 关键决策（用户已确认）
 
@@ -1327,3 +1328,63 @@ data-nest-common
 
 - `quality-templates.spec.ts`「页面加载」用例原断言「模板总数/内置模板/自定义模板」统计卡片，但当前页面已无该卡片（页面重构移除），属既有过时断言，已移除统计卡片断言、保留内置模板展示断言。
 - `quality-rules.spec.ts` 批量应用用例在 `goRulesTab` 用旧 `选择质量任务` aria-label（已改名 `按所属任务筛选`），属 §15.5 已记录的过时断言，与本次改动无关，暂留待维护。
+
+---
+
+## 24. 规则执行 SQL 生成修复 + 测试补齐（2026-08-06）
+
+> 起因：用户按 `测试用例清单.md` 手动验收质量规则执行时，发现规则全部落「不可用」：完整性/唯一性「规则校验 SQL 为空」、自定义 SQL「SQL_PARSE_FAILED」。系统性排查后修复前端表单 + 后端 SQL 生成器两个边界 bug，并对齐重跑全套测试，补上血缘徽章与定时触发两个覆盖缺口。**结果：Sprint 6 全量 E2E 83 passed**。
+
+### 24.1 根因与修复（规则执行 SQL 生成）
+
+**问题 1（前端）**：`QualityRuleDrawer` 创建规则时**根本没让用户选模板**，导致 COMPLETENESS/UNIQUENESS 规则保存后 `template_id=null`；执行时 `RuleSqlGenerator` 因无模板返回空 SQL → 「规则校验 SQL 为空」。
+
+- 前端 `QualityRuleDrawer`：新增「规则模板」必选下拉（按规则类型联动加载；CUSTOM_SQL 隐藏），提交带 `templateId`，编辑回显。模板类规则（完整性/唯一性/值域）必选，否则前端拦截「请选择规则模板」。
+
+**问题 2（后端）**：`RuleSqlGenerator.generate()` 在 `template==null`（CUSTOM_SQL 未选模板）分支**直接返回 customSql、不替换 `{table}` 占位符** → 执行时报 `SQL_PARSE_FAILED`。
+
+- 后端 `RuleSqlGenerator`：重构为「无模板/CUSTOM_SQL 分支也统一替换 `{table}` 占位符」。
+
+**问题 3（后端边界，用户实测暴露）**：整表完整性检查（`checkField=0`、无 columnName）时，模板 SQL `COUNT({column})` 的 `{column}` 被替换为空 → 生成非法 `COUNT()` → `SQL_PARSE_FAILED`。
+
+- 后端 `RuleSqlGenerator`：`{column}` **仅在显式指定检查字段时替换**，否则保留占位符。
+- 后端 `QualityCheckService`：新增 `assertNoUnresolvedPlaceholder`，检测到残留占位符则跳过该规则并标记「不可用」、提示「未指定检查字段，请编辑规则补充」，而非报 `SQL_PARSE_FAILED`。
+- **后端强制校验**：`QualityRuleService.create()` / `update()` 对非 CUSTOM_SQL 规则强制 `templateId`，缺失抛 `QUALITY_TEMPLATE_NOT_FOUND(4201)`；`QualityRuleUpdateRequest` 补 `templateId` 字段。
+
+### 24.2 测试补齐（覆盖清单缺口）
+
+补上此前无 E2E 覆盖的两个功能点：
+
+| 缺口 | 方案 | 验证 |
+|------|------|------|
+| **血缘质量徽章**（清单 §8） | 新增 `e2e/sprint6/e2e/lineage-quality.spec.ts`（API 层）：播种血缘记录+评分，调 `/governance/lineage/graph` 断言有评分节点回填 `qualityScore=100/EXCELLENT`、无评分节点不回填 | 1 passed |
+| **定时触发链路**（清单 §2.2/§4） | `quality-checks.spec.ts` 新增「C. 定时触发」：建定时任务→XXL-JOB 自动注册→trigger→落 `SCHEDULED` 批次；`XxlClient` 增 `findJobIdByHandlerAndParam`（按执行器组+handler+executorParam 定位质量任务） | 1 passed（原 11 → 12） |
+
+### 24.3 全量回归：83 passed
+
+对照清单 8 模块全绿：
+
+| 模块 | 测试 | 用例数 |
+|------|------|--------|
+| 规则模板库 | quality-templates | 13 |
+| 质量任务 | quality-jobs | 12 |
+| 质量规则 | quality-rules | 11 |
+| 质量检查历史（含定时触发） | quality-checks | 12 |
+| 表级质量评分 | quality-scores | 11 |
+| 标准合规 | compliance | 15 |
+| 分级邮件告警 | quality-alerts | 8 |
+| 血缘质量徽章 | lineage-quality | 1 |
+| **合计** | | **83** |
+
+### 24.4 顺带修正的既有过时测试（前端重构导致，非本次 bug）
+
+这些 spec 长期挂在「已知残留」清单、从未跑绿，本次一次性对齐当前前端结构：
+
+- **质量规则已拆独立页** `/governance/quality-rules`（不再在 data-quality 页内 Tab）：`quality-rules.spec.ts` 改 URL、删 Tab 切换。
+- **新增规则选表从「选择表弹窗」改内嵌级联**（数据源→库→表）：重写 `fillRuleCreateDrawer`。
+- **质量任务触发方式从 checkbox 改按钮单选**、移除「数据源范围」字段：重写 `fillJobCreateDrawer`；Cron 用 CronPicker 预设；「数据质量」→「质量任务」标题、移除统计卡片断言。
+- 模板批量应用从弹窗选表改内嵌（BatchApplyModal 已是内嵌两列面板）：`quality-rules.spec.ts`/`quality-templates.spec.ts` 改用 `pickTableInBatchModal`。
+
+### 24.5 测试跑慢的根因（供后续避免）
+
+playwright 默认单用例超时 **240s**，而上述 spec 长期因过时断言失败，每轮「跑→240s 超时→修→再跑」循环极慢。本次临时用 `--timeout=60000` 加速迭代，并一次性对齐结构后，**单个 spec 1~2 分钟跑完、全量 83 用例约 4 分钟**。后续改前端结构时应同步更新对应 E2E，勿再留「已知残留」红测试。
