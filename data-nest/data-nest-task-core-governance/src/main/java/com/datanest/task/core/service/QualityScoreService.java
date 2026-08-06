@@ -285,10 +285,15 @@ public class QualityScoreService {
         dto.setWarningRules(s.getWarningRules());
         dto.setSevereRules(s.getSevereRules());
         dto.setLastCheckedAt(s.getLastCheckedAt());
-        if (s.getDatasourceId() != null && s.getDatasourceId() != DORIS_DATASOURCE_ID) {
-            DataSourceConnection ds = dataSourceMapper.selectById(s.getDatasourceId());
-            if (ds != null) {
-                dto.setDatasourceName(ds.getName());
+        if (s.getDatasourceId() != null) {
+            if (s.getDatasourceId() == DORIS_DATASOURCE_ID) {
+                // 内置 Doris 数仓（datasource_id=-1，datasource 表无记录），显式标注避免列表显示为「—」
+                dto.setDatasourceName("Doris 数仓");
+            } else {
+                DataSourceConnection ds = dataSourceMapper.selectById(s.getDatasourceId());
+                if (ds != null) {
+                    dto.setDatasourceName(ds.getName());
+                }
             }
         }
         return dto;
