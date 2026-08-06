@@ -8,12 +8,14 @@ import com.datanest.alert.service.DagAlertService;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringObjectApi;
 import com.datanest.governance.api.GovernanceObjectApi;
-import com.datanest.governance.api.dto.QualityAutoTriggerRequest;
+import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * 告警服务内部接口（实现 alert-api 的 Feign 契约）。
@@ -91,32 +93,44 @@ public class AlertInternalController {
     }
 
     /**
-     * DAG 成功后，对每个成功节点反查 dag_node.id 并触发绑定该节点的质量任务自动检查。
-     * 单节点触发失败只记 error 不中断，不影响其他节点与 DAG 结果。
+     * DAG 成功后，一次性反查全部成功节点的 dag_node.id，再批量触发绑定这些节点的质量任务自动检查。
+     * 两次远程调用各自 try-catch 记 error 不中断，不影响 DAG 结果。
      */
     private void triggerQualityOnSuccessNodes(DagExecutionInfo execution, List<NodeExecutionInfo> nodes) {
         Long dagId = execution.getDagId();
         if (dagId == null) {
             return;
         }
-        for (NodeExecutionInfo node : nodes) {
-            if (!"SUCCESS".equalsIgnoreCase(node.getStatus()) || node.getNodeId() == null) {
-                continue;
-            }
-            try {
-                Result<Long> result = engineeringObjectApi.findDagNodeId(dagId, node.getNodeId());
-                Long dagNodeId = result == null ? null : result.data();
-                if (dagNodeId == null) {
-                    continue;
-                }
-                QualityAutoTriggerRequest triggerRequest = new QualityAutoTriggerRequest();
-                triggerRequest.setObjectType(OBJECT_TYPE_DAG_NODE);
-                triggerRequest.setObjectId(dagNodeId);
-                governanceObjectApi.qualityAutoTrigger(triggerRequest);
-            } catch (Exception e) {
-                logger.error("质量任务自动触发失败（不影响 DAG 结果）: dagId={}, nodeId={}",
-                        dagId, node.getNodeId(), e);
-            }
+        List<String> successNodeIds = nodes.stream()
+                .filter(n -> "SUCCESS".equalsIgnoreCase(n.getStatus()) && n.getNodeId() != null)
+                .map(NodeExecutionInfo::getNodeId)
+                .distinct()
+                .toList();
+        if (successNodeIds.isEmpty()) {
+            return;
+        }
+        // 一次批量解析 nodeId → dag_node.id
+        Map<String, Long> dagNodeIdMap;
+        try {
+            Result<Map<String, Long>> result = engineeringObjectApi.resolveDagNodeIds(dagId, successNodeIds);
+            dagNodeIdMap = result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.error("批量解析 DAG 节点 ID 失败（不影响 DAG 结果）: dagId={}", dagId, e);
+            return;
+        }
+        List<Long> dagNodeIds = dagNodeIdMap.values().stream().filter(Objects::nonNull).distinct().toList();
+        if (dagNodeIds.isEmpty()) {
+            return;
+        }
+        // 一次批量触发质量任务自动检查
+        try {
+            QualityAutoTriggerBatchRequest triggerRequest = new QualityAutoTriggerBatchRequest();
+            triggerRequest.setObjectType(OBJECT_TYPE_DAG_NODE);
+            triggerRequest.setObjectIds(dagNodeIds);
+            governanceObjectApi.qualityAutoTriggerBatch(triggerRequest);
+        } catch (Exception e) {
+            logger.error("质量任务批量自动触发失败（不影响 DAG 结果）: dagId={}, dagNodeIds={}",
+                    dagId, dagNodeIds, e);
         }
     }
 

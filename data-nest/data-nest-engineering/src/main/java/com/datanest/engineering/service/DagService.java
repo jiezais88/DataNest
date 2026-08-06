@@ -15,7 +15,8 @@ import com.datanest.task.core.dto.ConditionNodeConfig;
 import com.datanest.task.core.entity.*;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.DagTopologyService;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -51,7 +52,7 @@ public class DagService {
     private final DagDsConverter dagDsConverter;
     private final DagProjectService dagProjectService;   // 用于校验项目存在（暂不直接调，留接口）
     private final DagVersionService dagVersionService;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
     private final LineageRecordMapper lineageRecordMapper;
 
@@ -59,7 +60,7 @@ public class DagService {
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
                       DagTopologyService topologyService, DolphinSchedulerClient dolphinSchedulerClient,
                       DagDsConverter dagDsConverter, DagProjectService dagProjectService,
-                      DagVersionService dagVersionService, SysUserService sysUserService,
+                      DagVersionService dagVersionService, SystemUserApi systemUserApi,
                       AlertApi alertApi,
                       LineageRecordMapper lineageRecordMapper) {
         this.dagMapper = dagMapper;
@@ -72,7 +73,7 @@ public class DagService {
         this.dagDsConverter = dagDsConverter;
         this.dagProjectService = dagProjectService;
         this.dagVersionService = dagVersionService;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
         this.lineageRecordMapper = lineageRecordMapper;
     }
@@ -854,7 +855,7 @@ public class DagService {
                 .filter(id -> id > 0)
                 .distinct()
                 .toList();
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        Map<Long, String> usernameMap = usernames(userIds);
         for (DagPayload dto : dtos) {
             if (dto.getCreatedBy() != null && dto.getCreatedBy() > 0) {
                 dto.setCreatedByName(usernameMap.getOrDefault(dto.getCreatedBy(), "-"));
@@ -921,5 +922,22 @@ public class DagService {
         }
         // 兜底：兼容历史数据
         return dag.getDsProjectCode() == null ? DolphinSchedulerConfig.DEFAULT_DS_PROJECT_CODE : dag.getDsProjectCode();
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
+        }
     }
 }

@@ -17,11 +17,15 @@ import com.datanest.task.core.entity.NamingStandard;
 import com.datanest.task.core.mapper.ComplianceCheckResultMapper;
 import com.datanest.task.core.mapper.FieldTypeStandardMapper;
 import com.datanest.task.core.mapper.NamingStandardMapper;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,19 +37,21 @@ import java.util.stream.Stream;
 @Service
 public class NamingStandardService {
 
+    private static final Logger logger = LoggerFactory.getLogger(NamingStandardService.class);
+
     private final NamingStandardMapper namingStandardMapper;
     private final FieldTypeStandardMapper fieldTypeStandardMapper;
     private final ComplianceCheckResultMapper complianceCheckResultMapper;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
 
     public NamingStandardService(NamingStandardMapper namingStandardMapper,
                                  FieldTypeStandardMapper fieldTypeStandardMapper,
                                  ComplianceCheckResultMapper complianceCheckResultMapper,
-                                 SysUserService sysUserService) {
+                                 SystemUserApi systemUserApi) {
         this.namingStandardMapper = namingStandardMapper;
         this.fieldTypeStandardMapper = fieldTypeStandardMapper;
         this.complianceCheckResultMapper = complianceCheckResultMapper;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
     }
 
     @Transactional
@@ -114,7 +120,7 @@ public class NamingStandardService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.NAMING_STANDARD_NOT_FOUND);
         }
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(
+        Map<Long, String> usernameMap = usernames(
                 List.of(entity.getCreatedBy(), entity.getUpdatedBy()));
         return toDTO(entity, usernameMap);
     }
@@ -151,7 +157,7 @@ public class NamingStandardService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        Map<Long, String> usernameMap = usernames(userIds);
 
         List<NamingStandardDTO> records = result.getRecords().stream()
                 .map(e -> {
@@ -229,6 +235,23 @@ public class NamingStandardService {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
             return 0L;
+        }
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
         }
     }
 }

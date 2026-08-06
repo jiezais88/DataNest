@@ -17,14 +17,13 @@ import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.task.core.entity.AssetClassification;
 import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.MetadataTable;
-import com.datanest.task.core.entity.SysUser;
 import com.datanest.task.core.mapper.AssetClassificationMapper;
 import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataColumnMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
-import com.datanest.task.core.mapper.SysUserMapper;
 import com.datanest.task.core.service.QualityScoreService;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -35,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,8 +70,7 @@ public class AssetCatalogService {
     private final MetadataColumnMapper metadataColumnMapper;
     private final AssetClassificationMapper classificationMapper;
     private final DataSourceConnectionMapper dataSourceMapper;
-    private final SysUserMapper sysUserMapper;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
     private final QualityScoreService qualityScoreService;
 
     /** 资产搜索结果裁剪上限（对齐 searchTree 的 MAX_SEARCH_RESULTS 保护） */
@@ -82,15 +81,13 @@ public class AssetCatalogService {
                                MetadataColumnMapper metadataColumnMapper,
                                AssetClassificationMapper classificationMapper,
                                DataSourceConnectionMapper dataSourceMapper,
-                               SysUserMapper sysUserMapper,
-                               SysUserService sysUserService,
+                               SystemUserApi systemUserApi,
                                QualityScoreService qualityScoreService) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.classificationMapper = classificationMapper;
         this.dataSourceMapper = dataSourceMapper;
-        this.sysUserMapper = sysUserMapper;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
         this.qualityScoreService = qualityScoreService;
     }
 
@@ -106,7 +103,7 @@ public class AssetCatalogService {
             return List.of();
         }
         // 负责人维度：关键词反查 userId；字段维度：关键词反查 tableId
-        List<Long> ownerUserIds = sysUserService.findUserIdsByNameKeyword(trimmed);
+        List<Long> ownerUserIds = findUserIdsByNameKeyword(trimmed);
         List<Long> columnHitTableIds = metadataColumnMapper.selectTableIdsByColumnKeyword(trimmed);
 
         List<MetadataTable> rows = metadataTableMapper.searchAssetTables(
@@ -409,8 +406,8 @@ public class AssetCatalogService {
         }
         Long ownerUserId = request == null ? null : request.getOwnerUserId();
         if (ownerUserId != null) {
-            SysUser user = sysUserMapper.selectById(ownerUserId);
-            if (user == null) {
+            // 经 system 服务校验负责人用户存在（只用到 username 映射的 key）
+            if (!usernames(List.of(ownerUserId)).containsKey(ownerUserId)) {
                 throw new BusinessException(ErrorCode.USER_NOT_FOUND, "负责人用户不存在：" + ownerUserId);
             }
         }
@@ -442,7 +439,7 @@ public class AssetCatalogService {
         }
         List<Long> tableIds = items.stream().map(AssetSearchItemDTO::getTableId).toList();
         Map<Long, QualityScoreDTO> scoreMap = qualityScoreService.mapByTableIds(tableIds);
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(
+        Map<Long, String> usernameMap = usernames(
                 items.stream().map(AssetSearchItemDTO::getOwnerUserId).filter(Objects::nonNull).toList());
         List<Long> dsIds = items.stream().map(AssetSearchItemDTO::getDatasourceId)
                 .filter(Objects::nonNull).distinct().toList();
@@ -509,6 +506,37 @@ public class AssetCatalogService {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
             return 0L;
+        }
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            log.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
+        }
+    }
+
+    /**
+     * 经 system 服务 Feign 按用户名模糊查询 userId 列表。
+     * system 不可用时降级为空列表并记 warn（负责人维度搜索退化为无命中），不拖垮资产搜索。
+     */
+    private List<Long> findUserIdsByNameKeyword(String keyword) {
+        try {
+            Result<List<Long>> result = systemUserApi.findUserIdsByNameKeyword(keyword);
+            return result == null || result.data() == null ? List.of() : result.data();
+        } catch (Exception e) {
+            log.warn("按用户名模糊查询用户 ID 失败，降级为空: keyword={}", keyword, e);
+            return List.of();
         }
     }
 }

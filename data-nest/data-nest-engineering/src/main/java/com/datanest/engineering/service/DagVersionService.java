@@ -15,7 +15,8 @@ import com.datanest.task.core.mapper.DagEdgeMapper;
 import com.datanest.task.core.mapper.DagNodeMapper;
 import com.datanest.task.core.mapper.DagParameterMapper;
 import com.datanest.task.core.mapper.DagVersionMapper;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -38,16 +39,16 @@ public class DagVersionService {
     private final DagNodeMapper dagNodeMapper;
     private final DagEdgeMapper dagEdgeMapper;
     private final DagParameterMapper dagParameterMapper;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
 
     public DagVersionService(DagVersionMapper dagVersionMapper, DagNodeMapper dagNodeMapper,
                              DagEdgeMapper dagEdgeMapper, DagParameterMapper dagParameterMapper,
-                             SysUserService sysUserService) {
+                             SystemUserApi systemUserApi) {
         this.dagVersionMapper = dagVersionMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
         this.dagParameterMapper = dagParameterMapper;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
     }
 
     /**
@@ -293,7 +294,7 @@ public class DagVersionService {
                 .filter(id -> id > 0)
                 .distinct()
                 .toList();
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        Map<Long, String> usernameMap = usernames(userIds);
         for (DagVersionPayload p : payloads) {
             if (p.getCreatedBy() != null && p.getCreatedBy() > 0) {
                 p.setCreatedByName(usernameMap.getOrDefault(p.getCreatedBy(), "-"));
@@ -310,5 +311,22 @@ public class DagVersionService {
     }
 
     private record Snapshot(List<DagNode> nodes, List<DagEdge> edges, List<DagParameter> params) {
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
+        }
     }
 }

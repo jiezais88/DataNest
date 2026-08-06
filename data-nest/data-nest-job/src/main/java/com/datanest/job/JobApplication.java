@@ -8,7 +8,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication(scanBasePackages = {"com.datanest.job", "com.datanest.task.core", "com.datanest.common"})
 @EnableDiscoveryClient
-@EnableFeignClients(basePackages = "com.datanest.alert.api")
+@EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api"})
 @MapperScan("com.datanest.task.core.mapper")
 public class JobApplication {
 

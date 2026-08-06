@@ -25,7 +25,8 @@ import com.datanest.task.core.mapper.CollectChangeDetailMapper;
 import com.datanest.task.core.mapper.CollectExecutionLogMapper;
 import com.datanest.task.core.mapper.CollectHistoryMapper;
 import com.datanest.task.core.mapper.CollectTaskMapper;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -37,6 +38,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,21 +57,21 @@ public class CollectTaskService {
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper collectExecutionLogMapper;
     private final CollectChangeDetailMapper changeDetailMapper;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
 
     public CollectTaskService(CollectTaskMapper collectTaskMapper, SchedulerService schedulerService,
                               CollectHistoryMapper collectHistoryMapper,
                               CollectExecutionLogMapper collectExecutionLogMapper,
                               CollectChangeDetailMapper changeDetailMapper,
-                              SysUserService sysUserService,
+                              SystemUserApi systemUserApi,
                               AlertApi alertApi) {
         this.collectTaskMapper = collectTaskMapper;
         this.schedulerService = schedulerService;
         this.collectHistoryMapper = collectHistoryMapper;
         this.collectExecutionLogMapper = collectExecutionLogMapper;
         this.changeDetailMapper = changeDetailMapper;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
     }
 
@@ -266,7 +268,7 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(
+        Map<Long, String> usernameMap = usernames(
                 List.of(task.getCreatedBy(), task.getUpdatedBy()));
         return toDTO(task, usernameMap);
     }
@@ -295,7 +297,7 @@ public class CollectTaskService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        Map<Long, String> usernameMap = usernames(userIds);
         List<CollectTaskDTO> records = result.getRecords().stream()
                 .map(t -> toDTO(t, usernameMap))
                 .toList();
@@ -391,5 +393,22 @@ public class CollectTaskService {
     /** 空安全的用户名映射查询：userId 为 null 时直接返回 null，避免不可变 Map.get(null) 抛 NPE。 */
     private String lookupName(Map<Long, String> usernameMap, Long userId) {
         return userId == null ? null : usernameMap.get(userId);
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
+        }
     }
 }

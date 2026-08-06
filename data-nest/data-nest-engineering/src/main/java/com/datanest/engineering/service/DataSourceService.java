@@ -25,7 +25,8 @@ import com.datanest.task.core.entity.SyncJob;
 import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.ConnectionTester;
 import com.datanest.task.core.service.DataSourceRefreshService;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,7 +63,7 @@ public class DataSourceService {
     private final QualityScoreMapper qualityScoreMapper;
     private final SchedulerClient schedulerClient;
     private final DataSourceRefreshService dataSourceRefreshService;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
 
     public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
@@ -71,7 +72,7 @@ public class DataSourceService {
                              ComplianceCleanupMapper complianceCleanupMapper,
                              QualityRuleMapper qualityRuleMapper, QualityScoreMapper qualityScoreMapper,
                              SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService,
-                             SysUserService sysUserService) {
+                             SystemUserApi systemUserApi) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
@@ -84,7 +85,7 @@ public class DataSourceService {
         this.qualityScoreMapper = qualityScoreMapper;
         this.schedulerClient = schedulerClient;
         this.dataSourceRefreshService = dataSourceRefreshService;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
     }
 
     @Transactional
@@ -427,7 +428,7 @@ public class DataSourceService {
                 .filter(id -> id > 0)
                 .distinct()
                 .toList();
-        Map<Long, String> usernameMap = sysUserService.getUsernameMap(userIds);
+        Map<Long, String> usernameMap = usernames(userIds);
         for (DataSourceDTO dto : dtos) {
             if (dto.getCreatedBy() != null && dto.getCreatedBy() > 0) {
                 dto.setCreatedByName(usernameMap.getOrDefault(dto.getCreatedBy(), "-"));
@@ -453,5 +454,22 @@ public class DataSourceService {
     private long currentUserIdOrZero() {
         Long userId = currentUserId();
         return userId == null ? 0L : userId;
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
+        }
     }
 }

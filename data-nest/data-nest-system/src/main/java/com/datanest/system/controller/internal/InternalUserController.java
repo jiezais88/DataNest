@@ -44,4 +44,10 @@ public class InternalUserController {
     public Result<Map<Long, String>> usernames(@RequestParam List<Long> ids) {
         return Result.ok(sysUserService.getUsernameMap(ids));
     }
+
+    /** 按用户名模糊查询 userId 列表（资产搜索「负责人」维度） */
+    @GetMapping("/ids-by-name-keyword")
+    public Result<List<Long>> findUserIdsByNameKeyword(@RequestParam String keyword) {
+        return Result.ok(sysUserService.findUserIdsByNameKeyword(keyword));
+    }
 }

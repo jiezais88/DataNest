@@ -34,6 +34,12 @@
             <artifactId>data-nest-alert-api</artifactId>
         </dependency>
 
+        <!-- DataNest System API（微服务化阶段 2：用户名/用户 ID 查询经 Feign 走 system 服务） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
+        </dependency>
+
         <!-- Spring Context (provided by consumers) -->
         <dependency>
             <groupId>org.springframework</groupId>

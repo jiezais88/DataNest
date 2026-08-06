@@ -116,12 +116,22 @@ public class InternalObjectController {
     }
 
     /**
-     * 按 dag_id + node_id 查询 dag_node.id；查不到返回 data = null。
+     * 批量解析节点标识 → dag_node.id 映射（一次 IN 查询）；查不到的节点不出现在 map 中。
      */
-    @GetMapping("/dags/{dagId}/nodes/by-node-id")
-    public Result<Long> findDagNodeId(@PathVariable Long dagId, @RequestParam String nodeId) {
-        DagNode dagNode = dagNodeMapper.selectOne(new QueryWrapper<DagNode>()
-                .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"));
-        return Result.ok(dagNode == null ? null : dagNode.getId());
+    @PostMapping("/dags/{dagId}/nodes/resolve")
+    public Result<Map<String, Long>> resolveDagNodeIds(@PathVariable Long dagId, @RequestBody List<String> nodeIds) {
+        Map<String, Long> resolved = new HashMap<>();
+        if (nodeIds == null || nodeIds.isEmpty()) {
+            return Result.ok(resolved);
+        }
+        List<String> validNodeIds = nodeIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (validNodeIds.isEmpty()) {
+            return Result.ok(resolved);
+        }
+        for (DagNode dagNode : dagNodeMapper.selectList(new QueryWrapper<DagNode>()
+                .select("id", "node_id").eq("dag_id", dagId).in("node_id", validNodeIds))) {
+            resolved.put(dagNode.getNodeId(), dagNode.getId());
+        }
+        return Result.ok(resolved);
     }
 }

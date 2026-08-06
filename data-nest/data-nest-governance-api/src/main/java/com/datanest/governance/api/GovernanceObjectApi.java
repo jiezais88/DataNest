@@ -3,7 +3,7 @@ package com.datanest.governance.api;
 import com.datanest.common.model.Result;
 import com.datanest.governance.api.dto.ObjectNameRequest;
 import com.datanest.governance.api.dto.ObjectOptionDTO;
-import com.datanest.governance.api.dto.QualityAutoTriggerRequest;
+import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,7 +29,7 @@ public interface GovernanceObjectApi {
     @GetMapping("/alert-objects/options")
     Result<List<ObjectOptionDTO>> options(@RequestParam("objectType") String objectType);
 
-    /** 质量检查自动触发 */
-    @PostMapping("/quality/auto-trigger")
-    Result<Void> qualityAutoTrigger(@RequestBody QualityAutoTriggerRequest request);
+    /** 质量检查自动触发（批量）：同类型对象逐个触发，单个失败只记 error 不中断 */
+    @PostMapping("/quality/auto-trigger/batch")
+    Result<Void> qualityAutoTriggerBatch(@RequestBody QualityAutoTriggerBatchRequest request);
 }

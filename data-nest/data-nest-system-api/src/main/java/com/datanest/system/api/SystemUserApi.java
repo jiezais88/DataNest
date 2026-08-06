@@ -23,4 +23,8 @@ public interface SystemUserApi {
     /** 按用户 ID 列表查询用户名映射 */
     @GetMapping("/usernames")
     Result<Map<Long, String>> usernames(@RequestParam("ids") List<Long> ids);
+
+    /** 按用户名模糊查询 userId 列表（资产搜索「负责人」维度） */
+    @GetMapping("/ids-by-name-keyword")
+    Result<List<Long>> findUserIdsByNameKeyword(@RequestParam("keyword") String keyword);
 }

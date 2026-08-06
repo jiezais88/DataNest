@@ -29,7 +29,7 @@ public interface EngineeringObjectApi {
     @GetMapping("/alert-objects/options")
     Result<List<ObjectOptionDTO>> options(@RequestParam("objectType") String objectType);
 
-    /** 按节点标识查询 DAG 节点 ID */
-    @GetMapping("/dags/{dagId}/nodes/by-node-id")
-    Result<Long> findDagNodeId(@PathVariable("dagId") Long dagId, @RequestParam("nodeId") String nodeId);
+    /** 批量解析节点标识 → dag_node.id 映射（DAG 成功后质量自动触发用，避免逐节点远程调用） */
+    @PostMapping("/dags/{dagId}/nodes/resolve")
+    Result<Map<String, Long>> resolveDagNodeIds(@PathVariable("dagId") Long dagId, @RequestBody List<String> nodeIds);
 }

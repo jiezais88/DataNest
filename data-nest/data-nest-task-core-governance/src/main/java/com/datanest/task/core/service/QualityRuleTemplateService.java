@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import com.datanest.task.core.dto.QualityRuleTemplateCreateRequest;
 import com.datanest.task.core.dto.QualityRuleTemplateDTO;
 import com.datanest.task.core.dto.QualityRuleTemplateQueryRequest;
@@ -15,11 +17,14 @@ import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
 import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleTemplateMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,16 +47,18 @@ public class QualityRuleTemplateService {
             "COMPLETENESS", "UNIQUENESS", "RANGE", "CUSTOM_SQL"
     );
 
+    private static final Logger logger = LoggerFactory.getLogger(QualityRuleTemplateService.class);
+
     private final QualityRuleTemplateMapper templateMapper;
     private final QualityRuleMapper qualityRuleMapper;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
 
     public QualityRuleTemplateService(QualityRuleTemplateMapper templateMapper,
                                       QualityRuleMapper qualityRuleMapper,
-                                      SysUserService sysUserService) {
+                                      SystemUserApi systemUserApi) {
         this.templateMapper = templateMapper;
         this.qualityRuleMapper = qualityRuleMapper;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
     }
 
     // ==================== 查询 ====================
@@ -224,7 +231,7 @@ public class QualityRuleTemplateService {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        return sysUserService.getUsernameMap(userIds);
+        return usernames(userIds);
     }
 
     private QualityRuleTemplateDTO toDTO(QualityRuleTemplate entity, Map<Long, String> usernameMap) {
@@ -252,6 +259,23 @@ public class QualityRuleTemplateService {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
             return 0L;
+        }
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            logger.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
         }
     }
 }

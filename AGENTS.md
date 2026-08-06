@@ -46,7 +46,8 @@ DataNest 是一个数据平台，技术栈如下：
 | `data-nest-system` | 认证、用户、权限 |
 | `data-nest-gateway` | 网关入口 |
 
-> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。Feign 调用必须 try-catch 容错（最终一致性）；删除前置校验类调用采用失败关闭。
+> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。Feign 调用必须 try-catch 容错（最终一致性）；删除前置校验类调用采用失败关闭。**禁止逐条循环远程调用（N+1）**：循环场景必须提供批量端点（如 `usernames?ids=`、`dags/{dagId}/nodes/resolve`、`quality/auto-trigger/batch`）。
+> **用户名回填**：`SysUserService` 仅 app-system 内部使用；其它服务列表页的 createdBy/updatedBy 名称回填一律经 `data-nest-system-api` 的 `SystemUserApi.usernames`（批量，失败降级空 Map）。
 
 ### 核心容器
 

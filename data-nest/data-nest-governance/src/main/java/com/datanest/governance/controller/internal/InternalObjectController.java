@@ -3,7 +3,7 @@ package com.datanest.governance.controller.internal;
 import com.datanest.common.model.Result;
 import com.datanest.governance.api.dto.ObjectNameRequest;
 import com.datanest.governance.api.dto.ObjectOptionDTO;
-import com.datanest.governance.api.dto.QualityAutoTriggerRequest;
+import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
 import com.datanest.task.core.entity.CollectTask;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.mapper.CollectTaskMapper;
@@ -96,18 +96,25 @@ public class InternalObjectController {
     }
 
     /**
-     * 质量检查自动触发：对象成功完成后触发绑定它的启用质量任务（AUTO_TRIGGER）。
-     * 异常包装为 Result 错误返回。
+     * 质量检查自动触发（批量）：同类型对象逐个触发绑定它的启用质量任务（AUTO_TRIGGER）。
+     * 单个对象触发失败只记 error 不中断，不影响其他对象。
      */
-    @PostMapping("/quality/auto-trigger")
-    public Result<Void> qualityAutoTrigger(@RequestBody QualityAutoTriggerRequest request) {
-        try {
-            qualityAutoTriggerService.triggerOnSuccess(request.getObjectType(), request.getObjectId());
+    @PostMapping("/quality/auto-trigger/batch")
+    public Result<Void> qualityAutoTriggerBatch(@RequestBody QualityAutoTriggerBatchRequest request) {
+        if (request.getObjectIds() == null) {
             return Result.ok(null);
-        } catch (Exception e) {
-            logger.error("质量任务自动触发失败: objectType={}, objectId={}",
-                    request.getObjectType(), request.getObjectId(), e);
-            return Result.fail("质量任务自动触发失败: " + e.getMessage());
         }
+        for (Long objectId : request.getObjectIds()) {
+            if (objectId == null) {
+                continue;
+            }
+            try {
+                qualityAutoTriggerService.triggerOnSuccess(request.getObjectType(), objectId);
+            } catch (Exception e) {
+                logger.error("质量任务自动触发失败: objectType={}, objectId={}",
+                        request.getObjectType(), objectId, e);
+            }
+        }
+        return Result.ok(null);
     }
 }

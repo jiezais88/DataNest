@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemUserApi;
 import com.datanest.task.core.dto.QualityRuleBatchCreateRequest;
 import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
@@ -66,7 +68,7 @@ public class QualityRuleService {
     private final QualityRuleTemplateMapper templateMapper;
     private final MetadataTableMapper tableMapper;
     private final DataSourceConnectionMapper dataSourceMapper;
-    private final SysUserService sysUserService;
+    private final SystemUserApi systemUserApi;
     private final QualityCheckTriggerService triggerService;
     private final QualityScoreMapper qualityScoreMapper;
 
@@ -76,7 +78,7 @@ public class QualityRuleService {
                               QualityRuleTemplateMapper templateMapper,
                               MetadataTableMapper tableMapper,
                               DataSourceConnectionMapper dataSourceMapper,
-                              SysUserService sysUserService,
+                              SystemUserApi systemUserApi,
                               QualityCheckTriggerService triggerService,
                               QualityScoreMapper qualityScoreMapper) {
         this.ruleMapper = ruleMapper;
@@ -85,7 +87,7 @@ public class QualityRuleService {
         this.templateMapper = templateMapper;
         this.tableMapper = tableMapper;
         this.dataSourceMapper = dataSourceMapper;
-        this.sysUserService = sysUserService;
+        this.systemUserApi = systemUserApi;
         this.triggerService = triggerService;
         this.qualityScoreMapper = qualityScoreMapper;
     }
@@ -718,7 +720,7 @@ public class QualityRuleService {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        return sysUserService.getUsernameMap(userIds);
+        return usernames(userIds);
     }
 
     /**
@@ -746,6 +748,23 @@ public class QualityRuleService {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
             return 0L;
+        }
+    }
+
+    /**
+     * 经 system 服务 Feign 批量查询 userId → username 映射。
+     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     */
+    private Map<Long, String> usernames(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
+            return result == null || result.data() == null ? Map.of() : result.data();
+        } catch (Exception e) {
+            log.warn("查询用户名映射失败，降级为空: {}", e.toString());
+            return Map.of();
         }
     }
 }

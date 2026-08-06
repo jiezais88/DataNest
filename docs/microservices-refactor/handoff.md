@@ -3,14 +3,32 @@
 > 独立改造（不属于任何 Sprint）。总目标：共享 jar 进程内调用 → OpenFeign 远程调用 + 按域拆库。
 > 已确认决策：OpenFeign + Nacos；按域拆库（阶段 5 才拆）；最终一致性（Feign + 重试 + 对账，无分布式事务无 MQ）；新建 app-alert 独立告警服务；worker/job 最终不持库（纯执行节点，经 Feign 回写 owner）。
 
+## 阶段 2 范围（system 域远程化，2026-08-06 完成）
+
+- `SysUserService`（entity 模块）的进程内消费全部改 Feign：engineering 5 个 Service、governance 5 个 Service、task-core-governance 3 个 Service（QualityRule/QualityJob/QualityRuleTemplate）。
+- system-api 扩充：`GET /system/internal/users/ids-by-name-keyword?keyword=`（资产搜索负责人维度）；原有的 `usernames`/`emails` 批量端点复用。
+- 降级语义：usernames Feign 失败 → warn + 空 Map（列表页名称列为空/「-」，接口不 500）；负责人名搜索失败 → 空列表；assignOwner 存在性校验为 fail-closed（system 不可用时拒绝写）。
+- **N+1 修复（阶段 1 遗留）**：dag-finished 质量自动触发原逐节点调 `findDagNodeId`（N 次）+ 逐节点 `qualityAutoTrigger`（M 次）→ 改为批量端点：engineering `POST /engineering/internal/dags/{dagId}/nodes/resolve`（一次拿 nodeId→dagNodeId 映射）+ governance `POST /governance/internal/quality/auto-trigger/batch`；单条 auto-trigger 端点与 findDagNodeId 已删除。
+- 消费方 13 个 Service 各自持有私有 `usernames()` helper（项目偏好简单重复，不在 common 抽象）。
+- SysUserService/SysUserMapper/SysUser 实体保留在 entity 模块（仅 system 使用），entity 清退属阶段 6。
+
+## 阶段 2 验证记录
+
+- 全量 `mvn clean package` exit 0；grep 无 SysUserService/SysUserMapper 残留（system 模块除外）
+- 6 个重建服务（system/engineering/governance/worker/job/alert）全部 healthy，日志无 Feign 异常
+- engineering `/api/engineering/sync-jobs/page`：`createdByName=admin` ✅（经 Feign 调 system usernames）
+- 质量任务 `/api/governance/quality/jobs/page`：`createdByName=admin` ✅（task-core-governance 的 QualityJobService 远程回填）
+- 资产搜索 `/api/governance/assets/search?keyword=admin`：命中负责人维度（ownerName=admin）✅（ids-by-name-keyword + ownerName 回填）
+- 未 e2e 项：dag-finished 批量质量触发链路（resolveDagNodeIds/auto-trigger/batch）只做了代码级验证，待下次 DAG 真实执行时观察 app-alert 日志（应只有 2 次远程调用，无逐节点循环）
+
 ## 总体阶段规划
 
-1. **阶段 1（本阶段）**：新建 app-alert + 告警域远程化（试点，验证模式）
-2. 阶段 2：system 域远程化（SysUserService → Feign）
+1. **阶段 1（已完成 ✅）**：新建 app-alert + 告警域远程化
+2. **阶段 2（已完成 ✅）**：system 域远程化（SysUserService → Feign）+ dag-finished N+1 批量化修复
 3. 阶段 3：engineering 域远程化（worker/job 执行回写链路，风险最高）
 4. 阶段 4：governance 域远程化（质量/采集/元数据/血缘回写）
 5. 阶段 5：拆库 + Flyway 基线 + 数据迁移（datanest_system / datanest_alert / datanest_engineering / datanest_governance）
-6. 阶段 6：删除 task-core 四模块、文档收尾、全量回归
+6. 阶段 6：删除 task-core 剩余共享模块、文档收尾、全量回归
 
 ## 阶段 1 范围
 
@@ -90,9 +108,10 @@
 
 ## Next Action
 
-**阶段 1 已完成**。下一阶段（阶段 2：system 域远程化，约 0.5 会话）：
-1. system-api 扩充：批量用户查询已有（`/system/internal/users/usernames|emails`），按需补充。
-2. `SysUserService` 收回 app-system 内部；engineering/governance 中经 task-core-entity 注入 `SysUserService` 做用户名回填的调用点改 Feign（先 grep `SysUserService` 全部消费点）。
-3. 验证：各列表页创建人/更新人名称正常显示。
+**阶段 2 已完成**。下一阶段（阶段 3：engineering 域远程化，风险最高，约 3-4 会话）：
+1. 新建 engineering-api 扩充：执行回写端点（sync_job_history/log、dag_execution/node_execution 读写、datasource 读取、sync_job/dag 定义读取）。
+2. entity 模块中 engineering 归属表（同步 + DAG 全族 + datasource_connection）实体/mapper 迁入 engineering，包名改 com.datanest.engineering.*。
+3. worker 的 SyncJobExecutor/DagNodeExecuteService、job 的 DagExecutionSyncService/SyncJobRetryService/StuckExecutionReaperService 改 Feign 回写。
+4. 重点回归：同步任务执行、DAG 全流程（条件分支/SUB_DAG/超时告警/对账 handler）、数据源 CRUD。
 
-之后阶段 3（engineering 执行链路远程化，风险最高，重点回归 DAG 条件分支/SUB_DAG/超时告警/对账 handler）→ 阶段 4（governance 域）→ 阶段 5（拆库 + Flyway 基线 + 数据迁移，**先处理 app-alert `selectHistoryPage` 跨表 LEFT JOIN**）→ 阶段 6（删 task-core 四模块、AlertConstants 双份合并、docs/agent/* 文档同步、全量回归）。
+阶段 4（governance 域）→ 阶段 5（拆库，**先处理 app-alert `selectHistoryPage` 跨表 LEFT JOIN**）→ 阶段 6（删 task-core 剩余模块、AlertConstants 双份合并、docs/agent/* 同步、全量回归）。
