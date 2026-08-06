@@ -7,7 +7,7 @@
 # Stage 1: 解出分层 jar
 FROM eclipse-temurin:21-jre-alpine AS builder
 WORKDIR /build
-COPY data-nest-alert-service/target/data-nest-alert-service-1.0.0-SNAPSHOT.jar app.jar
+COPY data-nest-services/data-nest-alert-service/target/data-nest-alert-service-1.0.0-SNAPSHOT.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract
 
 # Stage 2: 运行镜像

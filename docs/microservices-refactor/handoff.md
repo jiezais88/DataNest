@@ -21,6 +21,50 @@
 - 资产搜索 `/api/governance/assets/search?keyword=admin`：命中负责人维度（ownerName=admin）✅（ids-by-name-keyword + ownerName 回填）
 - 未 e2e 项：dag-finished 批量质量触发链路（resolveDagNodeIds/auto-trigger/batch）只做了代码级验证，待下次 DAG 真实执行时观察 app-alert 日志（应只有 2 次远程调用，无逐节点循环）
 
+## 结构整改：模块三层目录 + 容错体系（2026-08-06 完成，用户决策）
+
+### Maven 模块三层目录（data-nest-libs / data-nest-apis / data-nest-services）
+
+- `data-nest-libs/`：data-nest-common、data-nest-task-core-entity、data-nest-task-core-governance、data-nest-task-core（阶段 6 后只剩 common）
+- `data-nest-apis/`：4 个 Feign 契约模块
+- `data-nest-services/`：7 个可部署服务（gateway/system/alert-service/engineering/governance/worker/job）
+- 三个目录各有聚合 pom（**目录名 = 聚合 artifactId**：data-nest-libs/apis/services，packaging=pom）；根 pom modules = data-nest-libs → data-nest-apis → data-nest-services
+- **artifactId 不变，依赖零改动**；仅 pom relativePath（../../pom.xml）与 7 个 Dockerfile 的 jar COPY 路径（加 services/ 前缀）调整
+- 全部 `git mv` 完成（484 项 rename，历史保留）；全量构建 + compose config + app-system 镜像构建验证通过
+- ⚠️ 后续引用模块物理路径时注意新位置（AGENTS.md §3 命令、docs 已同步）
+
+### 远程调用容错体系（L1 统一设施 + L2 熔断）
+
+**L1**：
+- `shared-feign.yaml`（已推送 Nacos，消费方 alert/engineering/governance/worker/job 已 import）：Feign 全局 connect 2s/read 5s、loggerLevel basic、`feign.circuitbreaker.enabled=true`、resilience4j default 配置（10 次滑动窗口/5 次最小调用/50% 失败率熔断/30s 半开）
+- common `InternalFeignErrorDecoder`：远端 Result 信封 message 提取；503→RetryableException 触发重试；其它→BusinessException("远程调用失败[svc path]: msg")
+- common `InternalFeignRetryer`：Retryer.Default(100ms, 1s, 3)，全 client 生效
+- common `RemoteCalls.execute(description, supplier, fallback)`：统一降级入口 + warn 日志 + Micrometer `remote_call_failed_total{target}` 计数；已替换 25 处手写 try-catch 样板
+
+**L2**：4 个 @FeignClient 全部配 `fallbackFactory`（各 api 模块 fallback 包，@Component；消费方启动类 scanBasePackages 追加对应 api 包）。降级语义：读路径空集合/空 Map；fire→false；**`listRuleNamesByObject` 抛 BusinessException（fail-closed，QualityJobService 删除前置校验）**；`AssetCatalogService.assignOwner` 不包装（空 Map → 抛用户不存在，fail-closed）。resilience4j starter 由 spring-cloud BOM 管理（5.0.2），不要在根 pom 显式声明无版本条目（会报 version missing）。
+
+**fail-closed 清单（改动时注意保持）**：QualityJobService 删除前告警引用校验、AssetCatalogService.assignOwner 用户存在性校验。
+
+**验证记录（全部实测通过）**：
+- 7 后端服务重建后全部 healthy；正常路径（sync-jobs 用户名回填、alert-rules 分页）✅
+- 故障注入 1：`docker stop app-alert` → 同步任务执行 SUCCESS 不受影响；worker 日志 `远程调用失败，按降级处理: target=alert.fire`（Retryer 重试 3 次后快速降级，无线程挂起）✅
+- 故障注入 2：`docker stop app-system` → sync-jobs page 仍 200，名称列降级为「-」✅
+- 恢复：两服务重启后用户名回填/告警 fire 自动恢复（alert_history 正常落库）✅；测试规则与测试告警历史已清理
+
+### 降级副作用两项修复（2026-08-06，用户评审发现）
+
+**(c) 规则保存持久化污染 → fail-closed（app-alert）**：
+- `AlertRuleService` 新增 `resolveObjectNamesForSave`：`createRule`/`updateRule`/`saveRuleObjects` 保存路径上，objectIds 非空而名称解析为空（远端宕机或对象不存在，不区分）→ 抛 BusinessException「对象服务不可用或对象不存在，请稍后重试」，事务回滚，空 object_name 不再落库。
+- 双道守卫（updateRule + saveRuleObjects 各自独立 Feign 调用处）；`updateRule` 用 `effectiveType`（dto 缺省回退原类型）避免空类型误抛/误写。
+- fire/展示路径保持降级语义不变。
+- **实测**：停 app-engineering 保存规则 → 被拒且 0 落库；恢复后保存成功；测试数据已清理 ✅
+
+**(b) 质量自动触发丢失 → 对账补发（app-job）**：
+- 新增 `QualityAutoTriggerReconcileHandler`（cron `0 0/10 * * * ?`，JobRegistrar 已注册，可配 `datanest.job.quality-auto-trigger-reconcile.cron`）。
+- 逻辑：扫描近 2h 内 SUCCESS 的 dag_execution（排除最近 5 分钟在途）→ 成功节点批量解析 dag_node.id → 查绑定的启用质量任务（DAG_NODE）→ 缺 `trigger_type='AUTO_TRIGGER'` 批次的判定漏触发 → `qualityAutoTriggerBatch` 补发（RemoteCalls 容错，失败下轮再补，幂等）。
+- 全部批量查询无逐条循环；每轮补发上限 50。
+- ⚠️ 该 handler 直接读 dag_execution/node_execution/quality_job/quality_check_batch 表——阶段 3/4 拆表归属后需改为经 engineering-api/governance-api 读取（记入阶段 3 改造清单）。
+
 ## 总体阶段规划
 
 1. **阶段 1（已完成 ✅）**：新建 app-alert + 告警域远程化
@@ -113,5 +157,6 @@
 2. entity 模块中 engineering 归属表（同步 + DAG 全族 + datasource_connection）实体/mapper 迁入 engineering，包名改 com.datanest.engineering.*。
 3. worker 的 SyncJobExecutor/DagNodeExecuteService、job 的 DagExecutionSyncService/SyncJobRetryService/StuckExecutionReaperService 改 Feign 回写。
 4. 重点回归：同步任务执行、DAG 全流程（条件分支/SUB_DAG/超时告警/对账 handler）、数据源 CRUD。
+5. **别忘了**：`QualityAutoTriggerReconcileHandler`（app-job）直接读 dag_execution/node_execution/quality_job/quality_check_batch 四表，阶段 3/4 需随表归属改为经 engineering-api/governance-api 读取。
 
 阶段 4（governance 域）→ 阶段 5（拆库，**先处理 app-alert `selectHistoryPage` 跨表 LEFT JOIN**）→ 阶段 6（删 task-core 剩余模块、AlertConstants 双份合并、docs/agent/* 同步、全量回归）。

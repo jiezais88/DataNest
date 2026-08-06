@@ -1,0 +1,37 @@
+server:
+  port: 8082
+  servlet:
+    context-path: /engineering
+
+spring:
+  application:
+    name: data-nest-engineering
+
+  config:
+    import:
+      - optional:nacos:shared-nacos.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-addax.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-dolphinscheduler.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-internal.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-feign.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+        file-extension: yaml
+
+datanest:
+  engineering:
+    worker-appname: data-nest-worker

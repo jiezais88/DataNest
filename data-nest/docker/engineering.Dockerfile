@@ -7,7 +7,7 @@
 # Stage 1: 解出分层 jar
 FROM eclipse-temurin:21-jre-alpine AS builder
 WORKDIR /build
-COPY data-nest-engineering/target/data-nest-engineering-1.0.0-SNAPSHOT.jar app.jar
+COPY data-nest-services/data-nest-engineering/target/data-nest-engineering-1.0.0-SNAPSHOT.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract
 
 # Stage 2: 运行镜像
@@ -31,7 +31,7 @@ COPY --from=builder /build/snapshot-dependencies/ ./
 COPY --from=builder /build/application/ ./
 
 # 启动脚本（等待 Nacos + 以 JarLauncher 启动分层应用）
-COPY data-nest-engineering/docker-entrypoint.sh /docker-entrypoint.sh
+COPY data-nest-services/data-nest-engineering/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 8082

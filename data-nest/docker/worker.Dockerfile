@@ -10,7 +10,7 @@ FROM quay.io/wgzhao/addax:6.0.11 AS addax
 # Stage 2: 解出分层 jar
 FROM eclipse-temurin:21-jre-alpine AS builder
 WORKDIR /build
-COPY data-nest-worker/target/data-nest-worker-1.0.0-SNAPSHOT.jar app.jar
+COPY data-nest-services/data-nest-worker/target/data-nest-worker-1.0.0-SNAPSHOT.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract
 
 # Stage 3: 构建应用运行镜像

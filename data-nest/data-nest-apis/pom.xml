@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.datanest</groupId>
+        <artifactId>data-nest</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>data-nest-apis</artifactId>
+    <packaging>pom</packaging>
+    <name>DataNest APIs</name>
+    <description>DataNest Feign contract aggregator</description>
+
+    <modules>
+        <module>data-nest-alert-api</module>
+        <module>data-nest-system-api</module>
+        <module>data-nest-engineering-api</module>
+        <module>data-nest-governance-api</module>
+    </modules>
+</project>

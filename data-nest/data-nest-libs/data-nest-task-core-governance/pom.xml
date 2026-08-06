@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.datanest</groupId>
+        <artifactId>data-nest</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>data-nest-task-core-governance</artifactId>
+    <packaging>jar</packaging>
+    <name>DataNest Task Core Governance</name>
+    <description>Governance orchestration/management services (quality rule/job/score/template, data preview, topology, data source refresh)</description>
+
+    <dependencies>
+        <!-- DataNest Common -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-common</artifactId>
+        </dependency>
+
+        <!-- DataNest Task Core Entity（共享实体/mapper/constant/dto 底座） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-task-core-entity</artifactId>
+        </dependency>
+
+        <!-- DataNest Alert API（微服务化改造：QualityJobService 告警引用校验经 Feign） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-alert-api</artifactId>
+        </dependency>
+
+        <!-- DataNest System API（微服务化阶段 2：用户名/用户 ID 查询经 Feign 走 system 服务） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
+        </dependency>
+
+        <!-- Spring Context (provided by consumers) -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- MyBatis-Plus -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Sa-Token（QualityRuleService / QualityJobService 权限校验用） -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-spring-boot4-starter</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Fastjson2 -->
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+        </dependency>
+
+        <!-- Spring Boot JSON starter（provided by consumers，携带 Jackson 3：tools.jackson.databind） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

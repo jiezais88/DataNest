@@ -17,7 +17,7 @@
 
 DataNest 是一个数据平台，技术栈如下：
 
-- **后端**：Java 21 + Spring Boot 4.x，Maven 多模块
+- **后端**：Java 21 + Spring Boot 4.x，Maven 多模块（**三层目录**：`data-nest-libs/` 共享库、`data-nest-apis/` Feign 契约、`data-nest-services/` 可部署服务，目录名与聚合 artifactId 一致）
 - **前端**：独立容器 `app-frontend`（源码目录 `data-nest/data-nest-frontend`），通过 `app-gateway:8080` 统一入口
 - **部署**：Docker Compose，所有服务在同一 `datanest-net` 网络
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
@@ -46,7 +46,8 @@ DataNest 是一个数据平台，技术栈如下：
 | `data-nest-system` | 认证、用户、权限 |
 | `data-nest-gateway` | 网关入口 |
 
-> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。Feign 调用必须 try-catch 容错（最终一致性）；删除前置校验类调用采用失败关闭。**禁止逐条循环远程调用（N+1）**：循环场景必须提供批量端点（如 `usernames?ids=`、`dags/{dagId}/nodes/resolve`、`quality/auto-trigger/batch`）。
+> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。**容错三件套已内置**：`shared-feign.yaml` 全局超时（connect 2s/read 5s）+ 重试（Retryer.Default ×3）+ Resilience4j 熔断（各 client 配 fallbackFactory）；消费方降级统一用 common 的 `RemoteCalls.execute(描述, 调用, 降级值)`（自动 warn 日志 + `remote_call_failed_total` 指标），不要手写 try-catch 样板。读路径降级空集合；**fail-closed 例外**：删除前置校验类调用必须让异常传播（现有 2 处：QualityJobService 告警引用校验、AssetCatalogService.assignOwner）。
+> **禁止逐条循环远程调用（N+1）**：循环场景必须提供批量端点（如 `usernames?ids=`、`dags/{dagId}/nodes/resolve`、`quality/auto-trigger/batch`）。
 > **用户名回填**：`SysUserService` 仅 app-system 内部使用；其它服务列表页的 createdBy/updatedBy 名称回填一律经 `data-nest-system-api` 的 `SystemUserApi.usernames`（批量，失败降级空 Map）。
 
 ### 核心容器
@@ -205,7 +206,7 @@ docker compose up -d --no-deps app-engineering app-worker
 ### Flyway / 迁移脚本
 
 - **禁止用格式化工具拆分迁移 SQL**：会破坏已应用脚本 checksum，触发 `Migration checksum mismatch` 使 app-system 退出。所有迁移脚本统一**紧凑单行风格**；确需调整时用 flyway `repair` 固化 checksum 并重启 `app-system`。
-- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在 `data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package data-nest-system` 并重建 `app-system` 镜像，否则容器内 jar 仍是旧脚本。
+- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在 `data-nest-services/data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package -pl data-nest-system` 并重建 `app-system` 镜像，否则容器内 jar 仍是旧脚本。
 - **新增迁移脚本版本号必须大于数据库已有最高版本**：先查 `flyway_schema_history` 最高版本再定新编号（取「最高+1」，如 `V3.7.1`）；否则 Flyway 报 `Detected resolved migration not applied to database` 使 app-system 启动失败。`mvn clean package` 避免 target/classes 残留已删除旧脚本。
 
 ### 质量

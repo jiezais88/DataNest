@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.datanest</groupId>
+        <artifactId>data-nest</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>data-nest-libs</artifactId>
+    <packaging>pom</packaging>
+    <name>DataNest Libs</name>
+    <description>DataNest shared libraries aggregator</description>
+
+    <modules>
+        <module>data-nest-common</module>
+        <module>data-nest-task-core-entity</module>
+        <module>data-nest-task-core-governance</module>
+        <module>data-nest-task-core</module>
+    </modules>
+</project>

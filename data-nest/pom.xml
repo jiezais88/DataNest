@@ -12,21 +12,9 @@
     <description>DataNest - Open Source Data Platform</description>
 
     <modules>
-        <module>data-nest-common</module>
-        <module>data-nest-alert-api</module>
-        <module>data-nest-system-api</module>
-        <module>data-nest-engineering-api</module>
-        <module>data-nest-governance-api</module>
-        <module>data-nest-task-core-entity</module>
-        <module>data-nest-task-core-governance</module>
-        <module>data-nest-task-core</module>
-        <module>data-nest-gateway</module>
-        <module>data-nest-system</module>
-        <module>data-nest-alert-service</module>
-        <module>data-nest-engineering</module>
-        <module>data-nest-governance</module>
-        <module>data-nest-worker</module>
-        <module>data-nest-job</module>
+        <module>data-nest-libs</module>
+        <module>data-nest-apis</module>
+        <module>data-nest-services</module>
     </modules>
 
     <properties>
