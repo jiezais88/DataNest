@@ -110,6 +110,14 @@ const {list, total, page, pageSize, loading, setPage, setPageSize, applyQuery, r
 
 - 查询按钮调用 `applyQuery(draftQuery)`；重置按钮调用 `applyQuery(INITIAL_QUERY)`；增删改成功后调用 `reload()`。
 
+### 页面高度策略（2026-08-07 定）
+
+Layout 视口固定（`h-screen`），按页面类型二选一，新页面必须遵守：
+
+- **双栏/多栏结构页（树+表、左导航+内容）→ 固定撑满 + 栏内独立滚动**。根容器 `h-[calc(100vh-9rem)] flex flex-col overflow-hidden`；分栏容器 `flex-1 min-h-0 flex`；左栏卡片 `min-h-0 overflow-y-auto`；右栏卡片 `flex-1 min-h-0 overflow-hidden flex flex-col`，内部表格区 `flex-1 min-h-0 overflow-auto`，工具栏/分页器 `flex-shrink-0` 钉住。范本：元数据管理页、数据资产目录首页。判断依据：页面存在多个高度独立、需同时可见的区域。
+- **单栏列表页（工具栏+表格+分页）→ 保持整页滚动**，不强行定高（避免 flex 滚动陷阱，见 gotchas）。
+- 表单/详情页 → 整页滚动。
+
 ## 9. 消息提示
 
 统一使用 `src/utils/notify.ts`：

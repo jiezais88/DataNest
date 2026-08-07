@@ -115,6 +115,8 @@ function LineageGraphPageInner() {
     const [searchParams] = useSearchParams();
     const tableIdParam = searchParams.get('tableId') || '';
     const tableNameParam = searchParams.get('tableName') || '';
+    /** 来源页：asset-catalog = 从资产详情页「查看完整血缘」进入，返回到资产详情而非元数据管理 */
+    const fromParam = searchParams.get('from') || '';
 
     const [tableId, setTableId] = useState(tableIdParam);
     const [tableName, setTableName] = useState(tableNameParam);
@@ -263,8 +265,10 @@ function LineageGraphPageInner() {
             return;
         }
         if (node.data.current) return;
-        navigate(`/governance/metadata/lineage?tableName=${encodeURIComponent(node.data.name)}`);
-    }, [analysisMode, navigate, handleAnalyzeNode]);
+        // 保留 from 参数：血缘页内切换中心表后，「← 返回」仍回到最初来源页
+        const fromSuffix = fromParam ? `&from=${encodeURIComponent(fromParam)}` : '';
+        navigate(`/governance/metadata/lineage?tableName=${encodeURIComponent(node.data.name)}${fromSuffix}`);
+    }, [analysisMode, navigate, handleAnalyzeNode, fromParam]);
 
     const handleNodeDoubleClick = useCallback(async (_: unknown, node: Node<LineageNodeData>) => {
         if (node.data.current) return;
@@ -285,9 +289,11 @@ function LineageGraphPageInner() {
     }, [navigate]);
 
     const handleBack = () => {
-        // 始终回到进入来源表的「血缘图谱」tab（不做血缘内逐级回退）
+        // 从资产详情页进入 → 返回资产详情；否则回来源表的元数据「血缘图谱」tab（不做血缘内逐级回退）
         const originId = originTableIdRef.current;
-        if (originId) {
+        if (fromParam === 'asset-catalog' && originId) {
+            navigate(`/asset-catalog/${originId}`);
+        } else if (originId) {
             navigate(`/governance/metadata?tableId=${originId}&tab=lineage`);
         } else {
             navigate('/governance/metadata');
@@ -396,7 +402,7 @@ function LineageGraphPageInner() {
                         </span>
                     </span>
                 }
-                width="max-w-[520px]"
+                width="max-w-[860px]"
                 onClose={() => setFieldOpen(false)}
             >
                 {tableName ? (

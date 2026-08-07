@@ -170,7 +170,7 @@ export default function AssetDetailPage() {
         return (
             <div className="flex flex-col">
                 <DsButton variant="secondary" className="self-start mb-ds-4" onClick={() => navigate('/asset-catalog')}>
-                    ← 数据资产
+                    ← 返回
                 </DsButton>
                 <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-10 text-center text-ds-small text-ds-text-muted">
                     未找到该数据表（可能已被删除或元数据已下线）
@@ -183,16 +183,12 @@ export default function AssetDetailPage() {
 
     return (
         <div className="flex flex-col">
-            {/* 头部：返回 + 路径条 + 徽章 + 操作 */}
+            {/* 头部：返回（平台深层页惯例：secondary「← 返回」按钮）+ 路径条 + 徽章 + 操作 */}
             <div className="flex items-start justify-between mb-ds-4 flex-shrink-0 gap-ds-4">
                 <div className="min-w-0">
-                    <button
-                        type="button"
-                        onClick={() => navigate('/asset-catalog')}
-                        className="text-ds-small text-ds-accent hover:underline mb-ds-2"
-                    >
-                        ← 数据资产
-                    </button>
+                    <DsButton variant="secondary" className="mb-ds-3" onClick={() => navigate('/asset-catalog')}>
+                        ← 返回
+                    </DsButton>
                     <div className="flex items-center gap-ds-2 flex-wrap">
                         <span className="text-ds-body text-ds-text-muted font-mono">{table.databaseName} /</span>
                         <Tooltip title={table.tableName} placement="top">

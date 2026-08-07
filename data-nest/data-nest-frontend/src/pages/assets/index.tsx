@@ -267,7 +267,7 @@ export default function AssetsPage() {
             : '';
 
     return (
-        <div className="flex flex-col">
+        <div className="h-[calc(100vh-9rem)] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">数据资产</h1>
@@ -285,10 +285,10 @@ export default function AssetsPage() {
                 )}
             </div>
 
-            <div className="flex gap-ds-4 items-start">
-                {/* 左：分类树（治理员可编辑） */}
+            <div className="flex-1 min-h-0 flex gap-ds-4">
+                {/* 左：分类树（治理员可编辑）；固定高度，树内独立滚动 */}
                 <div
-                    className="w-[260px] flex-shrink-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle">
+                    className="w-[260px] flex-shrink-0 min-h-0 overflow-y-auto bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle">
                     <AssetTree
                         tree={tree}
                         selectedKey={isSearch ? '' : selectionKey(selection)}
@@ -301,9 +301,9 @@ export default function AssetsPage() {
                     />
                 </div>
 
-                {/* 右：表格卡片 */}
+                {/* 右：表格卡片（工具栏/管理条/分页器钉住，表格区内部滚动） */}
                 <div
-                    className="flex-1 min-w-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
+                    className="flex-1 min-w-0 min-h-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={(
@@ -365,7 +365,7 @@ export default function AssetsPage() {
                         </div>
                     )}
 
-                    <div className="overflow-x-auto">
+                    <div className="flex-1 min-h-0 overflow-auto">
                         <Table
                             rowKey={(r) => r.tableId}
                             columns={columns}
@@ -390,7 +390,7 @@ export default function AssetsPage() {
                     </div>
 
                     {isSearch && tableData.length >= SEARCH_LIMIT && (
-                        <div className="px-ds-4 py-ds-2 border-t border-ds-border-subtle text-ds-tiny text-ds-text-muted">
+                        <div className="flex-shrink-0 px-ds-4 py-ds-2 border-t border-ds-border-subtle text-ds-tiny text-ds-text-muted">
                             结果较多，仅展示相关度最高的前 {SEARCH_LIMIT} 条，请精确关键词
                         </div>
                     )}

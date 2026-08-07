@@ -148,6 +148,8 @@
 - 新增 `GET /system/users/options`（`UserSelectorController`，超管/治理员）：全部启用用户轻量选项，**不要求邮箱**（替代复用 with-email 的限制）；负责人选择器已切换。
 - 内置 Doris 回显：`toItemDTO` 按 `source_type=BUILTIN_DORIS` 兜底「Doris 数仓 / DORIS」（engineering 无连接记录）；资产详情页基础信息同口径前端兜底。
 - 前端即时筛选：数据源/健康度下拉变更即查（不再要求点查询按钮），搜索态同样传后端。
+- 前端布局：资产目录首页改**固定撑满 + 栏内独立滚动**（对齐元数据管理页 `h-[calc(100vh-9rem)]` 模式；分页器/工具栏常驻，树与表格各自滚动）。「双栏页固定撑满、单栏列表页整页滚动」规则已写入 `docs/agent/conventions-frontend.md` §8。
+- 体验修复 3 项（2026-08-07 用户反馈）：① 资产详情返回改为平台惯例「← 返回」secondary 按钮；② 血缘图谱页支持 `from=asset-catalog` 参数，「查看完整血缘」后返回资产详情而非元数据管理（节点单击切换图谱时保留 from）；③ **字段血缘 drawer 关闭后表血缘消失 bug**——`FieldLineagePanel` 的 ReactFlow 未包独立 `ReactFlowProvider`，复用页面级 Provider 的 store，卸载时清掉主图节点，已修复；drawer 同步加宽 860px + 画布撑满 + Controls + EmptyState 空态。坑已固化到 gotchas §三。
 
 其余偏差记录：
 - **路由 `/assets` → `/asset-catalog`**（用户确认）：nginx `location /assets/` 是 Vite 静态产物目录；PRD/技术文档已同步。

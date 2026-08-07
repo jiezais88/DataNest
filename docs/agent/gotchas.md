@@ -26,6 +26,7 @@
 - **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改 `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含 QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。【注：微服务化拆库后 QUALITY 已含在 datanest_alert 基线 V1.0.0 中，V3.6.6 脚本已归档 `scripts/migration-legacy/`；此条仅供追溯历史库。】
 
 ## 三、DAG / 条件节点（当前有效，AGENTS.md 正文保留精简版）
+- **页面级 ReactFlowProvider 内的第二个 ReactFlow 必须包独立 Provider**（2026-08-07 Sprint7 联调踩）：内层 `<ReactFlow>` 若不包 `ReactFlowProvider`，会复用外层 Provider 的同一 store；内层卸载时清 store，把外层主图节点一起清掉（表象：字段血缘 drawer 关闭后表血缘空白）。`FieldLineagePanel` 已修复并带注释。
 
 - **ReactFlow 11 受控 edges/nodes 必须配 onEdgesChange/onNodesChange**：直接传 `edges`/`nodes` prop 而不传 change handler 时，内部 `setEdges`/`setNodes` 静默不执行，边不渲染（血缘图谱页曾踩此坑，节点正常但边为空且无报错）。改用 `useNodesState`/`useEdgesState` 或补 handler。排查"节点正常、边不渲染"先看此。
 - **SimpleEvaluationContext 不含 MapAccessor**：条件分支 SpEL 里 `#upstream.row_count` 属性语法必然抛 "Property cannot be found"。需把 `${a.b}` 转成 SpEL 索引语法 `#a['b']`（见 `DagNodeExecuteService.evaluateBranches`）。

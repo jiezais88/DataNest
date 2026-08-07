@@ -3,11 +3,13 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import ReactFlow, {
     Background,
+    Controls,
     type Edge,
     Handle,
     type Node,
     type NodeProps,
     Position,
+    ReactFlowProvider,
     useEdgesState,
     useNodesState,
 } from 'reactflow';
@@ -15,6 +17,7 @@ import 'reactflow/dist/style.css';
 import {Select, Spin, Tooltip} from 'antd';
 import {getLineageColumns} from '../../../../api/lineage';
 import {listMetadataColumns} from '../../../../api/metadata';
+import EmptyState from '../../../../components/EmptyState';
 import type {MetadataColumn} from '../../../../types/metadata';
 import type {LineageColumnLink} from '../../../../types/lineage';
 import {layoutWithDagre} from '../../../../utils/dagLayout';
@@ -184,8 +187,8 @@ export default function FieldLineagePanel({tableId, tableName}: FieldLineagePane
     const hasLineage = links.length > 0;
 
     return (
-        <div>
-            <div className="flex items-end gap-ds-3 mb-ds-4">
+        <div className="h-full flex flex-col">
+            <div className="flex items-end gap-ds-3 mb-ds-4 flex-shrink-0">
                 <div className="w-[320px]">
                     <label
                         className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">选择字段</label>
@@ -203,36 +206,42 @@ export default function FieldLineagePanel({tableId, tableName}: FieldLineagePane
             </div>
 
             {!hasLineage ? (
-                <div
-                    className="border border-dashed border-ds-border-strong rounded-ds-md py-ds-10 text-center text-ds-small text-ds-text-muted">
-                    {selectedColumn ? `字段「${selectedColumn}」暂无字段级血缘记录` : '请选择字段查看字段级血缘'}
-                </div>
+                <EmptyState
+                    title="暂无字段级血缘"
+                    description={selectedColumn
+                        ? `字段「${selectedColumn}」暂无字段级血缘记录，可换个字段试试`
+                        : '请选择字段查看字段级血缘'}
+                />
             ) : (
-                <div data-testid="field-lineage-flow"
-                     className="border border-ds-border-subtle rounded-ds-md overflow-hidden" style={{height: 420}}>
-                    <ReactFlow
-                        nodes={rfNodes}
-                        edges={rfEdges}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        nodeTypes={nodeTypes}
-                        fitView
-                        fitViewOptions={{padding: 0.25, maxZoom: 1}}
-                        minZoom={0.3}
-                        nodesConnectable={false}
-                        nodesDraggable
-                        panActivationKeyCode={null}
-                        proOptions={{hideAttribution: true}}
-                    >
-                        <Background gap={20} color="#e2e6ed"/>
-                    </ReactFlow>
-                </div>
-            )}
-
-            {hasLineage && (
-                <div className="mt-ds-3 text-ds-nano text-ds-text-muted">
-                    来源：{links.map(l => [l.dagName, l.nodeName].filter(Boolean).join(' / ')).filter((v, i, arr) => arr.indexOf(v) === i).join('、') || '—'}
-                </div>
+                <>
+                    {/* 必须包独立 ReactFlowProvider：本面板位于血缘图谱页的 Provider 之内，
+                        不包会复用外层 store，关闭 drawer 卸载时把主图节点一起清掉（2026-08-07 修复） */}
+                    <div data-testid="field-lineage-flow"
+                         className="flex-1 min-h-0 border border-ds-border-subtle rounded-ds-md overflow-hidden">
+                        <ReactFlowProvider>
+                            <ReactFlow
+                                nodes={rfNodes}
+                                edges={rfEdges}
+                                onNodesChange={onNodesChange}
+                                onEdgesChange={onEdgesChange}
+                                nodeTypes={nodeTypes}
+                                fitView
+                                fitViewOptions={{padding: 0.25, maxZoom: 1}}
+                                minZoom={0.3}
+                                nodesConnectable={false}
+                                nodesDraggable
+                                panActivationKeyCode={null}
+                                proOptions={{hideAttribution: true}}
+                            >
+                                <Background gap={20} color="#e2e6ed"/>
+                                <Controls showInteractive={false}/>
+                            </ReactFlow>
+                        </ReactFlowProvider>
+                    </div>
+                    <div className="mt-ds-3 flex-shrink-0 text-ds-nano text-ds-text-muted">
+                        来源：{links.map(l => [l.dagName, l.nodeName].filter(Boolean).join(' / ')).filter((v, i, arr) => arr.indexOf(v) === i).join('、') || '—'}
+                    </div>
+                </>
             )}
         </div>
     );
