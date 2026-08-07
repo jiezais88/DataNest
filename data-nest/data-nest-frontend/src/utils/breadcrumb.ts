@@ -28,7 +28,6 @@ export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/governance/collect-task-history': {group: '数据治理', label: '采集任务历史', leaf: true},
     '/governance/metadata': {group: '数据治理', label: '元数据管理', leaf: true},
     '/asset-catalog': {label: '数据资产', leaf: true},
-    '/asset-catalog/classification': {group: '数据资产', label: '分类体系', leaf: true},
     '/governance/metadata/lineage': {group: '数据治理', label: '血缘图谱'},
     '/governance/data-standards': {group: '数据治理', label: '数据标准', leaf: true},
     '/governance/quality-templates': {group: '数据治理', label: '规则模板库', leaf: true},

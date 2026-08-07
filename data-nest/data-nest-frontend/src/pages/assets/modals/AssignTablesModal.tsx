@@ -4,7 +4,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Table} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {assignTableClassification, browseAssets, searchAssets} from '../../../api/asset';
+import {assignTablesClassificationBatch, browseAssets, searchAssets} from '../../../api/asset';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
 import DsButton from '../../../components/DsButton';
 import DsModal from '../../../components/DsModal';
@@ -69,25 +69,19 @@ export default function AssignTablesModal({
     const handleSubmit = async () => {
         if (selectedKeys.length === 0) return;
         setSubmitting(true);
-        let failed = 0;
-        // 后端无批量接口：循环单表分配，单条失败不阻断其余
-        for (const tableId of selectedKeys) {
-            try {
-                await assignTableClassification(tableId, {dataDomain: domain, dataTopic: topic ?? null});
-            } catch {
-                failed++;
-            }
-        }
-        setSubmitting(false);
-        if (failed === 0) {
-            notify.success(`已将 ${selectedKeys.length} 张表分配到「${targetLabel}」`);
+        try {
+            // 后端批量接口：一次校验 + 一条 UPDATE ... IN（替代循环单表调用）
+            const updated = await assignTablesClassificationBatch(selectedKeys, {
+                dataDomain: domain,
+                dataTopic: topic ?? null,
+            });
+            notify.success(`已将 ${updated ?? selectedKeys.length} 张表分配到「${targetLabel}」`);
             onSaved();
             onClose();
-        } else {
-            notify.warning(`成功 ${selectedKeys.length - failed} 张，失败 ${failed} 张（错误详情见上方提示）`);
-            setSelectedKeys([]);
-            loadCandidates();
-            onSaved();
+        } catch {
+            // 错误提示由拦截器统一弹出
+        } finally {
+            setSubmitting(false);
         }
     };
 

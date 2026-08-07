@@ -7,9 +7,13 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.constant.DataSourceType;
+import com.datanest.common.constant.SourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.governance.dto.AssetClassificationDTO;
+import com.datanest.governance.dto.AssetClassificationTreeDTO;
 import com.datanest.governance.dto.AssetSearchItemDTO;
+import com.datanest.governance.dto.AssignClassificationBatchRequest;
 import com.datanest.governance.dto.AssignClassificationRequest;
 import com.datanest.governance.dto.AssignOwnerRequest;
 import com.datanest.governance.dto.ClassificationSaveRequest;
@@ -98,18 +102,27 @@ public class AssetCatalogService {
     /**
      * 多维资产搜索：表名/注释/字段名/负责人模糊匹配，按相关度排序，回填质量分与分类。
      * 标签维度本期预留（无标签表，PRD §6.2）。
+     * 可选过滤：datasourceId 按数据源收窄；healthLevel 按健康度收窄（经 quality_score 反查表 ID）。
      */
-    public List<AssetSearchItemDTO> search(String keyword) {
+    public List<AssetSearchItemDTO> search(String keyword, Long datasourceId, String healthLevel) {
         String trimmed = cleanKeyword(keyword);
         if (trimmed == null) {
             return List.of();
+        }
+        // 健康度筛选：反查无命中即无结果（避免把空 IN 拼进 SQL）
+        List<Long> healthTableIds = null;
+        if (healthLevel != null && !healthLevel.isBlank()) {
+            healthTableIds = qualityScoreService.findTableIdsByHealthLevel(healthLevel);
+            if (healthTableIds.isEmpty()) {
+                return List.of();
+            }
         }
         // 负责人维度：关键词反查 userId；字段维度：关键词反查 tableId
         List<Long> ownerUserIds = findUserIdsByNameKeyword(trimmed);
         List<Long> columnHitTableIds = metadataColumnMapper.selectTableIdsByColumnKeyword(trimmed);
 
         List<MetadataTable> rows = metadataTableMapper.searchAssetTables(
-                trimmed, ownerUserIds, columnHitTableIds, maxSearchResults);
+                trimmed, ownerUserIds, columnHitTableIds, datasourceId, healthTableIds, maxSearchResults);
         if (rows.size() >= maxSearchResults) {
             log.warn("资产搜索结果达到上限 {}，已截断（keyword={}）", maxSearchResults, trimmed);
         }
@@ -171,8 +184,8 @@ public class AssetCatalogService {
 
     // ==================== DC-05 分类体系维护 ====================
 
-    /** 分类体系树（DOMAIN→TOPIC 两级，同级按 sort 排序）。 */
-    public List<AssetClassificationDTO> listClassificationTree() {
+    /** 分类体系树（DOMAIN→TOPIC 两级，同级按 sort 排序），带各分类 ONLINE 表计数。 */
+    public AssetClassificationTreeDTO listClassificationTree() {
         List<AssetClassification> all = classificationMapper.selectList(
                 new QueryWrapper<AssetClassification>().orderByAsc("sort").orderByAsc("id"));
         Map<Long, AssetClassificationDTO> dtoMap = all.stream()
@@ -192,7 +205,41 @@ public class AssetCatalogService {
                 parent.getChildren().add(dto);
             }
         }
-        return roots;
+
+        // 计数回填：一次 GROUP BY 聚合出域/主题/未分类/全部四个口径（与 browse 同为 ONLINE 口径）
+        Map<String, Long> domainCounts = new HashMap<>();
+        Map<String, Long> topicCounts = new HashMap<>();
+        long totalCount = 0;
+        long uncategorizedCount = 0;
+        for (Map<String, Object> row : metadataTableMapper.countByClassification()) {
+            String domain = (String) row.get("data_domain");
+            String topic = (String) row.get("data_topic");
+            long cnt = ((Number) row.get("cnt")).longValue();
+            totalCount += cnt;
+            if (domain == null || domain.isBlank()) {
+                uncategorizedCount += cnt;
+                continue;
+            }
+            domainCounts.merge(domain, cnt, Long::sum);
+            if (topic != null && !topic.isBlank()) {
+                topicCounts.merge(domain + "\0" + topic, cnt, Long::sum);
+            }
+        }
+        for (AssetClassificationDTO domainDto : roots) {
+            domainDto.setTableCount(domainCounts.getOrDefault(domainDto.getName(), 0L));
+            if (domainDto.getChildren() != null) {
+                for (AssetClassificationDTO topicDto : domainDto.getChildren()) {
+                    topicDto.setTableCount(topicCounts.getOrDefault(
+                            domainDto.getName() + "\0" + topicDto.getName(), 0L));
+                }
+            }
+        }
+
+        AssetClassificationTreeDTO result = new AssetClassificationTreeDTO();
+        result.setList(roots);
+        result.setTotalCount(totalCount);
+        result.setUncategorizedCount(uncategorizedCount);
+        return result;
     }
 
     /** 新增分类（仅写 created_by/created_at，审计约定）。 */
@@ -308,13 +355,24 @@ public class AssetCatalogService {
     // ==================== DC-05 分类浏览 ====================
 
     /**
-     * 分类浏览：按数据域/主题/数据源筛选 ONLINE 表分页返回，回填质量分与负责人名。
+     * 分类浏览：按数据域/主题/数据源/健康度筛选 ONLINE 表分页返回，回填质量分与负责人名。
      * uncategorized=true 时查未分类（data_domain 为空）的表；sort=score 按质量分降序（内存排序，封顶 1000）。
      */
     public PageResult<AssetSearchItemDTO> browse(String domain, String topic, Long datasourceId,
-                                                 boolean uncategorized, String sort,
+                                                 String healthLevel, boolean uncategorized, String sort,
                                                  int page, int pageSize) {
+        // 健康度筛选：质量分在另一张表，先反查表 ID 集合再拼 IN（无命中直接返回空页）
+        List<Long> healthTableIds = null;
+        if (healthLevel != null && !healthLevel.isBlank()) {
+            healthTableIds = qualityScoreService.findTableIdsByHealthLevel(healthLevel);
+            if (healthTableIds.isEmpty()) {
+                return new PageResult<>(List.of(), 0, page, pageSize);
+            }
+        }
         QueryWrapper<MetadataTable> wrapper = buildBrowseWrapper(domain, topic, datasourceId, uncategorized);
+        if (healthTableIds != null) {
+            wrapper.in("id", healthTableIds);
+        }
 
         if ("score".equalsIgnoreCase(sort)) {
             // 质量分在另一张表，先拉全量（封顶）回填后内存排序再手工分页
@@ -370,8 +428,41 @@ public class AssetCatalogService {
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
-        String domain = request == null ? null : trimToNull(request.getDataDomain());
-        String topic = request == null ? null : trimToNull(request.getDataTopic());
+        String[] normalized = normalizeAndValidateClassification(
+                request == null ? null : request.getDataDomain(),
+                request == null ? null : request.getDataTopic());
+        UpdateWrapper<MetadataTable> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", tableId)
+                .set("data_domain", normalized[0])
+                .set("data_topic", normalized[1])
+                .set("updated_by", currentUserId())
+                .set("updated_at", LocalDateTime.now());
+        metadataTableMapper.update(null, wrapper);
+    }
+
+    /**
+     * 批量分配分类（Sprint 7 F1 修订）：一次校验 + 一条 UPDATE ... IN，替代前端循环单表调用。
+     * 返回实际更新的表数。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int assignClassificationBatch(AssignClassificationBatchRequest request) {
+        if (request == null || request.getTableIds() == null || request.getTableIds().isEmpty()) {
+            return 0;
+        }
+        String[] normalized = normalizeAndValidateClassification(request.getDataDomain(), request.getDataTopic());
+        UpdateWrapper<MetadataTable> wrapper = new UpdateWrapper<>();
+        wrapper.in("id", request.getTableIds())
+                .set("data_domain", normalized[0])
+                .set("data_topic", normalized[1])
+                .set("updated_by", currentUserId())
+                .set("updated_at", LocalDateTime.now());
+        return metadataTableMapper.update(null, wrapper);
+    }
+
+    /** 分配分类的公共校验与规整：返回 [domain, topic]（均已 trim，空为 null）。 */
+    private String[] normalizeAndValidateClassification(String rawDomain, String rawTopic) {
+        String domain = trimToNull(rawDomain);
+        String topic = trimToNull(rawTopic);
 
         if (topic != null && domain == null) {
             throw new BusinessException(ErrorCode.CLASSIFICATION_PARENT_INVALID, "分配主题前必须先指定数据域");
@@ -390,14 +481,7 @@ public class AssetCatalogService {
                 }
             }
         }
-
-        UpdateWrapper<MetadataTable> wrapper = new UpdateWrapper<>();
-        wrapper.eq("id", tableId)
-                .set("data_domain", domain)
-                .set("data_topic", topic)
-                .set("updated_by", currentUserId())
-                .set("updated_at", LocalDateTime.now());
-        metadataTableMapper.update(null, wrapper);
+        return new String[]{domain, topic};
     }
 
     /** 为表配置负责人（或传 null 清除）。校验用户存在。 */
@@ -481,6 +565,12 @@ public class AssetCatalogService {
         dto.setDatasourceId(t.getDatasourceId());
         dto.setDatasourceName(t.getDatasourceName());
         dto.setDatasourceType(t.getDatasourceType());
+        // 内置 Doris（伪 datasource_id=-1）在 engineering 查不到连接，按 source_type 直接回显
+        // 「Doris 数仓 / DORIS」（对齐 MetadataService 数据源列表口径）
+        if (SourceType.BUILTIN_DORIS.getCode().equals(t.getSourceType())) {
+            dto.setDatasourceName("Doris 数仓");
+            dto.setDatasourceType(DataSourceType.DORIS.getCode());
+        }
         dto.setDataDomain(t.getDataDomain());
         dto.setDataTopic(t.getDataTopic());
         dto.setOwnerUserId(t.getOwnerUserId());

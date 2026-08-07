@@ -34,9 +34,18 @@ export interface AssetClassification {
     name: string;
     parentId?: string;
     sort?: number;
+    /** 该分类下的 ONLINE 表数（域含其下所有主题） */
+    tableCount?: number;
     children?: AssetClassification[];
     createdAt?: string;
     updatedAt?: string;
+}
+
+/** 分类树响应（对齐 AssetClassificationTreeDTO）：树 + 全部/未分类计数 */
+export interface AssetClassificationTree {
+    list: AssetClassification[];
+    totalCount?: number;
+    uncategorizedCount?: number;
 }
 
 export interface ClassificationSaveRequest {
@@ -60,10 +69,18 @@ export interface AssetBrowseQuery {
     /** 主题名（需与 domain 同时传） */
     topic?: string;
     datasourceId?: string;
+    /** 健康度 EXCELLENT/GOOD/WARNING/BAD（后端经 quality_score 反查过滤） */
+    healthLevel?: string;
     /** true = 查未分类表，与 domain/topic 互斥（后端 uncategorized 优先） */
     uncategorized?: boolean;
     /** score = 质量分降序（null 排最后）；缺省按表名升序 */
     sort?: 'score';
     page?: number;
     pageSize?: number;
+}
+
+/** 资产搜索过滤条件（GET /assets/search 可选参数） */
+export interface AssetSearchFilter {
+    datasourceId?: string;
+    healthLevel?: string;
 }

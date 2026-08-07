@@ -5,22 +5,26 @@ import type {PageResult, Result} from '../types/common';
 import type {
     AssetBrowseQuery,
     AssetClassification,
+    AssetClassificationTree,
+    AssetSearchFilter,
     AssetSearchItem,
     AssignClassificationRequest,
     ClassificationSaveRequest,
 } from '../types/asset';
 
-/** 多维搜索（表名/注释/字段/负责人），按相关度 score 降序，上限 200 条不分页 */
-export const searchAssets = (keyword: string) =>
-    request.get<Result<AssetSearchItem[]>>('/governance/assets/search', {params: {keyword}}).then(r => r.data);
+/** 多维搜索（表名/注释/字段/负责人），按相关度 score 降序，上限 200 条不分页；可选数据源/健康度过滤 */
+export const searchAssets = (keyword: string, filter?: AssetSearchFilter) =>
+    request.get<Result<AssetSearchItem[]>>('/governance/assets/search', {
+        params: {keyword, datasourceId: filter?.datasourceId || undefined, healthLevel: filter?.healthLevel || undefined},
+    }).then(r => r.data);
 
-/** 分类浏览分页（全部资产 / 域 / 主题 / 未分类 + 数据源筛选） */
+/** 分类浏览分页（全部资产 / 域 / 主题 / 未分类 + 数据源/健康度筛选） */
 export const browseAssets = (params: AssetBrowseQuery) =>
     request.get<Result<PageResult<AssetSearchItem>>>('/governance/assets/browse', {params}).then(r => r.data);
 
-/** 分类树（只含 DOMAIN 根节点，TOPIC 挂 children） */
+/** 分类树（含各分类表计数 + 全部/未分类计数） */
 export const getAssetClassifications = () =>
-    request.get<Result<AssetClassification[]>>('/governance/assets/classifications').then(r => r.data);
+    request.get<Result<AssetClassificationTree>>('/governance/assets/classifications').then(r => r.data);
 
 export const createClassification = (data: ClassificationSaveRequest) =>
     request.post<Result<AssetClassification>>('/governance/assets/classifications', data).then(r => r.data);
@@ -36,6 +40,10 @@ export const deleteClassification = (id: string) =>
 /** 分配/清除表分类（传分类名；{dataDomain: null, dataTopic: null} = 清除） */
 export const assignTableClassification = (tableId: string, data: AssignClassificationRequest) =>
     request.put<Result<null>>(`/governance/assets/tables/${tableId}/classification`, data).then(r => r.data);
+
+/** 批量分配/清除分类（一次事务；返回实际更新表数） */
+export const assignTablesClassificationBatch = (tableIds: string[], data: AssignClassificationRequest) =>
+    request.put<Result<number>>('/governance/assets/tables/classification/batch', {tableIds, ...data}).then(r => r.data);
 
 /** 配置/清除表负责人（ownerUserId 空 = 清除） */
 export const assignTableOwner = (tableId: string, ownerUserId?: string | null) =>

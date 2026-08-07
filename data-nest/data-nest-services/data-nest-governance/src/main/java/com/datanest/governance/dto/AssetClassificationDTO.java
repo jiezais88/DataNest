@@ -24,6 +24,9 @@ public class AssetClassificationDTO {
 
     private List<AssetClassificationDTO> children;
 
+    /** Sprint 7 F1 修订：该分类下的 ONLINE 表数（域=含其下所有主题，主题=精确匹配） */
+    private Long tableCount;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

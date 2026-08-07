@@ -34,4 +34,17 @@ public class UserSelectorController {
                 .toList();
         return Result.ok(options);
     }
+
+    /**
+     * 全部启用用户的轻量选项（Sprint 7 F1 资产目录负责人选择器）。
+     * 与 with-email 的区别：不要求填写邮箱（负责人不用于通知）。
+     */
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @GetMapping("/options")
+    public Result<List<UserOptionDTO>> listUserOptions(@RequestParam(required = false) String keyword) {
+        List<UserOptionDTO> options = userMapper.selectEnabledUserOptions(keyword).stream()
+                .map(u -> new UserOptionDTO(u.getId(), u.getUsername(), u.getEmail()))
+                .toList();
+        return Result.ok(options);
+    }
 }

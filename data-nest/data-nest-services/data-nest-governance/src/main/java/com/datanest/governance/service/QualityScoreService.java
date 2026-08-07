@@ -102,6 +102,17 @@ public class QualityScoreService {
         return list.stream().collect(Collectors.toMap(QualityScore::getTableId, this::toDTO, (a, b) -> a));
     }
 
+    /** Sprint 7 F1 修订：按健康度反查表 ID（资产目录 browse/search 的健康度筛选）。 */
+    public List<Long> findTableIdsByHealthLevel(String healthLevel) {
+        if (healthLevel == null || healthLevel.isBlank()) {
+            return List.of();
+        }
+        return scoreMapper.selectList(new QueryWrapper<QualityScore>()
+                        .select("table_id")
+                        .eq("health_level", healthLevel))
+                .stream().map(QualityScore::getTableId).toList();
+    }
+
     /** 评分列表分页（按关键字/数据源/健康度筛选）。 */
     public PageResult<QualityScoreDTO> listPage(QualityScoreQueryRequest request) {
         QueryWrapper<QualityScore> wrapper = new QueryWrapper<>();

@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
@@ -151,6 +152,13 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
                 <foreach collection="columnHitTableIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
                 </if>
               )
+            <if test="datasourceId != null">
+              AND t.datasource_id = #{datasourceId}
+            </if>
+            <if test="healthTableIds != null and !healthTableIds.isEmpty()">
+              AND t.id IN
+              <foreach collection="healthTableIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
+            </if>
             ORDER BY t.table_name
             LIMIT #{limit}
             </script>
@@ -158,5 +166,16 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
     List<MetadataTable> searchAssetTables(@Param("keyword") String keyword,
                                           @Param("ownerUserIds") List<Long> ownerUserIds,
                                           @Param("columnHitTableIds") List<Long> columnHitTableIds,
+                                          @Param("datasourceId") Long datasourceId,
+                                          @Param("healthTableIds") List<Long> healthTableIds,
                                           @Param("limit") int limit);
+
+    /**
+     * Sprint 7 F1 修订：分类树计数——按 data_domain/data_topic 分组统计 ONLINE 表数，
+     * 调用方聚合出域/主题/未分类/全部四个口径（与 browse 的 ONLINE 过滤一致）。
+     * 注意别名用下划线小写：PostgreSQL 会把未加引号的驼峰别名折叠成小写，导致 map key 取不到值。
+     */
+    @Select("SELECT data_domain AS data_domain, data_topic AS data_topic, COUNT(*) AS cnt " +
+            "FROM metadata_table WHERE source_status = 'ONLINE' GROUP BY data_domain, data_topic")
+    List<Map<String, Object>> countByClassification();
 }

@@ -12,6 +12,7 @@ import {
     HiOutlineShare,
 } from 'react-icons/hi2';
 import {getAssetClassifications} from '../../../api/asset';
+import {getLineageGraph} from '../../../api/lineage';
 import {getMetadataTable} from '../../../api/metadata';
 import {getQualityScoreByTable} from '../../../api/quality';
 import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
@@ -32,6 +33,11 @@ import QualityTab from './QualityTab';
 
 /** 基础信息页签：三列 kv 网格 */
 function BasicInfoTab({table}: { table: MetadataTable }) {
+    // 内置 Doris 表（伪 datasource_id=-1）在 engineering 无连接记录，详情接口保持 null；
+    // 资产详情按 sourceType 兜底回显「Doris 数仓 / DORIS」（与资产列表口径一致）
+    const isBuiltinDoris = table.sourceType === 'BUILTIN_DORIS';
+    const dsType = table.datasourceType || (isBuiltinDoris ? 'DORIS' : undefined);
+    const dsName = table.datasourceName || (isBuiltinDoris ? 'Doris 数仓' : '—');
     const items: { label: string; value: React.ReactNode }[] = [
         {
             label: '表全名',
@@ -45,11 +51,11 @@ function BasicInfoTab({table}: { table: MetadataTable }) {
         {label: '注释', value: table.tableComment || table.manualComment || '—'},
         {
             label: '数据源',
-            value: table.datasourceType
-                ? <DatabaseTypeIcon type={table.datasourceType} size={16} showLabel={false}/>
+            value: dsType
+                ? <DatabaseTypeIcon type={dsType} size={16} showLabel={false}/>
                 : '—',
         },
-        {label: '数据源名称', value: table.datasourceName || '—'},
+        {label: '数据源名称', value: dsName},
         {label: 'Schema', value: table.schemaName || '—'},
         {label: '字段数', value: table.columnCount ?? '—'},
         {
@@ -76,6 +82,26 @@ function BasicInfoTab({table}: { table: MetadataTable }) {
     );
 }
 
+/** 指标卡（对齐原型 stat-strip：圆角图标 + 大数值 + 小标签） */
+function StatCard({icon, iconClass, label, value}: {
+    icon: React.ReactNode;
+    iconClass: string;
+    label: string;
+    value: React.ReactNode;
+}) {
+    return (
+        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-4 flex items-center gap-ds-3">
+            <div className={`w-10 h-10 rounded-ds-md flex items-center justify-center flex-shrink-0 ${iconClass}`}>
+                {icon}
+            </div>
+            <div className="min-w-0">
+                <div className="leading-tight">{value}</div>
+                <div className="text-ds-tiny text-ds-text-muted mt-ds-1">{label}</div>
+            </div>
+        </div>
+    );
+}
+
 export default function AssetDetailPage() {
     const {tableId = ''} = useParams();
     const navigate = useNavigate();
@@ -85,6 +111,8 @@ export default function AssetDetailPage() {
     const [score, setScore] = useState<QualityScore | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('basic');
+    /** 直接上游/下游表数（指标卡，取自血缘 graph depth=1 的边） */
+    const [lineageStats, setLineageStats] = useState<{ up: number; down: number } | null>(null);
 
     const [tree, setTree] = useState<AssetClassification[]>([]);
     const [classifyOpen, setClassifyOpen] = useState(false);
@@ -107,11 +135,26 @@ export default function AssetDetailPage() {
         loadTable();
     }, [loadTable]);
 
+    // 指标卡的上下游表数：血缘 graph（depth=1）的边按 source/target 统计
+    useEffect(() => {
+        if (!table?.databaseName || !table?.tableName) return;
+        const name = `${table.databaseName}.${table.tableName}`;
+        getLineageGraph(name, 1)
+            .then(g => {
+                const edges = g?.edges ?? [];
+                setLineageStats({
+                    up: edges.filter(e => e.target === name).length,
+                    down: edges.filter(e => e.source === name).length,
+                });
+            })
+            .catch(() => setLineageStats(null));
+    }, [table]);
+
     // 分配分类弹窗需要分类树（仅治理员可打开，懒加载一次）
     useEffect(() => {
         if (!canWrite) return;
         getAssetClassifications()
-            .then(list => setTree(list ?? []))
+            .then(data => setTree(data?.list ?? []))
             .catch(() => setTree([]));
     }, [canWrite]);
 
@@ -172,6 +215,32 @@ export default function AssetDetailPage() {
                         <DsButton variant="secondary" onClick={() => setOwnerOpen(true)}>配置负责人</DsButton>
                     </div>
                 )}
+            </div>
+
+            {/* 指标卡（对齐原型 stat-strip，三张：质量评分 / 字段数 / 直接上下游表数） */}
+            <div className="grid grid-cols-3 gap-ds-4 mb-ds-4 flex-shrink-0">
+                <StatCard
+                    icon={<HiOutlineCheckCircle size={20}/>}
+                    iconClass="bg-ds-accent-light text-ds-accent"
+                    label="质量评分"
+                    value={<QualityScoreBadge score={score?.score ?? null} healthLevel={score?.healthLevel}/>}
+                />
+                <StatCard
+                    icon={<HiOutlineQueueList size={20}/>}
+                    iconClass="bg-ds-success-light text-ds-success"
+                    label="字段数"
+                    value={<span className="text-ds-heading font-bold text-ds-text-primary">{table.columnCount ?? '—'}</span>}
+                />
+                <StatCard
+                    icon={<HiOutlineShare size={20}/>}
+                    iconClass="bg-ds-warning-light text-ds-warning"
+                    label="直接上游 / 下游表"
+                    value={
+                        <span className="text-ds-heading font-bold text-ds-text-primary">
+                            {lineageStats ? `${lineageStats.up} / ${lineageStats.down}` : '—'}
+                        </span>
+                    }
+                />
             </div>
 
             {/* 四页签（懒加载：切到才挂载拉取） */}

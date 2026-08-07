@@ -1,10 +1,9 @@
-// Sprint 7 F1：配置表负责人弹窗（资产详情页 / 分类体系维护页共用）
-// 单选 + 可清空（清空 = 清除负责人）。候选用户复用 /system/users/with-email
-// （注：仅列出填写了邮箱的用户，与告警接收人同数据源）。
+// Sprint 7 F1：配置表负责人弹窗（数据资产首页 / 资产详情页共用）
+// 单选 + 可清空（清空 = 清除负责人）。候选人 = 全部启用用户（/system/users/options，不要求邮箱）。
 import {useEffect, useMemo, useState} from 'react';
 import {Select, Spin} from 'antd';
-import {getUsersWithEmail} from '../../../api/alert';
 import {assignTableOwner} from '../../../api/asset';
+import {getUserOptions} from '../../../api/auth';
 import DsButton from '../../../components/DsButton';
 import DsModal from '../../../components/DsModal';
 import {notify} from '../../../utils/notify';
@@ -39,12 +38,12 @@ export default function AssignOwnerModal({
         if (!open) return;
         setUserId(currentOwnerId || undefined);
         setLoading(true);
-        getUsersWithEmail(undefined)
+        getUserOptions(undefined)
             .then(list => {
                 const opts = (list ?? [])
                     .filter(u => u.id)
-                    .map(u => ({value: u.id!, label: `${u.username}（${u.email}）`}));
-                // 当前负责人不在候选里（如无邮箱）时补一条，保证回显
+                    .map(u => ({value: u.id!, label: u.email ? `${u.username}（${u.email}）` : u.username}));
+                // 当前负责人不在候选里（如已禁用）时补一条，保证回显
                 if (currentOwnerId && !opts.some(o => o.value === currentOwnerId)) {
                     opts.unshift({value: currentOwnerId, label: currentOwnerName || currentOwnerId});
                 }
@@ -57,13 +56,13 @@ export default function AssignOwnerModal({
     const handleSearch = (kw: string) => {
         if (!kw) return;
         setLoading(true);
-        getUsersWithEmail(kw)
+        getUserOptions(kw)
             .then(list => {
                 setOptions(prev => {
                     const map = new Map(prev.map(o => [o.value, o]));
                     for (const u of list ?? []) {
                         if (u.id && !map.has(u.id)) {
-                            map.set(u.id, {value: u.id, label: `${u.username}（${u.email}）`});
+                            map.set(u.id, {value: u.id, label: u.email ? `${u.username}（${u.email}）` : u.username});
                         }
                     }
                     return Array.from(map.values());
@@ -119,7 +118,7 @@ export default function AssignOwnerModal({
                     className="w-full"
                     notFoundContent={loading ? <Spin size="small"/> : '无匹配用户'}
                 />
-                <p className="text-ds-tiny text-ds-text-muted">候选人来自平台用户（需已填写邮箱）。</p>
+                <p className="text-ds-tiny text-ds-text-muted">候选人来自平台全部启用用户。</p>
             </div>
         </DsModal>
     );

@@ -68,4 +68,22 @@ public interface UserMapper extends BaseMapper<User> {
                 </script>
             """)
     List<User> selectUsersWithEmail(@Param("keyword") String keyword);
+
+    /**
+     * Sprint 7 F1：全部启用用户的轻量选项（资产目录负责人选择器，不要求填邮箱）。
+     * 支持按用户名/邮箱模糊搜索。
+     */
+    @Select("""
+                <script>
+                SELECT id, username, email FROM sys_user
+                WHERE enabled = TRUE
+                <if test='keyword != null and keyword != ""'>
+                    AND (username ILIKE CONCAT('%', #{keyword}, '%')
+                         OR email ILIKE CONCAT('%', #{keyword}, '%'))
+                </if>
+                ORDER BY username ASC
+                LIMIT 100
+                </script>
+            """)
+    List<User> selectEnabledUserOptions(@Param("keyword") String keyword);
 }

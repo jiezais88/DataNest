@@ -33,7 +33,6 @@ const QualityChecksPage = lazyPage(() => import('../pages/governance/quality-che
 const QualityScoresPage = lazyPage(() => import('../pages/governance/quality-scores'));
 const AssetsPage = lazyPage(() => import('../pages/assets'));
 const AssetDetailPage = lazyPage(() => import('../pages/assets/detail'));
-const AssetClassificationPage = lazyPage(() => import('../pages/assets/classification'));
 
 export const router = createBrowserRouter([
     {
@@ -98,7 +97,6 @@ export const router = createBrowserRouter([
             {path: 'governance/quality-checks', element: <QualityChecksPage/>},
             {path: 'governance/quality-scores', element: <QualityScoresPage/>},
             {path: 'asset-catalog', element: <AssetsPage/>},
-            {path: 'asset-catalog/classification', element: <AssetClassificationPage/>},
             {path: 'asset-catalog/:tableId', element: <AssetDetailPage/>},
         ],
     },

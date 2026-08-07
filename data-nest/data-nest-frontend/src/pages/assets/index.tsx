@@ -1,48 +1,72 @@
-// Sprint 7 F1：数据资产目录首页（DC-01 多维搜索 + DC-05 分类浏览）
-// 布局对齐原型 assets 视图：左侧分类树（全部/域/主题/未分类）+ 右侧表格卡片。
-// 双态互斥：关键词非空 = 搜索态（/assets/search 扁平结果，相关度排序，上限 200 不分页）；
-// 否则 = 浏览态（/assets/browse 分页）。健康度筛选后端无参数，F1 仅数据源筛选
-// （浏览态走后端 datasourceId，搜索态在前端对 200 条结果内存过滤）。
+// Sprint 7 F1：数据资产目录（搜索发现 + 分类维护合并单页，2026-08-07 用户确认方案 A）
+// 全部角色：搜索 / 分类树浏览 / 进详情（只读）。
+// 治理员/超管额外可见：树节点编辑/删除、新增数据域/主题、分配表到分类、表格操作列（负责人/移出）。
+// 双态互斥：关键词非空 = 搜索态（/assets/search，相关度排序，上限 200 不分页）；否则 = 浏览态分页。
+// 数据源/健康度下拉变更即时生效（浏览态走后端参数，搜索态同样传给后端）。
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Table} from 'antd';
-import {browseAssets, getAssetClassifications, searchAssets} from '../../api/asset';
+import {Table, Tooltip} from 'antd';
+import {HiOutlineArrowRightOnRectangle, HiOutlineUser} from 'react-icons/hi2';
+import {
+    browseAssets,
+    deleteClassification,
+    getAssetClassifications,
+    assignTableClassification,
+    searchAssets,
+} from '../../api/asset';
 import {listMetadataDatasourceIds} from '../../api/metadata';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import DsButton from '../../components/DsButton';
 import DsFilterSelect from '../../components/DsFilterSelect';
+import DsIconButton from '../../components/DsIconButton';
 import DsTableEmpty from '../../components/DsTableEmpty';
 import DsToolbar from '../../components/DsToolbar';
 import Pagination from '../../components/Pagination';
 import SearchInput from '../../components/SearchInput';
+import {GOVERNANCE_WRITE_ROLES} from '../../constants/roles';
+import {COL} from '../../constants/table';
 import usePagedList from '../../hooks/usePagedList';
-import type {AssetClassification, AssetSearchItem} from '../../types/asset';
+import {useHasRole} from '../../hooks/useHasRole';
+import {notify} from '../../utils/notify';
+import {QUALITY_HEALTH_OPTIONS} from '../../types/quality';
+import type {AssetClassification, AssetClassificationTree, AssetSearchItem} from '../../types/asset';
 import AssetTree, {ALL_SELECTION, selectionKey, selectionToQuery} from './AssetTree';
 import type {AssetTreeSelection} from './AssetTree';
 import {buildAssetColumns} from './assetColumns';
+import AssignOwnerModal from './modals/AssignOwnerModal';
+import AssignTablesModal from './modals/AssignTablesModal';
+import ClassificationFormModal from './modals/ClassificationFormModal';
+import type {ClassificationFormState} from './modals/ClassificationFormModal';
 
 const SEARCH_LIMIT = 200;
 
 export default function AssetsPage() {
     const navigate = useNavigate();
+    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
     const openDetail = useCallback((tableId: string) => navigate(`/asset-catalog/${tableId}`), [navigate]);
 
     // ============ 分类树 ============
-    const [tree, setTree] = useState<AssetClassification[]>([]);
+    const [treeData, setTreeData] = useState<AssetClassificationTree | null>(null);
     const [selection, setSelection] = useState<AssetTreeSelection>(ALL_SELECTION);
+    const tree = treeData?.list ?? [];
 
-    useEffect(() => {
+    const loadTree = useCallback(() => {
         getAssetClassifications()
-            .then(list => setTree(list ?? []))
+            .then(data => setTreeData(data ?? {list: []}))
             .catch(() => {
-                // 拦截器已提示，树留空
+                // 拦截器已提示，保持旧数据
             });
     }, []);
 
-    // ============ 筛选（查询按钮应用） ============
+    useEffect(() => {
+        loadTree();
+    }, [loadTree]);
+
+    // ============ 筛选（下拉即时生效；关键词走查询按钮/回车） ============
     const [keywordInput, setKeywordInput] = useState('');
     const [keyword, setKeyword] = useState('');
-    const [dsDraft, setDsDraft] = useState('');
     const [datasourceId, setDatasourceId] = useState('');
+    const [healthLevel, setHealthLevel] = useState('');
     const isSearch = keyword.trim() !== '';
 
     const [datasourceOptions, setDatasourceOptions] = useState<{ value: string; label: string }[]>([
@@ -71,6 +95,7 @@ export default function AssetsPage() {
         pageSize,
         loading: browseLoading,
         applyQuery,
+        reload,
         setPage,
         setPageSize,
     } = usePagedList({
@@ -78,17 +103,21 @@ export default function AssetsPage() {
         initialQuery: selectionToQuery(ALL_SELECTION),
     });
 
-    // 树选中 / 数据源变化 → 重新浏览（跳过与 initialQuery 重复的首跑）
+    // 树选中 / 数据源 / 健康度变化 → 即时重新浏览（跳过与 initialQuery 重复的首跑）
     useEffect(() => {
         if (browseQueryRef.current.skipFirst) {
             browseQueryRef.current.skipFirst = false;
-            if (selection.type === 'all' && !datasourceId) return;
+            if (selection.type === 'all' && !datasourceId && !healthLevel) return;
         }
-        applyQuery({...selectionToQuery(selection), datasourceId: datasourceId || undefined});
+        applyQuery({
+            ...selectionToQuery(selection),
+            datasourceId: datasourceId || undefined,
+            healthLevel: healthLevel || undefined,
+        });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selection, datasourceId]);
+    }, [selection, datasourceId, healthLevel]);
 
-    // ============ 搜索态 ============
+    // ============ 搜索态（关键词或下拉变化即时重搜） ============
     const [searchList, setSearchList] = useState<AssetSearchItem[]>([]);
     const [searchLoading, setSearchLoading] = useState(false);
 
@@ -100,7 +129,7 @@ export default function AssetsPage() {
         }
         let cancelled = false;
         setSearchLoading(true);
-        searchAssets(kw)
+        searchAssets(kw, {datasourceId: datasourceId || undefined, healthLevel: healthLevel || undefined})
             .then(list => {
                 if (!cancelled) setSearchList(list ?? []);
             })
@@ -113,25 +142,18 @@ export default function AssetsPage() {
         return () => {
             cancelled = true;
         };
-    }, [keyword]);
+    }, [keyword, datasourceId, healthLevel]);
 
-    // 搜索态数据源筛选：search 接口不支持 datasourceId，200 条结果内存过滤
-    const filteredSearchList = useMemo(
-        () => (datasourceId ? searchList.filter(i => i.datasourceId === datasourceId) : searchList),
-        [searchList, datasourceId],
-    );
-
-    // ============ 交互 ============
+    // ============ 搜索/重置 ============
     const handleSearch = () => {
         setKeyword(keywordInput.trim());
-        setDatasourceId(dsDraft);
     };
 
     const handleReset = () => {
         setKeywordInput('');
         setKeyword('');
-        setDsDraft('');
         setDatasourceId('');
+        setHealthLevel('');
         setSelection(ALL_SELECTION);
         applyQuery(selectionToQuery(ALL_SELECTION));
     };
@@ -143,27 +165,139 @@ export default function AssetsPage() {
         setKeywordInput('');
     };
 
-    const columns = useMemo(() => buildAssetColumns(openDetail), [openDetail]);
-    const tableData = isSearch ? filteredSearchList : browseList;
+    // ============ 分类维护（治理员） ============
+    const [formState, setFormState] = useState<ClassificationFormState>({mode: 'create'});
+    const [formOpen, setFormOpen] = useState(false);
+    const [deleting, setDeleting] = useState<AssetClassification | null>(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [assignOpen, setAssignOpen] = useState(false);
+    const [ownerTarget, setOwnerTarget] = useState<AssetSearchItem | null>(null);
+    const [removing, setRemoving] = useState<AssetSearchItem | null>(null);
+    const [removeLoading, setRemoveLoading] = useState(false);
+
+    const isClassified = selection.type === 'domain' || selection.type === 'topic';
+    const findDomain = (name?: string) => tree.find(d => d.name === name);
+
+    const handleEditClassification = (node: AssetClassification, parent?: AssetClassification) => {
+        setFormState({mode: 'edit', node, parent});
+        setFormOpen(true);
+    };
+
+    const handleDeleteClassification = async () => {
+        if (!deleting) return;
+        setDeleteLoading(true);
+        try {
+            await deleteClassification(deleting.id);
+            notify.success(`已删除「${deleting.name}」`);
+            // 删掉的是当前选中节点时回到全部资产
+            if (selection.domain === deleting.name || selection.topic === deleting.name) {
+                setSelection(ALL_SELECTION);
+                applyQuery(selectionToQuery(ALL_SELECTION));
+            }
+            loadTree();
+            reload();
+        } catch {
+            // 4007/4009 由拦截器统一提示
+        } finally {
+            setDeleteLoading(false);
+            setDeleting(null);
+        }
+    };
+
+    const handleRemoveFromClassification = async () => {
+        if (!removing) return;
+        setRemoveLoading(true);
+        try {
+            await assignTableClassification(removing.tableId, {dataDomain: null, dataTopic: null});
+            notify.success(`已将「${removing.tableName}」移出分类`);
+            reload();
+            loadTree();
+        } catch {
+            // 拦截器已提示
+        } finally {
+            setRemoveLoading(false);
+            setRemoving(null);
+        }
+    };
+
+    // ============ 列 ============
+    const columns = useMemo(() => {
+        const base = buildAssetColumns(openDetail);
+        if (!canWrite) return base;
+        return [
+            ...base,
+            {
+                title: '操作',
+                key: 'action',
+                width: COL.OPERATION_2,
+                render: (_: unknown, r: AssetSearchItem) => (
+                    <div className="flex items-center gap-ds-1">
+                        <Tooltip title="配置负责人">
+                            <DsIconButton tone="accent" aria-label="配置负责人"
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOwnerTarget(r);
+                                          }}>
+                                <HiOutlineUser size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                        {isClassified && !isSearch && (
+                            <Tooltip title="移出当前分类">
+                                <DsIconButton tone="danger" aria-label="移出当前分类"
+                                              onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setRemoving(r);
+                                              }}>
+                                    <HiOutlineArrowRightOnRectangle size={14}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        )}
+                    </div>
+                ),
+            },
+        ];
+    }, [openDetail, canWrite, isClassified, isSearch]);
+
+    const tableData = isSearch ? searchList : browseList;
     const loading = isSearch ? searchLoading : browseLoading;
+    const selectionLabel = selection.type === 'domain'
+        ? (selection.domain ?? '')
+        : selection.type === 'topic'
+            ? `${selection.domain} / ${selection.topic}`
+            : '';
 
     return (
         <div className="flex flex-col">
-            <div className="mb-ds-5 flex-shrink-0">
-                <h1 className="text-ds-display text-ds-text-primary">数据资产</h1>
-                <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                    一站式发现、检索并了解平台数据表，找得到、看得懂、敢使用。
-                </p>
+            <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
+                <div>
+                    <h1 className="text-ds-display text-ds-text-primary">数据资产</h1>
+                    <p className="text-ds-small text-ds-text-muted mt-ds-1">
+                        一站式发现、检索并了解平台数据表，找得到、看得懂、敢使用。
+                    </p>
+                </div>
+                {canWrite && (
+                    <DsButton onClick={() => {
+                        setFormState({mode: 'create'});
+                        setFormOpen(true);
+                    }}>
+                        新增数据域
+                    </DsButton>
+                )}
             </div>
 
             <div className="flex gap-ds-4 items-start">
-                {/* 左：分类树 */}
+                {/* 左：分类树（治理员可编辑） */}
                 <div
                     className="w-[260px] flex-shrink-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle">
                     <AssetTree
                         tree={tree}
                         selectedKey={isSearch ? '' : selectionKey(selection)}
                         onSelect={handleTreeSelect}
+                        allCount={treeData?.totalCount}
+                        uncategorizedCount={treeData?.uncategorizedCount}
+                        editable={canWrite}
+                        onEdit={handleEditClassification}
+                        onDelete={setDeleting}
                     />
                 </div>
 
@@ -189,13 +323,47 @@ export default function AssetsPage() {
                                 aria-label="搜索数据资产"
                             />
                             <DsFilterSelect
-                                value={dsDraft}
-                                onChange={setDsDraft}
+                                value={datasourceId}
+                                onChange={setDatasourceId}
                                 aria-label="按数据源筛选"
                                 options={datasourceOptions}
                             />
+                            <DsFilterSelect
+                                value={healthLevel}
+                                onChange={setHealthLevel}
+                                aria-label="按健康度筛选"
+                                options={QUALITY_HEALTH_OPTIONS}
+                            />
                         </DsToolbar>
                     </div>
+
+                    {/* 治理员 + 浏览态选中具体分类时的管理条 */}
+                    {canWrite && !isSearch && isClassified && (
+                        <div
+                            className="flex items-center gap-ds-3 px-ds-4 py-ds-2 border-b border-ds-border-subtle flex-shrink-0 bg-ds-bg-root">
+                            <span className="text-ds-small text-ds-text-secondary">
+                                当前分类：<span className="text-ds-text-primary font-semibold">{selectionLabel}</span>
+                                <span className="text-ds-text-muted">（{total} 张表）</span>
+                            </span>
+                            <div className="flex items-center gap-ds-2 ml-auto">
+                                <DsButton
+                                    variant="secondary"
+                                    onClick={() => {
+                                        setFormState({mode: 'create', parent: findDomain(selection.domain)});
+                                        setFormOpen(true);
+                                    }}
+                                >
+                                    新增主题
+                                </DsButton>
+                                <DsButton
+                                    variant="secondary"
+                                    onClick={() => setAssignOpen(true)}
+                                >
+                                    分配表到此分类
+                                </DsButton>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="overflow-x-auto">
                         <Table
@@ -240,6 +408,69 @@ export default function AssetsPage() {
                     )}
                 </div>
             </div>
+
+            {/* 新增/编辑分类 */}
+            <ClassificationFormModal
+                open={formOpen}
+                form={formState}
+                tree={tree}
+                onClose={() => setFormOpen(false)}
+                onSaved={() => {
+                    loadTree();
+                    reload();
+                }}
+            />
+
+            {/* 删除分类确认 */}
+            <ConfirmDialog
+                open={!!deleting}
+                title="删除分类"
+                message={deleting?.level === 'DOMAIN'
+                    ? `确认删除数据域「${deleting.name}」？删除前需先删除其下全部主题，且无任何表引用该分类。`
+                    : `确认删除主题「${deleting?.name}」？删除前需先移出全部引用表。`}
+                confirmLabel="删除"
+                danger
+                loading={deleteLoading}
+                onConfirm={handleDeleteClassification}
+                onCancel={() => setDeleting(null)}
+            />
+
+            {/* 批量分配表到当前分类 */}
+            {isClassified && (
+                <AssignTablesModal
+                    open={assignOpen}
+                    domain={selection.domain ?? ''}
+                    topic={selection.type === 'topic' ? selection.topic : undefined}
+                    onClose={() => setAssignOpen(false)}
+                    onSaved={() => {
+                        reload();
+                        loadTree();
+                    }}
+                />
+            )}
+
+            {/* 配置负责人 */}
+            <AssignOwnerModal
+                open={!!ownerTarget}
+                tableId={ownerTarget?.tableId}
+                tableName={ownerTarget?.tableName}
+                currentOwnerId={ownerTarget?.ownerUserId}
+                currentOwnerName={ownerTarget?.ownerName}
+                onClose={() => setOwnerTarget(null)}
+                onSaved={reload}
+            />
+
+            {/* 移出分类确认 */}
+            <ConfirmDialog
+                open={!!removing}
+                title="移出分类"
+                message={`确认将「${removing?.tableName}」移出分类「${selectionLabel}」？`}
+                confirmLabel="移出"
+                danger
+                loading={removeLoading}
+                onConfirm={handleRemoveFromClassification}
+                onCancel={() => setRemoving(null)}
+            />
         </div>
     );
 }

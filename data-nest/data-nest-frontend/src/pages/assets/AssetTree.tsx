@@ -1,6 +1,6 @@
-// Sprint 7 F1：资产分类树（数据资产首页 / 分类体系维护页共用）
-// 结构：全部资产（置顶）→ 数据域（可展开）→ 主题（缩进叶子）→ 未分类（垫底，可关）。
-// 树节点计数后端无接口，F1 不渲染计数徽章（原型元素降级，总数看表格 footer「共 N 条」）。
+// Sprint 7 F1：资产分类树（数据资产首页用）
+// 结构：全部资产（置顶）→ 数据域（可展开）→ 主题（缩进叶子）→ 未分类（垫底）。
+// 节点带表数计数徽章（后端 /assets/classifications 返回）；editable 时 hover 显示改名/删除。
 import {useState} from 'react';
 import {
     HiChevronRight,
@@ -55,9 +55,13 @@ interface AssetTreeProps {
     tree: AssetClassification[];
     selectedKey: string;
     onSelect: (sel: AssetTreeSelection) => void;
-    /** 是否展示「未分类」兜底节点，默认 true（分类维护页传 false） */
+    /** 「全部资产」计数 */
+    allCount?: number;
+    /** 「未分类」计数 */
+    uncategorizedCount?: number;
+    /** 是否展示「未分类」兜底节点，默认 true */
     showUncategorized?: boolean;
-    /** 编辑模式：节点 hover 显示改名/删除按钮（分类维护页用，仅治理员可见该页） */
+    /** 编辑模式：节点 hover 显示改名/删除按钮（治理员） */
     editable?: boolean;
     onEdit?: (node: AssetClassification, parent?: AssetClassification) => void;
     onDelete?: (node: AssetClassification) => void;
@@ -67,6 +71,8 @@ export default function AssetTree({
                                       tree,
                                       selectedKey,
                                       onSelect,
+                                      allCount,
+                                      uncategorizedCount,
                                       showUncategorized = true,
                                       editable = false,
                                       onEdit,
@@ -94,9 +100,19 @@ export default function AssetTree({
             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-ds-accent rounded-full"/>
         ) : null;
 
+    /** 计数徽章：active 时 accent 实心白字，否则灰底（对齐原型 tree-count） */
+    const countBadge = (count: number | undefined, active: boolean) =>
+        count === undefined ? null : (
+            <span className={`min-w-[20px] text-center text-[11px] px-1.5 py-0.5 rounded-full ${
+                active ? 'bg-ds-accent text-white' : 'bg-ds-bg-hover text-ds-text-muted'
+            }`}>
+                {count}
+            </span>
+        );
+
     const editActions = (node: AssetClassification, parent?: AssetClassification) =>
         editable ? (
-            <span className="ml-auto flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <DsIconButton
                     tone="accent"
                     aria-label={`编辑 ${node.name}`}
@@ -132,7 +148,8 @@ export default function AssetTree({
                     onClick={() => onSelect(ALL_SELECTION)}>
                 {activeBar(selectedKey === 'all')}
                 <HiOutlineSparkles size={15} className="flex-shrink-0"/>
-                <span className="truncate">全部资产</span>
+                <span className="truncate flex-1 text-left">全部资产</span>
+                {countBadge(allCount, selectedKey === 'all')}
             </button>
 
             {/* 数据域 → 主题 */}
@@ -154,8 +171,9 @@ export default function AssetTree({
                                 }}
                             />
                             <HiOutlineFolderOpen size={15} className="flex-shrink-0"/>
-                            <span className="truncate">{domain.name}</span>
+                            <span className="truncate flex-1">{domain.name}</span>
                             {editActions(domain)}
+                            {countBadge(domain.tableCount, selectedKey === domainKey)}
                         </div>
                         {!isCollapsed && topics.length > 0 && (
                             <div className="ml-5 border-l border-ds-border-subtle">
@@ -171,8 +189,9 @@ export default function AssetTree({
                                              })}>
                                             {activeBar(selectedKey === topicKey)}
                                             <HiOutlineTag size={14} className="flex-shrink-0"/>
-                                            <span className="truncate">{topic.name}</span>
+                                            <span className="truncate flex-1">{topic.name}</span>
                                             {editActions(topic, domain)}
+                                            {countBadge(topic.tableCount, selectedKey === topicKey)}
                                         </div>
                                     );
                                 })}
@@ -188,7 +207,8 @@ export default function AssetTree({
                         onClick={() => onSelect({type: 'uncategorized'})}>
                     {activeBar(selectedKey === 'uncategorized')}
                     <HiOutlineTag size={15} className="flex-shrink-0"/>
-                    <span className="truncate">未分类</span>
+                    <span className="truncate flex-1 text-left">未分类</span>
+                    {countBadge(uncategorizedCount, selectedKey === 'uncategorized')}
                 </button>
             )}
 

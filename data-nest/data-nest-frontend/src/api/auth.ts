@@ -50,6 +50,11 @@ export const getUsers = (params: {
 }) =>
     request.get<Result<PageResult<UserVO>>>('/system/users', {params});
 
+/** 全部启用用户的轻量选项（Sprint 7 F1 资产目录负责人选择器，治理员/超管；不要求邮箱） */
+export const getUserOptions = (keyword?: string) =>
+    request.get<Result<{ id: string; username: string; email?: string }[]>>(
+        '/system/users/options', {params: {keyword}}).then(r => r.data);
+
 export const createUser = (params: CreateUserParams) =>
     request.post<Result<UserVO>>('/system/users', params);
 
