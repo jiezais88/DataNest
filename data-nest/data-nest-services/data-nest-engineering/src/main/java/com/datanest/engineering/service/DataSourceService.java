@@ -10,19 +10,21 @@ import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
-import com.datanest.common.scheduler.SchedulerClient;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.engineering.dto.DataSourceCreateRequest;
 import com.datanest.engineering.dto.DataSourceDTO;
 import com.datanest.engineering.dto.DataSourceQueryRequest;
 import com.datanest.engineering.dto.DataSourceUpdateRequest;
+import com.datanest.engineering.entity.DataSourceConnection;
+import com.datanest.engineering.mapper.*;
+import com.datanest.governance.api.GovernanceDatasourceApi;
+import com.datanest.governance.api.dto.AutoCreateCollectTaskRequest;
+import com.datanest.governance.api.dto.DatasourceReferencesDTO;
+import com.datanest.governance.api.dto.ReferenceItemDTO;
 import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
-import com.datanest.task.core.entity.CollectTask;
-import com.datanest.task.core.entity.DataSourceConnection;
-import com.datanest.task.core.entity.QualityRule;
-import com.datanest.task.core.entity.QualityScore;
-import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.ConnectionTester;
 import com.datanest.task.core.service.DataSourceRefreshService;
 import com.datanest.common.internal.RemoteCalls;
@@ -30,15 +32,12 @@ import com.datanest.common.model.Result;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -46,47 +45,28 @@ public class DataSourceService {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSourceService.class);
     private static final String MASKED_PASSWORD = "********";
-    private static final String COLLECT_TASK_HANDLER = "collectTaskHandler";
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-
-    @Value("${datanest.engineering.auto-collect.worker-appname:data-nest-worker}")
-    private String workerExecutorAppName;
 
     private final DataSourceConnectionMapper dataSourceMapper;
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
-    private final CollectTaskMapper collectTaskMapper;
-    private final SyncJobMapper syncJobMapper;
-    private final MetadataTableMapper metadataTableMapper;
-    private final MetadataColumnMapper metadataColumnMapper;
-    private final ComplianceCleanupMapper complianceCleanupMapper;
-    private final QualityRuleMapper qualityRuleMapper;
-    private final QualityScoreMapper qualityScoreMapper;
-    private final SchedulerClient schedulerClient;
     private final DataSourceRefreshService dataSourceRefreshService;
     private final SystemUserApi systemUserApi;
+    private final EngineeringSyncJobApi engineeringSyncJobApi;
+    private final GovernanceDatasourceApi governanceDatasourceApi;
 
     public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
-                             ConnectionTester connectionTester, CollectTaskMapper collectTaskMapper,
-                             SyncJobMapper syncJobMapper,
-                             MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                             ComplianceCleanupMapper complianceCleanupMapper,
-                             QualityRuleMapper qualityRuleMapper, QualityScoreMapper qualityScoreMapper,
-                             SchedulerClient schedulerClient, DataSourceRefreshService dataSourceRefreshService,
-                             SystemUserApi systemUserApi) {
+                             ConnectionTester connectionTester,
+                             DataSourceRefreshService dataSourceRefreshService,
+                             SystemUserApi systemUserApi,
+                             EngineeringSyncJobApi engineeringSyncJobApi,
+                             GovernanceDatasourceApi governanceDatasourceApi) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
-        this.collectTaskMapper = collectTaskMapper;
-        this.syncJobMapper = syncJobMapper;
-        this.metadataTableMapper = metadataTableMapper;
-        this.metadataColumnMapper = metadataColumnMapper;
-        this.complianceCleanupMapper = complianceCleanupMapper;
-        this.qualityRuleMapper = qualityRuleMapper;
-        this.qualityScoreMapper = qualityScoreMapper;
-        this.schedulerClient = schedulerClient;
         this.dataSourceRefreshService = dataSourceRefreshService;
         this.systemUserApi = systemUserApi;
+        this.engineeringSyncJobApi = engineeringSyncJobApi;
+        this.governanceDatasourceApi = governanceDatasourceApi;
     }
 
     @Transactional
@@ -126,60 +106,32 @@ public class DataSourceService {
         return dto;
     }
 
+    /**
+     * 自动建采集任务逻辑已下沉 governance（采集任务归治理域），本方法只组装入参并发 Feign。
+     * 保持原语义：任何失败只记 error 并返回提示信息，不阻断数据源保存主流程。
+     */
     private String autoCreateAndRunCollectTask(DataSourceConnection entity) {
         try {
-            LocalDateTime now = LocalDateTime.now();
-            String prefix = "自动采集-";
-            String suffix = "-" + now.format(TIMESTAMP_FORMATTER);
-            String dsName = entity.getName();
-            int maxDsNameLen = 100 - prefix.length() - suffix.length();
-            if (maxDsNameLen < 0) {
-                maxDsNameLen = 0;
+            AutoCreateCollectTaskRequest request = new AutoCreateCollectTaskRequest();
+            request.setDatasourceId(entity.getId());
+            request.setDatasourceName(entity.getName());
+            request.setType(entity.getType());
+            request.setDatabaseName(entity.getDatabaseName());
+            request.setSchemaName(entity.getSchemaName());
+            request.setUsername(entity.getUsername());
+            request.setCreatedBy(currentUserIdOrZero());
+            Result<Long> result = governanceDatasourceApi.autoCreateCollectTask(request);
+            Long taskId = result == null ? null : result.data();
+            if (taskId == null) {
+                logger.error("数据源保存后自动采集失败（governance 降级返回空）: datasourceId={}", entity.getId());
+                return "自动采集任务触发失败: governance 服务不可用";
             }
-            if (dsName.length() > maxDsNameLen) {
-                dsName = dsName.substring(0, maxDsNameLen);
-            }
-            String taskName = prefix + dsName + suffix;
-            List<String> scope = resolveCollectScope(entity);
-
-            CollectTask task = new CollectTask();
-            task.setName(taskName);
-            task.setDatasourceId(entity.getId());
-            task.setDatasourceName(entity.getName());
-            task.setScope(scope);
-            task.setCollectMode(CollectMode.FULL.getCode());
-            task.setTriggerType(TaskTriggerType.MANUAL.getCode());
-            task.setStatus(CollectTaskStatus.NEVER_EXECUTED.getCode());
-            task.setDescription("数据源保存时自动创建的元数据采集任务");
-            task.setScheduleEnabled(0);
-            task.setCreatedBy(currentUserIdOrZero());
-            task.setCreatedAt(now);
-            collectTaskMapper.insert(task);
-
-            Integer xxlJobId = schedulerClient.registerJob(workerExecutorAppName, COLLECT_TASK_HANDLER,
-                    task.getId(), taskName, "", TaskTriggerType.MANUAL.getCode(), false, 0, 0);
-            task.setXxlJobId(xxlJobId);
-            collectTaskMapper.updateById(task);
-
-            schedulerClient.triggerJob(xxlJobId, task.getId() + "," + TaskTriggerType.MANUAL.getCode());
-            logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}, xxlJobId={}",
-                    entity.getId(), task.getId(), xxlJobId);
+            logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}", entity.getId(), taskId);
             return null;
         } catch (Exception e) {
             logger.error("数据源保存后自动采集异常: datasourceId={}", entity.getId(), e);
             return "自动采集任务触发失败: " + e.getMessage();
         }
-    }
-
-    private List<String> resolveCollectScope(DataSourceConnection entity) {
-        DataSourceType type = DataSourceType.fromCode(entity.getType());
-        if (type != null && type.hasSchemaLayer()) {
-            String schema = StringUtils.hasText(entity.getSchemaName()) ? entity.getSchemaName()
-                    : (type == DataSourceType.POSTGRESQL ? "public" : entity.getUsername());
-            return StringUtils.hasText(schema) ? Collections.singletonList(schema) : Collections.emptyList();
-        }
-        String scope = entity.getDatabaseName();
-        return StringUtils.hasText(scope) ? Collections.singletonList(scope) : Collections.emptyList();
     }
 
     @Transactional
@@ -214,6 +166,14 @@ public class DataSourceService {
         return toDTO(entity);
     }
 
+    /**
+     * 删除数据源。事务边界说明（微服务化 3.4）：
+     * 治理域级联删除（metadata_table/column、compliance_check_result、quality_score）已下沉 governance，
+     * 经 Feign 远程执行且 fail-closed——远程失败抛异常中止整个删除，本地数据源保留、可重试，
+     * 避免出现"数据源删了元数据残留"。远程先行的理由：远程失败无本地残留；若先删本地，
+     * 远程失败会留下"数据源已删但元数据残留"且无法重试。
+     * {@code @Transactional} 现在只覆盖本地 datasource_connection 删除。
+     */
     @Transactional
     public void delete(Long id) {
         DataSourceConnection entity = dataSourceMapper.selectById(id);
@@ -226,24 +186,14 @@ public class DataSourceService {
             throw new BusinessException(ErrorCode.HAS_REFERENCES, "数据源已被引用，无法删除", references);
         }
 
-        // 级联删除已采集的元数据：先删子表字段，再删父表
-        List<Long> tableIds = metadataTableMapper.selectIdsByDatasourceId(id);
-        if (!tableIds.isEmpty()) {
-            metadataColumnMapper.deleteByTableIds(tableIds);
-        }
-        metadataTableMapper.deleteByDatasourceId(id);
-
-        // 级联删除合规检查结果（datasource_id 关联的历史检查记录，治理模块表）
-        int removed = complianceCleanupMapper.deleteByDatasourceId(id);
-        if (removed > 0) {
-            logger.info("级联删除合规检查结果: datasourceId={}, count={}", id, removed);
-        }
-
-        // 级联删除该数据源下的质量评分（quality_score，防止残留孤儿评分显示「—」）
-        int scoreRemoved = qualityScoreMapper.delete(
-                new QueryWrapper<QualityScore>().eq("datasource_id", id));
-        if (scoreRemoved > 0) {
-            logger.info("级联删除质量评分: datasourceId={}, count={}", id, scoreRemoved);
+        // 先远程级联删除治理域数据（fail-closed，不用 RemoteCalls 降级）：
+        // 熔断 fallback 抛 IllegalStateException，其余异常统一转为业务异常，均中止删除
+        try {
+            governanceDatasourceApi.cascadeDelete(id);
+        } catch (Exception e) {
+            logger.error("治理元数据级联删除失败，已中止数据源删除: datasourceId={}", id, e);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "治理元数据级联删除失败，数据源删除已中止，请稍后重试: " + e.getMessage());
         }
 
         dataSourceMapper.deleteById(id);
@@ -316,7 +266,7 @@ public class DataSourceService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
-        return connectionTester.extractSchemas(entity, password);
+        return connectionTester.extractSchemas(toDataSourceInfo(entity), password);
     }
 
     public List<String> getDatabases(Long id) {
@@ -325,7 +275,7 @@ public class DataSourceService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
-        return connectionTester.extractDatabases(entity, password);
+        return connectionTester.extractDatabases(toDataSourceInfo(entity), password);
     }
 
     public List<String> getTables(Long id, String database, String schema) {
@@ -334,24 +284,54 @@ public class DataSourceService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
-        return connectionTester.extractTables(entity, password, database, schema);
+        return connectionTester.extractTables(toDataSourceInfo(entity), password, database, schema);
     }
 
+    /** 本地实体 → 连接参数 DTO（ConnectionTester 签名收 DataSourceInfo，只取连接所需字段） */
+    private static DataSourceInfo toDataSourceInfo(DataSourceConnection entity) {
+        DataSourceInfo info = new DataSourceInfo();
+        info.setType(entity.getType());
+        info.setHost(entity.getHost());
+        info.setPort(entity.getPort());
+        info.setDatabaseName(entity.getDatabaseName());
+        info.setSchemaName(entity.getSchemaName());
+        info.setUsername(entity.getUsername());
+        return info;
+    }
+
+    /**
+     * 删除前引用检查（fail-fast，不用 RemoteCalls 降级：引用检查 silently 通过会导致误删）。
+     * 采集任务/质量规则走 governance（治理域），同步任务走 engineering 自身契约（lb:// 自调用）。
+     * 注：governance 返回的 metadataTables 不计入阻断引用——已采集元数据随删除级联清理（cascade-delete）。
+     */
     public List<DataSourceReferenceDTO> getReferences(Long id) {
         List<DataSourceReferenceDTO> references = new ArrayList<>();
 
-        List<CollectTask> collectTasks = collectTaskMapper.selectActiveByDatasourceId(id);
-        for (CollectTask task : collectTasks) {
-            DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
-            dto.setTaskId(task.getId());
-            dto.setTaskName(task.getName());
-            dto.setStatus(task.getStatus());
-            dto.setType(ReferenceType.COLLECT.getCode());
-            references.add(dto);
+        Result<DatasourceReferencesDTO> govResult = governanceDatasourceApi.getReferences(id);
+        DatasourceReferencesDTO govRefs = govResult == null ? null : govResult.data();
+        if (govRefs != null) {
+            for (ReferenceItemDTO task : govRefs.getCollectTasks() == null
+                    ? List.<ReferenceItemDTO>of() : govRefs.getCollectTasks()) {
+                DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
+                dto.setTaskId(task.getId());
+                dto.setTaskName(task.getName());
+                dto.setType(ReferenceType.COLLECT.getCode());
+                references.add(dto);
+            }
+            for (ReferenceItemDTO rule : govRefs.getQualityRules() == null
+                    ? List.<ReferenceItemDTO>of() : govRefs.getQualityRules()) {
+                DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
+                dto.setTaskId(rule.getId());
+                dto.setTaskName(rule.getName());
+                dto.setType(ReferenceType.QUALITY_RULE.getCode());
+                references.add(dto);
+            }
         }
 
-        List<SyncJob> syncJobs = syncJobMapper.selectBySourceDatasourceId(id);
-        for (SyncJob job : syncJobs) {
+        Result<List<SyncJobInfo>> syncResult = engineeringSyncJobApi.listByDatasource(id);
+        List<SyncJobInfo> syncJobs = syncResult == null || syncResult.data() == null
+                ? List.of() : syncResult.data();
+        for (SyncJobInfo job : syncJobs) {
             DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
             dto.setTaskId(job.getId());
             dto.setTaskName(job.getName());
@@ -364,21 +344,6 @@ public class DataSourceService {
             dto.setSyncMode(job.getSyncMode());
             dto.setTriggerType(job.getTriggerType());
             references.add(dto);
-        }
-
-        // 质量规则引用（quality_rule.table_id）：数据源被质量规则作为目标表引用时阻止删除
-        List<Long> tableIds = metadataTableMapper.selectIdsByDatasourceId(id);
-        if (tableIds != null && !tableIds.isEmpty()) {
-            List<QualityRule> qualityRules = qualityRuleMapper.selectList(
-                    new QueryWrapper<QualityRule>().in("table_id", tableIds));
-            for (QualityRule rule : qualityRules) {
-                DataSourceReferenceDTO dto = new DataSourceReferenceDTO();
-                dto.setTaskId(rule.getId());
-                dto.setTaskName(rule.getName());
-                dto.setStatus(rule.getEnabled() != null ? String.valueOf(rule.getEnabled()) : null);
-                dto.setType(ReferenceType.QUALITY_RULE.getCode());
-                references.add(dto);
-            }
         }
 
         return references;

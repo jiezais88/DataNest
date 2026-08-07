@@ -2,19 +2,19 @@ package com.datanest.governance.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.util.JdbcSchemaExtractor;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.governance.dto.MetadataDatasourceDTO;
 import com.datanest.governance.dto.MetadataTreeNodeDTO;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.MetadataColumn;
 import com.datanest.task.core.entity.MetadataTable;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataColumnMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.common.internal.RemoteCalls;
@@ -44,7 +44,7 @@ public class MetadataService {
 
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
-    private final DataSourceConnectionMapper dataSourceConnectionMapper;
+    private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
 
     private final String builtInDorisHost;
@@ -53,7 +53,7 @@ public class MetadataService {
     private final String builtInDorisPassword;
 
     public MetadataService(MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                           DataSourceConnectionMapper dataSourceConnectionMapper,
+                           EngineeringDatasourceApi datasourceApi,
                            SystemUserApi systemUserApi,
                            @Value("${datanest.doris.fe-host:localhost}") String builtInDorisHost,
                            @Value("${datanest.doris.fe-query-port:9030}") int builtInDorisQueryPort,
@@ -61,7 +61,7 @@ public class MetadataService {
                            @Value("${datanest.doris.password:}") String builtInDorisPassword) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
-        this.dataSourceConnectionMapper = dataSourceConnectionMapper;
+        this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
         this.builtInDorisHost = builtInDorisHost;
         this.builtInDorisQueryPort = builtInDorisQueryPort;
@@ -86,8 +86,7 @@ public class MetadataService {
             return List.of();
         }
 
-        List<DataSourceConnection> connections = dataSourceConnectionMapper.selectList(
-                Wrappers.<DataSourceConnection>query().in("id", ids));
+        Map<Long, DataSourceInfo> connectionMap = batchGetDatasources(ids);
 
         Map<Long, String> sourceTypeMap = rows.stream()
                 .collect(Collectors.toMap(
@@ -101,10 +100,7 @@ public class MetadataService {
         return ids.stream().map(id -> {
             MetadataDatasourceDTO dto = new MetadataDatasourceDTO();
             dto.setId(id);
-            DataSourceConnection conn = connections.stream()
-                    .filter(c -> id.equals(c.getId()))
-                    .findFirst()
-                    .orElse(null);
+            DataSourceInfo conn = connectionMap.get(id);
             String sourceType = sourceTypeMap.getOrDefault(id, SourceType.EXTERNAL.getCode());
             if (conn != null) {
                 dto.setName(conn.getName());
@@ -200,10 +196,7 @@ public class MetadataService {
                 .distinct()
                 .toList();
 
-        Map<Long, DataSourceConnection> connectionMap = dataSourceConnectionMapper.selectList(
-                        Wrappers.<DataSourceConnection>query().in("id", datasourceIds))
-                .stream()
-                .collect(Collectors.toMap(DataSourceConnection::getId, c -> c, (a, b) -> a));
+        Map<Long, DataSourceInfo> connectionMap = batchGetDatasources(datasourceIds);
 
         // datasource -> database -> schema -> table
         Map<Long, MetadataTreeNodeDTO> datasourceMap = new LinkedHashMap<>();
@@ -221,7 +214,7 @@ public class MetadataService {
                 node.setId("ds-" + id);
                 node.setType("datasource");
                 boolean builtinDoris = SourceType.BUILTIN_DORIS.getCode().equals(sourceType);
-                DataSourceConnection conn = connectionMap.get(id);
+                DataSourceInfo conn = connectionMap.get(id);
                 if (conn != null) {
                     node.setName(conn.getName() + (conn.getType() != null ? " (" + conn.getType() + ")" : ""));
                     node.setDatasourceType(conn.getType());
@@ -391,6 +384,22 @@ public class MetadataService {
 
     private int sourceTypePriority(String sourceType) {
         return SourceType.BUILTIN_DORIS.getCode().equals(sourceType) ? 1 : 0;
+    }
+
+    /**
+     * 经 engineering 服务 Feign 批量查询数据源（id → 连接信息）。
+     * 只读回填路径：engineering 不可用时降级为空 Map（数据源名/类型列退化），不阻断元数据查询。
+     */
+    private Map<Long, DataSourceInfo> batchGetDatasources(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        return RemoteCalls.execute("engineering.datasource.batchGet", () -> {
+            IdsRequest request = new IdsRequest();
+            request.setIds(ids.stream().toList());
+            Result<Map<Long, DataSourceInfo>> result = datasourceApi.batchGet(request);
+            return result == null || result.data() == null ? Map.<Long, DataSourceInfo>of() : result.data();
+        }, Map.of());
     }
 
     /**

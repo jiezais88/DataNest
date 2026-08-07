@@ -5,18 +5,20 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.task.core.constant.QualityScoreConstants;
 import com.datanest.task.core.dto.QualityScoreConfigDTO;
 import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.task.core.dto.QualityScoreQueryRequest;
 import com.datanest.task.core.dto.QualityTableRuleResultDTO;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.QualityCheckDetail;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityScore;
 import com.datanest.task.core.entity.QualityScoreConfig;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.QualityCheckDetailMapper;
 import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityScoreConfigMapper;
@@ -46,7 +48,7 @@ public class QualityScoreService {
     private static final long DORIS_DATASOURCE_ID = -1L;
 
     private final QualityScoreMapper scoreMapper;
-    private final DataSourceConnectionMapper dataSourceMapper;
+    private final EngineeringDatasourceApi datasourceApi;
     private final QualityRuleMapper ruleMapper;
     private final QualityCheckDetailMapper detailMapper;
     private final QualityScoreConfigMapper configMapper;
@@ -54,14 +56,14 @@ public class QualityScoreService {
     private final QualityCheckTriggerService triggerService;
 
     public QualityScoreService(QualityScoreMapper scoreMapper,
-                               DataSourceConnectionMapper dataSourceMapper,
+                               EngineeringDatasourceApi datasourceApi,
                                QualityRuleMapper ruleMapper,
                                QualityCheckDetailMapper detailMapper,
                                QualityScoreConfigMapper configMapper,
                                QualityRuleService ruleService,
                                QualityCheckTriggerService triggerService) {
         this.scoreMapper = scoreMapper;
-        this.dataSourceMapper = dataSourceMapper;
+        this.datasourceApi = datasourceApi;
         this.ruleMapper = ruleMapper;
         this.detailMapper = detailMapper;
         this.configMapper = configMapper;
@@ -290,9 +292,14 @@ public class QualityScoreService {
                 // 内置 Doris 数仓（datasource_id=-1，datasource 表无记录），显式标注避免列表显示为「—」
                 dto.setDatasourceName("Doris 数仓");
             } else {
-                DataSourceConnection ds = dataSourceMapper.selectById(s.getDatasourceId());
-                if (ds != null) {
-                    dto.setDatasourceName(ds.getName());
+                // 经 engineering 服务 Feign 回填数据源名；失败经 RemoteCalls 降级为 null（名称列显示「—」），不阻断列表
+                String dsName = RemoteCalls.execute("engineering.datasource.getById", () -> {
+                    Result<DataSourceInfo> result = datasourceApi.getById(s.getDatasourceId());
+                    DataSourceInfo info = result == null ? null : result.data();
+                    return info == null ? null : info.getName();
+                }, null);
+                if (dsName != null) {
+                    dto.setDatasourceName(dsName);
                 }
             }
         }

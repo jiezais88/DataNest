@@ -2,16 +2,16 @@ package com.datanest.job.handler;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDagApi;
+import com.datanest.engineering.api.EngineeringDagExecutionApi;
+import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.DagNodeInfo;
+import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.governance.api.GovernanceObjectApi;
 import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
-import com.datanest.task.core.entity.DagExecution;
-import com.datanest.task.core.entity.DagNode;
-import com.datanest.task.core.entity.NodeExecution;
 import com.datanest.task.core.entity.QualityCheckBatch;
 import com.datanest.task.core.entity.QualityJob;
-import com.datanest.task.core.mapper.DagExecutionMapper;
-import com.datanest.task.core.mapper.DagNodeMapper;
-import com.datanest.task.core.mapper.NodeExecutionMapper;
 import com.datanest.task.core.mapper.QualityCheckBatchMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import com.xxl.job.core.context.XxlJobHelper;
@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -36,6 +37,10 @@ import java.util.Set;
  * DAG 成功后的质量自动触发由 alert-service 经 governance 内部接口完成，任一环失败则本次触发
  * 静默丢失。本 handler 定时扫描近期成功的 DAG 节点执行，找出「绑定了启用质量任务但缺
  * AUTO_TRIGGER 批次」的漏触发节点，经 governance 批量接口补发。
+ * <p>
+ * 微服务化 3.3：dag_execution 扫描 / node_execution 读取 / dag_node 解析改经
+ * EngineeringDagExecutionApi / EngineeringDagApi 远程获取（RemoteCalls 降级本轮跳过）；
+ * quality_job / quality_check_batch 为治理域表，本阶段仍本地读取。
  * <p>
  * 补发天然幂等：重复补发最多多跑一次质量检查；补发失败下轮再补（窗口内）。
  */
@@ -59,22 +64,19 @@ public class QualityAutoTriggerReconcileHandler {
     private static final String OBJECT_TYPE_DAG_NODE = "DAG_NODE";
     private static final String TRIGGER_TYPE_AUTO = "AUTO_TRIGGER";
 
-    private final DagExecutionMapper dagExecutionMapper;
-    private final NodeExecutionMapper nodeExecutionMapper;
-    private final DagNodeMapper dagNodeMapper;
+    private final EngineeringDagExecutionApi dagExecutionApi;
+    private final EngineeringDagApi dagApi;
     private final QualityJobMapper qualityJobMapper;
     private final QualityCheckBatchMapper qualityCheckBatchMapper;
     private final GovernanceObjectApi governanceObjectApi;
 
-    public QualityAutoTriggerReconcileHandler(DagExecutionMapper dagExecutionMapper,
-                                              NodeExecutionMapper nodeExecutionMapper,
-                                              DagNodeMapper dagNodeMapper,
+    public QualityAutoTriggerReconcileHandler(EngineeringDagExecutionApi dagExecutionApi,
+                                              EngineeringDagApi dagApi,
                                               QualityJobMapper qualityJobMapper,
                                               QualityCheckBatchMapper qualityCheckBatchMapper,
                                               GovernanceObjectApi governanceObjectApi) {
-        this.dagExecutionMapper = dagExecutionMapper;
-        this.nodeExecutionMapper = nodeExecutionMapper;
-        this.dagNodeMapper = dagNodeMapper;
+        this.dagExecutionApi = dagExecutionApi;
+        this.dagApi = dagApi;
         this.qualityJobMapper = qualityJobMapper;
         this.qualityCheckBatchMapper = qualityCheckBatchMapper;
         this.governanceObjectApi = governanceObjectApi;
@@ -83,41 +85,58 @@ public class QualityAutoTriggerReconcileHandler {
     @XxlJob("qualityAutoTriggerReconcileHandler")
     public void reconcile() {
         LocalDateTime now = LocalDateTime.now();
-        // 1. 扫描窗口内成功的 DAG 执行（SUCCESS，end_time 在最近 2 小时且早于 now-5 分钟）
-        List<DagExecution> dags = dagExecutionMapper.selectList(new QueryWrapper<DagExecution>()
-                .eq("status", STATUS_SUCCESS)
-                .ge("end_time", now.minusHours(WINDOW_HOURS))
-                .lt("end_time", now.minusMinutes(SAFE_MARGIN_MINUTES))
-                .orderByAsc("end_time")
-                .last("LIMIT " + SCAN_LIMIT));
+        // 1. 扫描窗口内成功的 DAG 执行（succeeded-between 端点：SUCCESS 且 start_time 落在窗口内，id 升序）
+        List<DagExecutionInfo> dags = RemoteCalls.execute("engineering.dag-execution.succeeded-between", () -> {
+            Result<List<DagExecutionInfo>> result = dagExecutionApi.succeededBetween(
+                    // 契约为 ISO 字符串（Feign ConversionService 会把 LocalDateTime 按 locale 格式化）
+                    now.minusHours(WINDOW_HOURS).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    now.minusMinutes(SAFE_MARGIN_MINUTES).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    SCAN_LIMIT);
+            return result == null || result.data() == null ? List.of() : result.data();
+        }, List.of());
         if (dags.isEmpty()) {
             XxlJobHelper.handleSuccess("无待对账执行");
             return;
         }
         Map<Long, Long> dagIdByExecutionId = new HashMap<>();
-        for (DagExecution dag : dags) {
+        for (DagExecutionInfo dag : dags) {
             dagIdByExecutionId.put(dag.getId(), dag.getDagId());
         }
 
-        // 2. 这些执行下 SUCCESS 的节点执行
-        List<NodeExecution> nodes = nodeExecutionMapper.selectList(new QueryWrapper<NodeExecution>()
-                .in("execution_id", dagIdByExecutionId.keySet())
-                .eq("status", STATUS_SUCCESS));
+        // 2. 这些执行下 SUCCESS 的节点执行（逐执行远程读取；每轮执行数少，非热路径）
+        List<NodeExecutionInfo> nodes = new ArrayList<>();
+        for (Long executionId : dagIdByExecutionId.keySet()) {
+            List<NodeExecutionInfo> executionNodes = RemoteCalls.execute("engineering.dag-execution.nodes", () -> {
+                Result<List<NodeExecutionInfo>> result = dagExecutionApi.listNodes(executionId);
+                return result == null || result.data() == null ? List.of() : result.data();
+            }, List.of());
+            for (NodeExecutionInfo node : executionNodes) {
+                if (STATUS_SUCCESS.equalsIgnoreCase(node.getStatus())) {
+                    nodes.add(node);
+                }
+            }
+        }
         if (nodes.isEmpty()) {
             XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + "，无成功节点");
             return;
         }
 
-        // 3. 按 dag_id + node_id 解析 dag_node.id（一次 in 查询，不逐条）
+        // 3. 按 dag_id + node_id 解析 dag_node.id（按 dag 聚合远程调用，建 dagId→nodes 本地映射避免重复调）
         Set<Long> dagIds = new HashSet<>(dagIdByExecutionId.values());
         Map<String, Long> dagNodeIdByKey = new HashMap<>();
-        for (DagNode dagNode : dagNodeMapper.selectList(new QueryWrapper<DagNode>().in("dag_id", dagIds))) {
-            dagNodeIdByKey.put(key(dagNode.getDagId(), dagNode.getNodeId()), dagNode.getId());
+        for (Long dagId : dagIds) {
+            List<DagNodeInfo> dagNodes = RemoteCalls.execute("engineering.dag.nodes", () -> {
+                Result<List<DagNodeInfo>> result = dagApi.listNodes(dagId);
+                return result == null || result.data() == null ? List.of() : result.data();
+            }, List.of());
+            for (DagNodeInfo dagNode : dagNodes) {
+                dagNodeIdByKey.put(key(dagNode.getDagId(), dagNode.getNodeId()), dagNode.getId());
+            }
         }
 
         // 节点执行按 dagNodeId 归组（保留各次节点 end_time，用于批次覆盖判定）
         Map<Long, List<LocalDateTime>> nodeEndTimesByDagNodeId = new HashMap<>();
-        for (NodeExecution node : nodes) {
+        for (NodeExecutionInfo node : nodes) {
             Long dagId = dagIdByExecutionId.get(node.getExecutionId());
             Long dagNodeId = dagId == null ? null : dagNodeIdByKey.get(key(dagId, node.getNodeId()));
             if (dagNodeId == null || node.getEndTime() == null) {

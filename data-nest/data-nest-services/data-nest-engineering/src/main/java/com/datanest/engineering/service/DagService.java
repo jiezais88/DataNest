@@ -10,11 +10,11 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.alert.api.AlertApi;
 import com.datanest.engineering.config.DolphinSchedulerConfig;
 import com.datanest.engineering.dto.*;
+import com.datanest.governance.api.GovernanceDatasourceApi;
 import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.ConditionNodeConfig;
-import com.datanest.task.core.entity.*;
-import com.datanest.task.core.mapper.*;
-import com.datanest.task.core.service.DagTopologyService;
+import com.datanest.engineering.entity.*;
+import com.datanest.engineering.mapper.*;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.system.api.SystemUserApi;
@@ -55,7 +55,7 @@ public class DagService {
     private final DagVersionService dagVersionService;
     private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
-    private final LineageRecordMapper lineageRecordMapper;
+    private final GovernanceDatasourceApi governanceDatasourceApi;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
@@ -63,7 +63,7 @@ public class DagService {
                       DagDsConverter dagDsConverter, DagProjectService dagProjectService,
                       DagVersionService dagVersionService, SystemUserApi systemUserApi,
                       AlertApi alertApi,
-                      LineageRecordMapper lineageRecordMapper) {
+                      GovernanceDatasourceApi governanceDatasourceApi) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -76,7 +76,7 @@ public class DagService {
         this.dagVersionService = dagVersionService;
         this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
-        this.lineageRecordMapper = lineageRecordMapper;
+        this.governanceDatasourceApi = governanceDatasourceApi;
     }
 
     @Transactional
@@ -238,10 +238,15 @@ public class DagService {
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
         // Sprint 6：删除 DAG 时按 dag_id 清理其产生的血缘记录（血缘是"当前加工关系"呈现，DAG 删除后成死边）
-        int lineageDeleted = lineageRecordMapper.delete(new QueryWrapper<LineageRecord>().eq("dag_id", id));
-        if (lineageDeleted > 0) {
-            logger.info("级联删除 DAG 血缘: dagId={}, records={}", id, lineageDeleted);
-        }
+        // 微服务化 3.4：lineage_record 归治理域，经 governance 远程删除；失败经 RemoteCalls 降级
+        // 记 warn，不阻断 DAG 删除（最终一致，残留由人工或后续补偿清理）
+        RemoteCalls.execute("governance.lineage.deleteByDag", () -> {
+            Result<Integer> result = governanceDatasourceApi.deleteLineageByDag(id);
+            int lineageDeleted = result == null || result.data() == null ? 0 : result.data();
+            if (lineageDeleted > 0) {
+                logger.info("级联删除 DAG 血缘: dagId={}, records={}", id, lineageDeleted);
+            }
+        });
         dagMapper.deleteById(id);
         // 微服务化改造：告警域数据（规则/配置/发送历史）改由 alert-service 远程级联清理；
         // 原来同事务，现在接受最终一致——远程失败仅记 warn，不阻断主删除流程，残留由人工或后续补偿清理
@@ -318,7 +323,7 @@ public class DagService {
         // 避免把项目下全部执行历史载入内存（历史膨胀后会失控）
         List<Long> dagIds = dags.stream().map(Dag::getId).toList();
         Map<Long, List<DagNode>> nodesByDag = dagNodeMapper.selectList(
-                        new QueryWrapper<com.datanest.task.core.entity.DagNode>().in("dag_id", dagIds))
+                        new QueryWrapper<DagNode>().in("dag_id", dagIds))
                 .stream().collect(Collectors.groupingBy(DagNode::getDagId));
         Map<Long, DagExecution> latestByDag = dagExecutionMapper.selectLatestByDagIds(dagIds).stream()
                 .collect(Collectors.toMap(DagExecution::getDagId, e -> e));

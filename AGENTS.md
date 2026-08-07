@@ -48,6 +48,7 @@ DataNest 是一个数据平台，技术栈如下：
 
 > **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。**容错三件套已内置**：`shared-feign.yaml` 全局超时（connect 2s/read 5s）+ 重试（Retryer.Default ×3）+ Resilience4j 熔断（各 client 配 fallbackFactory）；消费方降级统一用 common 的 `RemoteCalls.execute(描述, 调用, 降级值)`（自动 warn 日志 + `remote_call_failed_total` 指标），不要手写 try-catch 样板。读路径降级空集合；**fail-closed 例外**：删除前置校验类调用必须让异常传播（现有 2 处：QualityJobService 告警引用校验、AssetCatalogService.assignOwner）。
 > **禁止逐条循环远程调用（N+1）**：循环场景必须提供批量端点（如 `usernames?ids=`、`dags/{dagId}/nodes/resolve`、`quality/auto-trigger/batch`）。
+> **Feign 契约的查询/路径参数禁止用 LocalDateTime**（Feign 的 ConversionService 会按 locale 格式化成 `8/7/26, 6:20 AM`，服务端解析失败）——一律 ISO String（`DateTimeFormatter.ISO_LOCAL_DATE_TIME`）；请求体里的 LocalDateTime 走 Jackson 不受影响。
 > **用户名回填**：`SysUserService` 仅 app-system 内部使用；其它服务列表页的 createdBy/updatedBy 名称回填一律经 `data-nest-system-api` 的 `SystemUserApi.usernames`（批量，失败降级空 Map）。
 
 ### 核心容器
@@ -162,7 +163,7 @@ docker compose up -d --no-deps app-engineering app-worker
 | MySQL root | 管理 MySQL 所有库 | `docker exec -it datanest-middleware-mysql mysql -u root -proot123` | root / root123 |
 | MySQL nacos | 查 Nacos 配置、业务库 | `docker exec -it datanest-middleware-mysql mysql -u nacos -pnacos123` | nacos / nacos123 |
 | Nacos 配置库 | 存储所有 shared-configs | `nacos.config_info` 表（在 middleware-mysql） | - |
-| XXL-JOB Admin | 调度任务管理 | http://localhost:8088 | admin / 123456 |
+| XXL-JOB Admin | 调度任务管理 | http://localhost:8088 | admin / 123456（3.x API：`POST /auth/doLogin` 拿 cookie → `/jobinfo/trigger`，context-path 为 `/`） |
 | XXL-JOB DB | XXL-JOB 任务信息 | `datanest_scheduler.xxl_job_info` | - |
 | Doris 内置 | 目标数仓 | `192.168.119.135:9030` | root / password |
 | DolphinScheduler | 工作流调度（当前保留） | http://localhost:12345 | admin / dolphinscheduler123 |

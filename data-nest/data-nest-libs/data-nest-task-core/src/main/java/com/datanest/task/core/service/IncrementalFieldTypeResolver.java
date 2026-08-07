@@ -2,8 +2,8 @@ package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.DataSourceType;
-import com.datanest.task.core.entity.DataSourceConnection;
-import com.datanest.task.core.entity.SyncJob;
+import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.engineering.api.dto.SyncJobInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,7 +68,7 @@ public class IncrementalFieldTypeResolver {
      * @param fieldName   增量字段名
      * @return 类型分类，查询失败返回 OTHER
      */
-    public TypeCategory resolveSourceFieldType(DataSourceConnection source, SyncJob job,
+    public TypeCategory resolveSourceFieldType(DataSourceInfo source, SyncJobInfo job,
                                                String sourceTable, String fieldName) {
         String jdbcUrl = connectionTester.buildJdbcUrl(source);
         String password = encryptionConfig.decrypt(source.getEncryptedPassword());

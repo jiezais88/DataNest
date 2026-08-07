@@ -13,12 +13,13 @@ import com.datanest.governance.dto.AssetSearchItemDTO;
 import com.datanest.governance.dto.AssignClassificationRequest;
 import com.datanest.governance.dto.AssignOwnerRequest;
 import com.datanest.governance.dto.ClassificationSaveRequest;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.task.core.entity.AssetClassification;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.mapper.AssetClassificationMapper;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataColumnMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.service.QualityScoreService;
@@ -70,7 +71,7 @@ public class AssetCatalogService {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final AssetClassificationMapper classificationMapper;
-    private final DataSourceConnectionMapper dataSourceMapper;
+    private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
     private final QualityScoreService qualityScoreService;
 
@@ -81,13 +82,13 @@ public class AssetCatalogService {
     public AssetCatalogService(MetadataTableMapper metadataTableMapper,
                                MetadataColumnMapper metadataColumnMapper,
                                AssetClassificationMapper classificationMapper,
-                               DataSourceConnectionMapper dataSourceMapper,
+                               EngineeringDatasourceApi datasourceApi,
                                SystemUserApi systemUserApi,
                                QualityScoreService qualityScoreService) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.classificationMapper = classificationMapper;
-        this.dataSourceMapper = dataSourceMapper;
+        this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
         this.qualityScoreService = qualityScoreService;
     }
@@ -444,10 +445,15 @@ public class AssetCatalogService {
                 items.stream().map(AssetSearchItemDTO::getOwnerUserId).filter(Objects::nonNull).toList());
         List<Long> dsIds = items.stream().map(AssetSearchItemDTO::getDatasourceId)
                 .filter(Objects::nonNull).distinct().toList();
-        Map<Long, DataSourceConnection> dsMap = dsIds.isEmpty()
+        // 经 engineering 服务 Feign 批量回填数据源名/类型；失败经 RemoteCalls 降级为空 Map（名称列退化），不阻断搜索
+        Map<Long, DataSourceInfo> dsMap = dsIds.isEmpty()
                 ? Map.of()
-                : dataSourceMapper.selectBatchIds(dsIds).stream()
-                .collect(Collectors.toMap(DataSourceConnection::getId, Function.identity(), (a, b) -> a));
+                : RemoteCalls.execute("engineering.datasource.batchGet", () -> {
+                    IdsRequest request = new IdsRequest();
+                    request.setIds(dsIds);
+                    Result<Map<Long, DataSourceInfo>> result = datasourceApi.batchGet(request);
+                    return result == null || result.data() == null ? Map.<Long, DataSourceInfo>of() : result.data();
+                }, Map.of());
         for (AssetSearchItemDTO item : items) {
             QualityScoreDTO score = scoreMap.get(item.getTableId());
             if (score != null) {
@@ -457,7 +463,7 @@ public class AssetCatalogService {
             if (item.getOwnerUserId() != null) {
                 item.setOwnerName(usernameMap.get(item.getOwnerUserId()));
             }
-            DataSourceConnection ds = dsMap.get(item.getDatasourceId());
+            DataSourceInfo ds = dsMap.get(item.getDatasourceId());
             if (ds != null) {
                 item.setDatasourceName(ds.getName());
                 item.setDatasourceType(ds.getType());

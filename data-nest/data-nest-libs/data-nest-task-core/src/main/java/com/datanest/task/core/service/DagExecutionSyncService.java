@@ -1,14 +1,16 @@
 package com.datanest.task.core.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.datanest.task.core.entity.Dag;
-import com.datanest.task.core.entity.DagExecution;
-import com.datanest.task.core.entity.NodeExecution;
-import com.datanest.task.core.mapper.DagExecutionMapper;
-import com.datanest.task.core.mapper.DagMapper;
-import com.datanest.task.core.mapper.NodeExecutionMapper;
+import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.PageResult;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDagApi;
+import com.datanest.engineering.api.EngineeringDagExecutionApi;
+import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
+import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.DagInfo;
+import com.datanest.engineering.api.dto.IdsRequest;
+import com.datanest.engineering.api.dto.NodeExecutionBatchUpdateRequest;
+import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.slf4j.Logger;
@@ -32,6 +34,11 @@ import java.util.concurrent.TimeUnit;
  * 调用方：data-nest-job 的 DagExecutionSyncHandler（XXL-JOB 调度，每 5 秒）
  * 决策 Sprint 3 Phase 7：定时回查放 job 服务，由 XXL-JOB 集群协调
  *
+ * 微服务化 3.3：dag/dag_execution/node_execution 读写全部经 Feign 调 app-engineering
+ * （EngineeringDagApi / EngineeringDagExecutionApi），远程失败经 RemoteCalls 降级，
+ * 本轮按无数据处理，下一轮重试；终态收尾调 finalize 端点，DAG 完成告警副作用由
+ * engineering 端内置触发（不再走本地监听器）。
+ *
  * Sprint 3 修复：
  * - P1-2：SYNC 节点在 RUNNING 时反查 sync_job_history 收尾
  * - 性能3：分页查询 + 批量 updateById
@@ -46,26 +53,21 @@ public class DagExecutionSyncService {
     private static final int PAGE_SIZE = 100;
 
     /** 性能优化：dag 信息本地缓存（多实例下各自独立，最终一致） */
-    private final Cache<Long, Dag> dagCache = Caffeine.newBuilder()
+    private final Cache<Long, DagInfo> dagCache = Caffeine.newBuilder()
             .maximumSize(1000)
             .expireAfterWrite(5, TimeUnit.MINUTES)
             .build();
 
-    private final DagMapper dagMapper;
-    private final DagExecutionMapper dagExecutionMapper;
-    private final NodeExecutionMapper nodeExecutionMapper;
+    private final EngineeringDagApi dagApi;
+    private final EngineeringDagExecutionApi dagExecutionApi;
     private final long silentPeriodMs;
-    private final List<DagExecutionFinishedListener> finishedListeners;
 
-    public DagExecutionSyncService(DagMapper dagMapper, DagExecutionMapper dagExecutionMapper,
-                                   NodeExecutionMapper nodeExecutionMapper,
-                                   @Value("${datanest.job.dag-sync.silent-period-ms:10000}") long silentPeriodMs,
-                                   List<DagExecutionFinishedListener> finishedListeners) {
-        this.dagMapper = dagMapper;
-        this.dagExecutionMapper = dagExecutionMapper;
-        this.nodeExecutionMapper = nodeExecutionMapper;
+    public DagExecutionSyncService(EngineeringDagApi dagApi,
+                                   EngineeringDagExecutionApi dagExecutionApi,
+                                   @Value("${datanest.job.dag-sync.silent-period-ms:10000}") long silentPeriodMs) {
+        this.dagApi = dagApi;
+        this.dagExecutionApi = dagExecutionApi;
         this.silentPeriodMs = Math.max(0L, silentPeriodMs);
-        this.finishedListeners = finishedListeners == null ? List.of() : finishedListeners;
     }
 
     /**
@@ -83,18 +85,21 @@ public class DagExecutionSyncService {
         int totalSynced = 0;
         boolean stillRunning = false;
         long now = System.currentTimeMillis();
-        long pageNo = 1;
+        int pageNo = 1;
         while (true) {
-            IPage<DagExecution> page = dagExecutionMapper.selectPage(
-                    new Page<>(pageNo, PAGE_SIZE),
-                    new QueryWrapper<DagExecution>().eq("status", "RUNNING").orderByAsc("id"));
-            List<DagExecution> running = page.getRecords();
+            final int page = pageNo;
+            PageResult<DagExecutionInfo> pageResult = RemoteCalls.execute("engineering.dag-execution.running", () -> {
+                Result<PageResult<DagExecutionInfo>> result = dagExecutionApi.listRunning(page, PAGE_SIZE);
+                return result == null ? null : result.data();
+            }, null);
+            List<DagExecutionInfo> running = pageResult == null || pageResult.records() == null
+                    ? List.of() : pageResult.records();
             if (running.isEmpty()) break;
 
-            // 性能优化：批量查询当前页所有 dag，避免每个 execution 都 selectById
-            Map<Long, Dag> dagMap = resolveDagBatch(running);
+            // 性能优化：批量查询当前页所有 dag，避免每个 execution 都 getById
+            Map<Long, DagInfo> dagMap = resolveDagBatch(running);
 
-            for (DagExecution ex : running) {
+            for (DagExecutionInfo ex : running) {
                 // 静默期：刚 trigger 的 execution 给 DS 启动时间，避免无效同步
                 if (isInSilentPeriod(ex, now)) {
                     logger.debug("DAG 执行处于静默期，跳过同步: executionId={}", ex.getId());
@@ -118,7 +123,7 @@ public class DagExecutionSyncService {
         return new SyncResult(totalSynced, stillRunning);
     }
 
-    private boolean isInSilentPeriod(DagExecution execution, long now) {
+    private boolean isInSilentPeriod(DagExecutionInfo execution, long now) {
         if (silentPeriodMs <= 0) return false;
         LocalDateTime startTime = execution.getStartTime();
         if (startTime == null) return false;
@@ -144,18 +149,24 @@ public class DagExecutionSyncService {
      * 同步单个 dag_execution
      * @return true 表示有状态变更
      */
-    private boolean syncOne(DagExecution execution, Dag dag, DsTaskInstanceFetcher fetcher,
+    private boolean syncOne(DagExecutionInfo execution, DagInfo dag, DsTaskInstanceFetcher fetcher,
                             SyncJobHistoryFetcher syncFetcher, SyncJobMutexReleaser mutexReleaser) {
         if (dag == null) {
             // DAG 已删除，对应的执行记录不应再被同步，直接标记为 FAILED
             logger.warn("DAG 已删除，标记 execution 为 FAILED: executionId={}, dagId={}",
                     execution.getId(), execution.getDagId());
-            execution.setStatus("FAILED");
-            execution.setEndTime(LocalDateTime.now());
+            LocalDateTime endTime = LocalDateTime.now();
+            DagExecutionFinalizeRequest request = new DagExecutionFinalizeRequest();
+            request.setStatus("FAILED");
+            request.setEndTime(endTime);
             if (execution.getStartTime() != null) {
-                execution.setDurationMs(Duration.between(execution.getStartTime(), execution.getEndTime()).toMillis());
+                request.setDurationMs(Duration.between(execution.getStartTime(), endTime).toMillis());
             }
-            dagExecutionMapper.updateById(execution);
+            RemoteCalls.execute("engineering.dag-execution.finalize",
+                    () -> dagExecutionApi.finalizeExecution(execution.getId(), request));
+            execution.setStatus("FAILED");
+            execution.setEndTime(endTime);
+            execution.setDurationMs(request.getDurationMs());
             return true;
         }
         if (dag.getDsProjectCode() == null || execution.getDsProcessInstanceId() == null) {
@@ -169,13 +180,13 @@ public class DagExecutionSyncService {
             return false;
         }
 
-        // 2. 用 nodeName 匹配本地 node_execution
-        List<NodeExecution> nodeList = nodeExecutionMapper.selectByExecutionId(execution.getId());
-        Map<String, NodeExecution> nodeByName = new HashMap<>();
+        // 2. 用 nodeName 匹配远程 node_execution
+        List<NodeExecutionInfo> nodeList = listExecutionNodes(execution.getId());
+        Map<String, NodeExecutionInfo> nodeByName = new HashMap<>();
         // DS 任务名 = 节点名_节点ID后8位（DagDsConverter.buildDsTaskName），nodeId 本身可能含 `_`，
         // 因此按相同规则生成「DS 任务名 → node」反向映射，供 SUB_DAG 等依赖 sync 同步状态的节点匹配。
-        Map<String, NodeExecution> nodeByDsTaskName = new HashMap<>();
-        for (NodeExecution ne : nodeList) {
+        Map<String, NodeExecutionInfo> nodeByDsTaskName = new HashMap<>();
+        for (NodeExecutionInfo ne : nodeList) {
             nodeByName.put(ne.getNodeName(), ne);
             if (ne.getNodeId() != null && ne.getNodeName() != null) {
                 String nodeId = ne.getNodeId();
@@ -186,10 +197,10 @@ public class DagExecutionSyncService {
 
         boolean changed = false;
         // 性能3：累积变更后批量 update
-        List<NodeExecution> updatedNodes = new ArrayList<>();
+        List<NodeExecutionInfo> updatedNodes = new ArrayList<>();
 
         for (DsTaskInstance ti : tasks) {
-            NodeExecution ne = nodeByName.get(ti.name());
+            NodeExecutionInfo ne = nodeByName.get(ti.name());
             if (ne == null) {
                 ne = nodeByDsTaskName.get(ti.name());
             }
@@ -199,7 +210,10 @@ public class DagExecutionSyncService {
                 changed = true;
             }
             String newStatus = mapDsState(ti.state());
-            if (!newStatus.equals(ne.getStatus())) {
+            // 终态保护：已被 callback/其它路径置为终态（SKIPPED/SUCCESS/FAILED/TERMINATED）的节点
+            // 不允许被 DS 状态回写覆盖（条件分支 gate 的 SKIPPED 会被 DS 侧的 SUCCESS 误复活）。
+            // 远程化后 sync 与 callback 存在跨服务时序窗口，终态不可逆是安全不变量。
+            if (!isTerminalStatus(ne.getStatus()) && !newStatus.equals(ne.getStatus())) {
                 ne.setStatus(newStatus);
                 changed = true;
             }
@@ -236,7 +250,7 @@ public class DagExecutionSyncService {
 
         // 3. P1-2：SYNC 节点 RUNNING 状态收尾（查 sync_job_history）
         if (syncFetcher != null) {
-            for (NodeExecution ne : nodeList) {
+            for (NodeExecutionInfo ne : nodeList) {
                 if (!"RUNNING".equalsIgnoreCase(ne.getStatus())) continue;
                 if (!"SYNC".equalsIgnoreCase(ne.getNodeType())) continue;
                 if (ne.getSyncJobId() == null) continue;
@@ -299,7 +313,7 @@ public class DagExecutionSyncService {
         // 3.5 实例节点数错乱修复：DS 流程实例到达终态后，本地仍 WAITING 的节点（因上游失败
         // 等原因从未在 DS 侧运行）标记为 SKIPPED。只在 DS 终态分支做，运行中实例绝不误标。
         boolean hasWaiting = false;
-        for (NodeExecution ne : nodeList) {
+        for (NodeExecutionInfo ne : nodeList) {
             if ("WAITING".equalsIgnoreCase(ne.getStatus())) {
                 hasWaiting = true;
                 break;
@@ -308,7 +322,7 @@ public class DagExecutionSyncService {
         if (hasWaiting) {
             Integer workflowState = fetcher.fetchWorkflowState(dag.getDsProjectCode(), execution.getDsProcessInstanceId());
             if (isDsTerminalState(workflowState)) {
-                for (NodeExecution ne : nodeList) {
+                for (NodeExecutionInfo ne : nodeList) {
                     if ("WAITING".equalsIgnoreCase(ne.getStatus())) {
                         ne.setStatus("SKIPPED");
                         ne.setEndTime(LocalDateTime.now());
@@ -319,14 +333,20 @@ public class DagExecutionSyncService {
             }
         }
 
-        // 性能3：批量 update
+        // 性能3：批量乐观锁更新（version 冲突语义保留：服务端按 (id, version) 成对匹配，
+        // version 不匹配的行跳过不写并返回失败 id 列表）
         if (!updatedNodes.isEmpty()) {
-            int updated = nodeExecutionMapper.updateBatch(updatedNodes);
-            if (updated < updatedNodes.size()) {
+            NodeExecutionBatchUpdateRequest request = new NodeExecutionBatchUpdateRequest();
+            request.setUpdates(updatedNodes.stream().map(DagExecutionSyncService::toUpdateItem).toList());
+            List<Long> failedIds = RemoteCalls.execute("engineering.node-execution.batch-update", () -> {
+                Result<List<Long>> result = dagExecutionApi.batchUpdateNodes(request);
+                return result == null || result.data() == null ? List.of() : result.data();
+            }, updatedNodes.stream().map(NodeExecutionInfo::getId).toList());
+            if (!failedIds.isEmpty()) {
                 // 乐观锁跳过：并发写入（如 callback）已 bump version，本轮快照过期，
                 // 下一轮 sync 会基于最新数据重试，无需额外处理
-                logger.warn("node_execution 批量更新存在版本冲突跳过: 期望更新={}, 实际更新={}, executionId={}",
-                        updatedNodes.size(), updated, execution.getId());
+                logger.warn("node_execution 批量更新存在版本冲突跳过: 期望更新={}, 跳过={}, executionId={}",
+                        updatedNodes.size(), failedIds.size(), execution.getId());
             }
         }
 
@@ -348,26 +368,26 @@ public class DagExecutionSyncService {
      */
     public boolean finalizeIfAllDone(Long executionId) {
         if (executionId == null) return false;
-        DagExecution execution = dagExecutionMapper.selectById(executionId);
+        DagExecutionInfo execution = RemoteCalls.execute("engineering.dag-execution.get", () -> {
+            Result<DagExecutionInfo> result = dagExecutionApi.getById(executionId);
+            return result == null ? null : result.data();
+        }, null);
         if (execution == null || !"RUNNING".equalsIgnoreCase(execution.getStatus())) {
             return false;
         }
-        List<NodeExecution> nodeList = nodeExecutionMapper.selectByExecutionId(executionId);
+        List<NodeExecutionInfo> nodeList = listExecutionNodes(executionId);
         return finalizeIfAllDone(execution, nodeList);
     }
 
     /**
      * allDone 推断核心逻辑：调用方负责保证 nodeList 与 execution 对应。
+     * 终态回写调 finalize 端点，DAG 完成告警等副作用由 engineering 端内置触发。
      */
-    private boolean finalizeIfAllDone(DagExecution execution, List<NodeExecution> nodeList) {
+    private boolean finalizeIfAllDone(DagExecutionInfo execution, List<NodeExecutionInfo> nodeList) {
         if (nodeList.isEmpty()) {
             return false;
         }
-        boolean allDone = nodeList.stream().allMatch(n -> {
-            String s = n.getStatus();
-            return "SUCCESS".equalsIgnoreCase(s) || "FAILED".equalsIgnoreCase(s)
-                    || "SKIPPED".equalsIgnoreCase(s) || "TERMINATED".equalsIgnoreCase(s);
-        });
+        boolean allDone = nodeList.stream().allMatch(n -> isTerminalStatus(n.getStatus()));
         if (!allDone) {
             return false;
         }
@@ -379,72 +399,88 @@ public class DagExecutionSyncService {
         if (newWorkflowStatus.equals(execution.getStatus())) {
             return false;
         }
-        execution.setStatus(newWorkflowStatus);
         // 与 DS 保持一致：DAG 结束时间取所有节点 endTime 的最大值
         LocalDateTime dagEndTime = nodeList.stream()
-                .map(NodeExecution::getEndTime)
+                .map(NodeExecutionInfo::getEndTime)
                 .filter(t -> t != null)
                 .max(LocalDateTime::compareTo)
                 .orElse(LocalDateTime.now());
-        execution.setEndTime(dagEndTime);
         // 保留毫秒精度：DAG 耗时 = 最后一个节点完成时间 - DAG 开始时间
-        if (execution.getStartTime() != null) {
-            execution.setDurationMs(Duration.between(
-                    execution.getStartTime(), dagEndTime).toMillis());
-        }
-        dagExecutionMapper.updateById(execution);
+        Long durationMs = execution.getStartTime() != null
+                ? Duration.between(execution.getStartTime(), dagEndTime).toMillis() : null;
+        DagExecutionFinalizeRequest request = new DagExecutionFinalizeRequest();
+        request.setStatus(newWorkflowStatus);
+        request.setEndTime(dagEndTime);
+        request.setDurationMs(durationMs);
+        RemoteCalls.execute("engineering.dag-execution.finalize",
+                () -> dagExecutionApi.finalizeExecution(execution.getId(), request));
+        execution.setStatus(newWorkflowStatus);
+        execution.setEndTime(dagEndTime);
+        execution.setDurationMs(durationMs);
         logger.info("DAG 执行完成: executionId={}, status={}, endTime={}, durationMs={}",
                 execution.getId(), newWorkflowStatus, execution.getEndTime(), execution.getDurationMs());
-        // 回调终态监听器（告警等副作用）
-        try {
-            for (DagExecutionFinishedListener listener : finishedListeners) {
-                listener.onFinished(execution, nodeList);
-            }
-        } catch (Exception e) {
-            logger.warn("DAG 执行终态监听器处理失败: executionId={}", execution.getId(), e);
-        }
         return true;
     }
 
-    /**
-     * 性能优化：优先从 Caffeine 缓存取 dag，miss 再查库。
-     * dag 的 ds_project_code 基本只读，缓存 5 分钟可大幅减少同步时的 DB 查询。
-     */
-    private Dag resolveDag(Long dagId) {
-        if (dagId == null) return null;
-        Dag cached = dagCache.getIfPresent(dagId);
-        if (cached != null) return cached;
-        Dag dag = dagMapper.selectById(dagId);
-        if (dag != null) {
-            dagCache.put(dagId, dag);
-        }
-        return dag;
+    /** 节点终态判定：SUCCESS/FAILED/SKIPPED/TERMINATED 均为不可逆终态 */
+    private static boolean isTerminalStatus(String status) {
+        return "SUCCESS".equalsIgnoreCase(status) || "FAILED".equalsIgnoreCase(status)
+                || "SKIPPED".equalsIgnoreCase(status) || "TERMINATED".equalsIgnoreCase(status);
+    }
+
+    /** 读取执行实例下全部节点（远程失败降级空列表，本轮按无节点处理，下一轮重试） */
+    private List<NodeExecutionInfo> listExecutionNodes(Long executionId) {
+        return RemoteCalls.execute("engineering.dag-execution.nodes", () -> {
+            Result<List<NodeExecutionInfo>> result = dagExecutionApi.listNodes(executionId);
+            return result == null || result.data() == null ? List.of() : result.data();
+        }, List.of());
+    }
+
+    private static NodeExecutionBatchUpdateRequest.UpdateItem toUpdateItem(NodeExecutionInfo ne) {
+        NodeExecutionBatchUpdateRequest.UpdateItem item = new NodeExecutionBatchUpdateRequest.UpdateItem();
+        item.setId(ne.getId());
+        // 乐观锁：更新时期望的当前 version 为读取时的快照值
+        item.setVersion(ne.getVersion());
+        item.setStatus(ne.getStatus());
+        item.setDsTaskInstanceId(ne.getDsTaskInstanceId());
+        item.setStartTime(ne.getStartTime());
+        item.setEndTime(ne.getEndTime());
+        item.setDurationMs(ne.getDurationMs());
+        item.setErrorMessage(ne.getErrorMessage());
+        item.setOutputInfo(ne.getOutputInfo());
+        item.setSyncJobHistoryId(ne.getSyncJobHistoryId());
+        return item;
     }
 
     /**
-     * 性能优化：批量查询当前页 execution 对应的 dag。
-     * 先读缓存，miss 的 id 一次性批量查库，并把结果（含 null）写回缓存。
+     * 性能优化：批量查询当前页 execution 对应的 dag（EngineeringDagApi.batchGet）。
+     * 先读缓存，miss 的 id 一次性批量远程查询，并把结果（含 null）写回缓存。
      */
-    private Map<Long, Dag> resolveDagBatch(List<DagExecution> executions) {
-        Map<Long, Dag> result = new HashMap<>();
+    private Map<Long, DagInfo> resolveDagBatch(List<DagExecutionInfo> executions) {
+        Map<Long, DagInfo> result = new HashMap<>();
         List<Long> missingIds = new ArrayList<>();
-        for (DagExecution ex : executions) {
+        for (DagExecutionInfo ex : executions) {
             Long dagId = ex.getDagId();
             if (dagId == null) continue;
-            Dag cached = dagCache.getIfPresent(dagId);
+            DagInfo cached = dagCache.getIfPresent(dagId);
             if (cached != null) {
                 result.put(dagId, cached);
             } else if (!dagCache.asMap().containsKey(dagId)) {
-                // 缓存中既没有命中，也没有缓存过 null，才需要查库
+                // 缓存中既没有命中，也没有缓存过 null，才需要远程查询
                 missingIds.add(dagId);
             }
         }
         if (!missingIds.isEmpty()) {
-            List<Dag> dags = dagMapper.selectBatchIds(missingIds);
-            for (Dag dag : dags) {
-                if (dag != null && dag.getId() != null) {
-                    dagCache.put(dag.getId(), dag);
-                    result.put(dag.getId(), dag);
+            IdsRequest request = new IdsRequest();
+            request.setIds(missingIds);
+            Map<Long, DagInfo> dags = RemoteCalls.execute("engineering.dag.batch-get", () -> {
+                Result<Map<Long, DagInfo>> batchResult = dagApi.batchGet(request);
+                return batchResult == null || batchResult.data() == null ? Map.of() : batchResult.data();
+            }, Map.of());
+            for (Map.Entry<Long, DagInfo> entry : dags.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    dagCache.put(entry.getKey(), entry.getValue());
+                    result.put(entry.getKey(), entry.getValue());
                 }
             }
             // 把 miss 的 id 也缓存 null，避免下一周期重复查不存在的 dag

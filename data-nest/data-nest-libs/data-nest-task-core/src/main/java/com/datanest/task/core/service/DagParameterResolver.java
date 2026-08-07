@@ -1,7 +1,9 @@
 package com.datanest.task.core.service;
 
-import com.datanest.task.core.entity.DagParameter;
-import com.datanest.task.core.mapper.DagParameterMapper;
+import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDagApi;
+import com.datanest.engineering.api.dto.DagParamInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,8 @@ import java.util.regex.Pattern;
 /**
  * DAG 参数解析/占位符替换。
  * Sprint 4 下沉到 task-core，供 engineering 与 worker 共用。
+ * 微服务化 3.3：dag_parameter 读取经 EngineeringDagApi 远程获取（RemoteCalls 降级空列表），
+ * 占位符替换等纯逻辑保留本地。
  */
 @Service
 public class DagParameterResolver {
@@ -29,10 +33,10 @@ public class DagParameterResolver {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final DagParameterMapper dagParameterMapper;
+    private final EngineeringDagApi dagApi;
 
-    public DagParameterResolver(DagParameterMapper dagParameterMapper) {
-        this.dagParameterMapper = dagParameterMapper;
+    public DagParameterResolver(EngineeringDagApi dagApi) {
+        this.dagApi = dagApi;
     }
 
     /**
@@ -53,10 +57,13 @@ public class DagParameterResolver {
             resolved.put("dag_id", dagId.toString());
         }
 
-        // 默认值
+        // 默认值（远程读取 dag_parameter，失败降级空列表，仅靠系统变量与手动覆盖）
         if (dagId != null) {
-            List<DagParameter> params = dagParameterMapper.selectByDagId(dagId);
-            for (DagParameter param : params) {
+            List<DagParamInfo> params = RemoteCalls.execute("engineering.dag.parameters", () -> {
+                Result<List<DagParamInfo>> result = dagApi.listParameters(dagId);
+                return result == null || result.data() == null ? List.of() : result.data();
+            }, List.of());
+            for (DagParamInfo param : params) {
                 String name = param.getParamName();
                 if (!resolved.containsKey(name) && StringUtils.hasText(param.getDefaultValue())) {
                     resolved.put(name, param.getDefaultValue());

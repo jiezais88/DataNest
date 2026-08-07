@@ -47,6 +47,12 @@
             <artifactId>data-nest-engineering-api</artifactId>
         </dependency>
 
+        <!-- DataNest Governance API（微服务化 3.4：治理表跨域读写改 Feign） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-governance-api</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

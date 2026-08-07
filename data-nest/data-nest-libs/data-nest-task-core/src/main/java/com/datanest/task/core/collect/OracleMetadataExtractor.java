@@ -1,7 +1,7 @@
 package com.datanest.task.core.collect;
 
 import com.datanest.common.config.EncryptionConfig;
-import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import org.springframework.stereotype.Component;
 
 import java.sql.*;
@@ -45,7 +45,7 @@ public class OracleMetadataExtractor implements MetadataExtractor {
     }
 
     @Override
-    public List<String> extractSchemas(DataSourceConnection ds) throws SQLException {
+    public List<String> extractSchemas(DataSourceInfo ds) throws SQLException {
         List<String> schemas = new ArrayList<>();
         try (Connection conn = openConnection(ds);
              Statement stmt = conn.createStatement();
@@ -58,7 +58,7 @@ public class OracleMetadataExtractor implements MetadataExtractor {
     }
 
     @Override
-    public List<TableMetadata> extractTables(DataSourceConnection ds, String schema) throws SQLException {
+    public List<TableMetadata> extractTables(DataSourceInfo ds, String schema) throws SQLException {
         if (schema == null || schema.isBlank()) {
             schema = ds.getUsername().toUpperCase();
         }
@@ -146,7 +146,7 @@ public class OracleMetadataExtractor implements MetadataExtractor {
         return type;
     }
 
-    private Connection openConnection(DataSourceConnection ds) throws SQLException {
+    private Connection openConnection(DataSourceInfo ds) throws SQLException {
         String url = "jdbc:oracle:thin:@//" + ds.getHost() + ":" + ds.getPort() + "/" + ds.getDatabaseName();
         return DriverManager.getConnection(url, ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()));
     }

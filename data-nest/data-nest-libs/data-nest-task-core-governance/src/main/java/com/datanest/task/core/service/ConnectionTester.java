@@ -2,9 +2,9 @@ package com.datanest.task.core.service;
 
 import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.util.JdbcSchemaExtractor;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
-import com.datanest.task.core.entity.DataSourceConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -39,7 +39,7 @@ public class ConnectionTester {
         }
     }
 
-    public List<String> extractSchemas(DataSourceConnection connection, String decryptedPassword) {
+    public List<String> extractSchemas(DataSourceInfo connection, String decryptedPassword) {
         return JdbcSchemaExtractor.extractSchemas(
                 connection.getType(),
                 connection.getHost(),
@@ -51,7 +51,7 @@ public class ConnectionTester {
         );
     }
 
-    public List<String> extractDatabases(DataSourceConnection connection, String decryptedPassword) {
+    public List<String> extractDatabases(DataSourceInfo connection, String decryptedPassword) {
         return JdbcSchemaExtractor.extractDatabases(
                 connection.getType(),
                 connection.getHost(),
@@ -63,7 +63,7 @@ public class ConnectionTester {
         );
     }
 
-    public List<String> extractTables(DataSourceConnection connection, String decryptedPassword,
+    public List<String> extractTables(DataSourceInfo connection, String decryptedPassword,
                                       String database, String schema) {
         return JdbcSchemaExtractor.extractTables(
                 connection.getType(),
@@ -76,7 +76,7 @@ public class ConnectionTester {
         );
     }
 
-    public String buildJdbcUrl(DataSourceConnection connection) {
+    public String buildJdbcUrl(DataSourceInfo connection) {
         return buildJdbcUrl(connection.getType(), connection.getHost(), connection.getPort(),
                 connection.getDatabaseName(), connection.getSchemaName());
     }

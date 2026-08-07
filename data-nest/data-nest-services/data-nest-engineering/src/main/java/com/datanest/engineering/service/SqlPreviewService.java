@@ -2,9 +2,9 @@ package com.datanest.engineering.service;
 
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.dto.SqlPreviewResponse;
 import com.datanest.engineering.dto.SqlPreviewResponse.StatementResult;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.service.DagParameterResolver;
 import com.datanest.task.core.service.DorisSqlExecutor;
 import com.datanest.task.core.service.GenericSqlExecutor;
@@ -124,7 +124,7 @@ public class SqlPreviewService {
                     r.setMessage(type.equals("DDL") ? "DDL executed" : "Affected " + affected + " row(s)");
                 }
             } else {
-                DataSourceConnection ds = genericSqlExecutor.getDataSource(datasourceId);
+                DataSourceInfo ds = genericSqlExecutor.getDatasource(datasourceId);
                 GenericSqlExecutor.PreviewResult pr = genericSqlExecutor.execute(ds, stmt);
                 r.setStatus(pr.success ? "SUCCESS" : "FAILED");
                 r.setType(pr.type);

@@ -1,20 +1,21 @@
 package com.datanest.task.core.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.alert.api.AlertApi;
 import com.datanest.alert.api.dto.AlertFireRequest;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
-import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.entity.SyncJobHistory;
-import com.datanest.task.core.entity.SyncJobLog;
-import com.datanest.task.core.mapper.SyncJobHistoryMapper;
-import com.datanest.task.core.mapper.SyncJobLogMapper;
-import com.datanest.task.core.mapper.SyncJobMapper;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.FinishExecutionRequest;
+import com.datanest.engineering.api.dto.SyncHistoryCreateRequest;
+import com.datanest.engineering.api.dto.SyncHistoryFinishRequest;
+import com.datanest.engineering.api.dto.SyncHistoryInfo;
+import com.datanest.engineering.api.dto.SyncJobInfo;
+import com.datanest.engineering.api.dto.SyncLogAppendRequest;
+import com.datanest.engineering.api.dto.SyncStatusMarkRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,34 +28,32 @@ import java.util.List;
  * 批量同步任务执行核心，供 data-nest-worker 与 engineering 同进程调用。
  * 不处理 XXL-JOB 调度注册与重试触发，仅负责任务的单次执行；
  * 失败时仅做重试的持久化登记（next_retry_at），到期扫描与触发由 job 模块负责。
+ * <p>
+ * 微服务化 3.2：sync_job / sync_job_history / sync_job_log 的读写全部经
+ * {@link EngineeringSyncJobApi} 远程调用 app-engineering。
+ * 容错红线：执行开始处（任务/历史读取、mark-running、init history）远程失败 fail-fast
+ * （抛出让 XXL 任务失败，不跑"无登记执行"）；执行结束处（finish、日志、lastExecute）
+ * 经 RemoteCalls 降级（允许丢，靠对账/reaper 兜底）。
  */
 @Service
 public class SyncJobExecutorService {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncJobExecutorService.class);
-    /** 日志批量写入批次大小 */
-    private static final int LOG_BATCH_SIZE = 500;
 
-    private final SyncJobMapper syncJobMapper;
-    private final SyncJobHistoryMapper syncJobHistoryMapper;
-    private final SyncJobLogMapper syncJobLogMapper;
+    private final EngineeringSyncJobApi syncJobApi;
     private final AddaxJobService addaxJobService;
     private final MetadataRegistrationService metadataRegistrationService;
     private final SyncJobRetryService syncJobRetryService;
     private final AlertApi alertApi;
     private final QualityAutoTriggerService qualityAutoTriggerService;
 
-    public SyncJobExecutorService(SyncJobMapper syncJobMapper,
-                                  SyncJobHistoryMapper syncJobHistoryMapper,
-                                  SyncJobLogMapper syncJobLogMapper,
+    public SyncJobExecutorService(EngineeringSyncJobApi syncJobApi,
                                   AddaxJobService addaxJobService,
                                   MetadataRegistrationService metadataRegistrationService,
                                   SyncJobRetryService syncJobRetryService,
                                   AlertApi alertApi,
                                   QualityAutoTriggerService qualityAutoTriggerService) {
-        this.syncJobMapper = syncJobMapper;
-        this.syncJobHistoryMapper = syncJobHistoryMapper;
-        this.syncJobLogMapper = syncJobLogMapper;
+        this.syncJobApi = syncJobApi;
         this.addaxJobService = addaxJobService;
         this.metadataRegistrationService = metadataRegistrationService;
         this.syncJobRetryService = syncJobRetryService;
@@ -65,39 +64,35 @@ public class SyncJobExecutorService {
     /**
      * 不使用方法级事务：Addax 外部进程执行耗时分钟~小时级，长事务会长时间占连接；
      * 且 Addax 数据已写入 Doris 后事务回滚无法撤销，反而丢失 DB 侧历史/状态。
-     * 状态翻转与日志写入逐条即时提交（MyBatis-Plus 单条 insert/update 自身 autocommit）。
+     * 状态翻转与日志写入经 engineering 端点逐条即时生效。
      */
     public void runSyncJob(Long syncJobId, String triggerType, Long historyId) {
-        SyncJob job = syncJobMapper.selectById(syncJobId);
-        if (job == null) {
-            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
-        }
-        SyncJobHistory history = syncJobHistoryMapper.selectById(historyId);
+        SyncJobInfo job = getJobOrThrow(syncJobId);
+        SyncHistoryInfo history = historyId == null ? null : getHistoryOrNull(historyId);
         if (history == null) {
-            history = initHistory(syncJobId, triggerType);
+            history = initHistoryOrThrow(syncJobId, triggerType);
             historyId = history.getId();
         }
+        final Long currentHistoryId = historyId;
 
-        // 日志行号：取一次起始行号后内存自增，避免每条日志一次 COUNT
-        LogLineCounter lineCounter = new LogLineCounter(nextLineNum(history.getId()));
+        // mark-running：执行开始处 fail-fast，不跑"无登记执行"
+        markRunningOrThrow(syncJobId);
+        appendLog(history, "INFO", "开始 Addax 同步执行, syncJobId=" + syncJobId + ", triggerType=" + triggerType);
 
-        updateExecutionStatus(job, ExecutionStatus.RUNNING.getCode());
-        logInfo(history, lineCounter, "开始 Addax 同步执行, syncJobId=" + syncJobId + ", triggerType=" + triggerType);
-
-        AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId, historyId);
-        writeTableLogs(history, lineCounter, result);
+        AddaxJobService.AddaxExecutionResult result = addaxJobService.execute(syncJobId, currentHistoryId);
+        writeTableLogs(history, result);
 
         if (result.success()) {
-            finishHistory(history, result, ExecutionStatus.SUCCESS.getCode());
-            updateExecutionStatus(job, ExecutionStatus.SUCCESS.getCode());
-            updateJobLastExecute(job, history.getId());
+            finishHistory(currentHistoryId, history, result, ExecutionStatus.SUCCESS.getCode());
+            markStatusDegraded(syncJobId, ExecutionStatus.SUCCESS.getCode());
+            updateJobLastExecute(syncJobId, currentHistoryId);
             try {
                 metadataRegistrationService.register(syncJobId);
-                logInfo(history, lineCounter, "同步成功，已注册 Doris 元数据");
+                appendLog(history, "INFO", "同步成功，已注册 Doris 元数据");
             } catch (Exception e) {
                 // 同步数据已成功落 Doris，元数据注册失败不应把整个任务标 FAILED，仅记录错误
                 logger.error("Doris 元数据注册失败（不影响本次同步结果）: syncJobId={}", syncJobId, e);
-                logError(history, lineCounter, "同步成功，但 Doris 元数据注册失败: " + e.getMessage());
+                appendLog(history, "ERROR", "同步成功，但 Doris 元数据注册失败: " + e.getMessage());
             }
             // Sprint 5：同步任务成功告警（按 alert_rule 配置，经 alert-service 远程触发）
             fireAlert("SYNC_JOB", syncJobId, "SUCCESS", "同步任务执行成功，写入 "
@@ -109,22 +104,24 @@ public class SyncJobExecutorService {
 
         // 手动停止防覆盖：watcher 强杀子进程后 Addax 以失败收尾，
         // 此处重读 history，若已被置为 TERMINATED 则不再覆盖为 FAILED，也不登记重试
-        SyncJobHistory fresh = syncJobHistoryMapper.selectById(history.getId());
+        // （远程读取失败按未停止处理，与本地 selectById 返回 null 语义一致）
+        SyncHistoryInfo fresh = getHistoryOrNull(currentHistoryId);
         if (fresh != null && !ExecutionStatus.RUNNING.getCode().equalsIgnoreCase(fresh.getStatus())) {
             logger.info("同步任务已被手动停止，跳过失败覆盖与重试登记: syncJobId={}, historyId={}, status={}",
-                    syncJobId, history.getId(), fresh.getStatus());
+                    syncJobId, currentHistoryId, fresh.getStatus());
             return;
         }
 
-        logError(history, lineCounter, "Addax 执行失败: " + result.errorMessage());
-        finishHistory(history, result, ExecutionStatus.FAILED.getCode());
-        updateExecutionStatus(job, ExecutionStatus.FAILED.getCode());
-        updateJobLastExecute(job, history.getId());
-        logError(history, lineCounter, "同步任务最终失败");
+        appendLog(history, "ERROR", "Addax 执行失败: " + result.errorMessage());
+        finishHistory(currentHistoryId, history, result, ExecutionStatus.FAILED.getCode());
+        markStatusDegraded(syncJobId, ExecutionStatus.FAILED.getCode());
+        updateJobLastExecute(syncJobId, currentHistoryId);
+        appendLog(history, "ERROR", "同步任务最终失败");
         // Sprint 5：同步任务失败告警（按 alert_rule 配置，经 alert-service 远程触发）
         fireAlert("SYNC_JOB", syncJobId, "FAILURE", result.errorMessage());
         // 失败收尾：剩余重试次数 > 0 时在历史记录上登记 next_retry_at，由 job 模块周期扫描触发
         try {
+            history.setStatus(ExecutionStatus.FAILED.getCode());
             syncJobRetryService.registerRetryIfNeeded(job, history);
         } catch (Exception e) {
             logger.error("登记同步任务重试失败（不影响失败状态落库）: syncJobId={}", syncJobId, e);
@@ -160,85 +157,134 @@ public class SyncJobExecutorService {
         }, false);
     }
 
-    private SyncJobHistory initHistory(Long syncJobId, String triggerType) {
-        SyncJobHistory history = new SyncJobHistory();
+    // ==================== 执行开始处：fail-fast（异常直接传播，让 XXL 任务失败） ====================
+
+    private SyncJobInfo getJobOrThrow(Long syncJobId) {
+        Result<SyncJobInfo> result = syncJobApi.getById(syncJobId);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
+        }
+        return result.data();
+    }
+
+    private SyncHistoryInfo getHistoryOrNull(Long historyId) {
+        Result<SyncHistoryInfo> result = syncJobApi.getHistory(historyId);
+        return result == null ? null : result.data();
+    }
+
+    private SyncHistoryInfo initHistoryOrThrow(Long syncJobId, String triggerType) {
+        SyncHistoryCreateRequest request = new SyncHistoryCreateRequest();
+        request.setSyncJobId(syncJobId);
+        request.setTriggerType(triggerType);
+        Result<Long> result = syncJobApi.createHistory(request);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "创建同步执行历史失败（engineering 不可达）: syncJobId=" + syncJobId);
+        }
+        // 本地组装后续写日志/收尾所需字段，避免再回读一次
+        SyncHistoryInfo history = new SyncHistoryInfo();
+        history.setId(result.data());
         history.setSyncJobId(syncJobId);
         history.setTriggerType(triggerType);
         history.setStatus(ExecutionStatus.RUNNING.getCode());
         history.setStartTime(LocalDateTime.now());
         history.setRetryCount(0);
-        history.setSourceRows(0L);
-        history.setTargetRows(0L);
-        history.setCreatedAt(LocalDateTime.now());
-        syncJobHistoryMapper.insert(history);
         return history;
     }
 
-    private void updateJobLastExecute(SyncJob job, Long historyId) {
-        job.setLastExecuteTime(LocalDateTime.now());
-        job.setLastHistoryId(historyId);
-        job.setUpdatedAt(LocalDateTime.now());
-        syncJobMapper.updateById(job);
+    private void markRunningOrThrow(Long syncJobId) {
+        Result<Boolean> result = syncJobApi.markRunning(syncJobId);
+        if (result == null || !Boolean.TRUE.equals(result.data())) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "同步任务标记 RUNNING 失败（engineering 不可达或任务不存在）: syncJobId=" + syncJobId);
+        }
     }
 
-    private void finishHistory(SyncJobHistory history, AddaxJobService.AddaxExecutionResult result, String status) {
-        LocalDateTime now = LocalDateTime.now();
-        history.setStatus(status);
-        history.setEndTime(now);
-        if (history.getStartTime() != null) {
-            history.setDurationMs(java.time.Duration.between(history.getStartTime(), now).toMillis());
-        }
-        if (result != null) {
-            history.setSourceRows(result.readRows());
-            history.setTargetRows(result.writeRows());
-            if (result.tableResults() != null && !result.tableResults().isEmpty()) {
-                history.setTableResults(JSON.toJSONString(result.tableResults()));
+    // ==================== 执行结束处：RemoteCalls 降级（允许丢，靠对账/reaper 兜底） ====================
+
+    private void markStatusDegraded(Long syncJobId, String executionStatus) {
+        RemoteCalls.execute("engineering.sync-job.mark-status", () -> {
+            SyncStatusMarkRequest request = new SyncStatusMarkRequest();
+            request.setStatus(executionStatus);
+            syncJobApi.markStatus(syncJobId, request);
+        });
+    }
+
+    private void updateJobLastExecute(Long syncJobId, Long historyId) {
+        RemoteCalls.execute("engineering.sync-job.finish-execution", () -> {
+            FinishExecutionRequest request = new FinishExecutionRequest();
+            request.setHistoryId(historyId);
+            request.setLastExecuteTime(LocalDateTime.now());
+            syncJobApi.finishExecution(syncJobId, request);
+        });
+    }
+
+    private void finishHistory(Long historyId, SyncHistoryInfo history,
+                               AddaxJobService.AddaxExecutionResult result, String status) {
+        RemoteCalls.execute("engineering.sync-history.finish", () -> {
+            LocalDateTime now = LocalDateTime.now();
+            SyncHistoryFinishRequest request = new SyncHistoryFinishRequest();
+            request.setStatus(status);
+            request.setEndTime(now);
+            if (history.getStartTime() != null) {
+                request.setDurationMs(java.time.Duration.between(history.getStartTime(), now).toMillis());
             }
-            if (!result.success() && result.errorMessage() != null) {
-                history.setErrorMessage(result.errorMessage());
+            if (result != null) {
+                request.setSourceRows(result.readRows());
+                request.setTargetRows(result.writeRows());
+                if (result.tableResults() != null && !result.tableResults().isEmpty()) {
+                    request.setTableResults(JSON.toJSONString(result.tableResults()));
+                }
+                if (!result.success() && result.errorMessage() != null) {
+                    request.setErrorMessage(result.errorMessage());
+                }
             }
-        }
-        syncJobHistoryMapper.updateById(history);
+            syncJobApi.finishHistory(historyId, request);
+        });
     }
 
     /**
-     * 按表批量写入 Addax 日志（table_name=源表名），消除逐行 INSERT 写放大；
-     * 平台概要行（开始/成功/失败）由 insertLog 单条写入，table_name 为 NULL 归「概览」。
+     * 按表批量写入 Addax 日志（table_name=源表名），行号由服务端续号（logs:append），
+     * 消除逐行 INSERT 与调用方 nextLineNum 读取；
+     * 平台概要行（开始/成功/失败）table_name 为 NULL 归「概览」。
      */
-    private void writeTableLogs(SyncJobHistory history, LogLineCounter lineCounter,
-                                AddaxJobService.AddaxExecutionResult result) {
+    private void writeTableLogs(SyncHistoryInfo history, AddaxJobService.AddaxExecutionResult result) {
         if (result == null || result.tableResults() == null) {
             return;
         }
-        LocalDateTime now = LocalDateTime.now();
         for (AddaxJobService.TableResult tr : result.tableResults()) {
             List<String> lines = tr.logLines();
             if (lines == null || lines.isEmpty()) {
                 continue;
             }
-            List<SyncJobLog> batch = new ArrayList<>(Math.min(lines.size(), LOG_BATCH_SIZE));
+            List<SyncLogAppendRequest.Entry> entries = new ArrayList<>(lines.size());
             for (String line : lines) {
-                SyncJobLog log = new SyncJobLog();
-                log.setId(IdWorker.getId());
-                log.setHistoryId(history.getId());
-                log.setSyncJobId(history.getSyncJobId());
-                log.setLevel(detectLevel(line));
-                log.setMessage(line);
-                log.setLineNum(lineCounter.next());
-                log.setTableName(tr.sourceTable());
-                log.setCreatedAt(now);
-                batch.add(log);
-                if (batch.size() >= LOG_BATCH_SIZE) {
-                    syncJobLogMapper.insertBatch(batch);
-                    batch.clear();
-                }
+                SyncLogAppendRequest.Entry entry = new SyncLogAppendRequest.Entry();
+                entry.setContent(line);
+                entry.setLevel(detectLevel(line));
+                entry.setTableName(tr.sourceTable());
+                entries.add(entry);
             }
-            if (!batch.isEmpty()) {
-                syncJobLogMapper.insertBatch(batch);
-            }
+            appendLogs(history.getId(), entries);
         }
     }
 
+    private void appendLog(SyncHistoryInfo history, String level, String message) {
+        SyncLogAppendRequest.Entry entry = new SyncLogAppendRequest.Entry();
+        entry.setContent(message);
+        entry.setLevel(level);
+        appendLogs(history.getId(), List.of(entry));
+    }
+
+    private void appendLogs(Long historyId, List<SyncLogAppendRequest.Entry> entries) {
+        RemoteCalls.execute("engineering.sync-log.append", () -> {
+            SyncLogAppendRequest request = new SyncLogAppendRequest();
+            request.setEntries(entries);
+            syncJobApi.appendLogs(historyId, request);
+        });
+    }
+
+    /** 与服务端续号时的缺省推断逻辑一致（显式传 level，保留原有归类） */
     private String detectLevel(String line) {
         if (line == null) {
             return "INFO";
@@ -251,50 +297,5 @@ public class SyncJobExecutorService {
             return "WARN";
         }
         return "INFO";
-    }
-
-    private void logInfo(SyncJobHistory history, LogLineCounter lineCounter, String message) {
-        insertLog(history, lineCounter, "INFO", message);
-    }
-
-    private void logError(SyncJobHistory history, LogLineCounter lineCounter, String message) {
-        insertLog(history, lineCounter, "ERROR", message);
-    }
-
-    private void insertLog(SyncJobHistory history, LogLineCounter lineCounter, String level, String message) {
-        SyncJobLog log = new SyncJobLog();
-        log.setHistoryId(history.getId());
-        log.setSyncJobId(history.getSyncJobId());
-        log.setLevel(level);
-        log.setMessage(message);
-        log.setLineNum(lineCounter.next());
-        log.setCreatedAt(LocalDateTime.now());
-        syncJobLogMapper.insert(log);
-    }
-
-    private int nextLineNum(Long historyId) {
-        return (int) (syncJobLogMapper.selectCount(
-                new QueryWrapper<SyncJobLog>().eq("history_id", historyId)) + 1L);
-    }
-
-    /**
-     * 单次执行内的日志行号计数器：以 DB 现有行数+1 起始，内存自增。
-     */
-    private static final class LogLineCounter {
-        private int next;
-
-        LogLineCounter(int start) {
-            this.next = start;
-        }
-
-        int next() {
-            return next++;
-        }
-    }
-
-    private void updateExecutionStatus(SyncJob job, String executionStatus) {
-        job.setExecutionStatus(executionStatus);
-        job.setUpdatedAt(LocalDateTime.now());
-        syncJobMapper.updateById(job);
     }
 }

@@ -10,20 +10,21 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.system.api.SystemUserApi;
 import com.datanest.task.core.dto.QualityRuleBatchCreateRequest;
 import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
 import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityJobRule;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
 import com.datanest.task.core.entity.QualityScore;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import com.datanest.task.core.mapper.QualityJobRuleMapper;
@@ -68,7 +69,7 @@ public class QualityRuleService {
     private final QualityJobRuleMapper jobRuleMapper;
     private final QualityRuleTemplateMapper templateMapper;
     private final MetadataTableMapper tableMapper;
-    private final DataSourceConnectionMapper dataSourceMapper;
+    private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
     private final QualityCheckTriggerService triggerService;
     private final QualityScoreMapper qualityScoreMapper;
@@ -78,7 +79,7 @@ public class QualityRuleService {
                               QualityJobRuleMapper jobRuleMapper,
                               QualityRuleTemplateMapper templateMapper,
                               MetadataTableMapper tableMapper,
-                              DataSourceConnectionMapper dataSourceMapper,
+                              EngineeringDatasourceApi datasourceApi,
                               SystemUserApi systemUserApi,
                               QualityCheckTriggerService triggerService,
                               QualityScoreMapper qualityScoreMapper) {
@@ -87,7 +88,7 @@ public class QualityRuleService {
         this.jobRuleMapper = jobRuleMapper;
         this.templateMapper = templateMapper;
         this.tableMapper = tableMapper;
-        this.dataSourceMapper = dataSourceMapper;
+        this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
         this.triggerService = triggerService;
         this.qualityScoreMapper = qualityScoreMapper;
@@ -735,9 +736,18 @@ public class QualityRuleService {
             return Map.of();
         }
         Set<Long> externalIds = dsIds.stream().filter(id -> id != -1L).collect(Collectors.toSet());
+        // 经 engineering 服务 Feign 批量回填数据源名；失败经 RemoteCalls 降级为空 Map（名称列退化），不阻断列表
         Map<Long, String> map = externalIds.isEmpty() ? new HashMap<>()
-                : dataSourceMapper.selectBatchIds(externalIds).stream()
-                .collect(Collectors.toMap(DataSourceConnection::getId, DataSourceConnection::getName, (a, b) -> a, HashMap::new));
+                : RemoteCalls.execute("engineering.datasource.batchGet", () -> {
+                    IdsRequest request = new IdsRequest();
+                    request.setIds(externalIds.stream().toList());
+                    Result<Map<Long, DataSourceInfo>> result = datasourceApi.batchGet(request);
+                    Map<Long, DataSourceInfo> data = result == null || result.data() == null
+                            ? Map.<Long, DataSourceInfo>of() : result.data();
+                    Map<Long, String> names = new HashMap<>();
+                    data.forEach((id, info) -> names.put(id, info.getName()));
+                    return names;
+                }, new HashMap<>());
         if (dsIds.contains(-1L)) {
             map.put(-1L, "Doris 数仓");
         }

@@ -9,10 +9,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.engineering.api.dto.DagEdgeInfo;
 import com.datanest.engineering.config.DolphinSchedulerConfig;
 import com.datanest.engineering.dto.*;
-import com.datanest.task.core.entity.*;
-import com.datanest.task.core.mapper.*;
+import com.datanest.engineering.entity.*;
+import com.datanest.engineering.mapper.*;
 import com.datanest.task.core.service.DagEdgeSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,6 +98,14 @@ public class DagExecutionService {
         return trigger(dagId, null);
     }
 
+    /** dag_edge 实体 → 边快照 DTO（DagEdgeSnapshot 3.3 起只接收 DTO） */
+    private static DagEdgeInfo toEdgeInfo(DagEdge edge) {
+        DagEdgeInfo info = new DagEdgeInfo();
+        info.setSourceNodeId(edge.getSourceNodeId());
+        info.setTargetNodeId(edge.getTargetNodeId());
+        return info;
+    }
+
     @Transactional
     public DagExecutionDTO trigger(Long dagId, Map<String, Object> manualParams) {
         Dag dag = dagMapper.selectById(dagId);
@@ -134,7 +143,9 @@ public class DagExecutionService {
         Map<String, Object> resolvedParams = dagParameterService.resolveParams(dagId, manualParams);
         execution.setResolvedParams(JSON.toJSONString(resolvedParams));
         // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
-        execution.setEdgeSnapshot(DagEdgeSnapshot.capture(dagEdgeMapper, dagId));
+        // （engineering 本地归属 dag_edge，沿用本地查询并映射为 DagEdgeInfo DTO 后序列化）
+        execution.setEdgeSnapshot(DagEdgeSnapshot.capture(
+                dagEdgeMapper.selectByDagId(dagId).stream().map(DagExecutionService::toEdgeInfo).toList()));
         try {
             dagExecutionMapper.insert(execution);
         } catch (DuplicateKeyException e) {

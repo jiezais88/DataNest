@@ -41,6 +41,12 @@
             <artifactId>data-nest-system-api</artifactId>
         </dependency>
 
+        <!-- DataNest Engineering API（微服务化 3.3：sync_job/dag 对象名查询经 Feign 调 app-engineering） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-engineering-api</artifactId>
+        </dependency>
+
         <!-- Spring Context (provided by consumers) -->
         <dependency>
             <groupId>org.springframework</groupId>

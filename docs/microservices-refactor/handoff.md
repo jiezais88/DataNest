@@ -1,7 +1,42 @@
-# 微服务化改造 Handoff — 阶段 1：告警域远程化 + 新建 app-alert
+# 微服务化改造 Handoff
 
 > 独立改造（不属于任何 Sprint）。总目标：共享 jar 进程内调用 → OpenFeign 远程调用 + 按域拆库。
 > 已确认决策：OpenFeign + Nacos；按域拆库（阶段 5 才拆）；最终一致性（Feign + 重试 + 对账，无分布式事务无 MQ）；新建 app-alert 独立告警服务；worker/job 最终不持库（纯执行节点，经 Feign 回写 owner）。
+> **当前进度：阶段 1/2/3 已完成 ✅（2026-08-07）。下一阶段：阶段 4（governance 域远程化）。**
+
+## 阶段 3 范围（engineering 域远程化，2026-08-07 完成 ✅）
+
+13 表归 engineering：sync_job 三表、dag 全族（project/dag/node/edge/parameter/version）、dag_execution/node_execution/node_execution_log、datasource_connection。
+
+**阶段 3 全量回归记录（2026-08-07，全部通过）**：
+- 同步任务 E2E：SUCCESS + 6 行 + 日志服务端续号 + last_history_id 正确 ✅
+- 条件 DAG E2E（两轮冷启动 ×2 轮修复后复跑）：全节点 SUCCESS + n5_e=SKIPPED ✅
+- 采集任务 E2E：SUCCESS（5 表 29 列，CollectExecutor 经 Feign 读数据源）✅
+- 质量任务 E2E：批次 SUCCESS ✅
+- 数据源列表/连接测试/元数据与质量规则数据源名回填/有引用删除拒绝（3005）✅
+- 对账 handler（job 589）XXL API 手动触发 handle_code=200，无 Feign 错误 ✅
+- 告警中心分页/对象下拉（跨服务 Feign）✅
+- 回归期间出现的 sync/DAG FAILED 为**外部 Doris 主机（192.168.119.135）当时宕机**，恢复后重跑全绿，非代码回归
+- 全容器 RemoteCalls 失败扫描：0（修复后窗口）
+
+- **3.1（完成 ✅）**：13 表实体/mapper 复制到 `com.datanest.engineering.entity/mapper`（旧副本暂留，3.5 删）；engineering-api 扩为 4 个 Feign client（EngineeringDatasourceApi/EngineeringSyncJobApi/EngineeringDagApi/EngineeringDagExecutionApi，~40 端点）；复杂语义整体下沉 engineering（reap-stuck、cleanup、finalize+告警副作用、乐观锁 batch-update、logs:append 服务端续号）。⚠️ `EngineeringApplication` 的 @MapperScan 加了 `nameGenerator=FullyQualifiedAnnotationBeanNameGenerator`（新旧同名 mapper 共存必需，3.5 删旧实体后可考虑回退）。
+- **3.2（完成 ✅）**：同步执行链路全切 Feign——SyncJobExecutorService/SyncJobExecutor/AddaxJobService/SyncJobRetryService/MetadataRegistrationService（task-core，worker 运行）+ job 的 SyncJobRetryHandler/SyncHistoryCleanupHandler/DagExecutionSyncHandler.fetchLatestSyncHistory；**SyncJobTriggerService 从 task-core 迁入 engineering**（新增 `POST /internal/sync-jobs/{id}/trigger` 端点，worker 的 handleSyncNode 远程触发）。语义红线：执行开始处 fail-fast（mark-running/init history 失败则 XXL 任务失败，不跑无登记执行）；结束处降级靠对账兜底。engineering/governance 启动类也追加了 com.datanest.engineering.api 扫描（它们同样加载 task-core bean）。
+- **3.3（完成 ✅）**：DAG 执行链路全切 Feign——worker `DagNodeExecuteService`（5 个 mapper 全移除，状态机走 `/node-executions/{id}/mark`，日志走服务端续号 logs:append）、task-core `DagExecutionSyncService`（终态收尾走 `/dag-executions/{id}/finalize`，engineering 端内置 dag-finished 告警）；**删除 4 个类**：RemoteDagFinishedListener、DagExecutionFinishedListener、NodeExecutionLogService、StuckExecutionReaperService（逻辑下沉 engineering 端点）；job 的 DagExecutionHistoryCleanup/DagNodeTimeoutAlert/QualityAutoTriggerReconcile/StuckExecutionReaper handler 全部改端点；DagParameterResolver/DagEdgeSnapshot 改 DTO 版；QualityJobService 对象名回填改 EngineeringObjectApi。
+- **对账 handler 验证**：XXL-JOB 3.x 管理 API 已打通（`POST /auth/doLogin`（表单 userName/password/ifRemember）→ cookie → `POST /jobinfo/trigger?id=&executorParam=&addressList=`，context-path 为 `/`，**不是**老版本的 /login + /xxl-job-admin 前缀）；手动触发 jobId=589（qualityAutoTriggerReconcileHandler）执行成功 ✅
+- **3.3 DAG E2E（条件多前驱 DAG）发现并已修 1 个竞态 bug**：
+  - **现象**：条件分支非命中节点 n5_e 应 SKIPPED 实际 SUCCESS（历史执行均为 SKIPPED）。
+  - **根因**：`DagExecutionSyncService` 的 DS 状态映射无条件覆盖节点状态——worker 回调已把 n5_e 标 SKIPPED（version+1），job 同步器按 DS 实例 state=7(SUCCESS) 又覆盖回 SUCCESS（endTime 因"只补空"保留 worker 的毫秒值，成为实锤）。远程化前 callback→finalize 全是进程内毫秒级，sync 每 5s 一轮总是输给 finalize；远程化后 HTTP 延迟让 sync 在 finalize 落库前扫到 RUNNING 执行实例，潜在竞态显形。
+  - **修复**：DS 状态映射加终态保护（`isTerminalStatus`：SUCCESS/FAILED/SKIPPED/TERMINATED 不可逆，只允许推进 WAITING/RUNNING），finalizeIfAllDone 复用同一 helper。
+  - **观察项**：worker 出现 1 次 `by-ds-instance` 调用报 `'messageConverters' must not be empty`（job 0 次，原因未定位，疑似一次性/初始化竞态），下次 DAG 运行时重点观察，若复现需深挖 Feign 解码配置。
+  - **messageConverters 根因（已定位，systematic-debugging 全流程）**：
+    - ~~初判假设：NamedContextFactory 懒构建竞态~~ → **证伪**（预热子上下文后第 2 次冷启动仍复现 2 次）。
+    - **真根因**：spring-cloud-openfeign 上游已知并发缺陷 [issue #1307](https://github.com/spring-cloud/spring-cloud-openfeign/issues/1307)——`FeignHttpMessageConverters#getConverters` 类未初始化时被并发调用返回未初始化列表（空/含 null），初始化后不再出现。症状 100% 吻合（并发首调、一次性、Boot4 新错误文案）。
+    - **修复（官方 workaround 的 5.x 版）**：common `FeignContextWarmup` 启动期遍历 `FeignClientFactory.getContextNames()`，逐 client 子上下文取 `FeignHttpMessageConverters` 并显式调 `getConverters()` 强制初始化。⚠️ 两个关键细节（5.0.2 源码确认）：① 5.x 中 `FeignHttpMessageConverters` 在 `FeignClientsConfiguration` 里按 **client 子上下文各一个**，主容器没有该 bean（只预热主容器会静默跳过——第一版修复就踩了这个）；② 仅取 Decoder bean 不会触发转换器初始化，必须显式调 `getConverters()`。后续依赖升级到含修复的 spring-cloud 版本时可移除本 workaround。
+    - **验证（已闭环 ✅）**：两轮 worker 冷启动 + 条件 DAG 运行，`messageConverters` 均 0 次、n5_e 均为 SKIPPED、预热日志 7 个 client 各 6 个转换器初始化成功。
+    - 教训记录：第一版修复未验证机制就动手（预热了错误的层面），被实验证伪后严格回 Phase 1，靠 WebSearch 定位上游 issue + 读 5.0.2 源码确认 per-context 结构才修对——符合 AGENTS.md 排查约定。
+  - **Feign 查询参数 LocalDateTime 被 locale 格式化（已修复 ✅）**：3.5 全量回归时 job 对账 handler 调 `succeeded-between` 报 500——`from=8/7/26, 6:20 AM`（Feign 的 Spring ConversionService 把 LocalDateTime 查询参数按 locale 格式化，服务端按 ISO 解析失败）。**修复**：engineering-api 两处查询参数（`succeededBetween(from,to)`、`latestHistory(notBefore)`）契约改 String，调用方用 `DateTimeFormatter.ISO_LOCAL_DATE_TIME` 格式化。**规则：Feign 契约的查询/路径参数禁止用 LocalDateTime，一律 ISO String**（请求体里的 LocalDateTime 走 Jackson 不受影响）。
+- **3.4（完成 ✅）**：datasource_connection 跨服务读取全切 EngineeringDatasourceApi（GenericSqlExecutor/CollectExecutor/QualityCheckService/DataSourceRefreshService + governance 六处回填）；**跨域写入收进 governance 端点**：新建 GovernanceDatasourceApi（references 引用检查 / cascade-delete 级联删除（fail-closed）/ collect-tasks/auto-create（逻辑下沉治理侧）/ lineage/by-dag）；engineering 的 DataSourceService 移除 8 个治理/同步 mapper 注入。⚠️ 两个已知小差异留 3.5/阶段 4：references DTO 不带 status/enabled 字段；采集抽取器仍吃 DataSourceConnection 实体旧签名（3.5 删旧实体时同步改映射）。DataSourceService.delete 新事务边界：远程 cascade 先行（失败中止无残留），本地删除在后（失败可重试）。
+- **3.5（完成 ✅）**：entity 模块删除 13 实体 + 13 mapper 旧副本（剩治理表/SysUser/dto）；抽取器（MetadataExtractor×4）、ConnectionTester、AddaxJobService、IncrementalFieldTypeResolver 签名改吃 engineering-api 的 DataSourceInfo/SyncJobInfo DTO；**DagTopologyService 从 task-core-governance 迁入 engineering**（lib 不能反向依赖 service 实体）；engineering 10 个文件通配 import 翻转到本地 entity/mapper；EngineeringApplication 的 MapperScan nameGenerator 已回退。全量编译 + grep 零残留。
 
 ## 阶段 2 范围（system 域远程化，2026-08-06 完成）
 
@@ -69,7 +104,7 @@
 
 1. **阶段 1（已完成 ✅）**：新建 app-alert + 告警域远程化
 2. **阶段 2（已完成 ✅）**：system 域远程化（SysUserService → Feign）+ dag-finished N+1 批量化修复
-3. 阶段 3：engineering 域远程化（worker/job 执行回写链路，风险最高）
+3. **阶段 3（进行中 🔄，3.1/3.2 完成）**：engineering 域远程化（worker/job 执行回写链路，风险最高）
 4. 阶段 4：governance 域远程化（质量/采集/元数据/血缘回写）
 5. 阶段 5：拆库 + Flyway 基线 + 数据迁移（datanest_system / datanest_alert / datanest_engineering / datanest_governance）
 6. 阶段 6：删除 task-core 剩余共享模块、文档收尾、全量回归
@@ -152,11 +187,12 @@
 
 ## Next Action
 
-**阶段 2 已完成**。下一阶段（阶段 3：engineering 域远程化，风险最高，约 3-4 会话）：
-1. 新建 engineering-api 扩充：执行回写端点（sync_job_history/log、dag_execution/node_execution 读写、datasource 读取、sync_job/dag 定义读取）。
-2. entity 模块中 engineering 归属表（同步 + DAG 全族 + datasource_connection）实体/mapper 迁入 engineering，包名改 com.datanest.engineering.*。
-3. worker 的 SyncJobExecutor/DagNodeExecuteService、job 的 DagExecutionSyncService/SyncJobRetryService/StuckExecutionReaperService 改 Feign 回写。
-4. 重点回归：同步任务执行、DAG 全流程（条件分支/SUB_DAG/超时告警/对账 handler）、数据源 CRUD。
-5. **别忘了**：`QualityAutoTriggerReconcileHandler`（app-job）直接读 dag_execution/node_execution/quality_job/quality_check_batch 四表，阶段 3/4 需随表归属改为经 engineering-api/governance-api 读取。
+**阶段 3 已完成**。下一阶段（阶段 4：governance 域远程化，约 2-3 会话）：
+1. governance-api 扩充：质量执行回写（batch/detail）、采集回写（history/execution_log/change_detail）、元数据写入（metadata_table/column）、血缘写入（lineage_record）、合规结果写入。
+2. entity 模块治理表（metadata_*/collect_*/quality_*/compliance_check_result/lineage_record/naming_standard/field_type_standard/asset_classification）复制到 governance 本地包。
+3. worker 的 `QualityCheckService`（批次/明细回写）、`CollectExecutor`（采集三表回写）、`MetadataRegistrationService`/`SqlLineageExtractor`（元数据/血缘写入）改 Feign；task-core-governance 的质量编排类（QualityJobService/QualityRuleService 等）迁入 governance 或保留 libs 但表访问本地化。
+4. `QualityAutoTriggerReconcileHandler` 剩余两张治理表（quality_job/quality_check_batch）的直读改 governance-api。
+5. 阶段 4 完成后治理表旧实体删除（同 3.5 模式）。
+6. 重点回归：质量三种触发（手动/定时/自动）、采集全流程、元数据/血缘、合规检查、批次详情告警反查（quality_batch_id 链路）。
 
-阶段 4（governance 域）→ 阶段 5（拆库，**先处理 app-alert `selectHistoryPage` 跨表 LEFT JOIN**）→ 阶段 6（删 task-core 剩余模块、AlertConstants 双份合并、docs/agent/* 同步、全量回归）。
+阶段 5（拆库，**先处理 app-alert `selectHistoryPage` 跨表 LEFT JOIN**）→ 阶段 6（删 task-core 剩余模块、AlertConstants 双份合并、docs/agent/* 同步、全量回归）。

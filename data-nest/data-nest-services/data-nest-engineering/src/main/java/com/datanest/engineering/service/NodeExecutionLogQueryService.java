@@ -1,8 +1,8 @@
 package com.datanest.engineering.service;
 
 import com.datanest.engineering.dto.NodeExecutionLogDTO;
-import com.datanest.task.core.entity.NodeExecutionLog;
-import com.datanest.task.core.mapper.NodeExecutionLogMapper;
+import com.datanest.engineering.entity.NodeExecutionLog;
+import com.datanest.engineering.mapper.NodeExecutionLogMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;

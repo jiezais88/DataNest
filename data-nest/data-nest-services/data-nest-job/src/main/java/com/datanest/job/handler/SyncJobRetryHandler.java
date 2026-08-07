@@ -1,9 +1,10 @@
 package com.datanest.job.handler;
 
+import com.datanest.common.model.Result;
 import com.datanest.common.scheduler.SchedulerClient;
-import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.entity.SyncJobHistory;
-import com.datanest.task.core.mapper.SyncJobMapper;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.SyncHistoryInfo;
+import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.task.core.service.SyncJobRetryService;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
@@ -20,6 +21,9 @@ import java.util.List;
  * （由 task-core SyncJobRetryService.registerRetryIfNeeded 在失败收尾时登记），
  * 新建一条重试历史（parent_history_id 关联来源、retry_count+1）并通过 XXL-JOB 触发执行。
  * 替代原 engineering RetryService 的内存 ScheduledExecutorService 方案（重启即丢）。
+ * <p>
+ * 微服务化 3.2：sync_job / sync_job_history 的读写经 EngineeringSyncJobApi
+ * 远程调用 app-engineering；claim-retry 返回 false 或远程失败本轮跳过（下轮再来），不假认领。
  */
 @Component
 public class SyncJobRetryHandler {
@@ -30,14 +34,14 @@ public class SyncJobRetryHandler {
     private static final int BATCH_LIMIT = 50;
 
     private final SyncJobRetryService syncJobRetryService;
-    private final SyncJobMapper syncJobMapper;
+    private final EngineeringSyncJobApi syncJobApi;
     private final SchedulerClient schedulerClient;
 
     public SyncJobRetryHandler(SyncJobRetryService syncJobRetryService,
-                               SyncJobMapper syncJobMapper,
+                               EngineeringSyncJobApi syncJobApi,
                                SchedulerClient schedulerClient) {
         this.syncJobRetryService = syncJobRetryService;
-        this.syncJobMapper = syncJobMapper;
+        this.syncJobApi = syncJobApi;
         this.schedulerClient = schedulerClient;
     }
 
@@ -46,8 +50,8 @@ public class SyncJobRetryHandler {
         int triggered = 0;
         int failed = 0;
         try {
-            List<SyncJobHistory> dueRetries = syncJobRetryService.listDueRetries(BATCH_LIMIT);
-            for (SyncJobHistory failedHistory : dueRetries) {
+            List<SyncHistoryInfo> dueRetries = syncJobRetryService.listDueRetries(BATCH_LIMIT);
+            for (SyncHistoryInfo failedHistory : dueRetries) {
                 try {
                     if (triggerOne(failedHistory)) {
                         triggered++;
@@ -71,8 +75,9 @@ public class SyncJobRetryHandler {
      *
      * @return true 表示已触发
      */
-    private boolean triggerOne(SyncJobHistory failedHistory) {
-        SyncJob job = syncJobMapper.selectById(failedHistory.getSyncJobId());
+    private boolean triggerOne(SyncHistoryInfo failedHistory) {
+        Result<SyncJobInfo> jobResult = syncJobApi.getById(failedHistory.getSyncJobId());
+        SyncJobInfo job = jobResult == null ? null : jobResult.data();
         if (job == null || job.getXxlJobId() == null) {
             logger.warn("到期重试跳过：任务不存在或未注册 XXL-JOB，清空 next_retry_at: historyId={}, syncJobId={}",
                     failedHistory.getId(), failedHistory.getSyncJobId());
@@ -81,9 +86,9 @@ public class SyncJobRetryHandler {
             return false;
         }
 
-        SyncJobHistory retryHistory = syncJobRetryService.claimAndCreateRetryHistory(failedHistory);
+        SyncHistoryInfo retryHistory = syncJobRetryService.claimAndCreateRetryHistory(failedHistory);
         if (retryHistory == null) {
-            // 已被其他实例认领
+            // 已被其他实例认领或远程失败，本轮跳过（下轮再来）
             return false;
         }
 

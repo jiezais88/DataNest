@@ -13,6 +13,8 @@ import com.datanest.common.model.Result;
 import com.datanest.system.api.SystemUserApi;
 import com.datanest.common.scheduler.SchedulerClient;
 import com.datanest.alert.api.AlertApi;
+import com.datanest.engineering.api.EngineeringObjectApi;
+import com.datanest.engineering.api.dto.ObjectNameRequest;
 import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityJobCreateRequest;
 import org.slf4j.Logger;
@@ -26,12 +28,10 @@ import com.datanest.task.core.entity.QualityJobRule;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityScore;
 import com.datanest.task.core.mapper.CollectTaskMapper;
-import com.datanest.task.core.mapper.DagMapper;
 import com.datanest.task.core.mapper.QualityJobMapper;
 import com.datanest.task.core.mapper.QualityJobRuleMapper;
 import com.datanest.task.core.mapper.QualityRuleMapper;
 import com.datanest.task.core.mapper.QualityScoreMapper;
-import com.datanest.task.core.mapper.SyncJobMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,9 +79,8 @@ public class QualityJobService {
     private final QualityJobRuleMapper qualityJobRuleMapper;
     private final QualityRuleMapper qualityRuleMapper;
     private final QualityScoreMapper qualityScoreMapper;
-    private final SyncJobMapper syncJobMapper;
     private final CollectTaskMapper collectTaskMapper;
-    private final DagMapper dagMapper;
+    private final EngineeringObjectApi engineeringObjectApi;
 
     public QualityJobService(QualityJobMapper jobMapper,
                              QualityRuleService ruleService,
@@ -92,9 +91,8 @@ public class QualityJobService {
                              QualityJobRuleMapper qualityJobRuleMapper,
                              QualityRuleMapper qualityRuleMapper,
                              QualityScoreMapper qualityScoreMapper,
-                             SyncJobMapper syncJobMapper,
                              CollectTaskMapper collectTaskMapper,
-                             DagMapper dagMapper) {
+                             EngineeringObjectApi engineeringObjectApi) {
         this.jobMapper = jobMapper;
         this.ruleService = ruleService;
         this.systemUserApi = systemUserApi;
@@ -104,9 +102,8 @@ public class QualityJobService {
         this.qualityJobRuleMapper = qualityJobRuleMapper;
         this.qualityRuleMapper = qualityRuleMapper;
         this.qualityScoreMapper = qualityScoreMapper;
-        this.syncJobMapper = syncJobMapper;
         this.collectTaskMapper = collectTaskMapper;
-        this.dagMapper = dagMapper;
+        this.engineeringObjectApi = engineeringObjectApi;
     }
 
     // ==================== 查询 ====================
@@ -494,7 +491,11 @@ public class QualityJobService {
         return dto;
     }
 
-    /** 解析自动触发绑定对象名称：DAG_NODE → dag.name；SYNC_JOB → sync_job.name；COLLECT_TASK → collect_task.name。 */
+    /**
+     * 解析自动触发绑定对象名称：DAG_NODE → dag.name；SYNC_JOB → sync_job.name；COLLECT_TASK → collect_task.name。
+     * 微服务化 3.3：sync_job/dag 名称经 EngineeringObjectApi.names 远程查询（RemoteCalls 降级 null，
+     * 名称列退化为空，不拖垮列表）；collect_task 为治理域表，本阶段仍本地读取。
+     */
     private String resolveAutoTriggerObjectName(QualityJob job) {
         if (job.getAutoTriggerObjectId() == null) {
             return null;
@@ -503,21 +504,30 @@ public class QualityJobService {
         Long objectId = job.getAutoTriggerObjectId();
         try {
             if ("SYNC_JOB".equals(type)) {
-                var obj = syncJobMapper.selectById(objectId);
-                return obj == null ? null : obj.getName();
+                return remoteObjectName("SYNC_JOB", objectId);
             }
             if ("COLLECT_TASK".equals(type)) {
                 var obj = collectTaskMapper.selectById(objectId);
                 return obj == null ? null : obj.getName();
             }
             if ("DAG_NODE".equals(type)) {
-                var obj = dagMapper.selectById(objectId);
-                return obj == null ? null : obj.getName();
+                return remoteObjectName("DAG", objectId);
             }
         } catch (Exception e) {
             logger.warn("解析质量任务自动触发对象名失败: jobId={}, type={}, objectId={}", job.getId(), type, objectId, e);
         }
         return null;
+    }
+
+    /** 经 engineering 内部接口按对象类型批量查名称（单 id 调用，取回 map 中的值） */
+    private String remoteObjectName(String objectType, Long objectId) {
+        return RemoteCalls.execute("engineering.object.names", () -> {
+            ObjectNameRequest request = new ObjectNameRequest();
+            request.setObjectType(objectType);
+            request.setIds(List.of(objectId));
+            Result<Map<Long, String>> result = engineeringObjectApi.names(request);
+            return result == null || result.data() == null ? null : result.data().get(objectId);
+        }, null);
     }
 
     private Map<Long, Long> loadRuleCounts(List<QualityJob> records) {

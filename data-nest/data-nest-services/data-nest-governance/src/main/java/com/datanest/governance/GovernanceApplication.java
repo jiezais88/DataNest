@@ -7,9 +7,9 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication(scanBasePackages = {"com.datanest.governance", "com.datanest.common", "com.datanest.task.core",
-        "com.datanest.alert.api", "com.datanest.system.api"})
+        "com.datanest.alert.api", "com.datanest.system.api", "com.datanest.engineering.api"})
 @EnableDiscoveryClient
-@EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api"})
+@EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api", "com.datanest.engineering.api"})
 @MapperScan({"com.datanest.governance.mapper", "com.datanest.task.core.mapper"})
 public class GovernanceApplication {
 

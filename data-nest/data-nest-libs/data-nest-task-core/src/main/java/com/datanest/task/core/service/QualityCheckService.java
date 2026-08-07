@@ -12,18 +12,17 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.PageResult;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.task.core.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityCheckBatchDTO;
 import com.datanest.task.core.dto.QualityCheckDetailDTO;
 import com.datanest.task.core.dto.QualityCheckQueryRequest;
-import com.datanest.task.core.entity.DataSourceConnection;
 import com.datanest.task.core.entity.MetadataTable;
 import com.datanest.task.core.entity.QualityCheckBatch;
 import com.datanest.task.core.entity.QualityCheckDetail;
 import com.datanest.task.core.entity.QualityJob;
 import com.datanest.task.core.entity.QualityRule;
 import com.datanest.task.core.entity.QualityRuleTemplate;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
 import com.datanest.task.core.mapper.MetadataTableMapper;
 import com.datanest.task.core.mapper.QualityCheckBatchMapper;
 import com.datanest.task.core.mapper.QualityCheckDetailMapper;
@@ -87,7 +86,6 @@ public class QualityCheckService {
     private final QualityRuleMapper ruleMapper;
     private final QualityRuleTemplateMapper templateMapper;
     private final MetadataTableMapper tableMapper;
-    private final DataSourceConnectionMapper dataSourceMapper;
     private final DorisSqlExecutor dorisSqlExecutor;
     private final GenericSqlExecutor genericSqlExecutor;
     private final AlertApi alertApi;
@@ -99,7 +97,6 @@ public class QualityCheckService {
                                QualityRuleMapper ruleMapper,
                                QualityRuleTemplateMapper templateMapper,
                                MetadataTableMapper tableMapper,
-                               DataSourceConnectionMapper dataSourceMapper,
                                DorisSqlExecutor dorisSqlExecutor,
                                GenericSqlExecutor genericSqlExecutor,
                                AlertApi alertApi,
@@ -110,7 +107,6 @@ public class QualityCheckService {
         this.ruleMapper = ruleMapper;
         this.templateMapper = templateMapper;
         this.tableMapper = tableMapper;
-        this.dataSourceMapper = dataSourceMapper;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.genericSqlExecutor = genericSqlExecutor;
         this.alertApi = alertApi;
@@ -372,9 +368,11 @@ public class QualityCheckService {
             DorisSqlExecutor.QueryResult result = dorisSqlExecutor.query(sql);
             return extractFromDoris(result, rule);
         }
-        // 其他注册数据源：经 GenericSqlExecutor（解密密码 + 建连接）
-        DataSourceConnection ds = dataSourceMapper.selectById(datasourceId);
-        if (ds == null) {
+        // 其他注册数据源：经 GenericSqlExecutor（Feign 读连接，fail-fast + 解密密码 + 建连接）
+        DataSourceInfo ds;
+        try {
+            ds = genericSqlExecutor.getDatasource(datasourceId);
+        } catch (BusinessException e) {
             throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
                     "数据源不存在: " + datasourceId);
         }

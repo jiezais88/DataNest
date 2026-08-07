@@ -11,8 +11,8 @@ import com.datanest.engineering.dto.DagProjectCreateRequest;
 import com.datanest.engineering.dto.DagProjectDTO;
 import com.datanest.engineering.dto.DagProjectUpdateRequest;
 import com.datanest.task.core.constant.AlertConstants;
-import com.datanest.task.core.entity.*;
-import com.datanest.task.core.mapper.*;
+import com.datanest.engineering.entity.*;
+import com.datanest.engineering.mapper.*;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.system.api.SystemUserApi;
@@ -157,8 +157,8 @@ public class DagProjectService {
         // 2. 级联删除项目下所有 DAG 的 DB 数据
         for (Dag dag : dags) {
             Long dagId = dag.getId();
-            dagNodeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagNode>().eq("dag_id", dagId));
-            dagEdgeMapper.delete(new QueryWrapper<com.datanest.task.core.entity.DagEdge>().eq("dag_id", dagId));
+            dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", dagId));
+            dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", dagId));
             // 级联删除执行历史（与 DagService.delete 对齐：先删 node_execution 再删 dag_execution）
             List<DagExecution> executions = dagExecutionMapper.selectByDagId(dagId);
             List<Long> executionIds = executions == null ? List.of()

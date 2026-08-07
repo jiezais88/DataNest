@@ -1,21 +1,29 @@
 package com.datanest.worker.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDagApi;
+import com.datanest.engineering.api.EngineeringDagExecutionApi;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.DagEdgeInfo;
+import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
+import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.DagInfo;
+import com.datanest.engineering.api.dto.DagNodeInfo;
+import com.datanest.engineering.api.dto.NodeExecutionInfo;
+import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
+import com.datanest.engineering.api.dto.NodeLogAppendRequest;
+import com.datanest.engineering.api.dto.SyncJobTriggerRequest;
 import com.datanest.task.core.dto.ConditionNodeConfig;
 import com.datanest.task.core.dto.PythonExecuteResult;
 import com.datanest.task.core.dto.PythonNodeConfig;
-import com.datanest.task.core.entity.*;
-import com.datanest.task.core.mapper.*;
 import com.datanest.task.core.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
@@ -32,7 +40,10 @@ import java.util.stream.Collectors;
 
 /**
  * Sprint 4 架构调整：DAG 节点执行服务。
- * 运行在 data-nest-worker，直接操作业务库。
+ * 运行在 data-nest-worker。
+ * 微服务化 3.3：dag/dag_node/dag_edge/dag_execution/node_execution/node_execution_log
+ * 读写全部经 Feign 调 app-engineering（EngineeringDagApi / EngineeringDagExecutionApi），
+ * 不再直写业务库。
  */
 @Service
 public class DagNodeExecuteService {
@@ -47,45 +58,36 @@ public class DagNodeExecuteService {
 
     private static final int SQL_OUTPUT_PREVIEW_MAX_ROWS = 50;
 
-    private final DagExecutionMapper dagExecutionMapper;
-    private final NodeExecutionMapper nodeExecutionMapper;
-    private final DagMapper dagMapper;
-    private final DagNodeMapper dagNodeMapper;
-    private final DagEdgeMapper dagEdgeMapper;
+    private final EngineeringDagApi dagApi;
+    private final EngineeringDagExecutionApi dagExecutionApi;
     private final DorisSqlExecutor dorisSqlExecutor;
     private final MetadataRegistrationService metadataRegistrationService;
     private final DagExecutionSyncService dagExecutionSyncService;
     private final DagParameterResolver dagParameterResolver;
-    private final NodeExecutionLogService nodeExecutionLogService;
     private final SqlLineageExtractor sqlLineageExtractor;
     private final PythonExecutor pythonExecutor;
-    private final SyncJobTriggerService syncJobTriggerService;
+    private final EngineeringSyncJobApi syncJobApi;
     private final SyncNodeMutexService syncNodeMutexService;
 
-    public DagNodeExecuteService(DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
-                                 DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
+    public DagNodeExecuteService(EngineeringDagApi dagApi,
+                                 EngineeringDagExecutionApi dagExecutionApi,
                                  DorisSqlExecutor dorisSqlExecutor,
                                  MetadataRegistrationService metadataRegistrationService,
                                  DagExecutionSyncService dagExecutionSyncService,
                                  DagParameterResolver dagParameterResolver,
-                                 NodeExecutionLogService nodeExecutionLogService,
                                  SqlLineageExtractor sqlLineageExtractor,
                                  PythonExecutor pythonExecutor,
-                                 SyncJobTriggerService syncJobTriggerService,
+                                 EngineeringSyncJobApi syncJobApi,
                                  SyncNodeMutexService syncNodeMutexService) {
-        this.dagExecutionMapper = dagExecutionMapper;
-        this.nodeExecutionMapper = nodeExecutionMapper;
-        this.dagMapper = dagMapper;
-        this.dagNodeMapper = dagNodeMapper;
-        this.dagEdgeMapper = dagEdgeMapper;
+        this.dagApi = dagApi;
+        this.dagExecutionApi = dagExecutionApi;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.metadataRegistrationService = metadataRegistrationService;
         this.dagExecutionSyncService = dagExecutionSyncService;
         this.dagParameterResolver = dagParameterResolver;
-        this.nodeExecutionLogService = nodeExecutionLogService;
         this.sqlLineageExtractor = sqlLineageExtractor;
         this.pythonExecutor = pythonExecutor;
-        this.syncJobTriggerService = syncJobTriggerService;
+        this.syncJobApi = syncJobApi;
         this.syncNodeMutexService = syncNodeMutexService;
     }
 
@@ -107,16 +109,14 @@ public class DagNodeExecuteService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                     "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
         }
-        NodeExecution ne = lookup.nodeExecution;
+        NodeExecutionInfo ne = lookup.nodeExecution;
         // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行
         if (skipIfConditionGated(ne, dagId)) {
             return Result.ok(Map.of("affectedRows", 0));
         }
-        ne.setStatus("RUNNING");
-        ne.setStartTime(LocalDateTime.now());
-        nodeExecutionMapper.updateById(ne);
+        markNode(ne, markRequest("RUNNING", r -> r.setStartTime(LocalDateTime.now())));
 
-        DagExecution execution = dagExecutionMapper.selectById(ne.getExecutionId());
+        DagExecutionInfo execution = getExecution(ne.getExecutionId());
         Map<String, Object> params = dagParameterResolver.resolveParams(
                 dagId, execution != null ? parseJsonMap(execution.getResolvedParams()) : null);
         String sqlContent = dagParameterResolver.replacePlaceholders(rawSqlContent, params);
@@ -135,11 +135,8 @@ public class DagNodeExecuteService {
             // 元数据注册
             try {
                 if ("DDL".equals(type) || "DML".equals(type)) {
-                    Dag dag = dagMapper.selectById(dagId);
-                    DagNode node = dagNodeMapper.selectList(
-                                    new QueryWrapper<DagNode>()
-                                            .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
-                            .stream().findFirst().orElse(null);
+                    DagInfo dag = getDag(dagId);
+                    DagNodeInfo node = getDagNode(dagId, nodeId);
                     MetadataRegistrationService.SourceContext ctx = new MetadataRegistrationService.SourceContext(
                             "SQL", dagId, dag == null ? null : dag.getName(),
                             nodeId, node == null ? null : node.getNodeName());
@@ -152,37 +149,30 @@ public class DagNodeExecuteService {
                 logger.warn("元数据注册失败（不影响 SQL 执行结果）: {}", e.getMessage());
             }
 
-            ne.setOutputInfo(JSON.toJSONString(output));
-            ne.setStatus("SUCCESS");
-            ne.setEndTime(LocalDateTime.now());
-            ne.setDurationMs(Duration.between(ne.getStartTime(), ne.getEndTime()).toMillis());
-            nodeExecutionMapper.updateById(ne);
+            LocalDateTime endTime = LocalDateTime.now();
+            markNode(ne, markRequest("SUCCESS", r -> {
+                r.setOutputInfo(JSON.toJSONString(output));
+                r.setEndTime(endTime);
+                r.setDurationMs(Duration.between(ne.getStartTime(), endTime).toMillis());
+            }));
 
             logLines.add("[INFO] SQL 执行成功，类型: " + type);
-            saveNodeLogs(ne.getExecutionId(), nodeId, logLines);
+            saveNodeLogs(ne.getId(), ne.getExecutionId(), nodeId, logLines);
 
             recordSqlLineage(sqlContent, dagId, nodeId, ne.getExecutionId());
             finalizeExecutionQuietly(ne.getExecutionId());
             return Result.ok(Map.of("affectedRows", "DML".equals(type) ? output.affectedRows : 0));
         } catch (BusinessException e) {
-            ne.setStatus("FAILED");
-            ne.setErrorMessage(e.getMessage());
-            ne.setEndTime(LocalDateTime.now());
-            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
-            nodeExecutionMapper.updateById(ne);
+            markNode(ne, failedMark(startTime, e.getMessage()));
             logLines.add("[ERROR] " + e.getMessage());
-            saveNodeLogs(ne.getExecutionId(), nodeId, logLines);
+            saveNodeLogs(ne.getId(), ne.getExecutionId(), nodeId, logLines);
             finalizeExecutionQuietly(ne.getExecutionId());
             throw e;
         } catch (Exception e) {
             logger.error("SQL 节点执行失败: nodeId={}", nodeId, e);
-            ne.setStatus("FAILED");
-            ne.setErrorMessage(e.getMessage());
-            ne.setEndTime(LocalDateTime.now());
-            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
-            nodeExecutionMapper.updateById(ne);
+            markNode(ne, failedMark(startTime, e.getMessage()));
             logLines.add("[ERROR] " + e.getMessage());
-            saveNodeLogs(ne.getExecutionId(), nodeId, logLines);
+            saveNodeLogs(ne.getId(), ne.getExecutionId(), nodeId, logLines);
             finalizeExecutionQuietly(ne.getExecutionId());
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "SQL 节点执行失败: " + e.getMessage(), e);
         }
@@ -308,19 +298,30 @@ public class DagNodeExecuteService {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                         "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
             }
-            NodeExecution ne = lookup.nodeExecution;
+            NodeExecutionInfo ne = lookup.nodeExecution;
             // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行（需释放锁）
             if (skipIfConditionGated(ne, dagId)) {
                 syncNodeMutexService.unlock(syncJobId, lockToken);
                 return Result.ok(Map.of("affectedRows", 0));
             }
-            ne.setStatus("RUNNING");
-            ne.setStartTime(LocalDateTime.now());
-            ne.setSyncJobId(syncJobId);
+            LocalDateTime startTime = LocalDateTime.now();
 
-            Long historyId = syncJobTriggerService.triggerSyncJob(syncJobId, TaskTriggerType.DAG.getCode(), ne.getExecutionId());
-            ne.setSyncJobHistoryId(historyId);
-            nodeExecutionMapper.updateById(ne);
+            // 微服务化 3.2：触发逻辑下沉 engineering（按需注册 XXL + mark-running + 建历史），
+            // 远程失败 fail-fast（抛出后由下方 catch 释放锁并标节点失败）
+            SyncJobTriggerRequest triggerRequest = new SyncJobTriggerRequest();
+            triggerRequest.setTriggerType(TaskTriggerType.DAG.getCode());
+            triggerRequest.setDagExecutionId(ne.getExecutionId());
+            Result<Long> triggerResult = syncJobApi.trigger(syncJobId, triggerRequest);
+            if (triggerResult == null || triggerResult.data() == null) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "同步节点触发失败（engineering 不可达）: syncJobId=" + syncJobId);
+            }
+            Long historyId = triggerResult.data();
+            markNode(ne, markRequest("RUNNING", r -> {
+                r.setStartTime(startTime);
+                r.setSyncJobId(syncJobId);
+                r.setSyncJobHistoryId(historyId);
+            }));
 
             return Result.ok(Map.of("affectedRows", 0));
         } catch (BusinessException e) {
@@ -345,10 +346,7 @@ public class DagNodeExecuteService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 dagId / executionId / nodeId");
         }
 
-        DagNode node = dagNodeMapper.selectList(
-                        new QueryWrapper<DagNode>()
-                                .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
-                .stream().findFirst().orElse(null);
+        DagNodeInfo node = getDagNode(dagId, nodeId);
         if (node == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "节点不存在: " + nodeId);
         }
@@ -358,7 +356,7 @@ public class DagNodeExecuteService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Python 脚本为空: " + nodeId);
         }
 
-        NodeExecution ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
+        NodeExecutionInfo ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
         }
@@ -367,18 +365,16 @@ public class DagNodeExecuteService {
             return Result.ok(Map.of("outputTables", List.of(), "skipped", true));
         }
 
-        ne.setStatus("RUNNING");
-        ne.setStartTime(LocalDateTime.now());
-        nodeExecutionMapper.updateById(ne);
+        markNode(ne, markRequest("RUNNING", r -> r.setStartTime(LocalDateTime.now())));
 
-        DagExecution execution = dagExecutionMapper.selectById(ne.getExecutionId());
+        DagExecutionInfo execution = getExecution(ne.getExecutionId());
         Map<String, Object> params = dagParameterResolver.resolveParams(
                 dagId, execution != null ? parseJsonMap(execution.getResolvedParams()) : null);
         String script = dagParameterResolver.replacePlaceholders(config.getPythonScript(), params);
 
-        List<NodeExecutionLogService.LogLine> logLines = Collections.synchronizedList(new ArrayList<>());
-        Consumer<String> logCollector = line -> logLines.add(
-                new NodeExecutionLogService.LogLine(line.startsWith("[STDERR]") ? "ERROR" : "INFO", line));
+        List<NodeLogAppendRequest.Entry> logLines = Collections.synchronizedList(new ArrayList<>());
+        Consumer<String> logCollector = line -> logLines.add(logEntry(
+                line.startsWith("[STDERR]") ? "ERROR" : "INFO", line));
 
         LocalDateTime startTime = LocalDateTime.now();
         try {
@@ -391,16 +387,16 @@ public class DagNodeExecuteService {
                     config.getMemoryLimitMb());
 
             long durationMs = Duration.between(startTime, LocalDateTime.now()).toMillis();
-            ne.setDurationMs(durationMs);
-            ne.setEndTime(LocalDateTime.now());
 
             if (result.isSuccess()) {
-                ne.setStatus("SUCCESS");
-                ne.setOutputInfo(JSON.toJSONString(result));
-                nodeExecutionMapper.updateById(ne);
-                savePythonLogs(ne.getExecutionId(), nodeId, logLines);
+                markNode(ne, markRequest("SUCCESS", r -> {
+                    r.setOutputInfo(JSON.toJSONString(result));
+                    r.setEndTime(LocalDateTime.now());
+                    r.setDurationMs(durationMs);
+                }));
+                savePythonLogs(ne.getId(), ne.getExecutionId(), logLines);
 
-                Dag dag = dagMapper.selectById(dagId);
+                DagInfo dag = getDag(dagId);
                 String dagName = dag != null ? dag.getName() : null;
 
                 List<String> outputTables = result.getOutputTables();
@@ -419,12 +415,15 @@ public class DagNodeExecuteService {
                 return Result.ok(Map.of("outputTables", outputTables == null ? List.of() : outputTables,
                         "durationMs", durationMs));
             } else {
-                ne.setStatus("FAILED");
                 String err = result.getStderr();
                 if (!StringUtils.hasText(err)) err = "Python 执行失败";
-                ne.setErrorMessage(err);
-                nodeExecutionMapper.updateById(ne);
-                savePythonLogs(ne.getExecutionId(), nodeId, logLines);
+                final String errMsg = err;
+                markNode(ne, markRequest("FAILED", r -> {
+                    r.setErrorMessage(errMsg);
+                    r.setEndTime(LocalDateTime.now());
+                    r.setDurationMs(durationMs);
+                }));
+                savePythonLogs(ne.getId(), ne.getExecutionId(), logLines);
                 dagExecutionSyncService.finalizeIfAllDone(ne.getExecutionId());
                 throw new BusinessException(ErrorCode.DAG_NODE_EXECUTE_FAILED, err);
             }
@@ -432,12 +431,8 @@ public class DagNodeExecuteService {
             throw e;
         } catch (Exception e) {
             logger.error("Python 节点回调异常: nodeId={}", nodeId, e);
-            ne.setStatus("FAILED");
-            ne.setErrorMessage(e.getMessage());
-            ne.setEndTime(LocalDateTime.now());
-            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
-            nodeExecutionMapper.updateById(ne);
-            savePythonLogs(ne.getExecutionId(), nodeId, logLines);
+            markNode(ne, failedMark(startTime, e.getMessage()));
+            savePythonLogs(ne.getId(), ne.getExecutionId(), logLines);
             dagExecutionSyncService.finalizeIfAllDone(ne.getExecutionId());
             throw new BusinessException(ErrorCode.DAG_NODE_EXECUTE_FAILED, "Python 节点执行失败: " + e.getMessage());
         }
@@ -465,7 +460,7 @@ public class DagNodeExecuteService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / dagId / executionId");
         }
 
-        NodeExecution ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
+        NodeExecutionInfo ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
         }
@@ -474,17 +469,12 @@ public class DagNodeExecuteService {
             return Result.ok(Map.of("branchIndex", -1, "skipped", true));
         }
 
-        ne.setStatus("RUNNING");
-        ne.setStartTime(LocalDateTime.now());
-        nodeExecutionMapper.updateById(ne);
+        markNode(ne, markRequest("RUNNING", r -> r.setStartTime(LocalDateTime.now())));
 
         // 求值过程可能抛异常（配置缺失/表达式错误等），必须兜底回写终态，避免永久卡 RUNNING
         LocalDateTime startTime = LocalDateTime.now();
         try {
-            DagNode node = dagNodeMapper.selectList(
-                            new QueryWrapper<DagNode>()
-                                    .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
-                    .stream().findFirst().orElse(null);
+            DagNodeInfo node = getDagNode(dagId, nodeId);
             if (node == null || !StringUtils.hasText(node.getConfig())) {
                 throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID, "条件节点配置缺失: " + nodeId);
             }
@@ -497,14 +487,14 @@ public class DagNodeExecuteService {
             int branchIndex = evaluateBranches(config.getBranches(), vars);
             ConditionNodeConfig.ConditionBranch selected = config.getBranches().get(branchIndex);
 
-            ne.setOutputInfo(JSON.toJSONString(Map.of(
-                    "branchIndex", branchIndex,
-                    "nextNodeId", selected.getNextNodeId(),
-                    "branchName", selected.getBranchName())));
-            ne.setStatus("SUCCESS");
-            ne.setEndTime(LocalDateTime.now());
-            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
-            nodeExecutionMapper.updateById(ne);
+            markNode(ne, markRequest("SUCCESS", r -> {
+                r.setOutputInfo(JSON.toJSONString(Map.of(
+                        "branchIndex", branchIndex,
+                        "nextNodeId", selected.getNextNodeId(),
+                        "branchName", selected.getBranchName())));
+                r.setEndTime(LocalDateTime.now());
+                r.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
+            }));
 
             logger.info("条件分支求值: executionId={}, nodeId={}, branchIndex={}, nextNodeId={}",
                     ne.getExecutionId(), nodeId, branchIndex, selected.getNextNodeId());
@@ -512,11 +502,7 @@ public class DagNodeExecuteService {
             return Result.ok(Map.of("branchIndex", branchIndex, "nextNodeId", selected.getNextNodeId()));
         } catch (Exception e) {
             logger.error("条件节点求值失败: executionId={}, nodeId={}", ne.getExecutionId(), nodeId, e);
-            ne.setStatus("FAILED");
-            ne.setErrorMessage(e.getMessage());
-            ne.setEndTime(LocalDateTime.now());
-            ne.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
-            nodeExecutionMapper.updateById(ne);
+            markNode(ne, failedMark(startTime, e.getMessage()));
             finalizeExecutionQuietly(ne.getExecutionId());
             if (e instanceof BusinessException be) {
                 throw be;
@@ -539,19 +525,20 @@ public class DagNodeExecuteService {
      * 条件分支 gate：命中非命中分支（或上游全被跳过）的节点标记 SKIPPED 并收尾。
      * @return true 表示本节点应被跳过（已标记 SKIPPED）
      */
-    private boolean skipIfConditionGated(NodeExecution ne, Long dagId) {
+    private boolean skipIfConditionGated(NodeExecutionInfo ne, Long dagId) {
         if (ne == null) {
             return false;
         }
         if (!shouldSkipNode(ne.getExecutionId(), ne.getNodeId(), dagId)) {
             return false;
         }
-        ne.setStatus("SKIPPED");
-        ne.setEndTime(LocalDateTime.now());
-        if (ne.getStartTime() != null) {
-            ne.setDurationMs(Duration.between(ne.getStartTime(), ne.getEndTime()).toMillis());
-        }
-        nodeExecutionMapper.updateById(ne);
+        LocalDateTime endTime = LocalDateTime.now();
+        markNode(ne, markRequest("SKIPPED", r -> {
+            r.setEndTime(endTime);
+            if (ne.getStartTime() != null) {
+                r.setDurationMs(Duration.between(ne.getStartTime(), endTime).toMillis());
+            }
+        }));
         finalizeExecutionQuietly(ne.getExecutionId());
         logger.info("条件分支节点被跳过: executionId={}, nodeId={}", ne.getExecutionId(), ne.getNodeId());
         return true;
@@ -568,27 +555,27 @@ public class DagNodeExecuteService {
             if (executionId == null || dagId == null) {
                 return false;
             }
-            List<DagNode> nodes = dagNodeMapper.selectByDagId(dagId);
+            List<DagNodeInfo> nodes = listDagNodes(dagId);
             boolean hasCondition = nodes.stream()
                     .anyMatch(n -> "CONDITION".equalsIgnoreCase(n.getNodeType()));
             if (!hasCondition) {
                 return false;
             }
             Map<String, String> nodeTypeMap = nodes.stream()
-                    .collect(Collectors.toMap(DagNode::getNodeId, DagNode::getNodeType, (a, b) -> a));
-            List<DagEdge> incoming = dagEdgeMapper.selectByDagId(dagId).stream()
+                    .collect(Collectors.toMap(DagNodeInfo::getNodeId, DagNodeInfo::getNodeType, (a, b) -> a));
+            List<DagEdgeInfo> incoming = listDagEdges(dagId).stream()
                     .filter(e -> nodeId.equals(e.getTargetNodeId()))
                     .toList();
             if (incoming.isEmpty()) {
                 return false;
             }
-            Map<String, NodeExecution> neByNodeId = nodeExecutionMapper.selectByExecutionId(executionId).stream()
-                    .collect(Collectors.toMap(NodeExecution::getNodeId, n -> n, (a, b) -> a));
+            Map<String, NodeExecutionInfo> neByNodeId = listExecutionNodes(executionId).stream()
+                    .collect(Collectors.toMap(NodeExecutionInfo::getNodeId, n -> n, (a, b) -> a));
 
             boolean anyActive = false;
-            for (DagEdge edge : incoming) {
+            for (DagEdgeInfo edge : incoming) {
                 String srcNodeId = edge.getSourceNodeId();
-                NodeExecution srcNe = neByNodeId.get(srcNodeId);
+                NodeExecutionInfo srcNe = neByNodeId.get(srcNodeId);
                 if ("CONDITION".equalsIgnoreCase(nodeTypeMap.get(srcNodeId))) {
                     // 条件前驱：命中本分支才激活
                     if (srcNe != null && nodeId.equals(extractSelectedNextNodeId(srcNe.getOutputInfo()))) {
@@ -629,12 +616,12 @@ public class DagNodeExecuteService {
     private Map<String, Object> buildConditionContext(Long executionId, Long dagId, String nodeId) {
         Map<String, Object> vars = new HashMap<>();
         Map<String, Object> upstream = new HashMap<>();
-        List<String> predNodeIds = dagEdgeMapper.selectByDagId(dagId).stream()
+        List<String> predNodeIds = listDagEdges(dagId).stream()
                 .filter(e -> nodeId.equals(e.getTargetNodeId()))
-                .map(DagEdge::getSourceNodeId)
+                .map(DagEdgeInfo::getSourceNodeId)
                 .toList();
         if (!predNodeIds.isEmpty()) {
-            nodeExecutionMapper.selectByExecutionId(executionId).stream()
+            listExecutionNodes(executionId).stream()
                     .filter(n -> predNodeIds.contains(n.getNodeId()))
                     .forEach(pred -> {
                         Map<String, Object> out = parseJsonMap(pred.getOutputInfo());
@@ -650,7 +637,7 @@ public class DagNodeExecuteService {
         }
         vars.put("upstream", upstream);
 
-        DagExecution execution = dagExecutionMapper.selectById(executionId);
+        DagExecutionInfo execution = getExecution(executionId);
         Map<String, Object> dagParams = dagParameterResolver.resolveParams(
                 dagId, execution != null ? parseJsonMap(execution.getResolvedParams()) : null);
         dagParams.forEach(vars::put);
@@ -727,73 +714,81 @@ public class DagNodeExecuteService {
         if (dsProcessInstanceId == null) {
             return new NodeExecutionLookup(null);
         }
-        DagExecution dagExecution = dagExecutionMapper.selectByDsProcessInstanceId(dsProcessInstanceId);
-        if (dagExecution == null && dagId != null) {
-            dagExecution = ensureDagExecution(dagId, dsProcessInstanceId);
+        DagExecutionInfo dagExecution = getExecutionByDsInstance(dsProcessInstanceId);
+        Long executionId = dagExecution == null ? null : dagExecution.getId();
+        if (executionId == null && dagId != null) {
+            executionId = ensureDagExecution(dagId, dsProcessInstanceId);
         }
-        if (dagExecution == null) {
+        if (executionId == null) {
             return new NodeExecutionLookup(null);
         }
-        NodeExecution ne = nodeExecutionMapper.selectList(
-                        new QueryWrapper<NodeExecution>()
-                                .eq("execution_id", dagExecution.getId()).eq("node_id", nodeId)
-                                .last("LIMIT 1"))
-                .stream().findFirst().orElse(null);
+        NodeExecutionInfo ne = listExecutionNodes(executionId).stream()
+                .filter(n -> nodeId.equals(n.getNodeId()))
+                .findFirst().orElse(null);
         return new NodeExecutionLookup(ne);
     }
 
-    private DagExecution ensureDagExecution(Long dagId, Long dsProcessInstanceId) {
-        DagExecution existing = dagExecutionMapper.selectByDsProcessInstanceId(dsProcessInstanceId);
-        if (existing != null) return existing;
+    /**
+     * DS 定时调度直接触发时自动补齐 dag_execution + 全量 WAITING node_execution。
+     * 创建经 POST /dag-executions（engineering 端一个事务插执行 + 批量插节点），
+     * fail-fast：创建失败（含熔断降级、并发唯一索引冲突）直接抛错，节点回调可见失败。
+     *
+     * @return execution id；DAG 不存在时返回 null（沿用原语义，回调报 node execution not found）
+     */
+    private Long ensureDagExecution(Long dagId, Long dsProcessInstanceId) {
+        DagExecutionInfo existing = getExecutionByDsInstance(dsProcessInstanceId);
+        if (existing != null) return existing.getId();
         if (dagId == null) return null;
 
         Object lock = EXECUTION_LOCKS.computeIfAbsent(dsProcessInstanceId, k -> new Object());
         synchronized (lock) {
-            existing = dagExecutionMapper.selectByDsProcessInstanceId(dsProcessInstanceId);
-            if (existing != null) return existing;
+            existing = getExecutionByDsInstance(dsProcessInstanceId);
+            if (existing != null) return existing.getId();
 
-            Dag dag = dagMapper.selectById(dagId);
+            DagInfo dag = getDag(dagId);
             if (dag == null) {
                 logger.warn("自动创建执行记录失败：DAG 不存在 dagId={}", dagId);
                 return null;
             }
 
-            DagExecution ex = new DagExecution();
-            ex.setId(IdWorker.getId());
-            ex.setDagId(dagId);
-            ex.setDsProcessInstanceId(dsProcessInstanceId);
-            ex.setTriggerType("CRON");
-            ex.setStatus("RUNNING");
-            ex.setStartTime(LocalDateTime.now());
-            ex.setCreatedBy(0L);
-            ex.setCreatedAt(LocalDateTime.now());
-            ex.setEdgeSnapshot(DagEdgeSnapshot.capture(dagEdgeMapper, dagId));
-            try {
-                dagExecutionMapper.insert(ex);
-            } catch (DuplicateKeyException e) {
-                logger.warn("DAG 已有 RUNNING 执行，无法为 DS 实例 {} 创建记录", dsProcessInstanceId);
-                return null;
-            }
+            // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
+            String edgeSnapshot = DagEdgeSnapshot.capture(listDagEdges(dagId));
 
-            List<DagNode> nodes = dagNodeMapper.selectByDagId(dagId);
-            if (!nodes.isEmpty()) {
-                List<NodeExecution> nes = new ArrayList<>(nodes.size());
-                for (DagNode node : nodes) {
-                    NodeExecution ne = new NodeExecution();
-                    ne.setId(IdWorker.getId());
-                    ne.setExecutionId(ex.getId());
-                    ne.setNodeId(node.getNodeId());
-                    ne.setNodeName(node.getNodeName());
-                    ne.setNodeType(node.getNodeType());
-                    ne.setStatus("WAITING");
-                    nes.add(ne);
-                }
-                nodeExecutionMapper.insertBatch(nes);
+            DagExecutionCreateRequest request = new DagExecutionCreateRequest();
+            request.setDagId(dagId);
+            request.setDsProcessInstanceId(dsProcessInstanceId);
+            request.setTriggerType("CRON");
+            request.setStatus("RUNNING");
+            request.setStartTime(LocalDateTime.now());
+            request.setEdgesSnapshot(edgeSnapshot);
+            List<DagNodeInfo> nodes = listDagNodes(dagId);
+            request.setNodes(nodes.stream().map(node -> {
+                DagExecutionCreateRequest.NodeSeed seed = new DagExecutionCreateRequest.NodeSeed();
+                seed.setNodeId(node.getNodeId());
+                seed.setNodeName(node.getNodeName());
+                seed.setNodeType(node.getNodeType());
+                seed.setStatus("WAITING");
+                return seed;
+            }).toList());
+
+            Long executionId;
+            try {
+                Result<Long> result = dagExecutionApi.createExecution(request);
+                executionId = result == null ? null : result.data();
+            } catch (Exception e) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "自动创建执行记录失败（engineering 不可达）: dagId=" + dagId
+                                + ", dsProcessInstanceId=" + dsProcessInstanceId + ": " + e.getMessage(), e);
+            }
+            if (executionId == null) {
+                // 熔断降级返回空或服务端唯一索引冲突（uk_dag_execution_running：同 DAG 已有 RUNNING）
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "自动创建执行记录失败: dagId=" + dagId + ", dsProcessInstanceId=" + dsProcessInstanceId);
             }
 
             logger.info("为 DS 定时实例自动创建执行记录: dagId={}, dsProcessInstanceId={}, executionId={}",
-                    dagId, dsProcessInstanceId, ex.getId());
-            return ex;
+                    dagId, dsProcessInstanceId, executionId);
+            return executionId;
         }
     }
 
@@ -805,37 +800,139 @@ public class DagNodeExecuteService {
         }
     }
 
-    private void saveNodeLogs(Long executionId, String nodeId, List<String> lines) {
-        if (lines == null || lines.isEmpty()) return;
-        try {
-            List<NodeExecutionLogService.LogLine> logLines = lines.stream()
-                    .map(line -> new NodeExecutionLogService.LogLine(
-                            line.startsWith("[ERROR]") ? "ERROR" : "INFO", line))
-                    .toList();
-            nodeExecutionLogService.saveLogs(executionId, nodeId, logLines);
-        } catch (Exception e) {
-            logger.warn("保存 SQL 节点日志失败", e);
-        }
+    // ==================== 远程读写辅助（RemoteCalls 统一降级） ====================
+
+    private DagExecutionInfo getExecution(Long executionId) {
+        if (executionId == null) return null;
+        return RemoteCalls.execute("engineering.dag-execution.get", () -> {
+            Result<DagExecutionInfo> result = dagExecutionApi.getById(executionId);
+            return result == null ? null : result.data();
+        }, null);
     }
 
-    private void savePythonLogs(Long executionId, String nodeId, List<NodeExecutionLogService.LogLine> logLines) {
-        if (logLines == null || logLines.isEmpty()) {
+    private DagExecutionInfo getExecutionByDsInstance(Long dsProcessInstanceId) {
+        return RemoteCalls.execute("engineering.dag-execution.by-ds-instance", () -> {
+            Result<DagExecutionInfo> result = dagExecutionApi.getByDsInstance(dsProcessInstanceId);
+            return result == null ? null : result.data();
+        }, null);
+    }
+
+    private List<NodeExecutionInfo> listExecutionNodes(Long executionId) {
+        return RemoteCalls.execute("engineering.dag-execution.nodes", () -> {
+            Result<List<NodeExecutionInfo>> result = dagExecutionApi.listNodes(executionId);
+            return result == null || result.data() == null ? List.of() : result.data();
+        }, List.of());
+    }
+
+    private DagInfo getDag(Long dagId) {
+        if (dagId == null) return null;
+        return RemoteCalls.execute("engineering.dag.get", () -> {
+            Result<DagInfo> result = dagApi.getById(dagId);
+            return result == null ? null : result.data();
+        }, null);
+    }
+
+    private DagNodeInfo getDagNode(Long dagId, String nodeId) {
+        return RemoteCalls.execute("engineering.dag.node-by-node-id", () -> {
+            Result<DagNodeInfo> result = dagApi.getNodeByNodeId(dagId, nodeId);
+            return result == null ? null : result.data();
+        }, null);
+    }
+
+    private List<DagNodeInfo> listDagNodes(Long dagId) {
+        return RemoteCalls.execute("engineering.dag.nodes", () -> {
+            Result<List<DagNodeInfo>> result = dagApi.listNodes(dagId);
+            return result == null || result.data() == null ? List.of() : result.data();
+        }, List.of());
+    }
+
+    private List<DagEdgeInfo> listDagEdges(Long dagId) {
+        return RemoteCalls.execute("engineering.dag.edges", () -> {
+            Result<List<DagEdgeInfo>> result = dagApi.listEdges(dagId);
+            return result == null || result.data() == null ? List.of() : result.data();
+        }, List.of());
+    }
+
+    /**
+     * 构建节点状态机写入请求（仅携带本次真正变更的字段，避免覆盖并发写入的其他字段）。
+     */
+    private NodeExecutionMarkRequest markRequest(String status, Consumer<NodeExecutionMarkRequest> filler) {
+        NodeExecutionMarkRequest request = new NodeExecutionMarkRequest();
+        request.setStatus(status);
+        if (filler != null) {
+            filler.accept(request);
+        }
+        return request;
+    }
+
+    /** 失败终态写入请求（FAILED + errorMessage + endTime + durationMs） */
+    private NodeExecutionMarkRequest failedMark(LocalDateTime startTime, String errorMessage) {
+        return markRequest("FAILED", r -> {
+            r.setErrorMessage(errorMessage);
+            r.setEndTime(LocalDateTime.now());
+            r.setDurationMs(Duration.between(startTime, LocalDateTime.now()).toMillis());
+        });
+    }
+
+    /**
+     * 节点状态机写入：expectedStatus 取回调读取时的快照值（条件更新语义保留——
+     * 状态已被同步器/收割器并发翻转时不覆盖，与原 updateById 乐观锁的防覆盖效果一致）。
+     * 写入成功后同步本地快照，供后续字段计算（duration 等）与日志使用；
+     * 远程失败经 RemoteCalls 降级（节点状态由 DS 同步器兜底收敛）。
+     */
+    private boolean markNode(NodeExecutionInfo ne, NodeExecutionMarkRequest request) {
+        request.setExpectedStatus(ne.getStatus());
+        Boolean ok = RemoteCalls.execute("engineering.node-execution.mark", () -> {
+            Result<Boolean> result = dagExecutionApi.markNode(ne.getId(), request);
+            return result != null && Boolean.TRUE.equals(result.data());
+        }, false);
+        // 本地快照同步为写入后的值（无论远程是否生效，后续逻辑按新状态继续，DB 以实际写入为准）
+        if (request.getStatus() != null) ne.setStatus(request.getStatus());
+        if (request.getStartTime() != null) ne.setStartTime(request.getStartTime());
+        if (request.getEndTime() != null) ne.setEndTime(request.getEndTime());
+        if (request.getDurationMs() != null) ne.setDurationMs(request.getDurationMs());
+        if (request.getErrorMessage() != null) ne.setErrorMessage(request.getErrorMessage());
+        if (request.getOutputInfo() != null) ne.setOutputInfo(request.getOutputInfo());
+        if (request.getSyncJobId() != null) ne.setSyncJobId(request.getSyncJobId());
+        if (request.getSyncJobHistoryId() != null) ne.setSyncJobHistoryId(request.getSyncJobHistoryId());
+        return ok;
+    }
+
+    private static NodeLogAppendRequest.Entry logEntry(String level, String message) {
+        NodeLogAppendRequest.Entry entry = new NodeLogAppendRequest.Entry();
+        entry.setLevel(level);
+        entry.setMessage(message);
+        return entry;
+    }
+
+    private void saveNodeLogs(Long nodeExecutionId, Long executionId, String nodeId, List<String> lines) {
+        if (lines == null || lines.isEmpty() || nodeExecutionId == null) return;
+        List<NodeLogAppendRequest.Entry> entries = lines.stream()
+                .map(line -> logEntry(line.startsWith("[ERROR]") ? "ERROR" : "INFO", line))
+                .toList();
+        RemoteCalls.execute("engineering.node-log.append",
+                () -> dagExecutionApi.appendNodeLogs(nodeExecutionId, logRequest(executionId, entries)));
+    }
+
+    private void savePythonLogs(Long nodeExecutionId, Long executionId, List<NodeLogAppendRequest.Entry> logLines) {
+        if (logLines == null || logLines.isEmpty() || nodeExecutionId == null) {
             return;
         }
-        try {
-            nodeExecutionLogService.saveLogs(executionId, nodeId, logLines);
-        } catch (Exception e) {
-            logger.warn("保存 Python 节点日志失败", e);
-        }
+        RemoteCalls.execute("engineering.node-log.append",
+                () -> dagExecutionApi.appendNodeLogs(nodeExecutionId, logRequest(executionId, logLines)));
+    }
+
+    private NodeLogAppendRequest logRequest(Long executionId, List<NodeLogAppendRequest.Entry> entries) {
+        NodeLogAppendRequest request = new NodeLogAppendRequest();
+        request.setExecutionId(executionId);
+        request.setEntries(entries);
+        return request;
     }
 
     private void recordSqlLineage(String sqlContent, Long dagId, String nodeId, Long executionId) {
         try {
-            Dag dag = dagMapper.selectById(dagId);
-            DagNode node = dagNodeMapper.selectList(
-                            new QueryWrapper<DagNode>()
-                                    .eq("dag_id", dagId).eq("node_id", nodeId).last("LIMIT 1"))
-                    .stream().findFirst().orElse(null);
+            DagInfo dag = getDag(dagId);
+            DagNodeInfo node = getDagNode(dagId, nodeId);
             sqlLineageExtractor.extract(sqlContent, dagId, dag == null ? null : dag.getName(),
                     nodeId, node == null ? null : node.getNodeName(), executionId);
         } catch (Exception e) {
@@ -883,6 +980,6 @@ public class DagNodeExecuteService {
         }
     }
 
-    private record NodeExecutionLookup(NodeExecution nodeExecution) {
+    private record NodeExecutionLookup(NodeExecutionInfo nodeExecution) {
     }
 }

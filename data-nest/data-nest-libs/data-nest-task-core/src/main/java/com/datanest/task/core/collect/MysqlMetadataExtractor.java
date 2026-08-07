@@ -1,7 +1,7 @@
 package com.datanest.task.core.collect;
 
 import com.datanest.common.config.EncryptionConfig;
-import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import org.springframework.stereotype.Component;
 
 import java.sql.*;
@@ -18,7 +18,7 @@ public class MysqlMetadataExtractor implements MetadataExtractor {
     }
 
     @Override
-    public List<String> extractSchemas(DataSourceConnection ds) throws SQLException {
+    public List<String> extractSchemas(DataSourceInfo ds) throws SQLException {
         List<String> schemas = new ArrayList<>();
         try (Connection conn = openConnection(ds)) {
             try (Statement stmt = conn.createStatement();
@@ -35,7 +35,7 @@ public class MysqlMetadataExtractor implements MetadataExtractor {
     }
 
     @Override
-    public List<TableMetadata> extractTables(DataSourceConnection ds, String schema) throws SQLException {
+    public List<TableMetadata> extractTables(DataSourceInfo ds, String schema) throws SQLException {
         List<TableMetadata> tables = new ArrayList<>();
         String jdbcUrl = buildUrl(ds, schema);
         try (Connection conn = DriverManager.getConnection(jdbcUrl, ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()))) {
@@ -72,11 +72,11 @@ public class MysqlMetadataExtractor implements MetadataExtractor {
         return columns;
     }
 
-    private Connection openConnection(DataSourceConnection ds) throws SQLException {
+    private Connection openConnection(DataSourceInfo ds) throws SQLException {
         return DriverManager.getConnection(buildUrl(ds, ds.getDatabaseName()), ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()));
     }
 
-    private String buildUrl(DataSourceConnection ds, String database) {
+    private String buildUrl(DataSourceInfo ds, String database) {
         return "jdbc:mysql://" + ds.getHost() + ":" + ds.getPort() + "/" + database
                 + "?useSSL=false&useUnicode=true&characterEncoding=UTF-8&useInformationSchema=true&serverTimezone=Asia/Shanghai";
     }

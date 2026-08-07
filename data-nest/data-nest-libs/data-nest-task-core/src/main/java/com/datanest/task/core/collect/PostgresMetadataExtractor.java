@@ -1,7 +1,7 @@
 package com.datanest.task.core.collect;
 
 import com.datanest.common.config.EncryptionConfig;
-import com.datanest.task.core.entity.DataSourceConnection;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import org.springframework.stereotype.Component;
 
 import java.sql.*;
@@ -36,7 +36,7 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
     }
 
     @Override
-    public List<String> extractSchemas(DataSourceConnection ds) throws SQLException {
+    public List<String> extractSchemas(DataSourceInfo ds) throws SQLException {
         List<String> schemas = new ArrayList<>();
         try (Connection conn = openConnection(ds);
              Statement stmt = conn.createStatement();
@@ -52,7 +52,7 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
     }
 
     @Override
-    public List<TableMetadata> extractTables(DataSourceConnection ds, String schema) throws SQLException {
+    public List<TableMetadata> extractTables(DataSourceInfo ds, String schema) throws SQLException {
         if (schema == null || schema.isBlank()) {
             throw new IllegalArgumentException("PostgreSQL 采集必须指定 Schema，不能为 null 或空");
         }
@@ -96,7 +96,7 @@ public class PostgresMetadataExtractor implements MetadataExtractor {
         return columns;
     }
 
-    private Connection openConnection(DataSourceConnection ds) throws SQLException {
+    private Connection openConnection(DataSourceInfo ds) throws SQLException {
         String url = "jdbc:postgresql://" + ds.getHost() + ":" + ds.getPort() + "/" + ds.getDatabaseName()
                 + "?applicationName=data-nest-governance";
         return DriverManager.getConnection(url, ds.getUsername(), encryptionConfig.decrypt(ds.getEncryptedPassword()));

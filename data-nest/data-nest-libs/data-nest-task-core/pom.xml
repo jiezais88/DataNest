@@ -35,6 +35,12 @@
             <artifactId>data-nest-alert-api</artifactId>
         </dependency>
 
+        <!-- DataNest Engineering API（微服务化 3.2：sync_job/历史/日志/数据源读写经 Feign 调 app-engineering） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-engineering-api</artifactId>
+        </dependency>
+
         <!-- DataNest Task Core Governance（执行内核调用质量自动触发等治理编排服务） -->
         <dependency>
             <groupId>com.datanest</groupId>

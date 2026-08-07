@@ -3,8 +3,9 @@ package com.datanest.task.core.service;
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
-import com.datanest.task.core.entity.DataSourceConnection;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ import java.util.List;
  * <p>
  * Difference vs {@code com.datanest.task.core.service.DorisSqlExecutor}:
  * DorisSqlExecutor is hard-wired to built-in Doris (used by DS callback path).
- * GenericSqlExecutor accepts a DataSourceConnection, builds the JDBC URL from
+ * GenericSqlExecutor accepts a DataSourceInfo, builds the JDBC URL from
  * type/host/port/database/user/pass and opens a fresh connection via DriverManager.
  * <p>
  * Per-statement single-shot: caller is responsible for SQL splitting. One stmt in,
@@ -38,27 +39,33 @@ public class GenericSqlExecutor {
     private static final int QUERY_TIMEOUT_SECONDS = 5;
     public static final int PREVIEW_MAX_ROWS = 200;
 
-    private final DataSourceConnectionMapper dataSourceMapper;
+    private final EngineeringDatasourceApi datasourceApi;
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
 
-    public GenericSqlExecutor(DataSourceConnectionMapper dataSourceMapper,
+    public GenericSqlExecutor(EngineeringDatasourceApi datasourceApi,
                               EncryptionConfig encryptionConfig,
                               ConnectionTester connectionTester) {
-        this.dataSourceMapper = dataSourceMapper;
+        this.datasourceApi = datasourceApi;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
     }
 
-    public DataSourceConnection getDataSource(Long datasourceId) {
-        DataSourceConnection ds = dataSourceMapper.selectById(datasourceId);
+    /**
+     * 经 engineering 服务 Feign 读取数据源连接（全字段含 encryptedPassword）。
+     * fail-fast：读不到（含熔断降级返回空）直接抛 DATASOURCE_NOT_FOUND，
+     * 调用方（SQL 预览/采集/质量校验）据此中止，不可用空连接继续执行。
+     */
+    public DataSourceInfo getDatasource(Long datasourceId) {
+        Result<DataSourceInfo> result = datasourceApi.getById(datasourceId);
+        DataSourceInfo ds = result == null ? null : result.data();
         if (ds == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         return ds;
     }
 
-    public PreviewResult execute(DataSourceConnection ds, String sql) {
+    public PreviewResult execute(DataSourceInfo ds, String sql) {
         String password = encryptionConfig.decrypt(ds.getEncryptedPassword());
         String url = connectionTester.buildJdbcUrl(
                 ds.getType(), ds.getHost(), ds.getPort(),

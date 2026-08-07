@@ -2,15 +2,16 @@ package com.datanest.task.core.service;
 
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.task.core.dto.SourceTableDetail;
 import com.datanest.task.core.entity.MetadataColumn;
 import com.datanest.task.core.entity.MetadataTable;
-import com.datanest.task.core.entity.SyncJob;
 import com.datanest.task.core.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,25 +40,18 @@ public class MetadataRegistrationService {
     @Value("${datanest.engineering.addax.target-database:datanest}")
     private String targetDatabase;
 
-    private final SyncJobMapper syncJobMapper;
-    private final DataSourceConnectionMapper dataSourceConnectionMapper;
+    private final EngineeringSyncJobApi syncJobApi;
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final LineageRecordMapper lineageRecordMapper;
-    private final EncryptionConfig encryptionConfig;
-    private final ConnectionTester connectionTester;
 
-    public MetadataRegistrationService(SyncJobMapper syncJobMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
+    public MetadataRegistrationService(EngineeringSyncJobApi syncJobApi,
                                        MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
-                                       LineageRecordMapper lineageRecordMapper,
-                                       EncryptionConfig encryptionConfig, ConnectionTester connectionTester) {
-        this.syncJobMapper = syncJobMapper;
-        this.dataSourceConnectionMapper = dataSourceConnectionMapper;
+                                       LineageRecordMapper lineageRecordMapper) {
+        this.syncJobApi = syncJobApi;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.lineageRecordMapper = lineageRecordMapper;
-        this.encryptionConfig = encryptionConfig;
-        this.connectionTester = connectionTester;
     }
 
     /** Sprint 3 P1-4：懒拿连接（同 DorisSqlExecutor） */
@@ -78,7 +72,9 @@ public class MetadataRegistrationService {
 
     @Transactional(rollbackFor = Exception.class)
     public void register(Long syncJobId) {
-        SyncJob job = syncJobMapper.selectById(syncJobId);
+        // 微服务化 3.2：sync_job 定义经 engineering 远程读取（fail-fast，读不到直接抛错）
+        Result<SyncJobInfo> jobResult = syncJobApi.getById(syncJobId);
+        SyncJobInfo job = jobResult == null ? null : jobResult.data();
         if (job == null) {
             throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
         }
@@ -101,11 +97,11 @@ public class MetadataRegistrationService {
         }
     }
 
-    private String resolveTargetDatabase(SyncJob job) {
+    private String resolveTargetDatabase(SyncJobInfo job) {
         return StringUtils.hasText(job.getTargetDatabase()) ? job.getTargetDatabase() : targetDatabase;
     }
 
-    private String resolveTargetTableName(SyncJob job, String sourceTable,
+    private String resolveTargetTableName(SyncJobInfo job, String sourceTable,
                                           Map<String, SourceTableDetail> detailMap) {
         SourceTableDetail detail = detailMap != null ? detailMap.get(sourceTable) : null;
         if (detail != null && StringUtils.hasText(detail.getTargetTable())) {
@@ -121,7 +117,7 @@ public class MetadataRegistrationService {
         return "sync_" + db + "_" + table;
     }
 
-    private Map<String, SourceTableDetail> parseSourceTablesDetail(SyncJob job) {
+    private Map<String, SourceTableDetail> parseSourceTablesDetail(SyncJobInfo job) {
         if (!StringUtils.hasText(job.getSourceTablesDetail())) {
             return Map.of();
         }

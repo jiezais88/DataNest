@@ -7,14 +7,16 @@ import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.constant.SyncMode;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.engineering.api.dto.FieldMappingItemDTO;
+import com.datanest.engineering.api.dto.SyncHistoryInfo;
+import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.task.core.dto.FieldMappingItem;
 import com.datanest.task.core.dto.SourceTableDetail;
-import com.datanest.task.core.entity.DataSourceConnection;
-import com.datanest.task.core.entity.SyncJob;
-import com.datanest.task.core.entity.SyncJobHistory;
-import com.datanest.task.core.mapper.DataSourceConnectionMapper;
-import com.datanest.task.core.mapper.SyncJobHistoryMapper;
-import com.datanest.task.core.mapper.SyncJobMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,7 +58,7 @@ public class AddaxJobService {
     private static final Logger logger = LoggerFactory.getLogger(AddaxJobService.class);
     private static final int DEFAULT_CHANNEL = 3;
     private static final int DEFAULT_TIMEOUT_SECONDS = 1800;
-    /** 手动停止轮询间隔：worker 阻塞在 readLine()，靠 watcher 轮询 DB 发现 TERMINATED 后杀进程 */
+    /** 手动停止轮询间隔：worker 阻塞在 readLine()，靠 watcher 轮询 engineering 发现 TERMINATED 后杀进程 */
     private static final long STOP_WATCH_INTERVAL_MS = 2000L;
 
     @Value("${datanest.addax.home:/opt/addax}")
@@ -101,23 +103,21 @@ public class AddaxJobService {
     @Value("${datanest.doris.password:}")
     private String dorisQueryPassword;
 
-    private final SyncJobMapper syncJobMapper;
-    private final DataSourceConnectionMapper dataSourceConnectionMapper;
-    private final SyncJobHistoryMapper syncJobHistoryMapper;
+    private final EngineeringSyncJobApi syncJobApi;
+    private final EngineeringDatasourceApi datasourceApi;
     private final ConnectionTester connectionTester;
     private final AddaxLogParser addaxLogParser;
     private final ObjectMapper objectMapper;
     private final EncryptionConfig encryptionConfig;
     private final IncrementalFieldTypeResolver incrementalFieldTypeResolver;
 
-    public AddaxJobService(SyncJobMapper syncJobMapper, DataSourceConnectionMapper dataSourceConnectionMapper,
-                           SyncJobHistoryMapper syncJobHistoryMapper, ConnectionTester connectionTester,
+    public AddaxJobService(EngineeringSyncJobApi syncJobApi, EngineeringDatasourceApi datasourceApi,
+                           ConnectionTester connectionTester,
                            AddaxLogParser addaxLogParser, ObjectMapper objectMapper,
                            EncryptionConfig encryptionConfig,
                            IncrementalFieldTypeResolver incrementalFieldTypeResolver) {
-        this.syncJobMapper = syncJobMapper;
-        this.dataSourceConnectionMapper = dataSourceConnectionMapper;
-        this.syncJobHistoryMapper = syncJobHistoryMapper;
+        this.syncJobApi = syncJobApi;
+        this.datasourceApi = datasourceApi;
         this.connectionTester = connectionTester;
         this.addaxLogParser = addaxLogParser;
         this.objectMapper = objectMapper;
@@ -136,15 +136,9 @@ public class AddaxJobService {
      * @return 执行结果，包含聚合后的日志行列表
      */
     public AddaxExecutionResult execute(Long syncJobId, Long historyId) {
-        SyncJob job = syncJobMapper.selectById(syncJobId);
-        if (job == null) {
-            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
-        }
-
-        DataSourceConnection source = dataSourceConnectionMapper.selectById(job.getSourceDatasourceId());
-        if (source == null) {
-            throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: " + job.getSourceDatasourceId());
-        }
+        // 执行开始处 fail-fast：任务/数据源读不到直接抛错，不跑"无登记执行"
+        SyncJobInfo job = getJobOrThrow(syncJobId);
+        DataSourceInfo source = getDatasourceOrThrow(job.getSourceDatasourceId());
 
         List<String> sourceTables = job.getSourceTables();
         if (sourceTables == null || sourceTables.isEmpty()) {
@@ -231,7 +225,7 @@ public class AddaxJobService {
                 errorMessage, lastLogPath, aggregatedLogLines, tableResults);
     }
 
-    private String generateJobJson(SyncJob job, DataSourceConnection source,
+    private String generateJobJson(SyncJobInfo job, DataSourceInfo source,
                                    String sourceTable, SourceTableDetail detail) {
         String sourceDb = StringUtils.hasText(job.getSourceDatabase()) ? job.getSourceDatabase()
                 : (StringUtils.hasText(job.getSourceSchema()) ? job.getSourceSchema() : "default");
@@ -298,7 +292,7 @@ public class AddaxJobService {
         }
     }
 
-    private Map<String, SourceTableDetail> parseSourceTablesDetail(SyncJob job) {
+    private Map<String, SourceTableDetail> parseSourceTablesDetail(SyncJobInfo job) {
         if (!StringUtils.hasText(job.getSourceTablesDetail())) {
             return Map.of();
         }
@@ -317,7 +311,7 @@ public class AddaxJobService {
         }
     }
 
-    private String resolveTargetTableName(SyncJob job, String sourceTable, SourceTableDetail detail) {
+    private String resolveTargetTableName(SyncJobInfo job, String sourceTable, SourceTableDetail detail) {
         if (detail != null && StringUtils.hasText(detail.getTargetTable())) {
             return detail.getTargetTable();
         }
@@ -331,7 +325,7 @@ public class AddaxJobService {
         return "sync_" + db + "_" + table;
     }
 
-    private Map<String, Object> buildReader(SyncJob job, DataSourceConnection source,
+    private Map<String, Object> buildReader(SyncJobInfo job, DataSourceInfo source,
                                             String sourceDb, String sourceTable,
                                             SourceTableDetail detail) {
         String jdbcUrl = connectionTester.buildJdbcUrl(source);
@@ -382,15 +376,14 @@ public class AddaxJobService {
         };
     }
 
-    private String queryIncrementalMaxValue(SyncJob job, DataSourceConnection source,
+    private String queryIncrementalMaxValue(SyncJobInfo job, DataSourceInfo source,
                                             String sourceTable, SourceTableDetail detail) {
-        // 首次成功同步之前，直接全量拉取
-        boolean hasSuccessHistory = syncJobHistoryMapper.selectCount(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SyncJobHistory>()
-                        .eq("sync_job_id", job.getId())
-                        .eq("status", ExecutionStatus.SUCCESS.getCode())
-        ) > 0;
-        if (!hasSuccessHistory) {
+        // 首次成功同步之前，直接全量拉取；远程失败降级按 0（全量）处理
+        Long successCount = RemoteCalls.execute("engineering.sync-history.success-count", () -> {
+            Result<Long> result = syncJobApi.successCount(job.getId());
+            return result == null || result.data() == null ? 0L : result.data();
+        }, 0L);
+        if (successCount <= 0) {
             return null;
         }
 
@@ -427,7 +420,7 @@ public class AddaxJobService {
         return null;
     }
 
-    private Map<String, Object> buildWriter(SyncJob job, String targetTableName, SourceTableDetail detail) {
+    private Map<String, Object> buildWriter(SyncJobInfo job, String targetTableName, SourceTableDetail detail) {
         List<String> columns = buildWriterColumns(job, detail);
         String targetDb = resolveTargetDatabase(job);
 
@@ -463,31 +456,43 @@ public class AddaxJobService {
         return url.replaceFirst("^https?://", "");
     }
 
-    private String resolveTargetDatabase(SyncJob job) {
+    private String resolveTargetDatabase(SyncJobInfo job) {
         if (!StringUtils.hasText(job.getTargetDatabase())) {
             throw new IllegalArgumentException("目标库名不能为空: syncJobId=" + job.getId());
         }
         return job.getTargetDatabase();
     }
 
-    private List<String> buildReaderColumns(SyncJob job, SourceTableDetail detail) {
-        List<FieldMappingItem> mapping = detail != null && detail.getFieldMapping() != null
-                ? detail.getFieldMapping() : job.getFieldMapping();
+    private List<String> buildReaderColumns(SyncJobInfo job, SourceTableDetail detail) {
+        if (detail != null && detail.getFieldMapping() != null) {
+            List<FieldMappingItem> mapping = detail.getFieldMapping();
+            return mapping.isEmpty() ? List.of("*") : mapping.stream()
+                    .map(FieldMappingItem::getSourceColumn)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.toList());
+        }
+        List<FieldMappingItemDTO> mapping = job.getFieldMapping();
         if (mapping != null && !mapping.isEmpty()) {
             return mapping.stream()
-                    .map(FieldMappingItem::getSourceColumn)
+                    .map(FieldMappingItemDTO::getSourceColumn)
                     .filter(StringUtils::hasText)
                     .collect(Collectors.toList());
         }
         return List.of("*");
     }
 
-    private List<String> buildWriterColumns(SyncJob job, SourceTableDetail detail) {
-        List<FieldMappingItem> mapping = detail != null && detail.getFieldMapping() != null
-                ? detail.getFieldMapping() : job.getFieldMapping();
+    private List<String> buildWriterColumns(SyncJobInfo job, SourceTableDetail detail) {
+        if (detail != null && detail.getFieldMapping() != null) {
+            List<FieldMappingItem> mapping = detail.getFieldMapping();
+            return mapping.isEmpty() ? List.of("*") : mapping.stream()
+                    .map(FieldMappingItem::getTargetColumn)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.toList());
+        }
+        List<FieldMappingItemDTO> mapping = job.getFieldMapping();
         if (mapping != null && !mapping.isEmpty()) {
             return mapping.stream()
-                    .map(FieldMappingItem::getTargetColumn)
+                    .map(FieldMappingItemDTO::getTargetColumn)
                     .filter(StringUtils::hasText)
                     .collect(Collectors.toList());
         }
@@ -508,7 +513,7 @@ public class AddaxJobService {
     }
 
     private AddaxExecutionResult runAddax(Long syncJobId, Long historyId, Path jobFilePath, Path logFilePath,
-                                          SyncJob job, DataSourceConnection source, String tableLabel) {
+                                          SyncJobInfo job, DataSourceInfo source, String tableLabel) {
         String addaxSh = Paths.get(addaxHome, "bin", "addax.sh").toString();
         List<String> command = List.of(addaxSh, jobFilePath.toString());
         logger.info("启动 Addax: syncJobId={}, table={}, command={}, workDir={}", syncJobId, tableLabel, command, addaxHome);
@@ -572,8 +577,9 @@ public class AddaxJobService {
     }
 
     /**
-     * 手动停止 watcher：每 2 秒重查 history 状态，发现 TERMINATED 则强杀 Addax 子进程。
+     * 手动停止 watcher：每 2 秒经 getHistory 轻量端点重查 history 状态，发现 TERMINATED 则强杀 Addax 子进程。
      * daemon 线程 + 进程存活判断保证进程结束后 watcher 随之退出。
+     * 远程失败本轮按「未停止」处理继续跑（连续失败记 warn）。
      */
     private void startStopWatcher(Process process, Long historyId, Long syncJobId) {
         Thread watcher = new Thread(() -> {
@@ -585,20 +591,39 @@ public class AddaxJobService {
                     return;
                 }
                 try {
-                    SyncJobHistory history = syncJobHistoryMapper.selectById(historyId);
+                    Result<SyncHistoryInfo> result = syncJobApi.getHistory(historyId);
+                    SyncHistoryInfo history = result == null ? null : result.data();
                     if (history != null && ExecutionStatus.TERMINATED.getCode().equalsIgnoreCase(history.getStatus())) {
                         logger.info("检测到手动停止，强杀 Addax 子进程: syncJobId={}, historyId={}", syncJobId, historyId);
                         process.destroyForcibly();
                         return;
                     }
                 } catch (Exception e) {
-                    // 轮询失败（如 DB 瞬断）不致命，下一周期重试
+                    // 轮询失败（如 engineering 瞬断）不致命，按未停止处理，下一周期重试
                     logger.warn("轮询手动停止状态失败，继续等待: syncJobId={}, historyId={}", syncJobId, historyId, e);
                 }
             }
         }, "addax-stop-watcher-" + historyId);
         watcher.setDaemon(true);
         watcher.start();
+    }
+
+    // ==================== engineering 远程读取（fail-fast，DTO 直接作为内存模型） ====================
+
+    private SyncJobInfo getJobOrThrow(Long syncJobId) {
+        Result<SyncJobInfo> result = syncJobApi.getById(syncJobId);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
+        }
+        return result.data();
+    }
+
+    private DataSourceInfo getDatasourceOrThrow(Long datasourceId) {
+        Result<DataSourceInfo> result = datasourceApi.getById(datasourceId);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "源数据源不存在: " + datasourceId);
+        }
+        return result.data();
     }
 
     private String buildErrorMessage(AddaxLogParser.AddaxParseResult parseResult, int exitCode) {

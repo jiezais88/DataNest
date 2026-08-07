@@ -3,10 +3,10 @@ package com.datanest.job.handler;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.model.Result;
 import com.datanest.common.scheduler.SchedulerClient;
-import com.datanest.task.core.entity.SyncJobHistory;
-import com.datanest.task.core.mapper.SyncJobHistoryMapper;
+import com.datanest.engineering.api.EngineeringSyncJobApi;
+import com.datanest.engineering.api.dto.SyncHistoryInfo;
 import com.datanest.task.core.service.DagExecutionSyncService;
 import com.datanest.task.core.service.DagExecutionSyncService.*;
 import com.xxl.job.core.context.XxlJobHelper;
@@ -25,6 +25,7 @@ import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,7 +62,7 @@ public class DagExecutionSyncHandler {
     private static final String ADAPTIVE_TRIGGER_LOCK_KEY = "datanest:dag-sync:adaptive-trigger-lock";
 
     private final DagExecutionSyncService dagExecutionSyncService;
-    private final SyncJobHistoryMapper syncJobHistoryMapper;
+    private final EngineeringSyncJobApi syncJobApi;
     private final RestTemplate restTemplate;
     private final StringRedisTemplate redisTemplate;
     private final SchedulerClient schedulerClient;
@@ -71,7 +72,7 @@ public class DagExecutionSyncHandler {
     private final long adaptiveMinIntervalMs;
 
     public DagExecutionSyncHandler(DagExecutionSyncService dagExecutionSyncService,
-                                   SyncJobHistoryMapper syncJobHistoryMapper,
+                                   EngineeringSyncJobApi syncJobApi,
                                    RestTemplate restTemplate,
                                    StringRedisTemplate redisTemplate,
                                    SchedulerClient schedulerClient,
@@ -80,7 +81,7 @@ public class DagExecutionSyncHandler {
                                    @Value("${datanest.job.dag-sync.adaptive-enabled:true}") boolean adaptiveEnabled,
                                    @Value("${datanest.job.dag-sync.adaptive-min-interval-ms:5000}") long adaptiveMinIntervalMs) {
         this.dagExecutionSyncService = dagExecutionSyncService;
-        this.syncJobHistoryMapper = syncJobHistoryMapper;
+        this.syncJobApi = syncJobApi;
         this.restTemplate = restTemplate;
         this.redisTemplate = redisTemplate;
         this.schedulerClient = schedulerClient;
@@ -184,22 +185,19 @@ public class DagExecutionSyncHandler {
 
     /**
      * Sprint 3 P1-2：SYNC 节点 history 查询
-     * 反查 sync_job_history 拿最新一条，看 status（RUNNING/SUCCESS/FAILED）决定是否收尾
+     * 微服务化 3.2：经 EngineeringSyncJobApi.latestHistory 远程查询 app-engineering
+     * （notBefore 传节点 startTime，服务端只接受 end_time 不早于该值的记录），
+     * 远程失败按「本轮无结果」跳过收尾，等下一轮。
      * <p>
      * 负数耗时修复：nodeStartTime 非空时只接受 end_time 不早于它的 history
      * （即"属于本次运行"的 history），取不到则返回 null 本轮跳过收尾，等下一轮。
      */
     private SyncHistoryResult fetchLatestSyncHistory(Long syncJobId, LocalDateTime nodeStartTime) {
         if (syncJobId == null) return null;
-        QueryWrapper<SyncJobHistory> wrapper = new QueryWrapper<SyncJobHistory>()
-                .eq("sync_job_id", syncJobId)
-                .orderByDesc("id")
-                .last("LIMIT 1");
-        if (nodeStartTime != null) {
-            wrapper.ge("end_time", nodeStartTime);
-        }
-        SyncJobHistory h = syncJobHistoryMapper.selectList(wrapper)
-                .stream().findFirst().orElse(null);
+        // 契约为 ISO 字符串（Feign ConversionService 会把 LocalDateTime 按 locale 格式化）
+        String notBefore = nodeStartTime == null ? null : nodeStartTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        Result<SyncHistoryInfo> result = syncJobApi.latestHistory(syncJobId, notBefore);
+        SyncHistoryInfo h = result == null ? null : result.data();
         if (h == null) return null;
         // RUNNING 状态不收尾（让 sync 继续跑）
         if ("RUNNING".equalsIgnoreCase(h.getStatus())) return null;

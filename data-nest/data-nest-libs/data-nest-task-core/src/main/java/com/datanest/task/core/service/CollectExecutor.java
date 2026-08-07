@@ -8,6 +8,9 @@ import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.task.core.collect.ColumnMetadata;
 import com.datanest.task.core.collect.ExtractorFactory;
 import com.datanest.task.core.collect.MetadataExtractor;
@@ -35,7 +38,7 @@ public class CollectExecutor {
     private final CollectHistoryMapper collectHistoryMapper;
     private final CollectExecutionLogMapper logMapper;
     private final CollectChangeDetailMapper changeDetailMapper;
-    private final DataSourceConnectionMapper dataSourceConnectionMapper;
+    private final EngineeringDatasourceApi datasourceApi;
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final ExtractorFactory extractorFactory;
@@ -44,7 +47,7 @@ public class CollectExecutor {
 
     public CollectExecutor(CollectTaskMapper collectTaskMapper, CollectHistoryMapper collectHistoryMapper,
                            CollectExecutionLogMapper logMapper, CollectChangeDetailMapper changeDetailMapper,
-                           DataSourceConnectionMapper dataSourceConnectionMapper, MetadataTableMapper metadataTableMapper,
+                           EngineeringDatasourceApi datasourceApi, MetadataTableMapper metadataTableMapper,
                            MetadataColumnMapper metadataColumnMapper, ExtractorFactory extractorFactory,
                            AlertApi alertApi,
                            QualityAutoTriggerService qualityAutoTriggerService) {
@@ -52,7 +55,7 @@ public class CollectExecutor {
         this.collectHistoryMapper = collectHistoryMapper;
         this.logMapper = logMapper;
         this.changeDetailMapper = changeDetailMapper;
-        this.dataSourceConnectionMapper = dataSourceConnectionMapper;
+        this.datasourceApi = datasourceApi;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.extractorFactory = extractorFactory;
@@ -104,7 +107,9 @@ public class CollectExecutor {
         collectTaskMapper.updateById(task);
         logger.info("runTask 任务状态已更新为 RUNNING: taskId={}", taskId);
 
-        DataSourceConnection ds = dataSourceConnectionMapper.selectById(task.getDatasourceId());
+        // 经 engineering 服务 Feign 读取数据源连接（fail-fast，不走 RemoteCalls 降级：
+        // 连接读不到不启动采集，记 FAILED 历史后抛出）
+        DataSourceInfo ds = getDatasourceInfo(task.getDatasourceId());
         if (ds == null) {
             logger.error("runTask 数据源不存在: taskId={}, datasourceId={}", taskId, task.getDatasourceId());
             failTask(task, triggerType, "数据源不存在: " + task.getDatasourceId());
@@ -279,7 +284,7 @@ public class CollectExecutor {
         return current != null && ExecutionStatus.TERMINATED.getCode().equals(current.getStatus());
     }
 
-    private TableChange upsertTable(CollectTask task, DataSourceConnection ds, TableMetadata table, Long historyId) {
+    private TableChange upsertTable(CollectTask task, DataSourceInfo ds, TableMetadata table, Long historyId) {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
         wrapper.eq("datasource_id", ds.getId())
                 .eq("database_name", table.getDatabaseName())
@@ -479,7 +484,7 @@ public class CollectExecutor {
         collectHistoryMapper.updateById(history);
     }
 
-    private int detectDeletedTables(DataSourceConnection ds, List<TableMetadata> collectedTables,
+    private int detectDeletedTables(DataSourceInfo ds, List<TableMetadata> collectedTables,
                                     Set<String> collectedTableNames, Long historyId) {
         if (collectedTables.isEmpty()) {
             return 0;
@@ -529,6 +534,15 @@ public class CollectExecutor {
         finishHistory(history, 0, 0, 0, 0, 0, 0, 0, 0, 0, message, ExecutionStatus.FAILED.getCode());
         updateTaskStatus(task, history, ExecutionStatus.FAILED.getCode());
         throw new RuntimeException(message);
+    }
+
+    /**
+     * 经 Feign 读取数据源连接信息（仅作连接参数载体传给采集抽取器，不落库）。
+     * 返回 null 表示读不到（含熔断降级返回空），由调用方按「数据源不存在」fail-fast。
+     */
+    private DataSourceInfo getDatasourceInfo(Long datasourceId) {
+        Result<DataSourceInfo> result = datasourceApi.getById(datasourceId);
+        return result == null ? null : result.data();
     }
 
     private void writeChangeDetail(Long historyId, String changeType, String dbName,
