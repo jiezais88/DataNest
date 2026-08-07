@@ -13,8 +13,6 @@ import com.datanest.governance.api.dto.AutoTriggerBindingRequest;
 import com.datanest.governance.api.dto.AutoTriggeredBatchQueryRequest;
 import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
 import com.datanest.governance.api.dto.QualityJobBindingDTO;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -44,7 +42,7 @@ import java.util.Set;
  * 补发天然幂等：重复补发最多多跑一次质量检查；补发失败下轮再补（窗口内）。
  */
 @Component
-public class QualityAutoTriggerReconcileHandler {
+public class QualityAutoTriggerReconcileHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(QualityAutoTriggerReconcileHandler.class);
 
@@ -77,8 +75,13 @@ public class QualityAutoTriggerReconcileHandler {
         this.governanceObjectApi = governanceObjectApi;
     }
 
-    @XxlJob("qualityAutoTriggerReconcileHandler")
-    public void reconcile() {
+    @Override
+    public String getName() {
+        return "qualityAutoTriggerReconcileHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         LocalDateTime now = LocalDateTime.now();
         // 1. 扫描窗口内成功的 DAG 执行（succeeded-between 端点：SUCCESS 且 start_time 落在窗口内，id 升序）
         List<DagExecutionInfo> dags = RemoteCalls.execute("engineering.dag-execution.succeeded-between", () -> {
@@ -90,7 +93,7 @@ public class QualityAutoTriggerReconcileHandler {
             return result == null || result.data() == null ? List.of() : result.data();
         }, List.of());
         if (dags.isEmpty()) {
-            XxlJobHelper.handleSuccess("无待对账执行");
+            logger.info("质量自动触发对账完成: 无待对账执行");
             return;
         }
         Map<Long, Long> dagIdByExecutionId = new HashMap<>();
@@ -112,7 +115,7 @@ public class QualityAutoTriggerReconcileHandler {
             }
         }
         if (nodes.isEmpty()) {
-            XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + "，无成功节点");
+            logger.info("质量自动触发对账完成: 扫描执行={}，无成功节点", dags.size());
             return;
         }
 
@@ -140,7 +143,7 @@ public class QualityAutoTriggerReconcileHandler {
             nodeEndTimesByDagNodeId.computeIfAbsent(dagNodeId, k -> new ArrayList<>()).add(node.getEndTime());
         }
         if (nodeEndTimesByDagNodeId.isEmpty()) {
-            XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size() + "，无有效节点");
+            logger.info("质量自动触发对账完成: 扫描执行={}, 节点={}，无有效节点", dags.size(), nodes.size());
             return;
         }
 
@@ -152,7 +155,7 @@ public class QualityAutoTriggerReconcileHandler {
             return result == null || result.data() == null ? List.of() : result.data();
         }, List.of());
         if (bindings.isEmpty()) {
-            XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size() + "，无绑定质量任务");
+            logger.info("质量自动触发对账完成: 扫描执行={}, 节点={}，无绑定质量任务", dags.size(), nodes.size());
             return;
         }
         Map<Long, List<Long>> jobIdsByDagNodeId = new HashMap<>();
@@ -184,8 +187,8 @@ public class QualityAutoTriggerReconcileHandler {
             }
         }
         if (missedDagNodeIds.isEmpty()) {
-            XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size()
-                    + ", 绑定任务=" + jobIds.size() + "，无漏触发");
+            logger.info("质量自动触发对账完成: 扫描执行={}, 节点={}, 绑定任务={}，无漏触发",
+                    dags.size(), nodes.size(), jobIds.size());
             return;
         }
 
@@ -198,8 +201,6 @@ public class QualityAutoTriggerReconcileHandler {
                 () -> governanceObjectApi.qualityAutoTriggerBatch(request));
         logger.info("质量自动触发对账完成: scannedDags={}, scannedNodes={}, boundJobs={}, missed={}, reissued={}",
                 dags.size(), nodes.size(), jobIds.size(), missedDagNodeIds.size(), reissueIds.size());
-        XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size()
-                + ", 漏触发=" + missedDagNodeIds.size() + ", 补发=" + reissueIds.size());
     }
 
     private static String key(Long dagId, String nodeId) {

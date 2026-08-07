@@ -1,21 +1,19 @@
 package com.datanest.worker.job;
 
 import com.datanest.task.core.service.QualityCheckService;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 质量检查执行 XXL-JOB handler（Sprint 8 执行层）。
+ * 质量检查执行 handler（Sprint 8 执行层，原 XXL-JOB 的 qualityCheckExecuteHandler）。
  * <p>
- * 注册在 app-worker（data-nest-worker 执行器组）。executorParam 传 jobId（任务执行）或
+ * 注册在 app-worker（data-nest-worker 应用）。param 传 jobId（任务执行）或
  * {@code rule:<ruleId>}（单规则执行）。手动/定时/自动三种触发统一经该 handler 投递执行。
- * 定时调度由质量任务各自注册的带 cron 的 XXL-JOB 到点触发本 handler。
+ * 定时调度由质量任务各自注册的带 cron 的 PowerJob 到点触发本 handler。
  */
 @Component
-public class QualityCheckExecuteHandler {
+public class QualityCheckExecuteHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(QualityCheckExecuteHandler.class);
 
@@ -27,17 +25,16 @@ public class QualityCheckExecuteHandler {
         this.qualityCheckService = qualityCheckService;
     }
 
-    @XxlJob("qualityCheckExecuteHandler")
-    public void execute() {
-        String param = XxlJobHelper.getJobParam();
+    @Override
+    public String getName() {
+        return "qualityCheckExecuteHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         logger.info("质量检查执行 handler 开始: param={}", param);
-        try {
-            Long batchId = dispatch(param);
-            XxlJobHelper.handleSuccess("质量检查完成: batchId=" + batchId);
-        } catch (Exception e) {
-            logger.error("质量检查执行失败: param={}", param, e);
-            XxlJobHelper.handleFail("质量检查执行失败: " + e.getMessage());
-        }
+        Long batchId = dispatch(param);
+        logger.info("质量检查完成: batchId={}", batchId);
     }
 
     private Long dispatch(String param) {
@@ -50,7 +47,7 @@ public class QualityCheckExecuteHandler {
         }
         // 任务 param 格式：jobId[:triggerType]
         //  - 手动/自动触发：显式传 jobId:MANUAL / jobId:AUTO_TRIGGER（带冒号）
-        //  - 定时触发：XXL-JOB 用注册时保存的 executor_param（纯 jobId，无冒号）→ 视为 SCHEDULED
+        //  - 定时触发：注册时保存的 jobParams（纯 jobId，无冒号）→ 视为 SCHEDULED
         String[] parts = param.split(":", 2);
         Long jobId = Long.valueOf(parts[0].trim());
         String triggerType = parts.length > 1 && !parts[1].isBlank() ? parts[1].trim() : "SCHEDULED";

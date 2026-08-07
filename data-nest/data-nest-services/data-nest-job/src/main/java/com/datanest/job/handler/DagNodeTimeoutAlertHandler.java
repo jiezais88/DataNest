@@ -8,8 +8,6 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDagExecutionApi;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,7 +23,7 @@ import java.util.List;
  * 改经 EngineeringDagExecutionApi 远程获取，RemoteCalls 降级本轮跳过。
  */
 @Component
-public class DagNodeTimeoutAlertHandler {
+public class DagNodeTimeoutAlertHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagNodeTimeoutAlertHandler.class);
     private static final int BATCH_LIMIT = 100;
@@ -40,14 +38,19 @@ public class DagNodeTimeoutAlertHandler {
         this.alertApi = alertApi;
     }
 
-    @XxlJob("dagNodeTimeoutAlertHandler")
-    public void scan() {
+    @Override
+    public String getName() {
+        return "dagNodeTimeoutAlertHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         List<NodeExecutionInfo> runningNodes = RemoteCalls.execute("engineering.node-execution.running-with-dag", () -> {
             Result<List<NodeExecutionInfo>> result = dagExecutionApi.runningWithDag(BATCH_LIMIT);
             return result == null || result.data() == null ? List.of() : result.data();
         }, List.of());
         if (runningNodes.isEmpty()) {
-            XxlJobHelper.handleSuccess("无运行中节点");
+            logger.info("DAG 节点超时告警扫描完成: 无运行中节点");
             return;
         }
 
@@ -71,7 +74,7 @@ public class DagNodeTimeoutAlertHandler {
                         node.getExecutionId(), node.getNodeId(), e);
             }
         }
-        XxlJobHelper.handleSuccess("扫描完成: runningNodes=" + runningNodes.size() + ", sent=" + sent);
+        logger.info("DAG 节点超时告警扫描完成: runningNodes={}, sent={}", runningNodes.size(), sent);
     }
 
     /** 远程解析生效的 DAG 告警配置（Result 拆信封；无配置或熔断降级返回 null，调用侧跳过本次判断） */

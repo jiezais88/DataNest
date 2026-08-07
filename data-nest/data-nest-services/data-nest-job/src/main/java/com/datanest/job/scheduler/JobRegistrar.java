@@ -1,4 +1,4 @@
-package com.datanest.job.xxljob;
+package com.datanest.job.scheduler;
 
 import com.datanest.common.scheduler.SchedulerClient;
 import org.slf4j.Logger;
@@ -7,25 +7,23 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
-import org.springframework.util.MultiValueMap;
-import tools.jackson.databind.JsonNode;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 启动时通过 XXL-JOB Admin REST API 注册/更新平台定时任务。
+ * 启动时通过 SchedulerClient（PowerJob OpenAPI）注册/更新平台定时任务（ensure 语义）。
+ * <p>
+ * 任务的 processorInfo 即 handler 名，执行时由 TechPowerJobRouterFactory
+ * 路由到实现 PlatformJobHandler 接口的同名 Spring Bean。
  */
 @Component
 public class JobRegistrar implements ApplicationRunner {
 
     private static final Logger logger = LoggerFactory.getLogger(JobRegistrar.class);
 
-    @Value("${datanest.job.xxl-job.job-group-id:0}")
-    private int configuredJobGroupId;
-
-    @Value("${xxl.job.executor.appname:data-nest-job}")
-    private String appName;
+    /** PowerJob App 名（与 powerjob.worker.app-name 一致，App 已在 server 预置） */
+    private static final String APP_NAME = "data-nest-job";
 
     @Value("${datanest.job.dag-sync.cron:0/30 * * * * ?}")
     private String dagSyncCron;
@@ -44,7 +42,7 @@ public class JobRegistrar implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        // 预定义的平台定时任务：handler -> cron
+        // 预定义的平台定时任务：handler -> cron（cron 配置键与 XXL-JOB 时期一致）
         Map<String, String> platformJobs = new LinkedHashMap<>();
         platformJobs.put("dataSourceStatusRefreshHandler", "0 0/5 * * * ?");
         platformJobs.put("syncHistoryCleanupHandler", "0 0 2 * * ?");
@@ -69,47 +67,23 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("qualityCheckHistoryCleanupHandler", "0 30 4 * * ?");
         // 微服务化阶段 2：质量自动触发漏触发对账补发（默认每 10 分钟，窗口 2 小时）
         platformJobs.put("qualityAutoTriggerReconcileHandler", qualityAutoTriggerReconcileCron);
-        int jobGroup = resolveJobGroup();
-        logger.info("Ensuring platform jobs registered in XXL-JOB, jobGroup={}", jobGroup);
+
+        logger.info("Ensuring platform jobs registered in PowerJob, count={}", platformJobs.size());
 
         for (Map.Entry<String, String> entry : platformJobs.entrySet()) {
-            String executorHandler = entry.getKey();
+            String handlerName = entry.getKey();
             String cron = entry.getValue();
             try {
-                ensureJob(jobGroup, executorHandler, cron);
+                Long jobId = schedulerClient.saveOrUpdateCronJob(APP_NAME, handlerName, resolveJobDesc(handlerName), cron);
+                logger.info("Ensured platform job: handler={}, jobId={}, cron={}", handlerName, jobId, cron);
             } catch (Exception e) {
-                logger.error("Failed to ensure platform job: executorHandler={}", executorHandler, e);
+                logger.error("Failed to ensure platform job: handler={}", handlerName, e);
             }
         }
     }
 
-    private int resolveJobGroup() {
-        if (configuredJobGroupId > 0) {
-            return configuredJobGroupId;
-        }
-        return schedulerClient.ensureJobGroup(appName);
-    }
-
-    private void ensureJob(int jobGroup, String executorHandler, String cron) {
-        String jobDesc = resolveJobDesc(executorHandler);
-        JsonNode existing = schedulerClient.findJobByHandler(jobGroup, executorHandler);
-        if (existing != null) {
-            Integer jobId = existing.path("id").asInt();
-            boolean triggerStatus = existing.path("triggerStatus").asInt() == 1;
-            MultiValueMap<String, String> params = schedulerClient.buildPlatformJobParams(
-                    jobId, jobGroup, executorHandler, jobDesc, cron, triggerStatus);
-            schedulerClient.updateJob(params);
-            logger.info("Updated platform job: executorHandler={}, jobId={}, cron={}", executorHandler, jobId, cron);
-        } else {
-            MultiValueMap<String, String> params = schedulerClient.buildPlatformJobParams(
-                    null, jobGroup, executorHandler, jobDesc, cron, true);
-            Integer jobId = schedulerClient.addJob(params);
-            logger.info("Added platform job: executorHandler={}, jobId={}, cron={}", executorHandler, jobId, cron);
-        }
-    }
-
-    private String resolveJobDesc(String executorHandler) {
-        return switch (executorHandler) {
+    private String resolveJobDesc(String handlerName) {
+        return switch (handlerName) {
             case "dataSourceStatusRefreshHandler" -> "数据源状态定时刷新";
             case "syncHistoryCleanupHandler" -> "同步任务历史清理";
             case "collectHistoryCleanupHandler" -> "采集任务历史清理";
@@ -123,7 +97,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "standardComplianceCheckHandler" -> "标准合规定时扫描";
             case "qualityCheckHistoryCleanupHandler" -> "质量检查历史清理";
             case "qualityAutoTriggerReconcileHandler" -> "质量自动触发对账补发";
-            default -> executorHandler;
+            default -> handlerName;
         };
     }
 }

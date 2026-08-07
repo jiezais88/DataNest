@@ -4,8 +4,6 @@ import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.governance.api.GovernanceOpsApi;
 import com.datanest.governance.api.dto.CleanupRequest;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,7 +16,7 @@ import org.springframework.stereotype.Component;
  * RemoteCalls 容错：governance 不可用本轮跳过，下轮调度再来。
  */
 @Component
-public class CollectHistoryCleanupHandler {
+public class CollectHistoryCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(CollectHistoryCleanupHandler.class);
     private static final int RETENTION_DAYS = 30;
@@ -29,8 +27,13 @@ public class CollectHistoryCleanupHandler {
         this.governanceOpsApi = governanceOpsApi;
     }
 
-    @XxlJob("collectHistoryCleanupHandler")
-    public void cleanup() {
+    @Override
+    public String getName() {
+        return "collectHistoryCleanupHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         logger.info("Starting collect history cleanup, retentionDays={}", RETENTION_DAYS);
         CleanupRequest request = new CleanupRequest();
         request.setRetainDays(RETENTION_DAYS);
@@ -39,10 +42,8 @@ public class CollectHistoryCleanupHandler {
             return result == null ? null : result.data();
         }, null);
         if (rows == null) {
-            XxlJobHelper.handleFail("采集历史清理失败: governance 服务不可用，本轮跳过");
-            return;
+            throw new IllegalStateException("采集历史清理失败: governance 服务不可用，本轮跳过");
         }
         logger.info("Collect history cleanup completed: rows={}", rows);
-        XxlJobHelper.handleSuccess("清理完成: rows=" + rows);
     }
 }

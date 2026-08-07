@@ -23,6 +23,7 @@ spring:
       - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-addax.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-powerjob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-quality.yaml?group=shared-configs&refreshEnabled=true
@@ -39,10 +40,7 @@ spring:
         password: ${NACOS_PASSWORD:nacos}
         file-extension: yaml
 
-xxl:
-  job:
-    executor:
-      appname: data-nest-worker
-      port: 9997
-      logpath: /data/applogs/xxl-job/jobhandler
-      logretentiondays: 30
+# PowerJob worker（替换 XXL-JOB executor）：appName 按服务区分，通用配置在 shared-powerjob.yaml
+powerjob:
+  worker:
+    app-name: data-nest-worker

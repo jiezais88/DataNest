@@ -35,6 +35,9 @@ public class NodeExecution {
 
     private Long dsTaskInstanceId;
 
+    /** PowerJob 任务实例 ID（替代 dsTaskInstanceId，切流后生效，旧列保留至切流清理） */
+    private Long powerjobInstanceId;
+
     /** Sprint 3 P1-2：SYNC 节点关联的 sync_job_id，用于 DagExecutionSyncService 反查 sync_job_history 同步终态 */
     private Long syncJobId;
 

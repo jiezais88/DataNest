@@ -1,6 +1,5 @@
 package com.datanest.common.scheduler;
 
-import com.datanest.common.constant.ScheduleType;
 import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -8,49 +7,73 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.Collections;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * XXL-JOB admin 通用调度客户端，封装登录、任务注册/更新/触发/启停/注销。
- * 可被 engineering 与 governance 服务共用。
+ * PowerJob OpenAPI 通用调度客户端（XXL-JOB Admin REST 的替换实现）。
+ * 对外保持原有类名/方法名，仅任务 ID 类型由 Integer 调整为 Long（PowerJob jobId 为 Long）。
+ * 底层为纯 HTTP 调用，不依赖 powerjob-client，可被 engineering / governance / job 等服务共用。
+ *
+ * 语义对照：executorHandler → processorInfo（由消费方自定义 ProcessorFactory 路由到 handler Bean）、
+ * jobGroup → appId（App 已预置：data-nest-job=1、data-nest-worker=2）、
+ * timeout（秒）→ instanceTimeLimit（毫秒，0=不限）、failRetryCount → instanceRetryNum。
+ * 注册时 jobParams 存业务实体 id（对齐 XXL executorParam=jobId）；调度触发读 jobParams，
+ * 手动 runJob 传 instanceParams（消费方 dispatcher 负责 instanceParams 非空优先）。
  */
 @Component
 public class SchedulerClient {
 
     private static final Logger logger = LoggerFactory.getLogger(SchedulerClient.class);
-    private static final String DEFAULT_AUTHOR = "data-nest";
-    private static final String GLUE_TYPE_BEAN = "BEAN";
-    private static final String ROUTE_STRATEGY = "ROUND";
-    private static final String MISFIRE_STRATEGY = "DO_NOTHING";
-    private static final String BLOCK_STRATEGY = "SERIAL_EXECUTION";
 
-    @Value("${xxl.job.admin.addresses}")
-    private String adminAddresses;
+    private static final String PATH_ASSERT = "/openApi/assert";
+    private static final String PATH_SAVE_JOB = "/openApi/saveJob";
+    private static final String PATH_ENABLE_JOB = "/openApi/enableJob";
+    private static final String PATH_DISABLE_JOB = "/openApi/disableJob";
+    private static final String PATH_DELETE_JOB = "/openApi/deleteJob";
+    private static final String PATH_RUN_JOB = "/openApi/runJob";
+    private static final String PATH_FETCH_ALL_JOB = "/openApi/fetchAllJob";
+    private static final String PATH_QUERY_JOB = "/openApi/queryJob";
 
-    @Value("${xxl.job.admin.username:admin}")
-    private String adminUsername;
+    /** PowerJob 单机执行类型 */
+    private static final String EXECUTE_TYPE_STANDALONE = "STANDALONE";
+    /** PowerJob 内建 Java 处理器类型 */
+    private static final String PROCESSOR_TYPE_BUILT_IN = "BUILT_IN";
+    /** PowerJob 时间表达式类型：CRON 定时 */
+    private static final String TIME_EXPRESSION_CRON = "CRON";
+    /** PowerJob 时间表达式类型：仅 API 触发（对应 XXL scheduleType=NONE 的手动任务） */
+    private static final String TIME_EXPRESSION_API = "API";
 
-    @Value("${xxl.job.admin.password:123456}")
-    private String adminPassword;
+    @Value("${datanest.powerjob.server-address:http://middleware-powerjob:7700}")
+    private String serverAddress;
+
+    @Value("${datanest.powerjob.app-password:powerjob123}")
+    private String appPassword;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private RestTemplate restTemplate;
-    private String sessionCookie;
+
+    /** appName → appId 本地缓存（App 已预置，启动后基本不变） */
+    private final Map<String, Long> appIdCache = new ConcurrentHashMap<>();
+    /** jobId → appId 本地缓存（注册/查询时填充，用于仅需 jobId 的启停删触发接口反查 appId） */
+    private final Map<Long, Long> jobAppCache = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
@@ -59,169 +82,92 @@ public class SchedulerClient {
         factory.setReadTimeout(10000);
         restTemplate = new RestTemplate();
         restTemplate.setRequestFactory(factory);
-        System.setProperty("http.followRedirects", "false");
     }
 
-    public Integer registerJob(String appName, String executorHandler, Long jobId, String name,
-                               String cron, String triggerType, boolean scheduleEnabled,
-                               int timeout, int failRetryCount) {
-        int jobGroup = ensureJobGroup(appName);
-        MultiValueMap<String, String> params = buildJobParams(null, jobGroup, executorHandler, jobId, name,
-                cron, triggerType, true, scheduleEnabled, timeout, failRetryCount);
-        JsonNode response = postWithAuth("/jobinfo/insert", params, "注册调度任务失败");
-        Integer xxlJobId = parseJobId(response);
-        logger.info("Registered XXL-JOB job: name={}, jobGroup={}, jobId={}, businessId={}, start={}",
-                name, jobGroup, xxlJobId, jobId, scheduleEnabled);
-        return xxlJobId;
+    /**
+     * 注册调度任务，返回 PowerJob 任务 ID。
+     * scheduleEnabled=true 且为 CRON 触发时按 cron 定时调度；手动触发任务登记为 API 类型。
+     */
+    public Long registerJob(String appName, String executorHandler, Long jobId, String name,
+                            String cron, String triggerType, boolean scheduleEnabled,
+                            int timeout, int failRetryCount) {
+        Long appId = resolveAppId(appName);
+        Map<String, Object> body = buildSaveJobRequest(null, appId, executorHandler, jobId, name,
+                cron, triggerType, scheduleEnabled, timeout, failRetryCount);
+        Long powerJobId = saveJob(body, "注册调度任务失败");
+        jobAppCache.put(powerJobId, appId);
+        logger.info("Registered PowerJob job: name={}, appId={}, jobId={}, businessId={}, start={}",
+                name, appId, powerJobId, jobId, scheduleEnabled);
+        return powerJobId;
     }
 
-    public void updateJob(Integer xxlJobId, String appName, String executorHandler, Long jobId, String name,
+    /**
+     * 更新调度任务（saveJob 带 id 全量覆盖）。
+     */
+    public void updateJob(Long powerJobId, String appName, String executorHandler, Long jobId, String name,
                           String cron, String triggerType, boolean scheduleEnabled,
                           int timeout, int failRetryCount) {
-        int jobGroup = ensureJobGroup(appName);
-        MultiValueMap<String, String> params = buildJobParams(xxlJobId, jobGroup, executorHandler, jobId, name,
-                cron, triggerType, false, scheduleEnabled, timeout, failRetryCount);
-        params.add("id", String.valueOf(xxlJobId));
-        postWithAuth("/jobinfo/update", params, "更新调度任务失败");
-        logger.info("Updated XXL-JOB job: jobId={}, name={}, businessId={}, start={}", xxlJobId, name, jobId, scheduleEnabled);
+        Long appId = resolveAppId(appName);
+        Map<String, Object> body = buildSaveJobRequest(powerJobId, appId, executorHandler, jobId, name,
+                cron, triggerType, scheduleEnabled, timeout, failRetryCount);
+        saveJob(body, "更新调度任务失败");
+        jobAppCache.put(powerJobId, appId);
+        logger.info("Updated PowerJob job: jobId={}, name={}, businessId={}, start={}", powerJobId, name, jobId, scheduleEnabled);
     }
 
-    public void unregisterJob(Integer xxlJobId) {
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("ids[]", String.valueOf(xxlJobId));
-        postWithAuth("/jobinfo/delete", params, "删除调度任务失败");
-        logger.info("Removed XXL-JOB job: jobId={}", xxlJobId);
+    public void unregisterJob(Long powerJobId) {
+        Long appId = resolveAppIdByJobId(powerJobId);
+        postWithQuery(PATH_DELETE_JOB, queryOf("jobId", powerJobId, "appId", appId), "删除调度任务失败");
+        jobAppCache.remove(powerJobId);
+        logger.info("Removed PowerJob job: jobId={}", powerJobId);
     }
 
-    public void triggerJob(Integer xxlJobId, String executorParam) {
-        triggerJob(xxlJobId, executorParam, true);
-    }
-
-    public void triggerJob(Integer xxlJobId, String executorParam, boolean waitExecutorReady) {
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("id", String.valueOf(xxlJobId));
-        params.add("executorParam", executorParam == null ? "" : executorParam);
-        params.add("addressList", "");
-
-        if (waitExecutorReady) {
-            waitExecutorReady(xxlJobId);
+    public void triggerJob(Long powerJobId, String executorParam) {
+        Long appId = resolveAppIdByJobId(powerJobId);
+        Map<String, Object> query = queryOf("appId", appId, "jobId", powerJobId);
+        // instanceParams 为手动触发参数，processor 侧按「instanceParams 非空优先，否则 jobParams」解析
+        if (executorParam != null) {
+            query.put("instanceParams", executorParam);
         }
-
-        postWithAuth("/jobinfo/trigger", params, "触发调度任务失败");
-        logger.info("Triggered XXL-JOB job: jobId={}, executorParam={}", xxlJobId, executorParam);
+        JsonNode response = postWithQuery(PATH_RUN_JOB, query, "触发调度任务失败");
+        logger.info("Triggered PowerJob job: jobId={}, instanceId={}, instanceParams={}",
+                powerJobId, response.path("data").asLong(-1), executorParam);
     }
 
     /**
-     * 等待指定任务的执行器地址就绪。XXL-JOB worker 启动后需要向 admin 注册地址，
-     * 首次创建任务并立即触发时可能地址尚未同步，导致 address route fail。
+     * @deprecated PowerJob 由 server 直接派发，无需等待执行器注册，waitExecutorReady 参数已忽略，仅为兼容保留。
      */
-    private void waitExecutorReady(Integer xxlJobId) {
-        JsonNode jobInfo = getJobInfo(xxlJobId);
-        if (jobInfo == null) {
-            return;
-        }
-        int jobGroup = jobInfo.path("data").path("jobGroup").asInt(-1);
-        if (jobGroup <= 0) {
-            return;
-        }
-
-        long deadline = System.currentTimeMillis() + 30_000;
-        while (System.currentTimeMillis() < deadline) {
-            JsonNode groupPage = getWithAuth("/jobgroup/pageList?offset=0&pagesize=10&id=" + jobGroup, "查询执行器分组失败");
-            List<JsonNode> groups = extractPageList(groupPage);
-            if (!groups.isEmpty()) {
-                String addressList = groups.get(0).path("addressList").asText("");
-                if (StringUtils.hasText(addressList)) {
-                    return;
-                }
-            }
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-        }
-        logger.warn("等待 XXL-JOB 执行器地址就绪超时: jobId={}, jobGroup={}", xxlJobId, jobGroup);
+    @Deprecated
+    public void triggerJob(Long powerJobId, String executorParam, boolean waitExecutorReady) {
+        triggerJob(powerJobId, executorParam);
     }
 
-    private JsonNode getJobInfo(Integer xxlJobId) {
-        try {
-            return getWithAuth("/jobinfo/info?id=" + xxlJobId, "查询调度任务失败");
-        } catch (Exception e) {
-            logger.warn("查询 XXL-JOB 任务信息失败: jobId={}", xxlJobId, e);
-            return null;
-        }
+    public void startJob(Long powerJobId) {
+        Long appId = resolveAppIdByJobId(powerJobId);
+        postWithQuery(PATH_ENABLE_JOB, queryOf("jobId", powerJobId, "appId", appId), "启动调度任务失败");
+        logger.info("Started PowerJob job: jobId={}", powerJobId);
     }
 
-    public void startJob(Integer xxlJobId) {
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("ids[]", String.valueOf(xxlJobId));
-        postWithAuth("/jobinfo/start", params, "启动调度任务失败");
-        logger.info("Started XXL-JOB job: jobId={}", xxlJobId);
-    }
-
-    public void stopJob(Integer xxlJobId) {
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("ids[]", String.valueOf(xxlJobId));
-        postWithAuth("/jobinfo/stop", params, "停止调度任务失败");
-        logger.info("Stopped XXL-JOB job: jobId={}", xxlJobId);
-    }
-
-    private MultiValueMap<String, String> buildJobParams(Integer xxlJobId, int jobGroup, String executorHandler,
-                                                         Long jobId, String name, String cron, String triggerType,
-                                                         boolean isNew, boolean scheduleEnabled,
-                                                         int timeout, int failRetryCount) {
-        boolean isCron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(triggerType);
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("jobGroup", String.valueOf(jobGroup));
-        params.add("jobDesc", name);
-        params.add("author", DEFAULT_AUTHOR);
-        params.add("scheduleType", isCron ? ScheduleType.CRON.getCode() : ScheduleType.NONE.getCode());
-        params.add("scheduleConf", isCron && StringUtils.hasText(cron) ? cron : "");
-        params.add("glueType", GLUE_TYPE_BEAN);
-        params.add("executorHandler", executorHandler);
-        params.add("executorParam", jobId == null ? "" : String.valueOf(jobId));
-        params.add("executorRouteStrategy", ROUTE_STRATEGY);
-        params.add("misfireStrategy", MISFIRE_STRATEGY);
-        params.add("executorBlockStrategy", BLOCK_STRATEGY);
-        params.add("executorTimeout", String.valueOf(Math.max(0, timeout)));
-        params.add("executorFailRetryCount", String.valueOf(Math.max(0, failRetryCount)));
-        params.add("childJobId", "");
-        params.add("triggerStatus", isCron && scheduleEnabled ? "1" : "0");
-        return params;
-    }
-
-    public int ensureJobGroup(String appName) {
-        JsonNode page = getWithAuth("/jobgroup/pageList?offset=0&pagesize=10&appname=" + appName, "查询执行器失败");
-        List<JsonNode> groups = extractPageList(page);
-        if (!groups.isEmpty()) {
-            return groups.get(0).path("id").asInt();
-        }
-
-        logger.warn("XXL-JOB job group not found, creating: appName={}", appName);
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("appname", appName);
-        params.add("title", appName);
-        params.add("addressType", "0");
-        postWithAuth("/jobgroup/insert", params, "创建执行器失败");
-
-        JsonNode reloaded = getWithAuth("/jobgroup/pageList?offset=0&pagesize=10&appname=" + appName, "查询执行器失败");
-        List<JsonNode> reloadedGroups = extractPageList(reloaded);
-        if (reloadedGroups.isEmpty()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法获取 XXL-JOB 执行器分组");
-        }
-        return reloadedGroups.get(0).path("id").asInt();
+    public void stopJob(Long powerJobId) {
+        Long appId = resolveAppIdByJobId(powerJobId);
+        postWithQuery(PATH_DISABLE_JOB, queryOf("jobId", powerJobId, "appId", appId), "停止调度任务失败");
+        logger.info("Stopped PowerJob job: jobId={}", powerJobId);
     }
 
     /**
-     * 根据执行器分组与 handler 名称查询已存在的任务。
+     * 兼容原 XXL 的 ensureJobGroup：PowerJob 的 App（对应原执行器分组）已预置，
+     * 此处仅解析并返回 appId（带本地缓存），不做任何创建动作。
      */
-    public JsonNode findJobByHandler(int jobGroup, String executorHandler) {
-        JsonNode page = getWithAuth("/jobinfo/pageList?jobGroup=" + jobGroup + "&triggerStatus=-1&jobDesc=&executorHandler=" + executorHandler + "&author=&offset=0&pagesize=100", "查询任务列表失败");
-        List<JsonNode> jobs = extractPageList(page);
-        for (JsonNode job : jobs) {
-            if (executorHandler.equals(job.path("executorHandler").asText())) {
+    public Long ensureJobGroup(String appName) {
+        return resolveAppId(appName);
+    }
+
+    /**
+     * 按 appId + handler 名（processorInfo）查询已存在的任务，未找到返回 null。
+     */
+    public JsonNode findJobByHandler(Long appId, String executorHandler) {
+        for (JsonNode job : fetchAllJobs(appId)) {
+            if (executorHandler.equals(job.path("processorInfo").asText())) {
                 return job;
             }
         }
@@ -229,107 +175,186 @@ public class SchedulerClient {
     }
 
     /**
-     * 新增任务，返回任务 ID。
+     * 拉取指定 App 下全部任务（OpenAPI fetchAllJob），供调用方按 jobName 等字段自行过滤
+     * （如 QualityCheckTriggerService 复用共享单规则任务）。
      */
-    public Integer addJob(MultiValueMap<String, String> params) {
-        JsonNode response = postWithAuth("/jobinfo/insert", params, "新增调度任务失败");
-        return parseJobId(response);
+    public List<JsonNode> fetchAllJob(String appName) {
+        return fetchAllJobs(resolveAppId(appName));
     }
 
     /**
-     * 更新任务（原始参数）。
+     * 平台定时任务 ensure 语义（供 JobRegistrar 使用）：按 jobName + appId 查找，
+     * 存在则 saveJob 带 id 全量更新，否则新建；始终登记为 CRON + enable=true。
+     *
+     * @return PowerJob 任务 ID
      */
-    public void updateJob(MultiValueMap<String, String> params) {
-        postWithAuth("/jobinfo/update", params, "更新调度任务失败");
-    }
-
-    /**
-     * 构造平台定时任务参数。
-     */
-    public MultiValueMap<String, String> buildPlatformJobParams(Integer jobId, int jobGroup, String executorHandler,
-                                                                String jobDesc, String cron, boolean triggerStatus) {
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        if (jobId != null) {
-            params.add("id", String.valueOf(jobId));
+    public Long saveOrUpdateCronJob(String appName, String executorHandler, String jobName, String cron) {
+        Long appId = resolveAppId(appName);
+        Long existingId = null;
+        for (JsonNode job : fetchAllJobs(appId)) {
+            if (jobName.equals(job.path("jobName").asText())) {
+                existingId = job.path("id").asLong();
+                break;
+            }
         }
-        params.add("jobGroup", String.valueOf(jobGroup));
-        params.add("jobDesc", jobDesc);
-        params.add("author", DEFAULT_AUTHOR);
-        params.add("scheduleType", ScheduleType.CRON.getCode());
-        params.add("scheduleConf", cron);
-        params.add("glueType", GLUE_TYPE_BEAN);
-        params.add("executorHandler", executorHandler);
-        params.add("executorParam", "");
-        params.add("executorRouteStrategy", ROUTE_STRATEGY);
-        params.add("misfireStrategy", MISFIRE_STRATEGY);
-        params.add("executorBlockStrategy", BLOCK_STRATEGY);
-        params.add("executorTimeout", "0");
-        params.add("executorFailRetryCount", "0");
-        params.add("childJobId", "");
-        params.add("triggerStatus", triggerStatus ? "1" : "0");
-        return params;
+        Map<String, Object> body = buildSaveJobRequest(existingId, appId, executorHandler, null, jobName,
+                cron, TaskTriggerType.CRON.getCode(), true, 0, 0);
+        Long powerJobId = saveJob(body, existingId == null ? "注册平台定时任务失败" : "更新平台定时任务失败");
+        jobAppCache.put(powerJobId, appId);
+        logger.info("Ensured PowerJob cron job: name={}, appId={}, jobId={}, cron={}, created={}",
+                jobName, appId, powerJobId, cron, existingId == null);
+        return powerJobId;
     }
 
-    private List<JsonNode> extractPageList(JsonNode response) {
-        JsonNode data = response.path("data").path("data");
+    /**
+     * 构造 saveJob 请求体。枚举字段（timeExpressionType/executeType/processorType）按字符串名传递。
+     * timeout 单位换算：XXL 为秒、PowerJob instanceTimeLimit 为毫秒，0 表示不限制。
+     */
+    private Map<String, Object> buildSaveJobRequest(Long id, Long appId, String executorHandler,
+                                                    Long jobId, String name, String cron, String triggerType,
+                                                    boolean scheduleEnabled, int timeout, int failRetryCount) {
+        boolean isCron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(triggerType) && StringUtils.hasText(cron);
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (id != null) {
+            body.put("id", id);
+        }
+        body.put("jobName", name);
+        body.put("jobDescription", name);
+        body.put("appId", appId);
+        // jobParams 存业务实体 id 字符串，对齐 XXL executorParam=jobId 语义
+        body.put("jobParams", jobId == null ? "" : String.valueOf(jobId));
+        // CRON 任务保留时间表达式（启停走 enable/disable，等价 XXL triggerStatus）；手动任务登记为 API 类型
+        body.put("timeExpressionType", isCron ? TIME_EXPRESSION_CRON : TIME_EXPRESSION_API);
+        body.put("timeExpression", isCron ? cron : "");
+        body.put("executeType", EXECUTE_TYPE_STANDALONE);
+        body.put("processorType", PROCESSOR_TYPE_BUILT_IN);
+        body.put("processorInfo", executorHandler);
+        body.put("instanceTimeLimit", timeout <= 0 ? 0L : timeout * 1000L);
+        body.put("instanceRetryNum", Math.max(0, failRetryCount));
+        body.put("taskRetryNum", 0);
+        body.put("enable", !isCron || scheduleEnabled);
+        return body;
+    }
+
+    /**
+     * 解析 appName → appId（OpenAPI /assert，App 已预置不会自动创建），带本地缓存。
+     */
+    private Long resolveAppId(String appName) {
+        Long cached = appIdCache.get(appName);
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (appIdCache) {
+            cached = appIdCache.get(appName);
+            if (cached != null) {
+                return cached;
+            }
+            JsonNode response = postWithQuery(PATH_ASSERT,
+                    queryOf("appName", appName, "password", appPassword), "校验 PowerJob 应用失败");
+            long appId = response.path("data").asLong(-1);
+            if (appId <= 0) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "PowerJob 应用不存在: appName=" + appName);
+            }
+            appIdCache.put(appName, appId);
+            return appId;
+        }
+    }
+
+    /**
+     * 仅持有 jobId 时反查所属 appId（enable/disable/delete/runJob 均强制要求 appId）。
+     * 优先走本地缓存（注册/查询时填充），未命中再用 queryJob 按 idEq 精确查询。
+     */
+    private Long resolveAppIdByJobId(Long powerJobId) {
+        Long cached = jobAppCache.get(powerJobId);
+        if (cached != null) {
+            return cached;
+        }
+        Map<String, Object> query = new LinkedHashMap<>();
+        query.put("idEq", powerJobId);
+        JsonNode response = postWithJson(PATH_QUERY_JOB, query, "查询调度任务失败");
+        JsonNode data = response.path("data");
+        if (data.isArray() && !data.isEmpty()) {
+            long appId = data.get(0).path("appId").asLong(-1);
+            if (appId > 0) {
+                jobAppCache.put(powerJobId, appId);
+                return appId;
+            }
+        }
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "PowerJob 任务不存在: jobId=" + powerJobId);
+    }
+
+    /**
+     * 拉取指定 App 下全部任务（fetchAllJob），顺带回填 jobId→appId 缓存。
+     */
+    private List<JsonNode> fetchAllJobs(Long appId) {
+        JsonNode response = postWithQuery(PATH_FETCH_ALL_JOB, queryOf("appId", appId), "查询任务列表失败");
+        JsonNode data = response.path("data");
+        List<JsonNode> jobs = new ArrayList<>();
         if (data.isArray()) {
-            int size = data.size();
-            List<JsonNode> list = new java.util.ArrayList<>(size);
-            for (JsonNode node : data) {
-                list.add(node);
+            for (JsonNode job : data) {
+                jobs.add(job);
+                long id = job.path("id").asLong(-1);
+                if (id > 0) {
+                    jobAppCache.put(id, appId);
+                }
             }
-            return list;
         }
-        return Collections.emptyList();
+        return jobs;
     }
 
-    private synchronized void login() {
+    private Long saveJob(Map<String, Object> body, String errorMessage) {
+        JsonNode response = postWithJson(PATH_SAVE_JOB, body, errorMessage);
+        long id = response.path("data").asLong(-1);
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": PowerJob 返回的任务 ID 无效");
+        }
+        return id;
+    }
+
+    private Map<String, Object> queryOf(Object... keyValues) {
+        Map<String, Object> query = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            query.put(String.valueOf(keyValues[i]), keyValues[i + 1]);
+        }
+        return query;
+    }
+
+    /**
+     * POST query param 风格请求（PowerJob OpenAPI 的 assert/enable/disable/delete/run/fetchAllJob 均为 query param）。
+     * 注意：instanceParams 不能 URL 编码——PowerJob server 端按原样读取不解码（编码后 %2C 会原样传给 processor）。
+     * instanceParams 内容为内部约定格式（逗号/冒号/数字），无 &、=、空格等需转义字符。
+     */
+    private JsonNode postWithQuery(String path, Map<String, Object> query, String errorMessage) {
+        StringBuilder url = new StringBuilder(serverAddress).append(path).append('?');
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : query.entrySet()) {
+            if (!first) {
+                url.append('&');
+            }
+            String value = "instanceParams".equals(entry.getKey())
+                    ? String.valueOf(entry.getValue())
+                    : URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8);
+            url.append(entry.getKey()).append('=').append(value);
+            first = false;
+        }
+        return doPost(url.toString(), null, errorMessage);
+    }
+
+    /**
+     * POST JSON body 风格请求（saveJob/queryJob）。
+     * 显式序列化为字符串，避免依赖 RestTemplate 默认消息转换器的 Jackson 版本探测。
+     */
+    private JsonNode postWithJson(String path, Map<String, Object> body, String errorMessage) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String json = objectMapper.writeValueAsString(body);
+        return doPost(serverAddress + path, new HttpEntity<>(json, headers), errorMessage);
+    }
+
+    private JsonNode doPost(String url, HttpEntity<String> request, String errorMessage) {
         try {
-            MultiValueMap<String, String> loginParams = new LinkedMultiValueMap<>();
-            loginParams.add("userName", adminUsername);
-            loginParams.add("password", adminPassword);
-            loginParams.add("ifRemember", "on");
-
-            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-            org.springframework.http.HttpEntity<MultiValueMap<String, String>> request =
-                    new org.springframework.http.HttpEntity<>(loginParams, headers);
-
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    adminAddresses + "/auth/doLogin", request, String.class);
-
-            String cookie = response.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
-            if (cookie == null) {
-                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "XXL-JOB 登录响应未返回 Cookie");
-            }
-            sessionCookie = cookie;
-            logger.info("Logged in to XXL-JOB admin, cookie received");
-        } catch (RestClientResponseException e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "XXL-JOB 登录失败: " + e.getResponseBodyAsString());
-        } catch (Exception e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "XXL-JOB 登录失败: " + e.getMessage());
-        }
-    }
-
-    private JsonNode postWithAuth(String path, MultiValueMap<String, String> params, String errorMessage) {
-        return exchangeWithAuth(path, true, params, errorMessage);
-    }
-
-    private JsonNode getWithAuth(String path, String errorMessage) {
-        return exchangeWithAuth(path, false, null, errorMessage);
-    }
-
-    private JsonNode exchangeWithAuth(String path, boolean post, MultiValueMap<String, String> params, String errorMessage) {
-        if (sessionCookie == null) {
-            login();
-        }
-        try {
-            JsonNode result = doExchange(path, post, params);
-            if (isLoginRequired(result)) {
-                logger.warn("XXL-JOB session expired, re-login and retry: path={}", path);
-                login();
-                result = doExchange(path, post, params);
-            }
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            JsonNode result = objectMapper.readTree(response.getBody());
             return assertSuccess(result, errorMessage);
         } catch (BusinessException e) {
             throw e;
@@ -340,55 +365,17 @@ public class SchedulerClient {
         }
     }
 
-    private JsonNode doExchange(String path, boolean post, MultiValueMap<String, String> params) throws Exception {
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        if (sessionCookie != null) {
-            headers.add(HttpHeaders.COOKIE, sessionCookie);
-        }
-
-        String url = adminAddresses + path;
-        org.springframework.http.HttpEntity<MultiValueMap<String, String>> request =
-                new org.springframework.http.HttpEntity<>(params, headers);
-
-        ResponseEntity<String> response;
-        if (post) {
-            response = restTemplate.postForEntity(url, request, String.class);
-        } else {
-            org.springframework.http.HttpEntity<Void> getRequest = new org.springframework.http.HttpEntity<>(headers);
-            response = restTemplate.exchange(url, HttpMethod.GET, getRequest, String.class);
-        }
-        return objectMapper.readTree(response.getBody());
-    }
-
-    private boolean isLoginRequired(JsonNode response) {
-        if (response == null) {
-            return true;
-        }
-        String msg = response.path("msg").asText("");
-        return msg.contains("login") || msg.contains("Login") || msg.contains("请登录") || msg.contains("未登录");
-    }
-
+    /**
+     * PowerJob ResultDTO 成功判定：success=true，失败时 message 携带原因。
+     */
     private JsonNode assertSuccess(JsonNode response, String errorMessage) {
-        if (response == null) {
+        if (response == null || response.isNull()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": 空响应");
         }
-        int code = response.path("code").asInt(-1);
-        if (code != 200) {
-            String msg = response.path("msg").asText("未知错误");
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + " (code=" + code + "): " + msg);
+        if (!response.path("success").asBoolean(false)) {
+            String message = response.path("message").asText("未知错误");
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": " + message);
         }
         return response;
-    }
-
-    private Integer parseJobId(JsonNode response) {
-        String data = response.path("data").asText(null);
-        if (data != null) {
-            try {
-                return Integer.parseInt(data);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "XXL-JOB 返回的任务 ID 无效");
     }
 }

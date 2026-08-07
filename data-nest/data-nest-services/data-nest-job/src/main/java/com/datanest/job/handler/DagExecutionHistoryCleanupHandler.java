@@ -4,8 +4,6 @@ import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDagExecutionApi;
 import com.datanest.engineering.api.dto.CleanupRequest;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,7 +16,7 @@ import org.springframework.stereotype.Component;
  * 远程失败经 RemoteCalls 降级按 0 处理，下轮再来。
  */
 @Component
-public class DagExecutionHistoryCleanupHandler {
+public class DagExecutionHistoryCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagExecutionHistoryCleanupHandler.class);
 
@@ -31,8 +29,13 @@ public class DagExecutionHistoryCleanupHandler {
         this.retainDays = Math.max(1, retainDays);
     }
 
-    @XxlJob("dagExecutionHistoryCleanupHandler")
-    public void cleanup() {
+    @Override
+    public String getName() {
+        return "dagExecutionHistoryCleanupHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         long start = System.currentTimeMillis();
         try {
             CleanupRequest request = new CleanupRequest();
@@ -44,10 +47,9 @@ public class DagExecutionHistoryCleanupHandler {
             long cost = System.currentTimeMillis() - start;
             logger.info("DAG 执行历史清理完成: retainDays={}, deletedExecutions={}, cost={}ms",
                     retainDays, deletedExecutions, cost);
-            XxlJobHelper.handleSuccess("deletedExecutions=" + deletedExecutions + ", cost=" + cost + "ms");
         } catch (Exception e) {
             logger.error("DAG 执行历史清理失败", e);
-            XxlJobHelper.handleFail("DAG 执行历史清理失败: " + e.getMessage());
+            throw new IllegalStateException("DAG 执行历史清理失败: " + e.getMessage(), e);
         }
     }
 }

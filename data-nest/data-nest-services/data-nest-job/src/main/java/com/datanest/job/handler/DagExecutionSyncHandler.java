@@ -9,8 +9,6 @@ import com.datanest.engineering.api.EngineeringSyncJobApi;
 import com.datanest.engineering.api.dto.SyncHistoryInfo;
 import com.datanest.task.core.service.DagExecutionSyncService;
 import com.datanest.task.core.service.DagExecutionSyncService.*;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,7 +29,7 @@ import java.util.List;
 
 /**
  * DAG 执行状态定时同步任务（Sprint 3 Phase 7）
- * 决策：定时回查 DS 流程实例状态由 XXL-JOB 调度（每 5 秒一次）
+ * 决策：定时回查 DS 流程实例状态由调度引擎兜底（默认每 30 秒一次，自适应可缩短）
  * 位置：data-nest-job 服务（统一管理中台所有定时任务）
  *
  * JSON 序列化：fastjson2（最新稳定版 2.0.52+）
@@ -39,11 +37,10 @@ import java.util.List;
  * Sprint 3 P1-2：实现 SyncJobHistoryFetcher SPI，查 sync_job_history 给 SYNC 节点收尾
  * Sprint3-Fix4：实现 SyncJobMutexReleaser SPI（直接操作 redis，避免跨服务依赖 engineering 的 SyncNodeMutexService）
  *
- * 注册到 XXL-JOB admin 后，在 admin 配 cron 触发：
- *   "0/5 * * * * ?"   （每 5 秒）
+ * PowerJob 迁移后由 JobRegistrar 注册 cron（默认 "0/30 * * * * ?"）触发。
  */
 @Component
-public class DagExecutionSyncHandler {
+public class DagExecutionSyncHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagExecutionSyncHandler.class);
 
@@ -103,8 +100,13 @@ public class DagExecutionSyncHandler {
         }
     }
 
-    @XxlJob("dagExecutionSyncHandler")
-    public void sync() {
+    @Override
+    public String getName() {
+        return HANDLER_NAME;
+    }
+
+    @Override
+    public void execute(String param) {
         long start = System.currentTimeMillis();
         try {
             SyncResult result = dagExecutionSyncService.syncRunningExecutions(
@@ -134,17 +136,15 @@ public class DagExecutionSyncHandler {
             long cost = System.currentTimeMillis() - start;
             logger.info("DAG 执行状态同步完成: synced={}, stillRunning={}, cost={}ms",
                     result.synced(), result.stillRunning(), cost);
-            XxlJobHelper.handleSuccess("synced=" + result.synced()
-                    + ", stillRunning=" + result.stillRunning() + ", cost=" + cost + "ms");
 
             // 自适应缩短间隔：本轮仍有 RUNNING 执行时，立即触发下一次同步（受最小间隔限制）。
-            // XXL-JOB 当前任务执行完后才会消费下一次触发，不会递归嵌套。
+            // PowerJob 由 server 端派发新实例，不会在 worker 内递归嵌套。
             if (adaptiveEnabled && result.stillRunning()) {
                 triggerAdaptive();
             }
         } catch (Exception e) {
             logger.error("DAG 执行状态同步失败", e);
-            XxlJobHelper.handleFail("DAG 同步失败: " + e.getMessage());
+            throw new IllegalStateException("DAG 同步失败: " + e.getMessage(), e);
         }
     }
 
@@ -165,12 +165,12 @@ public class DagExecutionSyncHandler {
 
             JsonNode job = schedulerClient.findJobByHandler(resolveJobGroup(), HANDLER_NAME);
             if (job == null) {
-                logger.warn("未找到自适应触发的 XXL-JOB 任务: handler={}", HANDLER_NAME);
+                logger.warn("未找到自适应触发的 PowerJob 任务: handler={}", HANDLER_NAME);
                 return;
             }
-            Integer jobId = job.path("id").asInt();
+            Long jobId = job.path("id").asLong();
             if (jobId != null && jobId > 0) {
-                schedulerClient.triggerJob(jobId, "adaptive", false);
+                schedulerClient.triggerJob(jobId, "adaptive");
                 logger.info("DAG 执行状态同步自适应触发成功: jobId={}", jobId);
             }
         } catch (Exception e) {
@@ -178,8 +178,8 @@ public class DagExecutionSyncHandler {
         }
     }
 
-    private int resolveJobGroup() {
-        // schedulerClient.ensureJobGroup 会按 appName 查询或创建执行器分组
+    private Long resolveJobGroup() {
+        // schedulerClient.ensureJobGroup 按 appName 解析 PowerJob appId（App 已预置，不做创建）
         return schedulerClient.ensureJobGroup("data-nest-job");
     }
 

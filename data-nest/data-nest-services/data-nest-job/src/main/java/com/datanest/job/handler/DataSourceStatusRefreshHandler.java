@@ -2,8 +2,6 @@ package com.datanest.job.handler;
 
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,7 +14,7 @@ import org.springframework.stereotype.Component;
  * 本 handler 只负责调度触发。RemoteCalls 容错：engineering 不可用本轮跳过，下轮调度再来。
  */
 @Component
-public class DataSourceStatusRefreshHandler {
+public class DataSourceStatusRefreshHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSourceStatusRefreshHandler.class);
 
@@ -26,11 +24,15 @@ public class DataSourceStatusRefreshHandler {
         this.datasourceApi = datasourceApi;
     }
 
-    @XxlJob("dataSourceStatusRefreshHandler")
-    public void refresh() {
+    @Override
+    public String getName() {
+        return "dataSourceStatusRefreshHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         logger.info("Starting scheduled data source status refresh");
         RemoteCalls.execute("engineering.datasource.refresh-statuses", () -> datasourceApi.refreshStatuses());
         logger.info("Scheduled data source status refresh triggered");
-        XxlJobHelper.handleSuccess();
     }
 }

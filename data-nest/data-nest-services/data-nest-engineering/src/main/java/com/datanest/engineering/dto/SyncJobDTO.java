@@ -31,7 +31,7 @@ public class SyncJobDTO {
     private Boolean rateLimitEnabled;
     private LocalDateTime nextExecutionTime;
     private Boolean scheduleEnabled;
-    private Integer xxlJobId;
+    private Long schedulerJobId;
     private String description;
     private LocalDateTime lastExecuteTime;
     private Long lastHistoryId;
@@ -226,12 +226,12 @@ public class SyncJobDTO {
         this.scheduleEnabled = scheduleEnabled;
     }
 
-    public Integer getXxlJobId() {
-        return xxlJobId;
+    public Long getSchedulerJobId() {
+        return schedulerJobId;
     }
 
-    public void setXxlJobId(Integer xxlJobId) {
-        this.xxlJobId = xxlJobId;
+    public void setSchedulerJobId(Long schedulerJobId) {
+        this.schedulerJobId = schedulerJobId;
     }
 
     public String getDescription() {

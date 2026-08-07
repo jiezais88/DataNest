@@ -54,7 +54,7 @@ import java.util.stream.Stream;
  * <p>
  * 任务 CRUD + 分页 + 详情（含规则列表）+ 启停 + 删除（级联删规则）+ 执行触发。
  * Sprint 8：执行经 {@link QualityCheckTriggerService} 投递到 worker 异步执行；
- * 定时调度改为「每任务独立注册 XXL-JOB（worker 组，带自身 cron）」，startSchedule 注册/启动、
+ * 定时调度改为「每任务独立注册 PowerJob 任务（worker App，带自身 cron）」，startSchedule 注册/启动、
  * stopSchedule 仅停止、delete 注销，与同步任务调度模型一致（不再用全局扫描）。
  */
 @Service
@@ -172,8 +172,8 @@ public class QualityJobService {
         jobMapper.insert(entity);
         // 绑定引用的质量规则（多对多）
         ruleService.setJobRules(entity.getId(), request.getRuleIds());
-        // 创建即开启定时调度：scheduledEnabled=1 且配置了 cron 时，事务内同步注册 XXL-JOB；
-        // 注册失败抛错 → 事务回滚（任务不落库），前端可见错误，避免「任务在但 XXL-JOB 没注册」的不一致。
+        // 创建即开启定时调度：scheduledEnabled=1 且配置了 cron 时，事务内同步注册 PowerJob 任务；
+        // 注册失败抛错 → 事务回滚（任务不落库），前端可见错误，避免「任务在但调度中心没注册」的不一致。
         boolean scheduleOnCreate = entity.getScheduledEnabled() != null && entity.getScheduledEnabled() == 1
                 && StringUtils.hasText(entity.getCron());
         if (scheduleOnCreate) {
@@ -183,15 +183,15 @@ public class QualityJobService {
     }
 
     /**
-     * 为任务注册/启动独立的 XXL-JOB（worker 组，带自身 cron），并写回 xxl_job_id。
+     * 为任务注册/启动独立的 PowerJob 任务（worker App，带自身 cron），并写回 scheduler_job_id。
      * 事务内同步调用（不再 afterCommit 静默吞异常）：注册失败抛 BusinessException 使事务回滚，保证 DB 与调度一致。
      */
     private void registerSchedule(QualityJob entity) {
-        Integer xxlJobId = schedulerClient.registerJob(workerAppName, HANDLER_NAME, entity.getId(),
+        Long schedulerJobId = schedulerClient.registerJob(workerAppName, HANDLER_NAME, entity.getId(),
                 entity.getName(), entity.getCron(), TRIGGER_TYPE_CRON, true, 0, 0);
         jobMapper.update(null, new UpdateWrapper<QualityJob>()
-                .eq("id", entity.getId()).set("xxl_job_id", xxlJobId));
-        logger.info("注册质量任务定时调度: jobId={}, xxlJobId={}, cron={}", entity.getId(), xxlJobId, entity.getCron());
+                .eq("id", entity.getId()).set("scheduler_job_id", schedulerJobId));
+        logger.info("注册质量任务定时调度: jobId={}, schedulerJobId={}, cron={}", entity.getId(), schedulerJobId, entity.getCron());
     }
 
     @Transactional
@@ -243,11 +243,11 @@ public class QualityJobService {
             ruleService.setJobRules(id, request.getRuleIds());
         }
 
-        // Sprint 8：cron 变更且任务已注册 XXL-JOB 时，事务提交后同步调度 cron（参照同步任务）
-        Integer oldXxlJobId = entity.getXxlJobId();
+        // Sprint 8：cron 变更且任务已注册调度中心时，事务提交后同步调度 cron（参照同步任务）
+        Long oldSchedulerJobId = entity.getSchedulerJobId();
         boolean cronChanged = request.getCron() != null
                 && !request.getCron().equals(entity.getCron());
-        if (oldXxlJobId != null && cronChanged) {
+        if (oldSchedulerJobId != null && cronChanged) {
             String newCron = request.getCron();
             String newName = name;
             boolean scheduleEnabled = request.getScheduledEnabled() != null
@@ -257,7 +257,7 @@ public class QualityJobService {
                 @Override
                 public void afterCommit() {
                     try {
-                        schedulerClient.updateJob(oldXxlJobId, workerAppName, HANDLER_NAME, id, newName,
+                        schedulerClient.updateJob(oldSchedulerJobId, workerAppName, HANDLER_NAME, id, newName,
                                 newCron, TRIGGER_TYPE_CRON, scheduleEnabled, 0, 0);
                     } catch (Exception e) {
                         logger.warn("更新调度 cron 失败（不影响已提交的 DB 数据）: jobId={}", id, e);
@@ -270,7 +270,7 @@ public class QualityJobService {
 
     /**
      * 删除任务（Sprint 7：仅删任务的规则关联，规则本身保留可被其他任务引用）。
-     * Sprint 8：删除时注销任务注册的 XXL-JOB（事务提交后），避免孤儿调度任务。
+     * Sprint 8：删除时注销任务注册的调度任务（事务提交后），避免孤儿调度任务。
      */
     @Transactional
     public void delete(Long id) {
@@ -307,15 +307,15 @@ public class QualityJobService {
             cleanupScoresWithoutActiveRules(tableIds);
         }
 
-        Integer xxlJobId = entity.getXxlJobId();
-        if (xxlJobId != null) {
+        Long schedulerJobId = entity.getSchedulerJobId();
+        if (schedulerJobId != null) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
-                        schedulerClient.unregisterJob(xxlJobId);
+                        schedulerClient.unregisterJob(schedulerJobId);
                     } catch (Exception e) {
-                        logger.warn("删除质量任务时注销 XXL-JOB 失败: jobId={}", id, e);
+                        logger.warn("删除质量任务时注销调度任务失败: jobId={}", id, e);
                     }
                 }
             });
@@ -356,7 +356,7 @@ public class QualityJobService {
     }
 
     /**
-     * 手动执行任务：触发 worker 上的质量执行 XXL-JOB 异步执行。
+     * 手动执行任务：触发 worker 上的质量执行调度任务异步执行。
      */
     public void executeJob(Long id) {
         requireJob(id);
@@ -364,9 +364,9 @@ public class QualityJobService {
     }
 
     /**
-     * 开启调度（scheduled_enabled=1）：为任务注册/启动一个独立的 XXL-JOB（worker 组，带自身 cron）。
+     * 开启调度（scheduled_enabled=1）：为任务注册/启动一个独立的 PowerJob 任务（worker App，带自身 cron）。
      * cron 为空时抛错；注册/启动在事务内同步执行——失败抛 BusinessException 使事务回滚（scheduled_enabled 不置 1），
-     * 保证 DB 与 XXL-JOB 一致且前端可见错误。
+     * 保证 DB 与调度中心一致且前端可见错误。
      */
     @Transactional
     public void startSchedule(Long id) {
@@ -374,12 +374,12 @@ public class QualityJobService {
         if (!StringUtils.hasText(entity.getCron())) {
             throw new BusinessException(ErrorCode.QUALITY_JOB_CRON_REQUIRED, "未配置 Cron 表达式，无法开启调度");
         }
-        Integer oldXxlJobId = entity.getXxlJobId();
-        if (oldXxlJobId == null) {
+        Long oldSchedulerJobId = entity.getSchedulerJobId();
+        if (oldSchedulerJobId == null) {
             // 同步注册（失败抛错 → 事务回滚，scheduled_enabled 不置 1）
             registerSchedule(entity);
         } else {
-            schedulerClient.startJob(oldXxlJobId);
+            schedulerClient.startJob(oldSchedulerJobId);
         }
         UpdateWrapper<QualityJob> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", id)
@@ -390,7 +390,7 @@ public class QualityJobService {
     }
 
     /**
-     * 关闭调度（scheduled_enabled=0）：仅停止 XXL-JOB（stopJob），不注销，保留 xxl_job_id 便于快速恢复。
+     * 关闭调度（scheduled_enabled=0）：仅停止调度任务（stopJob），不注销，保留 scheduler_job_id 便于快速恢复。
      */
     @Transactional
     public void stopSchedule(Long id) {
@@ -402,15 +402,15 @@ public class QualityJobService {
                 .set("updated_at", LocalDateTime.now());
         jobMapper.update(null, wrapper);
 
-        Integer xxlJobId = entity.getXxlJobId();
-        if (xxlJobId != null) {
+        Long schedulerJobId = entity.getSchedulerJobId();
+        if (schedulerJobId != null) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
-                        schedulerClient.stopJob(xxlJobId);
+                        schedulerClient.stopJob(schedulerJobId);
                     } catch (Exception e) {
-                        logger.warn("停止调度时停止 XXL-JOB 失败（不影响已提交的 DB 数据）: jobId={}", id, e);
+                        logger.warn("停止调度时停止调度任务失败（不影响已提交的 DB 数据）: jobId={}", id, e);
                     }
                 }
             });

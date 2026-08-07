@@ -7,7 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * Governance 侧采集任务调度适配器，实际调度能力下沉到 {@link SchedulerClient}。
+ * Governance 侧采集任务调度适配器，实际调度能力下沉到 {@link SchedulerClient}
+ * （底层为 PowerJob OpenAPI，executorHandler 即 processorInfo 路由名）。
  */
 @Service
 public class SchedulerService {
@@ -24,34 +25,34 @@ public class SchedulerService {
         this.schedulerClient = schedulerClient;
     }
 
-    public Integer registerJob(Long taskId, String name, String cronExpression, String scheduleType, boolean start) {
-        Integer xxlJobId = schedulerClient.registerJob(appName, HANDLER_NAME, taskId, name,
+    public Long registerJob(Long taskId, String name, String cronExpression, String scheduleType, boolean start) {
+        Long schedulerJobId = schedulerClient.registerJob(appName, HANDLER_NAME, taskId, name,
                 cronExpression, scheduleType, start, 0, 0);
-        logger.info("Registered governance collect job via SchedulerClient: name={}, xxlJobId={}, taskId={}",
-                name, xxlJobId, taskId);
-        return xxlJobId;
+        logger.info("Registered governance collect job via SchedulerClient: name={}, schedulerJobId={}, taskId={}",
+                name, schedulerJobId, taskId);
+        return schedulerJobId;
     }
 
-    public void updateJob(Integer jobId, Long taskId, String name, String cronExpression,
+    public void updateJob(Long jobId, Long taskId, String name, String cronExpression,
                           String scheduleType, boolean start) {
         schedulerClient.updateJob(jobId, appName, HANDLER_NAME, taskId, name,
                 cronExpression, scheduleType, start, 0, 0);
         logger.info("Updated governance collect job via SchedulerClient: jobId={}, taskId={}", jobId, taskId);
     }
 
-    public void unregisterJob(Integer jobId) {
+    public void unregisterJob(Long jobId) {
         schedulerClient.unregisterJob(jobId);
     }
 
-    public void startJob(Integer jobId) {
+    public void startJob(Long jobId) {
         schedulerClient.startJob(jobId);
     }
 
-    public void stopJob(Integer jobId) {
+    public void stopJob(Long jobId) {
         schedulerClient.stopJob(jobId);
     }
 
-    public void triggerJob(Integer jobId, String executorParam) {
+    public void triggerJob(Long jobId, String executorParam) {
         schedulerClient.triggerJob(jobId, executorParam);
     }
 }

@@ -96,7 +96,7 @@ public class CollectWriteService {
         dto.setLastExecuteTime(formatTime(task.getLastExecuteTime()));
         dto.setLastHistoryId(task.getLastHistoryId());
         dto.setDescription(task.getDescription());
-        dto.setXxlJobId(task.getXxlJobId());
+        dto.setSchedulerJobId(task.getSchedulerJobId());
         dto.setScheduleEnabled(task.getScheduleEnabled());
         dto.setNextExecutionTime(formatTime(task.getNextExecutionTime()));
         dto.setCreatedBy(task.getCreatedBy());

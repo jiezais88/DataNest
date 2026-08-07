@@ -3,8 +3,6 @@ package com.datanest.job.handler;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringSyncJobApi;
 import com.datanest.engineering.api.dto.CleanupRequest;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -15,7 +13,7 @@ import org.springframework.stereotype.Component;
  * 本 handler 只负责调度触发 cleanup 端点。
  */
 @Component
-public class SyncHistoryCleanupHandler {
+public class SyncHistoryCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(SyncHistoryCleanupHandler.class);
     private static final int RETENTION_DAYS = 30;
@@ -26,8 +24,13 @@ public class SyncHistoryCleanupHandler {
         this.syncJobApi = syncJobApi;
     }
 
-    @XxlJob("syncHistoryCleanupHandler")
-    public void cleanup() {
+    @Override
+    public String getName() {
+        return "syncHistoryCleanupHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         logger.info("Starting sync history cleanup, retentionDays={}", RETENTION_DAYS);
         try {
             CleanupRequest request = new CleanupRequest();
@@ -35,10 +38,9 @@ public class SyncHistoryCleanupHandler {
             Result<Integer> result = syncJobApi.cleanupHistories(request);
             int deleted = result == null || result.data() == null ? 0 : result.data();
             logger.info("Sync history cleanup completed: deletedRows={}", deleted);
-            XxlJobHelper.handleSuccess("清理完成: deleted=" + deleted);
         } catch (Exception e) {
             logger.error("Sync history cleanup failed", e);
-            XxlJobHelper.handleFail("同步历史清理失败: " + e.getMessage());
+            throw new IllegalStateException("同步历史清理失败: " + e.getMessage(), e);
         }
     }
 }

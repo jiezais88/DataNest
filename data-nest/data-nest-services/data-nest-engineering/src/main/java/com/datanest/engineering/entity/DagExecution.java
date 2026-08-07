@@ -22,6 +22,9 @@ public class DagExecution {
 
     private Long dsProcessInstanceId;    // DS 流程实例 ID
 
+    /** PowerJob 工作流实例 ID（替代 dsProcessInstanceId，切流后生效，旧列保留至切流清理） */
+    private Long powerjobWfInstanceId;
+
     private String triggerType;          // MANUAL / CRON
 
     private String status;               // RUNNING / SUCCESS / FAILED / TERMINATED

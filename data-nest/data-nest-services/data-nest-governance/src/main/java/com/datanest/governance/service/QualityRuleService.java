@@ -401,7 +401,7 @@ public class QualityRuleService {
     }
 
     /**
-     * 单条规则执行：触发 worker 上的质量执行 XXL-JOB 异步执行（param=rule:&lt;ruleId&gt;）。
+     * 单条规则执行：触发 worker 上的质量执行调度任务异步执行（param=rule:&lt;ruleId&gt;）。
      */
     public void executeRule(Long id) {
         requireRule(id);

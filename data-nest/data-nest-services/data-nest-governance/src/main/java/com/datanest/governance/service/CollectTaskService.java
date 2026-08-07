@@ -99,20 +99,20 @@ public class CollectTaskService {
 
         collectTaskMapper.insert(task);
 
-        // 注册到 XXL-JOB（需要 task.getId()），默认不启动调度；
+        // 注册到 PowerJob（需要 task.getId()），默认不启动调度；
         // 远程调用移到事务提交后执行，事务内只做 DB 操作，避免回滚后在调度中心留下孤儿任务
         Long taskId = task.getId();
         String taskName = task.getName();
         ScheduleType scheduleType = ScheduleType.fromTriggerType(request.getTriggerType());
         String cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
         runAfterCommit("注册调度任务", () -> {
-            Integer xxlJobId = schedulerService.registerJob(taskId, taskName, cron, scheduleType.getCode(), false);
-            // 回填 xxlJobId（此处已在原事务外，单行更新自动提交）
-            CollectTask xxlJobUpdate = new CollectTask();
-            xxlJobUpdate.setId(taskId);
-            xxlJobUpdate.setXxlJobId(xxlJobId);
-            collectTaskMapper.updateById(xxlJobUpdate);
-            logger.info("Collect task registered to scheduler: id={}, name={}, xxlJobId={}", taskId, taskName, xxlJobId);
+            Long schedulerJobId = schedulerService.registerJob(taskId, taskName, cron, scheduleType.getCode(), false);
+            // 回填 schedulerJobId（此处已在原事务外，单行更新自动提交）
+            CollectTask schedulerJobUpdate = new CollectTask();
+            schedulerJobUpdate.setId(taskId);
+            schedulerJobUpdate.setSchedulerJobId(schedulerJobId);
+            collectTaskMapper.updateById(schedulerJobUpdate);
+            logger.info("Collect task registered to scheduler: id={}, name={}, schedulerJobId={}", taskId, taskName, schedulerJobId);
         });
 
         logger.info("Collect task created: id={}, name={}", task.getId(), task.getName());
@@ -144,16 +144,16 @@ public class CollectTaskService {
 
         collectTaskMapper.updateById(task);
 
-        if (task.getXxlJobId() != null) {
-            // XXL-JOB 更新移到事务提交后执行，避免 DB 回滚后调度配置与库内状态不一致
-            Integer xxlJobId = task.getXxlJobId();
+        if (task.getSchedulerJobId() != null) {
+            // 调度中心更新移到事务提交后执行，避免 DB 回滚后调度配置与库内状态不一致
+            Long schedulerJobId = task.getSchedulerJobId();
             Long taskId = task.getId();
             String taskName = task.getName();
             ScheduleType scheduleType = ScheduleType.fromTriggerType(request.getTriggerType());
             String cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
             boolean start = task.getScheduleEnabled() != null && task.getScheduleEnabled() == 1;
             runAfterCommit("更新调度任务", () ->
-                    schedulerService.updateJob(xxlJobId, taskId, taskName, cron, scheduleType.getCode(), start));
+                    schedulerService.updateJob(schedulerJobId, taskId, taskName, cron, scheduleType.getCode(), start));
         }
         return toDTO(task);
     }
@@ -167,17 +167,17 @@ public class CollectTaskService {
         if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(task.getTriggerType())) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "仅 Cron 任务支持调度开关");
         }
-        if (task.getXxlJobId() == null) {
+        if (task.getSchedulerJobId() == null) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务未注册到调度中心");
         }
-        Integer xxlJobId = task.getXxlJobId();
+        Long schedulerJobId = task.getSchedulerJobId();
         task.setScheduleEnabled(1);
         task.setNextExecutionTime(computeNextExecutionTime(task.getTriggerType(), task.getCronExpression()));
         task.setUpdatedAt(LocalDateTime.now());
         task.setUpdatedBy(currentUserId());
         collectTaskMapper.updateById(task);
         // 远程启动移到事务提交后执行
-        runAfterCommit("启动调度", () -> schedulerService.startJob(xxlJobId));
+        runAfterCommit("启动调度", () -> schedulerService.startJob(schedulerJobId));
         logger.info("Collect task schedule started: taskId={}", id);
     }
 
@@ -190,17 +190,17 @@ public class CollectTaskService {
         if (!TaskTriggerType.CRON.getCode().equalsIgnoreCase(task.getTriggerType())) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "仅 Cron 任务支持调度开关");
         }
-        if (task.getXxlJobId() == null) {
+        if (task.getSchedulerJobId() == null) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务未注册到调度中心");
         }
-        Integer xxlJobId = task.getXxlJobId();
+        Long schedulerJobId = task.getSchedulerJobId();
         task.setScheduleEnabled(0);
         task.setNextExecutionTime(null);
         task.setUpdatedAt(LocalDateTime.now());
         task.setUpdatedBy(currentUserId());
         collectTaskMapper.updateById(task);
         // 远程停止移到事务提交后执行
-        runAfterCommit("停止调度", () -> schedulerService.stopJob(xxlJobId));
+        runAfterCommit("停止调度", () -> schedulerService.stopJob(schedulerJobId));
         logger.info("Collect task schedule stopped: taskId={}", id);
     }
 
@@ -218,7 +218,7 @@ public class CollectTaskService {
         }
 
         // 提前取出注销调度所需的信息（DB 行删除后 afterCommit 中无法再查询）
-        Integer xxlJobId = task.getXxlJobId();
+        Long schedulerJobId = task.getSchedulerJobId();
 
         // 级联删除：变更明细 → 执行日志 → 历史记录
         List<Long> historyIds = collectHistoryMapper.selectList(new QueryWrapper<CollectHistory>()
@@ -236,15 +236,15 @@ public class CollectTaskService {
         RemoteCalls.execute("alert.deleteRuleByObject",
                 () -> alertApi.deleteRuleByObject(AlertConstants.OBJECT_TYPE_COLLECT_TASK, id));
 
-        if (xxlJobId != null) {
+        if (schedulerJobId != null) {
             // 注销调度移到事务提交后执行，避免 DB 回滚后在调度中心留下孤儿任务
-            runAfterCommit("注销调度任务", () -> schedulerService.unregisterJob(xxlJobId));
+            runAfterCommit("注销调度任务", () -> schedulerService.unregisterJob(schedulerJobId));
         }
         logger.info("Collect task deleted: id={}, name={}", id, task.getName());
     }
 
     /**
-     * 将 XXL-JOB 远程调用注册为事务提交后执行（参考 DataSourceService 的 afterCommit 模式）；
+     * 将调度中心（PowerJob）远程调用注册为事务提交后执行（参考 DataSourceService 的 afterCommit 模式）；
      * afterCommit 中的异常只记 error 日志，不再影响已提交的数据，调度侧不一致需人工核对或后续补偿。
      */
     private void runAfterCommit(String action, Runnable schedulerCall) {
@@ -254,7 +254,7 @@ public class CollectTaskService {
                 try {
                     schedulerCall.run();
                 } catch (Exception e) {
-                    logger.error("XXL-JOB 调度操作失败（DB 已提交，调度侧可能不一致）: action={}", action, e);
+                    logger.error("调度中心操作失败（DB 已提交，调度侧可能不一致）: action={}", action, e);
                 }
             }
         });
@@ -307,11 +307,11 @@ public class CollectTaskService {
         if (task == null) {
             throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
         }
-        if (task.getXxlJobId() == null) {
+        if (task.getSchedulerJobId() == null) {
             throw new BusinessException(ErrorCode.TASK_SCHEDULE_FAILED, "任务未注册到调度中心");
         }
-        schedulerService.triggerJob(task.getXxlJobId(), id + ",MANUAL");
-        logger.info("Collect task triggered manually: taskId={}, xxlJobId={}", id, task.getXxlJobId());
+        schedulerService.triggerJob(task.getSchedulerJobId(), id + ",MANUAL");
+        logger.info("Collect task triggered manually: taskId={}, schedulerJobId={}", id, task.getSchedulerJobId());
     }
 
     public List<DataSourceReferenceDTO> getReferencesByDataSource(Long datasourceId) {
@@ -366,7 +366,7 @@ public class CollectTaskService {
         dto.setLastExecuteTime(task.getLastExecuteTime());
         dto.setLastHistoryId(task.getLastHistoryId());
         dto.setDescription(task.getDescription());
-        dto.setXxlJobId(task.getXxlJobId());
+        dto.setSchedulerJobId(task.getSchedulerJobId());
         dto.setScheduleEnabled(task.getScheduleEnabled());
         dto.setNextExecutionTime(task.getNextExecutionTime());
         dto.setCreatedAt(task.getCreatedAt());

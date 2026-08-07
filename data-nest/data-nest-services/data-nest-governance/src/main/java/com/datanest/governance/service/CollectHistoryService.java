@@ -126,7 +126,7 @@ public class CollectHistoryService {
     /**
      * 手动停止一次正在运行的采集执行。
      * 采用「DB 置 TERMINATED + 执行器协作式检查」：这里只负责落终态，
-     * 执行器在循环中重查状态后自行退出，不走 XXL-JOB kill。
+     * 执行器在循环中重查状态后自行退出，不走调度中心 kill。
      */
     public void stop(Long historyId) {
         CollectHistory history = collectHistoryMapper.selectById(historyId);

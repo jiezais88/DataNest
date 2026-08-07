@@ -161,7 +161,7 @@ public class QualityScoreService {
     }
 
     /**
-     * 按表执行全部启用规则：逐条触发 worker 上的质量执行 XXL-JOB（param=rule:&lt;ruleId&gt;）异步执行。
+     * 按表执行全部启用规则：逐条触发 worker 上的质量执行调度任务（param=rule:&lt;ruleId&gt;）异步执行。
      * 单条触发失败不中断其他规则；存在失败时抛聚合异常（避免静默遗漏）。
      */
     public void executeTableRules(Long tableId) {

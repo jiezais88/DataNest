@@ -4,8 +4,6 @@ import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.governance.api.GovernanceOpsApi;
 import com.datanest.governance.api.dto.CleanupRequest;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +20,7 @@ import org.springframework.stereotype.Component;
  * RemoteCalls 容错：governance 不可用本轮跳过，下轮调度再来。
  */
 @Component
-public class QualityCheckHistoryCleanupHandler {
+public class QualityCheckHistoryCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(QualityCheckHistoryCleanupHandler.class);
 
@@ -35,8 +33,13 @@ public class QualityCheckHistoryCleanupHandler {
         this.retainDays = Math.max(1, retainDays);
     }
 
-    @XxlJob("qualityCheckHistoryCleanupHandler")
-    public void cleanup() {
+    @Override
+    public String getName() {
+        return "qualityCheckHistoryCleanupHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         logger.info("Starting quality check history cleanup, retainDays={}", retainDays);
         CleanupRequest request = new CleanupRequest();
         request.setRetainDays(retainDays);
@@ -45,10 +48,8 @@ public class QualityCheckHistoryCleanupHandler {
             return result == null ? null : result.data();
         }, null);
         if (rows == null) {
-            XxlJobHelper.handleFail("质量检查历史清理失败: governance 服务不可用，本轮跳过");
-            return;
+            throw new IllegalStateException("质量检查历史清理失败: governance 服务不可用，本轮跳过");
         }
         logger.info("Quality check history cleanup completed: rows={}", rows);
-        XxlJobHelper.handleSuccess("清理完成: rows=" + rows);
     }
 }

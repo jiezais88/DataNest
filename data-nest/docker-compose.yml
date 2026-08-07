@@ -110,6 +110,37 @@ services:
       - datanest-net
 
   # ============================================
+  # PowerJob 5.1.2 — 新一代统一调度中心（替换 XXL-JOB + DolphinScheduler）
+  # 复用 middleware-mysql 的 powerjob 库（14 张表，官方 powerjob-mysql.sql 初始化）
+  # 注意：PowerJob 数据源配置前缀是 spring.datasource.core.*（非标准 spring.datasource.*）
+  # 端口: 7700 (控制台+OpenAPI) / 10010 (HTTP transporter) / 10086 (AKKA transporter)
+  # ============================================
+  middleware-powerjob:
+    image: powerjob/powerjob-server:5.1.2
+    container_name: datanest-middleware-powerjob
+    environment:
+      - TZ=Asia/Shanghai
+      - JVMOPTIONS=-Xmx512m
+      - PARAMS=--oms.mongodb.enable=false --spring.datasource.core.jdbc-url=jdbc:mysql://middleware-mysql:3306/powerjob?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true --spring.datasource.core.username=nacos --spring.datasource.core.password=nacos123 --oms.storage.dfs.mysql_series.url=jdbc:mysql://middleware-mysql:3306/powerjob?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true --oms.storage.dfs.mysql_series.username=nacos --oms.storage.dfs.mysql_series.password=nacos123 --oms.storage.dfs.mysql_series.auto_create_table=true
+    ports:
+      - "7700:7700"
+      - "10010:10010"
+      - "10086:10086"
+    volumes:
+      - powerjob-server-data:/root/powerjob/server/
+    depends_on:
+      middleware-mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:7700/ > /dev/null || exit 1" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    networks:
+      - datanest-net
+
+  # ============================================
   # PostgreSQL 16 — DataNest 业务数据主库（用户/权限/同步任务/DAG 等）
   # ============================================
   middleware-postgres:
@@ -838,6 +869,8 @@ volumes:
   test-postgres-data:
   # test-oracle-data:  # Sprint 5 临时注释：Oracle 服务已停用
   xxl-job-admin-data:
+  # 新增 — PowerJob server 持久化（日志/H2 本地库等）
+  powerjob-server-data:
   # 新增 — DS 日志+资源（4 个 DS 服务共享 /opt/dolphinscheduler/logs；master/worker 共享 /opt/soft）
   datanest-ds-logs:
   datanest-ds-shared:

@@ -1,0 +1,28 @@
+# ============================================
+# shared-powerjob.yaml
+# PowerJob 5.1.2 Worker 通用配置（替换 XXL-JOB + DolphinScheduler 调度引擎）
+# 消费方：job / worker
+# 说明：app-name 不在此配置（job/worker 两服务 appName 不同，各自 application.yml 配置）
+# 配置键来源：powerjob-worker-spring-boot-starter PowerJobProperties（prefix=powerjob）
+# ============================================
+
+powerjob:
+  worker:
+    # 是否启用 PowerJob Worker
+    enabled: true
+    # PowerJob Server 地址（Docker 内网服务名：middleware-powerjob；运维可按需覆盖）
+    server-address: ${POWERJOB_SERVER_HOST:middleware-powerjob}:${POWERJOB_SERVER_PORT:7700}
+    # worker 通信端口（多实例部署时需各自唯一，默认 27777）
+    port: ${POWERJOB_WORKER_PORT:27777}
+    # worker 与 server 通信协议（AKKA / HTTP）
+    protocol: AKKA
+    # 本地任务持久化策略：disk（H2 落盘）或 memory
+    store-strategy: ${POWERJOB_STORE_STRATEGY:disk}
+    # 允许 server 未就绪时先启动 worker（本地开发友好，生产可改 false）
+    allow-lazy-connect-server: ${POWERJOB_ALLOW_LAZY_CONNECT:true}
+
+datanest:
+  powerjob:
+    # 应用密码：仅用于 server 端 app 注册/鉴权（worker starter 5.1.2 无对应配置键，
+    # worker 连接仅按 appName assert）；供初始化脚本及后续接入使用
+    app-password: ${POWERJOB_APP_PASSWORD:powerjob123}

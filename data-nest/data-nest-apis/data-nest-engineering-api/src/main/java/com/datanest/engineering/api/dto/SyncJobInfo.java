@@ -60,7 +60,8 @@ public class SyncJobInfo {
 
     private Integer rateLimitEnabled;
 
-    private Integer xxlJobId;
+    /** PowerJob jobId */
+    private Long schedulerJobId;
 
     private String description;
 

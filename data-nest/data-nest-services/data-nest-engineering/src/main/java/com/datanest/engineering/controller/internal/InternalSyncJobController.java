@@ -13,7 +13,7 @@ import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.engineering.api.dto.SyncJobTriggerRequest;
 import com.datanest.engineering.api.dto.SyncLogAppendRequest;
 import com.datanest.engineering.api.dto.SyncStatusMarkRequest;
-import com.datanest.engineering.api.dto.XxlJobIdUpdateRequest;
+import com.datanest.engineering.api.dto.SchedulerJobIdUpdateRequest;
 import com.datanest.engineering.service.SyncJobTriggerService;
 import com.datanest.engineering.service.internal.InternalSyncJobService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -76,13 +76,13 @@ public class InternalSyncJobController {
         return Result.ok(null);
     }
 
-    @PutMapping("/{id}/xxl-job-id")
-    public Result<Void> updateXxlJobId(@PathVariable Long id, @RequestBody XxlJobIdUpdateRequest request) {
-        syncJobService.updateXxlJobId(id, request.getXxlJobId());
+    @PutMapping("/{id}/scheduler-job-id")
+    public Result<Void> updateSchedulerJobId(@PathVariable Long id, @RequestBody SchedulerJobIdUpdateRequest request) {
+        syncJobService.updateSchedulerJobId(id, request.getSchedulerJobId());
         return Result.ok(null);
     }
 
-    /** 触发同步任务执行（按需注册 XXL + mark-running + 建 RUNNING 历史 + 投递 XXL），返回 history id */
+    /** 触发同步任务执行（按需注册 PowerJob + mark-running + 建 RUNNING 历史 + 投递 PowerJob），返回 history id */
     @PostMapping("/{id}/trigger")
     public Result<Long> trigger(@PathVariable Long id, @RequestBody SyncJobTriggerRequest request) {
         return Result.ok(syncJobTriggerService.triggerSyncJob(id, request.getTriggerType(), request.getDagExecutionId()));

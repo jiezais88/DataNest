@@ -57,8 +57,11 @@ public class QualityJob {
     /** 最近一次触发时间 */
     private LocalDateTime lastTriggerAt;
 
-    /** 定时调度 XXL-JOB 任务 ID（注册到 data-nest-worker 组，带自身 cron） */
+    /** 旧 XXL-JOB 任务 ID（已废弃，仅保留旧列映射至 P4 切流清理，代码不再读写） */
     private Integer xxlJobId;
+
+    /** PowerJob jobId（调度统一走此字段，旧 xxlJobId 列保留至切流清理） */
+    private Long schedulerJobId;
 
     private Long createdBy;
 

@@ -25,34 +25,34 @@ public class SchedulerServiceForEngineering {
         this.schedulerClient = schedulerClient;
     }
 
-    public Integer registerJob(Long syncJobId, String name, String cronExpression, String triggerType, boolean start) {
-        Integer xxlJobId = schedulerClient.registerJob(appName, HANDLER_NAME, syncJobId, name,
+    public Long registerJob(Long syncJobId, String name, String cronExpression, String triggerType, boolean start) {
+        Long schedulerJobId = schedulerClient.registerJob(appName, HANDLER_NAME, syncJobId, name,
                 cronExpression, triggerType, start, 0, 0);
-        logger.info("Registered engineering sync job via SchedulerClient: name={}, xxlJobId={}, syncJobId={}",
-                name, xxlJobId, syncJobId);
-        return xxlJobId;
+        logger.info("Registered engineering sync job via SchedulerClient: name={}, schedulerJobId={}, syncJobId={}",
+                name, schedulerJobId, syncJobId);
+        return schedulerJobId;
     }
 
-    public void updateJob(Integer jobId, Long syncJobId, String name, String cronExpression,
+    public void updateJob(Long schedulerJobId, Long syncJobId, String name, String cronExpression,
                           String triggerType, boolean start) {
-        schedulerClient.updateJob(jobId, appName, HANDLER_NAME, syncJobId, name,
+        schedulerClient.updateJob(schedulerJobId, appName, HANDLER_NAME, syncJobId, name,
                 cronExpression, triggerType, start, 0, 0);
-        logger.info("Updated engineering sync job via SchedulerClient: jobId={}, syncJobId={}", jobId, syncJobId);
+        logger.info("Updated engineering sync job via SchedulerClient: schedulerJobId={}, syncJobId={}", schedulerJobId, syncJobId);
     }
 
-    public void unregisterJob(Integer jobId) {
-        schedulerClient.unregisterJob(jobId);
+    public void unregisterJob(Long schedulerJobId) {
+        schedulerClient.unregisterJob(schedulerJobId);
     }
 
-    public void startJob(Integer jobId) {
-        schedulerClient.startJob(jobId);
+    public void startJob(Long schedulerJobId) {
+        schedulerClient.startJob(schedulerJobId);
     }
 
-    public void stopJob(Integer jobId) {
-        schedulerClient.stopJob(jobId);
+    public void stopJob(Long schedulerJobId) {
+        schedulerClient.stopJob(schedulerJobId);
     }
 
-    public void triggerJob(Integer jobId, String executorParam) {
-        schedulerClient.triggerJob(jobId, executorParam);
+    public void triggerJob(Long schedulerJobId, String executorParam) {
+        schedulerClient.triggerJob(schedulerJobId, executorParam);
     }
 }

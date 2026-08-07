@@ -49,7 +49,7 @@ public class SyncJobRetryService {
      * 失败收尾时登记下一次重试：仅当剩余重试次数 > 0 时，
      * 在失败历史记录上写入 next_retry_at（retry_interval 分钟后）。
      *
-     * @param job           同步任务（含 retry_times / retry_interval / xxl_job_id 配置）
+     * @param job           同步任务（含 retry_times / retry_interval / scheduler_job_id 配置）
      * @param failedHistory 已标记 FAILED 的历史记录
      * @return true 表示已登记重试
      */
@@ -61,8 +61,8 @@ public class SyncJobRetryService {
         if (retryTimes == null || retryTimes <= 0) {
             return false;
         }
-        if (job.getXxlJobId() == null) {
-            logger.warn("无法登记重试：同步任务未注册 XXL-JOB, syncJobId={}", job.getId());
+        if (job.getSchedulerJobId() == null) {
+            logger.warn("无法登记重试：同步任务未注册调度任务（PowerJob）, syncJobId={}", job.getId());
             return false;
         }
         int retriedCount = failedHistory.getRetryCount() == null ? 0 : failedHistory.getRetryCount();

@@ -39,6 +39,9 @@ public class Dag {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long dsScheduleId;
 
+    /** PowerJob 工作流 ID（替代 dsProcessDefinitionCode，切流后生效，旧列保留至切流清理） */
+    private Long powerjobWorkflowId;
+
     private String releaseState;         // OFFLINE / ONLINE
 
     private Long createdBy;

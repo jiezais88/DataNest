@@ -5,8 +5,6 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDagExecutionApi;
 import com.datanest.engineering.api.EngineeringSyncJobApi;
 import com.datanest.engineering.api.dto.ReapStuckRequest;
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,7 +19,7 @@ import org.springframework.stereotype.Component;
  * 收割阈值由 datanest.task.stuck-running-timeout-minutes 配置（默认 120 分钟）。
  */
 @Component
-public class StuckExecutionReaperHandler {
+public class StuckExecutionReaperHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(StuckExecutionReaperHandler.class);
 
@@ -37,8 +35,13 @@ public class StuckExecutionReaperHandler {
         this.timeoutMinutes = Math.max(1L, timeoutMinutes);
     }
 
-    @XxlJob("stuckExecutionReaperHandler")
-    public void reap() {
+    @Override
+    public String getName() {
+        return "stuckExecutionReaperHandler";
+    }
+
+    @Override
+    public void execute(String param) {
         try {
             ReapStuckRequest request = new ReapStuckRequest();
             request.setStuckBeforeMinutes((int) timeoutMinutes);
@@ -53,11 +56,9 @@ public class StuckExecutionReaperHandler {
             }, 0);
             logger.info("卡死 RUNNING 收割完成: syncJobHistory={}, dagExecution+nodeExecution={}, timeoutMinutes={}",
                     syncHistories, dagSide, timeoutMinutes);
-            XxlJobHelper.handleSuccess("收割完成: syncJobHistory=" + syncHistories
-                    + ", dagExecution+nodeExecution=" + dagSide);
         } catch (Exception e) {
             logger.error("卡死 RUNNING 收割失败", e);
-            XxlJobHelper.handleFail("卡死 RUNNING 收割失败: " + e.getMessage());
+            throw new IllegalStateException("卡死 RUNNING 收割失败: " + e.getMessage(), e);
         }
     }
 }

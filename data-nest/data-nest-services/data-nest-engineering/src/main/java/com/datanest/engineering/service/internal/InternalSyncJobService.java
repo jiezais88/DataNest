@@ -105,9 +105,9 @@ public class InternalSyncJobService {
                 .eq("id", id));
     }
 
-    public void updateXxlJobId(Long id, Integer xxlJobId) {
+    public void updateSchedulerJobId(Long id, Long schedulerJobId) {
         syncJobMapper.update(null, new UpdateWrapper<SyncJob>()
-                .set("xxl_job_id", xxlJobId)
+                .set("scheduler_job_id", schedulerJobId)
                 .set("updated_at", LocalDateTime.now())
                 .eq("id", id));
     }
@@ -366,7 +366,7 @@ public class InternalSyncJobService {
         info.setReadRateLimitMbps(entity.getReadRateLimitMbps());
         info.setWriteRateLimitRowsPerSecond(entity.getWriteRateLimitRowsPerSecond());
         info.setRateLimitEnabled(entity.getRateLimitEnabled());
-        info.setXxlJobId(entity.getXxlJobId());
+        info.setSchedulerJobId(entity.getSchedulerJobId());
         info.setDescription(entity.getDescription());
         info.setLastExecuteTime(entity.getLastExecuteTime());
         info.setLastHistoryId(entity.getLastHistoryId());

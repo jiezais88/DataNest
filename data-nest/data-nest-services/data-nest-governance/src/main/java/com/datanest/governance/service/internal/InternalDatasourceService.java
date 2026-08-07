@@ -130,7 +130,7 @@ public class InternalDatasourceService {
     /**
      * 数据源保存后自动创建采集任务并立即触发（对齐原 engineering
      * DataSourceService.autoCreateAndRunCollectTask 的逻辑）：建 collect_task（FULL/MANUAL/不启调度）
-     * → 注册 XXL-JOB 并回填 xxl_job_id → 立即触发一次。
+     * → 注册 PowerJob 任务并回填 scheduler_job_id → 立即触发一次。
      * 无外层事务（与原 afterCommit 语义一致：单行写入自动提交，远程调度失败由调用方按非阻断处理）。
      *
      * @return collectTaskId
@@ -164,14 +164,14 @@ public class InternalDatasourceService {
         task.setCreatedAt(now);
         collectTaskMapper.insert(task);
 
-        Integer xxlJobId = schedulerService.registerJob(task.getId(), taskName, "",
+        Long schedulerJobId = schedulerService.registerJob(task.getId(), taskName, "",
                 ScheduleType.fromTriggerType(TaskTriggerType.MANUAL.getCode()).getCode(), false);
-        task.setXxlJobId(xxlJobId);
+        task.setSchedulerJobId(schedulerJobId);
         collectTaskMapper.updateById(task);
 
-        schedulerService.triggerJob(xxlJobId, task.getId() + "," + TaskTriggerType.MANUAL.getCode());
-        logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}, xxlJobId={}",
-                request.getDatasourceId(), task.getId(), xxlJobId);
+        schedulerService.triggerJob(schedulerJobId, task.getId() + "," + TaskTriggerType.MANUAL.getCode());
+        logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}, schedulerJobId={}",
+                request.getDatasourceId(), task.getId(), schedulerJobId);
         return task.getId();
     }
 

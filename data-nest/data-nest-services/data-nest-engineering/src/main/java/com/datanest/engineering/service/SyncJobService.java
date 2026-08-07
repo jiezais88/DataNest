@@ -96,7 +96,7 @@ public class SyncJobService {
         entity.setCreatedAt(LocalDateTime.now());
         syncJobMapper.insert(entity);
 
-        // XXL-JOB 注册放到事务提交后：DB 回滚时不会产生孤儿调度任务
+        // PowerJob 注册放到事务提交后：DB 回滚时不会产生孤儿调度任务
         if (TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType())) {
             Long jobId = entity.getId();
             String name = entity.getName();
@@ -106,14 +106,14 @@ public class SyncJobService {
                 @Override
                 public void afterCommit() {
                     try {
-                        Integer xxlJobId = schedulerService.registerJob(jobId, name, cronExpression, triggerType, false);
+                        Long schedulerJobId = schedulerService.registerJob(jobId, name, cronExpression, triggerType, false);
                         SyncJob fresh = syncJobMapper.selectById(jobId);
                         if (fresh != null) {
-                            fresh.setXxlJobId(xxlJobId);
+                            fresh.setSchedulerJobId(schedulerJobId);
                             syncJobMapper.updateById(fresh);
                         }
                     } catch (Exception e) {
-                        logger.error("同步任务创建后注册 XXL-JOB 失败（不影响已提交的 DB 数据，启动调度时会重试注册）: syncJobId={}",
+                        logger.error("同步任务创建后注册 PowerJob 失败（不影响已提交的 DB 数据，启动调度时会重试注册）: syncJobId={}",
                                 jobId, e);
                     }
                 }
@@ -135,7 +135,7 @@ public class SyncJobService {
         }
         checkDataSource(request.getSourceDatasourceId());
 
-        Integer oldXxlJobId = entity.getXxlJobId();
+        Long oldSchedulerJobId = entity.getSchedulerJobId();
         boolean cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType());
 
         copyFromRequest(entity, request);
@@ -143,9 +143,9 @@ public class SyncJobService {
         entity.setUpdatedBy(currentUserId());
         entity.setUpdatedAt(LocalDateTime.now());
 
-        if (!cron && oldXxlJobId != null) {
-            // 切换为非 Cron：DB 先解除绑定，XXL-JOB 任务在事务提交后注销
-            entity.setXxlJobId(null);
+        if (!cron && oldSchedulerJobId != null) {
+            // 切换为非 Cron：DB 先解除绑定，PowerJob 任务在事务提交后注销
+            entity.setSchedulerJobId(null);
             entity.setScheduleEnabled(0);
             entity.setStatus(SyncJobScheduleStatus.NORMAL.getCode());
             entity.setNextExecutionTime(null);
@@ -153,7 +153,7 @@ public class SyncJobService {
 
         syncJobMapper.updateById(entity);
 
-        // XXL-JOB 注册/更新/注销放到事务提交后：避免 DB 回滚产生孤儿调度任务
+        // PowerJob 注册/更新/注销放到事务提交后：避免 DB 回滚产生孤儿调度任务
         Long jobId = entity.getId();
         String name = entity.getName();
         String cronExpression = entity.getCronExpression();
@@ -164,22 +164,22 @@ public class SyncJobService {
             public void afterCommit() {
                 try {
                     if (cron) {
-                        if (oldXxlJobId != null) {
-                            schedulerService.updateJob(oldXxlJobId, jobId, name, cronExpression, triggerType, start);
+                        if (oldSchedulerJobId != null) {
+                            schedulerService.updateJob(oldSchedulerJobId, jobId, name, cronExpression, triggerType, start);
                         } else {
-                            Integer newXxlJobId = schedulerService.registerJob(jobId, name, cronExpression, triggerType, start);
+                            Long newSchedulerJobId = schedulerService.registerJob(jobId, name, cronExpression, triggerType, start);
                             SyncJob fresh = syncJobMapper.selectById(jobId);
                             if (fresh != null) {
-                                fresh.setXxlJobId(newXxlJobId);
+                                fresh.setSchedulerJobId(newSchedulerJobId);
                                 syncJobMapper.updateById(fresh);
                             }
                         }
-                    } else if (oldXxlJobId != null) {
-                        schedulerService.unregisterJob(oldXxlJobId);
+                    } else if (oldSchedulerJobId != null) {
+                        schedulerService.unregisterJob(oldSchedulerJobId);
                     }
                 } catch (Exception e) {
-                    logger.error("同步任务更新后同步 XXL-JOB 失败（不影响已提交的 DB 数据）: syncJobId={}, xxlJobId={}",
-                            jobId, oldXxlJobId, e);
+                    logger.error("同步任务更新后同步 PowerJob 失败（不影响已提交的 DB 数据）: syncJobId={}, schedulerJobId={}",
+                            jobId, oldSchedulerJobId, e);
                 }
             }
         });
@@ -220,16 +220,16 @@ public class SyncJobService {
         RemoteCalls.execute("alert.deleteRuleByObject",
                 () -> alertApi.deleteRuleByObject(AlertConstants.OBJECT_TYPE_SYNC_JOB, id));
 
-        // XXL-JOB 注销放到事务提交后：避免 DB 回滚时调度任务已被误删
-        Integer xxlJobId = entity.getXxlJobId();
-        if (xxlJobId != null) {
+        // PowerJob 注销放到事务提交后：避免 DB 回滚时调度任务已被误删
+        Long schedulerJobId = entity.getSchedulerJobId();
+        if (schedulerJobId != null) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
-                        schedulerService.unregisterJob(xxlJobId);
+                        schedulerService.unregisterJob(schedulerJobId);
                     } catch (Exception e) {
-                        logger.warn("删除同步任务时注销 XXL-JOB 任务失败: syncJobId={}, xxlJobId={}", id, xxlJobId, e);
+                        logger.warn("删除同步任务时注销 PowerJob 任务失败: syncJobId={}, schedulerJobId={}", id, schedulerJobId, e);
                     }
                 }
             });
@@ -302,8 +302,8 @@ public class SyncJobService {
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(entity);
 
-        // XXL-JOB 注册/启动放到事务提交后：避免 DB 回滚产生孤儿调度任务
-        Integer oldXxlJobId = entity.getXxlJobId();
+        // PowerJob 注册/启动放到事务提交后：避免 DB 回滚产生孤儿调度任务
+        Long oldSchedulerJobId = entity.getSchedulerJobId();
         String name = entity.getName();
         String cronExpression = entity.getCronExpression();
         String triggerType = entity.getTriggerType();
@@ -311,19 +311,19 @@ public class SyncJobService {
             @Override
             public void afterCommit() {
                 try {
-                    if (oldXxlJobId == null) {
-                        Integer newXxlJobId = schedulerService.registerJob(id, name, cronExpression, triggerType, true);
+                    if (oldSchedulerJobId == null) {
+                        Long newSchedulerJobId = schedulerService.registerJob(id, name, cronExpression, triggerType, true);
                         SyncJob fresh = syncJobMapper.selectById(id);
                         if (fresh != null) {
-                            fresh.setXxlJobId(newXxlJobId);
+                            fresh.setSchedulerJobId(newSchedulerJobId);
                             syncJobMapper.updateById(fresh);
                         }
                     } else {
-                        schedulerService.startJob(oldXxlJobId);
+                        schedulerService.startJob(oldSchedulerJobId);
                     }
                 } catch (Exception e) {
-                    logger.error("启动调度时同步 XXL-JOB 失败（不影响已提交的 DB 数据）: syncJobId={}, xxlJobId={}",
-                            id, oldXxlJobId, e);
+                    logger.error("启动调度时同步 PowerJob 失败（不影响已提交的 DB 数据）: syncJobId={}, schedulerJobId={}",
+                            id, oldSchedulerJobId, e);
                 }
             }
         });
@@ -341,17 +341,17 @@ public class SyncJobService {
         entity.setUpdatedAt(LocalDateTime.now());
         syncJobMapper.updateById(entity);
 
-        // XXL-JOB 停止放到事务提交后：DB 状态已落库，调度侧失败仅记日志
-        Integer xxlJobId = entity.getXxlJobId();
-        if (xxlJobId != null) {
+        // PowerJob 停止放到事务提交后：DB 状态已落库，调度侧失败仅记日志
+        Long schedulerJobId = entity.getSchedulerJobId();
+        if (schedulerJobId != null) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
-                        schedulerService.stopJob(xxlJobId);
+                        schedulerService.stopJob(schedulerJobId);
                     } catch (Exception e) {
-                        logger.error("停止调度时同步 XXL-JOB 失败（不影响已提交的 DB 数据）: syncJobId={}, xxlJobId={}",
-                                id, xxlJobId, e);
+                        logger.error("停止调度时同步 PowerJob 失败（不影响已提交的 DB 数据）: syncJobId={}, schedulerJobId={}",
+                                id, schedulerJobId, e);
                     }
                 }
             });
@@ -360,7 +360,7 @@ public class SyncJobService {
 
     /**
      * 手动停止同步执行历史（协作式停止）。
-     * worker 线程阻塞在 Addax 子进程的 readLine()，无法走 XXL logKill/interrupt，
+     * worker 线程阻塞在 Addax 子进程的 readLine()，调度侧无法 interrupt 阻塞中的执行线程，
      * 因此这里只把 DB 置为 TERMINATED，由 worker 侧 watcher 轮询发现后 destroy 子进程。
      */
     public void stopHistory(Long historyId) {
@@ -643,7 +643,7 @@ public class SyncJobService {
         dto.setRateLimitEnabled(entity.getRateLimitEnabled() != null && entity.getRateLimitEnabled() == 1);
         dto.setNextExecutionTime(entity.getNextExecutionTime());
         dto.setScheduleEnabled(entity.getScheduleEnabled() != null && entity.getScheduleEnabled() == 1);
-        dto.setXxlJobId(entity.getXxlJobId());
+        dto.setSchedulerJobId(entity.getSchedulerJobId());
         dto.setDescription(entity.getDescription());
         dto.setLastExecuteTime(entity.getLastExecuteTime());
         dto.setLastHistoryId(entity.getLastHistoryId());

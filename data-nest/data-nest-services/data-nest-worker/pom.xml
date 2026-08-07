@@ -14,7 +14,7 @@
     <artifactId>data-nest-worker</artifactId>
     <packaging>jar</packaging>
     <name>DataNest Worker Service</name>
-    <description>XXL-JOB executor for sync jobs and metadata collection</description>
+    <description>PowerJob worker for sync jobs and metadata collection</description>
 
     <dependencies>
         <!-- DataNest Task Core -->
@@ -103,11 +103,12 @@
             <artifactId>mssql-jdbc</artifactId>
         </dependency>
 
-        <!-- XXL-JOB Executor -->
+        <!-- PowerJob Worker（替换 XXL-JOB executor：starter 基线为 Spring Boot 2.7，
+             spring-boot/h2/HikariCP 等版本由父 pom 的 Boot 4.0.7 BOM 统一仲裁，故无需 exclusions） -->
         <dependency>
-            <groupId>com.xuxueli</groupId>
-            <artifactId>xxl-job-core</artifactId>
-            <version>3.4.2</version>
+            <groupId>tech.powerjob</groupId>
+            <artifactId>powerjob-worker-spring-boot-starter</artifactId>
+            <version>5.1.2</version>
         </dependency>
 
         <!-- Sa-Token -->

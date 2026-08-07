@@ -44,6 +44,9 @@ public class DagNode {
      */
     private Long dsTaskCode;
 
+    /** PowerJob 节点任务 jobId（替代 dsTaskCode，切流后生效，旧列保留至切流清理） */
+    private Long powerjobJobId;
+
     private Long createdBy;
 
     private Long updatedBy;

@@ -14,7 +14,7 @@ import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.engineering.api.dto.SyncJobTriggerRequest;
 import com.datanest.engineering.api.dto.SyncLogAppendRequest;
 import com.datanest.engineering.api.dto.SyncStatusMarkRequest;
-import com.datanest.engineering.api.dto.XxlJobIdUpdateRequest;
+import com.datanest.engineering.api.dto.SchedulerJobIdUpdateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.openfeign.FallbackFactory;
@@ -60,7 +60,7 @@ public class EngineeringSyncJobApiFallbackFactory implements FallbackFactory<Eng
             }
 
             @Override
-            public Result<Void> updateXxlJobId(Long id, XxlJobIdUpdateRequest request) {
+            public Result<Void> updateSchedulerJobId(Long id, SchedulerJobIdUpdateRequest request) {
                 return Result.ok(null);
             }
 

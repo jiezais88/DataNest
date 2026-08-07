@@ -13,7 +13,7 @@ import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.engineering.api.dto.SyncJobTriggerRequest;
 import com.datanest.engineering.api.dto.SyncLogAppendRequest;
 import com.datanest.engineering.api.dto.SyncStatusMarkRequest;
-import com.datanest.engineering.api.dto.XxlJobIdUpdateRequest;
+import com.datanest.engineering.api.dto.SchedulerJobIdUpdateRequest;
 import com.datanest.engineering.api.fallback.EngineeringSyncJobApiFallbackFactory;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,12 +57,12 @@ public interface EngineeringSyncJobApi {
     @PostMapping("/sync-jobs/{id}/finish-execution")
     Result<Void> finishExecution(@PathVariable("id") Long id, @RequestBody FinishExecutionRequest request);
 
-    /** 回写 xxl_job_id */
-    @PutMapping("/sync-jobs/{id}/xxl-job-id")
-    Result<Void> updateXxlJobId(@PathVariable("id") Long id, @RequestBody XxlJobIdUpdateRequest request);
+    /** 回写 scheduler_job_id（PowerJob jobId） */
+    @PutMapping("/sync-jobs/{id}/scheduler-job-id")
+    Result<Void> updateSchedulerJobId(@PathVariable("id") Long id, @RequestBody SchedulerJobIdUpdateRequest request);
 
     /**
-     * 触发同步任务执行（按需注册 XXL-JOB + mark-running + 新建 RUNNING 历史 + 投递 XXL），
+     * 触发同步任务执行（按需注册 PowerJob + mark-running + 新建 RUNNING 历史 + 投递 PowerJob），
      * 返回 sync_job_history.id。执行链路入口，远程失败按 fail-fast（data=null）处理。
      */
     @PostMapping("/sync-jobs/{id}/trigger")
