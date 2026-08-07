@@ -158,6 +158,12 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- DataNest System API（微服务化 4.3：原经 task-core-governance 传递，模块拆除后显式声明） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

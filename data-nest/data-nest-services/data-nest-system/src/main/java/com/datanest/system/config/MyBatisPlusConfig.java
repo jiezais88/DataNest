@@ -4,15 +4,17 @@ import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
-import com.datanest.task.core.service.SysUserService;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 
+/**
+ * 微服务化 4.4：SysUser 体系（实体/mapper/service）已迁入本模块 com.datanest.system.*，
+ * SysUserService 自带 @Service 由组件扫描装配，无需 @Import；
+ * task.core.mapper 已无内容，扫描移除。
+ */
 @Configuration
-@MapperScan({"com.datanest.system.mapper", "com.datanest.task.core.mapper"})
-@Import({SysUserService.class})
+@MapperScan("com.datanest.system.mapper")
 public class MyBatisPlusConfig {
 
     @Bean

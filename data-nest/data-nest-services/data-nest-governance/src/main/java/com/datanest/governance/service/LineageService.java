@@ -7,9 +7,9 @@ import com.datanest.task.core.dto.ColumnRef;
 import com.datanest.task.core.dto.LineageColumnLinkDTO;
 import com.datanest.task.core.dto.LineageTableEdge;
 import com.datanest.task.core.dto.QualityScoreDTO;
-import com.datanest.task.core.entity.LineageRecord;
-import com.datanest.task.core.mapper.LineageRecordMapper;
-import com.datanest.task.core.service.QualityScoreService;
+import com.datanest.governance.entity.LineageRecord;
+import com.datanest.governance.mapper.LineageRecordMapper;
+import com.datanest.governance.service.QualityScoreService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

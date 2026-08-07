@@ -2,7 +2,21 @@
 
 > 独立改造（不属于任何 Sprint）。总目标：共享 jar 进程内调用 → OpenFeign 远程调用 + 按域拆库。
 > 已确认决策：OpenFeign + Nacos；按域拆库（阶段 5 才拆）；最终一致性（Feign + 重试 + 对账，无分布式事务无 MQ）；新建 app-alert 独立告警服务；worker/job 最终不持库（纯执行节点，经 Feign 回写 owner）。
-> **当前进度：阶段 1/2/3 已完成 ✅（2026-08-07）。下一阶段：阶段 4（governance 域远程化）。**
+> **当前进度：阶段 1/2/3/4 已完成 ✅（2026-08-07）。下一阶段：阶段 5（拆库 + Flyway 基线 + 数据迁移），等用户安排。**
+
+## 阶段 4 范围（governance 域远程化，2026-08-07 完成 ✅）
+
+**阶段 4 最终回归（SysUser 迁移修复后，全部通过）**：6 容器 healthy；登录 + 用户名回填（SysUser 已在 system 本地 + Feign 链）✅；同步 SUCCESS ✅；质量批次 SUCCESS + 3 明细 + alert_sent=1 ✅；全 6 服务 RemoteCalls 零失败 ✅。
+
+19 表归 governance：metadata_*/collect_*/quality_* 全族、naming_standard、field_type_standard、compliance_check_result、asset_classification、lineage_record。
+
+- **4.1（完成 ✅）**：19 表实体/mapper 复制到 `com.datanest.governance.entity/mapper`（旧副本暂留，4.4 删；GovernanceApplication MapperScan 加 nameGenerator，4.4 回退）；governance 自有 12 文件 import 翻转本地；governance-api 扩为 6 个 client（新增 QualityExecutionApi/CollectWriteApi/MetadataWriteApi/GovernanceOpsApi，26 端点）。**关键设计**：质量 `execution/plan` 端点服务端一次生成 SQL（RuleSqlGenerator 服务端化）；`batches/{id}/finish` 服务端串联批次收尾+评分重算+fireBatchAlert（ScoreCalculator 搬 governance）；采集 upsert/detect 服务端 diff + 事务；清理×3/合规扫描逻辑下沉 job 只触发。本地 ScoreCalculator bean 名改 `governanceScoreCalculator`（与 task-core 旧版组件扫描冲突，nameGenerator 只管 @MapperScan 不管组件扫描）。
+- **4.2（完成 ✅）**：worker 执行链路全切 Feign——QualityCheckService 拆分（执行侧留 task-core 全 Feign：plan fail-fast → details 降级 → finish 降级；查询侧移 governance `QualityCheckQueryService` 本地批量消 N+1）；CollectExecutor 全链路改 CollectWriteApi（日志缓冲 50 条 flush，计数 DTO 累加统计列）；MetadataRegistrationService/SqlLineageExtractor 改 MetadataWriteApi；sync/collect 成功的质量自动触发改 `qualityAutoTriggerBatch` 单元素调用。契约补漏：upsert 三端点返回计数 DTO、RulePlanItem 补 resultMetric、refresh-if-exists 补 columns。GovernanceApplication 自启用 governance.api（同 engineering 3.2 先例）。
+- **4.2 E2E（全部通过 ✅）**：质量任务（有规则）批次 SUCCESS + 3 明细（PASS/WARNING/SEVERE）+ alert_sent=1 + alert_history 单条聚合（summary 逐规则）+ MailHog 收信；无规则任务 SUCCESS 空批次（与旧行为一致）；采集 SUCCESS + 日志；同步 SUCCESS；DAG SUCCESS + SKIPPED 正确。
+- **4.3（完成 ✅）**：**task-core-governance 模块已删除**——质量编排 6 类 + ComplianceCheckService 迁 governance（含 job 合规扫描端点化）；ConnectionTester/DataPreviewService 迁 engineering（`buildJdbcUrl` 抽到 common `JdbcUrlBuilder`，task-core 三执行器静态调用）；DataSourceRefreshService 下沉为 engineering 端点 `refresh-statuses`；task-core 旧 ScoreCalculator/RuleSqlGenerator 删除。job 6 个 handler 全部切端点（collect/quality/lineage cleanup、compliance run-checks、datasource refresh、reconcile 剩余两表改 auto-trigger-bindings/auto-triggered-since）。依赖链修复：system-api 原经 task-core-governance 传递，已在 4 个消费方 pom 显式声明。
+- **4.3 验证（通过 ✅）**：6 个 handler XXL 手动触发全部 handle_code=200（合规扫描实产 89 条结果；reconcile 全 Feign 链路通）；质量任务页/评分页（迁移后本地 Service + Feign 回填）正常；governance/job 日志零 RemoteCalls 失败。
+- **4.4（完成 ✅）**：entity 模块删除 19 治理实体 + 20 mapper（模块只剩 dto 包 + AlertConstants/QualityScoreConstants——SysUser 体系见下条）；全库零残留（含 XML/yml）；MapperScan 最终态：governance/engineering 只扫本地包，**worker/job 已无 @MapperScan（无任何本地 DB 访问）**，system 只扫本地包。GovernanceApplication nameGenerator 已回退。
+- **4.4 部署事故与修复（已解决 ✅）**：MapperScan 收窄后 4 服务启动失败——`SysUserService`（@Service 在 task-core-entity jar 内，被 com.datanest.task.core 组件扫描）依赖 `SysUserMapper`，而 mapper 扫描已收窄不再提供该 bean。**修复（顺势完成阶段 6 的一部分）**：SysUser 实体/SysUserMapper/SysUserService 从 entity 模块迁入 system 模块（com.datanest.system.entity/mapper/service），system 的 MyBatisPlusConfig 去掉 @Import 和 task.core.mapper 扫描；全库外部零引用、编译通过。**entity 模块现只剩 dto + constant 两个包**。
 
 ## 阶段 3 范围（engineering 域远程化，2026-08-07 完成 ✅）
 
@@ -104,8 +118,8 @@
 
 1. **阶段 1（已完成 ✅）**：新建 app-alert + 告警域远程化
 2. **阶段 2（已完成 ✅）**：system 域远程化（SysUserService → Feign）+ dag-finished N+1 批量化修复
-3. **阶段 3（进行中 🔄，3.1/3.2 完成）**：engineering 域远程化（worker/job 执行回写链路，风险最高）
-4. 阶段 4：governance 域远程化（质量/采集/元数据/血缘回写）
+3. **阶段 3（已完成 ✅）**：engineering 域远程化（worker/job 执行回写链路）
+4. **阶段 4（已完成 ✅）**：governance 域远程化（质量/采集/元数据/血缘回写）
 5. 阶段 5：拆库 + Flyway 基线 + 数据迁移（datanest_system / datanest_alert / datanest_engineering / datanest_governance）
 6. 阶段 6：删除 task-core 剩余共享模块、文档收尾、全量回归
 

@@ -12,7 +12,7 @@ import com.datanest.task.core.dto.ComplianceCheckPageRequest;
 import com.datanest.task.core.dto.ComplianceCheckRequest;
 import com.datanest.task.core.dto.ComplianceCheckResultDTO;
 import com.datanest.task.core.dto.ComplianceCheckSummaryDTO;
-import com.datanest.task.core.service.ComplianceCheckService;
+import com.datanest.governance.service.ComplianceCheckService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;

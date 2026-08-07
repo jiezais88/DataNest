@@ -37,4 +37,8 @@ public interface EngineeringDatasourceApi {
     /** 回写数据源连接状态（status/errorMessage/lastTestTime） */
     @PutMapping("/datasources/{id}/status")
     Result<Void> updateStatus(@PathVariable("id") Long id, @RequestBody DataSourceStatusUpdateRequest request);
+
+    /** 刷新全部活跃数据源连接状态（逐个连接测试 + 状态回写；job 定时刷新用） */
+    @PostMapping("/datasources/refresh-statuses")
+    Result<Void> refreshStatuses();
 }

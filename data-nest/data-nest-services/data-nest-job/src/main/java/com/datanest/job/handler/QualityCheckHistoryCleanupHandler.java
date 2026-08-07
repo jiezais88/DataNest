@@ -1,87 +1,54 @@
 package com.datanest.job.handler;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.datanest.task.core.entity.QualityCheckBatch;
-import com.datanest.task.core.entity.QualityCheckDetail;
-import com.datanest.task.core.mapper.QualityCheckBatchMapper;
-import com.datanest.task.core.mapper.QualityCheckDetailMapper;
+import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.Result;
+import com.datanest.governance.api.GovernanceOpsApi;
+import com.datanest.governance.api.dto.CleanupRequest;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * 质量检查历史定时清理任务（Sprint 6 补全）。
  * <p>
  * 清理超过保留天数的 quality_check_batch 及其关联 quality_check_detail，
  * 避免质量检查高频执行（定时/自动触发）导致执行历史无限膨胀。
- * 分批删除（每批固定条数）避免一次性加载过多批次占内存。
+ * <p>
+ * 微服务化 4.3：质量检查表归治理域，清理逻辑（分批 500、级联明细）下沉 governance
+ * （{@code POST /governance/internal/quality/cleanup}），本 handler 只负责调度触发。
+ * RemoteCalls 容错：governance 不可用本轮跳过，下轮调度再来。
  */
 @Component
 public class QualityCheckHistoryCleanupHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(QualityCheckHistoryCleanupHandler.class);
 
-    /** 每批删除的批次条数上限，防止单次事务过大 */
-    private static final int BATCH_LIMIT = 500;
-
-    private final QualityCheckBatchMapper batchMapper;
-    private final QualityCheckDetailMapper detailMapper;
+    private final GovernanceOpsApi governanceOpsApi;
     private final int retainDays;
 
-    public QualityCheckHistoryCleanupHandler(QualityCheckBatchMapper batchMapper,
-                                             QualityCheckDetailMapper detailMapper,
+    public QualityCheckHistoryCleanupHandler(GovernanceOpsApi governanceOpsApi,
                                              @Value("${datanest.job.quality-check-cleanup.retain-days:30}") int retainDays) {
-        this.batchMapper = batchMapper;
-        this.detailMapper = detailMapper;
+        this.governanceOpsApi = governanceOpsApi;
         this.retainDays = Math.max(1, retainDays);
     }
 
-    @Transactional
     @XxlJob("qualityCheckHistoryCleanupHandler")
     public void cleanup() {
-        LocalDateTime threshold = LocalDateTime.now().minusDays(retainDays);
-        logger.info("Starting quality check history cleanup, threshold={}, retainDays={}", threshold, retainDays);
-        long totalBatches = 0;
-        long totalDetails = 0;
-        try {
-            while (true) {
-                // 每批取超期批次 ID（按 id 升序，取前 BATCH_LIMIT 条）
-                List<QualityCheckBatch> expired = batchMapper.selectList(
-                        new QueryWrapper<QualityCheckBatch>()
-                                .select("id")
-                                .lt("started_at", threshold)
-                                .orderByAsc("id")
-                                .last("LIMIT " + BATCH_LIMIT));
-                if (expired.isEmpty()) {
-                    break;
-                }
-                List<Long> batchIds = expired.stream().map(QualityCheckBatch::getId).toList();
-                // 级联删除明细（按 batch_id）
-                int details = detailMapper.delete(
-                        new QueryWrapper<QualityCheckDetail>().in("batch_id", batchIds));
-                // 删除批次
-                int batches = batchMapper.deleteByIds(batchIds);
-                totalBatches += batches;
-                totalDetails += details;
-                logger.info("Quality check history cleanup batch: batches={}, details={}", batches, details);
-                // 若本轮删除数小于批量上限，说明已删完，可提前退出（避免多查一次空）
-                if (expired.size() < BATCH_LIMIT) {
-                    break;
-                }
-            }
-            logger.info("Quality check history cleanup completed: totalBatches={}, totalDetails={}",
-                    totalBatches, totalDetails);
-            XxlJobHelper.handleSuccess("清理完成: 批次=" + totalBatches + ", 明细=" + totalDetails);
-        } catch (Exception e) {
-            logger.error("Quality check history cleanup failed", e);
-            XxlJobHelper.handleFail("质量检查历史清理失败: " + e.getMessage());
+        logger.info("Starting quality check history cleanup, retainDays={}", retainDays);
+        CleanupRequest request = new CleanupRequest();
+        request.setRetainDays(retainDays);
+        Integer rows = RemoteCalls.execute("governance.ops.quality-cleanup", () -> {
+            Result<Integer> result = governanceOpsApi.cleanupQualityCheckHistory(request);
+            return result == null ? null : result.data();
+        }, null);
+        if (rows == null) {
+            XxlJobHelper.handleFail("质量检查历史清理失败: governance 服务不可用，本轮跳过");
+            return;
         }
+        logger.info("Quality check history cleanup completed: rows={}", rows);
+        XxlJobHelper.handleSuccess("清理完成: rows=" + rows);
     }
 }

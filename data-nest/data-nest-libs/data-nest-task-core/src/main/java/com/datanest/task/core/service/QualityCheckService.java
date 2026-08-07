@@ -1,43 +1,27 @@
 package com.datanest.task.core.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.alert.api.AlertApi;
-import com.datanest.alert.api.dto.AlertFireBatchRequest;
 import com.datanest.alert.api.dto.AlertFireRequest;
-import com.datanest.alert.api.dto.AlertItem;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
-import com.datanest.common.model.PageResult;
+import com.datanest.common.model.Result;
 import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.governance.api.QualityExecutionApi;
+import com.datanest.governance.api.dto.QualityBatchCreateRequest;
+import com.datanest.governance.api.dto.QualityBatchFinishRequest;
+import com.datanest.governance.api.dto.QualityBatchInfoDTO;
+import com.datanest.governance.api.dto.QualityDetailCreateRequest;
+import com.datanest.governance.api.dto.QualityExecutionPlanDTO;
+import com.datanest.governance.api.dto.QualityExecutionPlanRequest;
+import com.datanest.governance.api.dto.QualityRulePlanRequest;
 import com.datanest.task.core.constant.AlertConstants;
-import com.datanest.task.core.dto.QualityCheckBatchDTO;
-import com.datanest.task.core.dto.QualityCheckDetailDTO;
-import com.datanest.task.core.dto.QualityCheckQueryRequest;
-import com.datanest.task.core.entity.MetadataTable;
-import com.datanest.task.core.entity.QualityCheckBatch;
-import com.datanest.task.core.entity.QualityCheckDetail;
-import com.datanest.task.core.entity.QualityJob;
-import com.datanest.task.core.entity.QualityRule;
-import com.datanest.task.core.entity.QualityRuleTemplate;
-import com.datanest.task.core.mapper.MetadataTableMapper;
-import com.datanest.task.core.mapper.QualityCheckBatchMapper;
-import com.datanest.task.core.mapper.QualityCheckDetailMapper;
-import com.datanest.task.core.mapper.QualityJobMapper;
-import com.datanest.task.core.mapper.QualityRuleMapper;
-import com.datanest.task.core.mapper.QualityRuleTemplateMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,15 +32,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 质量检查执行核心（Sprint 8 执行层）。
+ * 质量检查执行核心（Sprint 8 执行层，worker 侧）。
  * <p>
- * 在 app-worker 容器内运行（经 qualityCheckExecuteHandler 触发）。参照 {@link CollectExecutor} 渐进式落库：
- * batch/detail 逐条即时提交，不使用方法级事务——单条规则失败不阻塞其余规则，失败记录独立保留。
+ * 在 app-worker 容器内运行（经 qualityCheckExecuteHandler 触发）。
+ * 微服务化 4.2：治理表读写全部改为经 {@link QualityExecutionApi} Feign 调 app-governance——
+ * 执行计划装配（规则/模板/元数据表/执行 SQL）、批次与明细落库、批次收尾串联
+ * （终态回写 + last_trigger_at + 评分重算 + 合并告警）均在服务端完成；
+ * 本类只负责执行 SQL（本地 Doris/Generic 执行器）与阈值判定（determineLevel）。
  * <p>
- * 结果值提取：RANGE 用 out_of_range/total 计算占比；其余按 result_metric 列名取，取不到降级首行首列。
- * <p>
- * 分级判定：按规则 warning_threshold / severe_threshold 计算 result_level（PASS/WARNING/SEVERE/UNAVAILABLE）落库。
- * 批次收尾后，若任务配置了告警（alert_level 非空）且存在 QUALITY 类型的 alert_rule，触发合并告警（fireBatch）。
+ * 容错红线：执行开始处（plan / plan-by-rule / 批次 init）远程失败 fail-fast；
+ * 执行中明细落库与批次收尾 RemoteCalls 降级记 error（渐进落库 + 对账兜底语义不变）。
+ * 查询路径（批次列表/详情）已随 4.2 移入 governance 本地 QualityCheckQueryService。
  */
 @Service
 public class QualityCheckService {
@@ -80,37 +66,19 @@ public class QualityCheckService {
     /** 批次 ID → 等待中的超时检测任务；批次正常结束/异常时移除并取消，避免误判为超时 */
     private static final ConcurrentHashMap<Long, ScheduledFuture<?>> BATCH_TIMEOUTS = new ConcurrentHashMap<>();
 
-    private final QualityCheckBatchMapper batchMapper;
-    private final QualityCheckDetailMapper detailMapper;
-    private final QualityJobMapper jobMapper;
-    private final QualityRuleMapper ruleMapper;
-    private final QualityRuleTemplateMapper templateMapper;
-    private final MetadataTableMapper tableMapper;
+    private final QualityExecutionApi qualityExecutionApi;
     private final DorisSqlExecutor dorisSqlExecutor;
     private final GenericSqlExecutor genericSqlExecutor;
     private final AlertApi alertApi;
-    private final ScoreCalculator scoreCalculator;
 
-    public QualityCheckService(QualityCheckBatchMapper batchMapper,
-                               QualityCheckDetailMapper detailMapper,
-                               QualityJobMapper jobMapper,
-                               QualityRuleMapper ruleMapper,
-                               QualityRuleTemplateMapper templateMapper,
-                               MetadataTableMapper tableMapper,
+    public QualityCheckService(QualityExecutionApi qualityExecutionApi,
                                DorisSqlExecutor dorisSqlExecutor,
                                GenericSqlExecutor genericSqlExecutor,
-                               AlertApi alertApi,
-                               ScoreCalculator scoreCalculator) {
-        this.batchMapper = batchMapper;
-        this.detailMapper = detailMapper;
-        this.jobMapper = jobMapper;
-        this.ruleMapper = ruleMapper;
-        this.templateMapper = templateMapper;
-        this.tableMapper = tableMapper;
+                               AlertApi alertApi) {
+        this.qualityExecutionApi = qualityExecutionApi;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.genericSqlExecutor = genericSqlExecutor;
         this.alertApi = alertApi;
-        this.scoreCalculator = scoreCalculator;
     }
 
     /**
@@ -119,58 +87,83 @@ public class QualityCheckService {
      * @return 新建的批次 ID
      */
     public Long executeJob(Long jobId, String triggerType) {
-        QualityJob job = requireJob(jobId);
-        QualityCheckBatch batch = initBatch(job, triggerType);
-        logger.info("质量检查任务开始执行: batchId={}, jobId={}, triggerType={}", batch.getId(), jobId, triggerType);
+        // 执行开始 fail-fast：计划装配/批次 init 读不到不启动执行
+        QualityExecutionPlanDTO plan = planOrThrow(jobId);
+        Long batchId = createBatchOrThrow(plan.getJobId(), plan.getJobName(), triggerType);
+        logger.info("质量检查任务开始执行: batchId={}, jobId={}, triggerType={}", batchId, jobId, triggerType);
 
         // 执行超时检测：任务配置了 timeoutMinutes 时，到点后若批次仍 RUNNING 则触发 TIMEOUT 告警。
         // 注意：不取消正在执行的规则（避免 SQL 中断风险），让后台自然跑完；超时只触发告警，不改批次终态。
-        scheduleTimeoutWatch(job, batch.getId());
+        scheduleTimeoutWatch(plan, batchId);
 
         try {
-            // 取任务引用且启用的规则（经 quality_job_rule 关联表）
-            List<QualityRule> rules = listEnabledRulesByJob(jobId);
+            // 规则空列表合法：无检查项视为执行成功（init + finish SUCCESS 批次）
+            List<QualityExecutionPlanDTO.RulePlanItem> rules = plan.getRules() == null ? List.of() : plan.getRules();
             if (rules.isEmpty()) {
-                logger.warn("质量检查任务无启用规则: batchId={}, jobId={}", batch.getId(), jobId);
+                logger.warn("质量检查任务无启用规则: batchId={}, jobId={}", batchId, jobId);
             }
 
             int success = 0;
             int failed = 0;
-            List<Long> tableIds = new ArrayList<>();
-            for (QualityRule rule : rules) {
-                boolean ok = executeSingleRule(rule, batch.getId());
+            for (QualityExecutionPlanDTO.RulePlanItem rule : rules) {
+                boolean ok = executeSingleRule(rule, batchId);
                 if (ok) {
                     success++;
                 } else {
                     failed++;
                 }
-                if (rule.getTableId() != null) {
-                    tableIds.add(rule.getTableId());
-                }
             }
 
-            finishBatch(batch, success, failed, null);
-            updateJobLastTriggerAt(jobId);
-            // 表级评分：批次收尾后按涉及表跨任务聚合重算，评分与告警基于同一批最新结果
-            scoreCalculator.recalculateForTables(tableIds);
-            fireBatchAlert(job, batch);
-            logger.info("质量检查任务执行完成: batchId={}, jobId={}, success={}, failed={}", batch.getId(), jobId, success, failed);
-            return batch.getId();
+            finishBatchDegraded(batchId, batchStatus(success, failed));
+            logger.info("质量检查任务执行完成: batchId={}, jobId={}, success={}, failed={}", batchId, jobId, success, failed);
+            return batchId;
         } finally {
             // 无论正常完成或异常，都取消超时检测，避免超时回调误判
-            cancelTimeoutWatch(batch.getId());
+            cancelTimeoutWatch(batchId);
         }
+    }
+
+    /**
+     * 执行单条质量规则（独立批次，job_id 为空）。
+     *
+     * @return 新建的批次 ID
+     */
+    public Long executeRule(Long ruleId, String triggerType) {
+        // 执行开始 fail-fast：计划装配/批次 init 读不到不启动执行
+        QualityExecutionPlanDTO plan = planByRuleOrThrow(ruleId);
+        List<QualityExecutionPlanDTO.RulePlanItem> rules = plan.getRules() == null ? List.of() : plan.getRules();
+        if (rules.isEmpty()) {
+            throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + ruleId);
+        }
+        // 单规则执行：先落临时 jobName，明细落库后由服务端按规则名+表名更新，便于用户定位是哪个规则
+        String jobName = plan.getJobName() == null ? "单规则执行" : plan.getJobName();
+        Long batchId = createBatchOrThrow(null, jobName, triggerType);
+        logger.info("单规则质量检查开始执行: batchId={}, ruleId={}", batchId, ruleId);
+
+        boolean ok = executeSingleRule(rules.get(0), batchId);
+        finishBatchDegraded(batchId, batchStatus(ok ? 1 : 0, ok ? 0 : 1));
+        return batchId;
+    }
+
+    /**
+     * 批次终态：全成功=SUCCESS（含无规则），部分失败=PARTIAL_FAILED，全失败=FAILED。
+     */
+    private String batchStatus(int success, int failed) {
+        if (failed == 0) {
+            return "SUCCESS";
+        }
+        return success == 0 ? "FAILED" : "PARTIAL_FAILED";
     }
 
     /**
      * 注册批次超时检测：到点后检查批次是否仍 RUNNING，若是则触发 TIMEOUT 告警。
      */
-    private void scheduleTimeoutWatch(QualityJob job, Long batchId) {
-        Integer minutes = job.getTimeoutMinutes();
-        if (minutes == null || minutes <= 0) {
+    private void scheduleTimeoutWatch(QualityExecutionPlanDTO plan, Long batchId) {
+        Integer minutes = plan.getTimeoutMinutes();
+        if (minutes == null || minutes <= 0 || plan.getJobId() == null) {
             return;
         }
-        ScheduledFuture<?> sf = TIMEOUT_SCHEDULER.schedule(() -> checkAndFireTimeout(job, batchId, minutes),
+        ScheduledFuture<?> sf = TIMEOUT_SCHEDULER.schedule(() -> checkAndFireTimeout(plan.getJobId(), batchId, minutes),
                 minutes, TimeUnit.MINUTES);
         BATCH_TIMEOUTS.put(batchId, sf);
     }
@@ -185,107 +178,70 @@ public class QualityCheckService {
     /**
      * 超时检测回调：批次仍 RUNNING → 触发 TIMEOUT 告警（用 fire 单条，无明细聚合）。
      * 幂等依赖 alert-service 的 countRecent 60s 防重。
+     * 批次状态经 governance 远程读取（失败按已结束处理，不误报超时）。
      */
-    private void checkAndFireTimeout(QualityJob job, Long batchId, Integer minutes) {
+    private void checkAndFireTimeout(Long jobId, Long batchId, Integer minutes) {
         try {
-            QualityCheckBatch b = batchMapper.selectById(batchId);
-            if (b == null) {
+            QualityBatchInfoDTO batch = RemoteCalls.execute("governance.quality.batch-info", () -> {
+                Result<QualityBatchInfoDTO> result = qualityExecutionApi.batchInfo(batchId);
+                return result == null ? null : result.data();
+            }, null);
+            if (batch == null) {
                 return;
             }
             // 已结束的批次不算超时（执行可能在超时点前完成）
-            if (!"RUNNING".equalsIgnoreCase(b.getStatus())) {
+            if (!"RUNNING".equalsIgnoreCase(batch.getStatus())) {
                 return;
             }
-            logger.warn("质量任务执行超时: jobId={}, batchId={}, timeoutMinutes={}", job.getId(), batchId, minutes);
-            fireAlert(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
+            logger.warn("质量任务执行超时: jobId={}, batchId={}, timeoutMinutes={}", jobId, batchId, minutes);
+            fireAlert(AlertConstants.OBJECT_TYPE_QUALITY, jobId,
                     AlertConstants.ALERT_TIMEOUT,
                     "执行超时：超过 " + minutes + " 分钟仍未完成");
         } catch (Exception e) {
-            logger.error("质量任务超时检测失败: jobId={}, batchId={}", job.getId(), batchId, e);
+            logger.error("质量任务超时检测失败: jobId={}, batchId={}", jobId, batchId, e);
         }
-    }
-
-    /**
-     * 执行单条质量规则（独立批次，job_id 为空）。
-     *
-     * @return 新建的批次 ID
-     */
-    public Long executeRule(Long ruleId, String triggerType) {
-        QualityRule rule = requireRule(ruleId);
-        QualityJob job = rule.getJobId() == null ? null : jobMapper.selectById(rule.getJobId());
-        QualityCheckBatch batch = new QualityCheckBatch();
-        batch.setJobId(null);
-        // 单规则执行：先落临时 jobName，明细落库后按规则名+表名更新，便于用户定位是哪个规则
-        batch.setJobName(job == null ? "单规则执行" : job.getName());
-        batch.setTriggerType(triggerType);
-        batch.setStatus("RUNNING");
-        batch.setStartedAt(LocalDateTime.now());
-        batch.setCreatedAt(LocalDateTime.now());
-        batchMapper.insert(batch);
-        logger.info("单规则质量检查开始执行: batchId={}, ruleId={}", batch.getId(), ruleId);
-
-        boolean ok = executeSingleRule(rule, batch.getId());
-        finishBatch(batch, ok ? 1 : 0, ok ? 0 : 1, null);
-        // 单规则定位：用明细里的规则名 + 目标表名更新批次任务名（对用户展示"规则名（表名）"）
-        if (rule.getTableId() != null) {
-            MetadataTable table = tableMapper.selectById(rule.getTableId());
-            String tableName = table == null ? null : table.getTableName();
-            String displayName = (tableName == null || tableName.isBlank())
-                    ? rule.getName()
-                    : rule.getName() + "（" + tableName + "）";
-            QualityCheckBatch update = new QualityCheckBatch();
-            update.setId(batch.getId());
-            update.setJobName(displayName);
-            batchMapper.updateById(update);
-        }
-        // 表级评分：单规则执行后同样重算该规则所在表，保持评分最新
-        if (rule.getTableId() != null) {
-            scoreCalculator.recalculateForTables(List.of(rule.getTableId()));
-        }
-        return batch.getId();
     }
 
     // ==================== 单规则执行 ====================
 
     /**
-     * 执行一条规则并写明细。返回是否成功。
+     * 执行一条规则并经 Feign 落明细。返回是否执行成功（明细落库降级不影响该判定）。
      */
-    private boolean executeSingleRule(QualityRule rule, Long batchId) {
-        QualityCheckDetail detail = new QualityCheckDetail();
-        detail.setBatchId(batchId);
-        detail.setRuleId(rule.getId());
-        detail.setRuleName(rule.getName());
-        detail.setRuleType(rule.getType());
+    private boolean executeSingleRule(QualityExecutionPlanDTO.RulePlanItem rule, Long batchId) {
+        QualityDetailCreateRequest detail = new QualityDetailCreateRequest();
+        detail.setRuleId(rule.getRuleId());
+        detail.setRuleName(rule.getRuleName());
         detail.setTableId(rule.getTableId());
-        detail.setResultMetric(rule.getResultMetric());
-        detail.setCreatedAt(LocalDateTime.now());
+        detail.setTableName(rule.getTableName());
 
+        String sql = rule.getExecutedSql();
+        detail.setExecutedSql(sql);
         try {
-            String sql = generateSql(rule);
-            detail.setExecutedSql(sql);
+            // 服务端生成 SQL 失败时 executedSql 为 null：对齐原 generateSql 抛错路径，直接落 UNAVAILABLE 明细不执行
+            if (sql == null || sql.isBlank()) {
+                throw new BusinessException(ErrorCode.QUALITY_CHECK_SQL_GENERATE_FAILED,
+                        "规则校验 SQL 为空: " + rule.getRuleName());
+            }
             // 模板类规则若残留占位符（如整表完整性未指定检查字段，{column} 未替换）则跳过，避免执行非法 SQL
-            assertNoUnresolvedPlaceholder(sql, rule);
+            assertNoUnresolvedPlaceholder(sql, rule.getRuleName());
             BigDecimal value = executeAndExtract(rule, sql);
             detail.setResultValue(value);
             detail.setResultLevel(determineLevel(rule, value));
             detail.setSuccess(1);
-            detailMapper.insert(detail);
+            saveDetailDegraded(batchId, detail);
             return true;
         } catch (Exception e) {
-            logger.warn("质量规则执行失败: ruleId={}, ruleName={}, error={}", rule.getId(), rule.getName(), e.getMessage());
+            logger.warn("质量规则执行失败: ruleId={}, ruleName={}, error={}", rule.getRuleId(), rule.getRuleName(), e.getMessage());
             detail.setSuccess(0);
             detail.setResultLevel(AlertConstants.QUALITY_LEVEL_UNAVAILABLE);
             detail.setErrorMessage(e.getMessage());
-            if (detail.getExecutedSql() == null) {
-                detail.setExecutedSql(generateSqlSafe(rule));
-            }
-            detailMapper.insert(detail);
+            saveDetailDegraded(batchId, detail);
             return false;
         }
     }
 
     /**
-     * 按规则阈值计算分级：
+     * 按规则阈值计算分级（QualityRule 无 comparator 字段，恒 ≥ 语义）：
      * <ul>
      *   <li>warning/severe 阈值都为空 → PASS（未配置分级，不告警）</li>
      *   <li>value &lt; warning → PASS</li>
@@ -293,7 +249,7 @@ public class QualityCheckService {
      *   <li>value ≥ severe（或无 severe 阈值时 value ≥ warning）→ SEVERE</li>
      * </ul>
      */
-    private String determineLevel(QualityRule rule, BigDecimal value) {
+    private String determineLevel(QualityExecutionPlanDTO.RulePlanItem rule, BigDecimal value) {
         BigDecimal warning = rule.getWarningThreshold();
         BigDecimal severe = rule.getSevereThreshold();
         if (warning == null && severe == null) {
@@ -313,55 +269,29 @@ public class QualityCheckService {
     }
 
     /**
-     * 生成规则最终校验 SQL（模板占位符展开）。对齐 QualityRuleService.previewSql 逻辑。
-     */
-    private String generateSql(QualityRule rule) {
-        QualityRuleTemplate template = rule.getTemplateId() == null
-                ? null : templateMapper.selectById(rule.getTemplateId());
-        MetadataTable table = rule.getTableId() == null ? null : tableMapper.selectById(rule.getTableId());
-        String sql = RuleSqlGenerator.generate(template, table, rule.getColumnName(),
-                rule.getRangeMin(), rule.getRangeMax(), rule.getSqlExpression());
-        if (sql == null || sql.isBlank()) {
-            throw new BusinessException(ErrorCode.QUALITY_CHECK_SQL_GENERATE_FAILED,
-                    "规则校验 SQL 为空: " + rule.getName());
-        }
-        return sql;
-    }
-
-    /** 生成失败时兜底尝试（用于明细记录实际 SQL，失败不抛）。 */
-    private String generateSqlSafe(QualityRule rule) {
-        try {
-            return generateSql(rule);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
      * 校验生成的 SQL 无残留占位符（{column}/{min}/{max} 等）。
      * 模板类规则未指定检查字段时（如整表完整性检查），{column} 不会被替换，
      * 若直接执行会生成 COUNT() 等非法 SQL，故在此拦截并标记规则为不可用。
      */
-    private void assertNoUnresolvedPlaceholder(String sql, QualityRule rule) {
+    private void assertNoUnresolvedPlaceholder(String sql, String ruleName) {
         if (sql == null || sql.isBlank()) {
             return;
         }
         int braceStart = sql.indexOf('{');
         if (braceStart >= 0 && sql.indexOf('}', braceStart) > braceStart) {
             throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
-                    "规则「" + rule.getName() + "」未指定检查字段，无法生成有效校验 SQL，请编辑规则补充检查字段");
+                    "规则「" + ruleName + "」未指定检查字段，无法生成有效校验 SQL，请编辑规则补充检查字段");
         }
     }
 
     /**
      * 在目标数据源执行校验 SQL 并提取结果值。
      */
-    private BigDecimal executeAndExtract(QualityRule rule, String sql) {
-        MetadataTable table = rule.getTableId() == null ? null : tableMapper.selectById(rule.getTableId());
-        if (table == null) {
+    private BigDecimal executeAndExtract(QualityExecutionPlanDTO.RulePlanItem rule, String sql) {
+        if (rule.getTableName() == null) {
             throw new BusinessException(ErrorCode.QUALITY_TABLE_NOT_FOUND, "目标表不存在: " + rule.getTableId());
         }
-        long datasourceId = table.getDatasourceId() == null ? DORIS_DATASOURCE_ID : table.getDatasourceId();
+        long datasourceId = rule.getDatasourceId() == null ? DORIS_DATASOURCE_ID : rule.getDatasourceId();
 
         if (datasourceId == DORIS_DATASOURCE_ID) {
             // 内置 Doris：返回 columns + rows(List<Map>)
@@ -389,7 +319,7 @@ public class QualityCheckService {
     /**
      * 从 Doris 查询结果提取结果值。rows 为 List&lt;Map&gt;，按列名 key 取。
      */
-    private BigDecimal extractFromDoris(DorisSqlExecutor.QueryResult result, QualityRule rule) {
+    private BigDecimal extractFromDoris(DorisSqlExecutor.QueryResult result, QualityExecutionPlanDTO.RulePlanItem rule) {
         List<Map<String, Object>> rows = result.rows();
         if (rows == null || rows.isEmpty()) {
             throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED, "校验查询无返回行");
@@ -414,7 +344,7 @@ public class QualityCheckService {
     /**
      * 从 GenericSqlExecutor 结果提取结果值。columns 为 List&lt;String&gt;，rows 为 List&lt;List&lt;Object&gt;&gt;。
      */
-    private BigDecimal extractFromGeneric(GenericSqlExecutor.PreviewResult result, QualityRule rule) {
+    private BigDecimal extractFromGeneric(GenericSqlExecutor.PreviewResult result, QualityExecutionPlanDTO.RulePlanItem rule) {
         List<String> columns = result.columns;
         List<List<Object>> rows = result.rows;
         if (columns == null || columns.isEmpty() || rows == null || rows.isEmpty()) {
@@ -491,8 +421,8 @@ public class QualityCheckService {
         return false;
     }
 
-    private boolean isRange(QualityRule rule) {
-        return "RANGE".equalsIgnoreCase(rule.getType());
+    private boolean isRange(QualityExecutionPlanDTO.RulePlanItem rule) {
+        return "RANGE".equalsIgnoreCase(rule.getRuleType());
     }
 
     private BigDecimal ratio(BigDecimal out, BigDecimal total) {
@@ -533,121 +463,75 @@ public class QualityCheckService {
         }
     }
 
-    // ==================== batch / detail 生命周期 ====================
+    // ==================== 远程调用（governance 质量执行域） ====================
 
-    private QualityCheckBatch initBatch(QualityJob job, String triggerType) {
-        QualityCheckBatch batch = new QualityCheckBatch();
-        batch.setJobId(job.getId());
-        batch.setJobName(job.getName());
-        batch.setTriggerType(triggerType);
-        batch.setStatus("RUNNING");
-        batch.setStartedAt(LocalDateTime.now());
-        batch.setCreatedAt(LocalDateTime.now());
-        batchMapper.insert(batch);
-        return batch;
+    /** 执行计划装配（按任务），fail-fast：读不到计划不启动执行。 */
+    private QualityExecutionPlanDTO planOrThrow(Long jobId) {
+        QualityExecutionPlanRequest request = new QualityExecutionPlanRequest();
+        request.setJobId(jobId);
+        Result<QualityExecutionPlanDTO> result = qualityExecutionApi.plan(request);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "质量执行计划装配失败（governance 不可达或任务不存在）: jobId=" + jobId);
+        }
+        return result.data();
+    }
+
+    /** 执行计划装配（按单规则），fail-fast：读不到计划不启动执行。 */
+    private QualityExecutionPlanDTO planByRuleOrThrow(Long ruleId) {
+        QualityRulePlanRequest request = new QualityRulePlanRequest();
+        request.setRuleId(ruleId);
+        Result<QualityExecutionPlanDTO> result = qualityExecutionApi.planByRule(request);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "质量执行计划装配失败（governance 不可达或规则不存在）: ruleId=" + ruleId);
+        }
+        return result.data();
+    }
+
+    /** 初始化 RUNNING 批次，fail-fast：批次建不出来不跑"无登记执行"。 */
+    private Long createBatchOrThrow(Long jobId, String jobName, String triggerType) {
+        QualityBatchCreateRequest request = new QualityBatchCreateRequest();
+        request.setJobId(jobId);
+        request.setJobName(jobName);
+        request.setTriggerType(triggerType);
+        Result<Long> result = qualityExecutionApi.createBatch(request);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "质量检查批次初始化失败（governance 不可达）: jobId=" + jobId);
+        }
+        return result.data();
     }
 
     /**
-     * 收尾：更新批次终态。全成功=SUCCESS，部分失败=PARTIAL_FAILED，全失败=FAILED。
+     * 单条明细落库（执行中写失败 RemoteCalls 降级记 error：渐进落库语义，单条丢失不阻塞其余规则）。
+     * 服务端顺带按规则回填 ruleType/resultMetric，单规则批次时更新 batch.jobName 为「规则名（表名）」。
      */
-    private void finishBatch(QualityCheckBatch batch, int success, int failed, String errorMessage) {
-        LocalDateTime now = LocalDateTime.now();
-        batch.setEndedAt(now);
-        batch.setDurationMs(Duration.between(batch.getStartedAt(), now).toMillis());
-        if (failed == 0) {
-            // 全成功（含无规则：无检查项视为执行成功）
-            batch.setStatus("SUCCESS");
-        } else if (success == 0) {
-            // 全失败
-            batch.setStatus("FAILED");
-            batch.setErrorMessage(errorMessage);
-        } else {
-            // 部分失败
-            batch.setStatus("PARTIAL_FAILED");
-        }
-        batchMapper.updateById(batch);
-    }
-
-    private void updateJobLastTriggerAt(Long jobId) {
+    private void saveDetailDegraded(Long batchId, QualityDetailCreateRequest detail) {
         try {
-            LocalDateTime now = LocalDateTime.now();
-            jobMapper.update(null, new UpdateWrapper<QualityJob>()
-                    .eq("id", jobId)
-                    .set("last_trigger_at", now)
-                    .set("updated_at", now));
+            qualityExecutionApi.saveDetail(batchId, detail);
         } catch (Exception e) {
-            logger.warn("更新质量任务 last_trigger_at 失败: jobId={}", jobId, e);
+            logger.error("质量明细落库失败（降级，不阻塞执行）: batchId={}, ruleId={}", batchId, detail.getRuleId(), e);
         }
     }
 
     /**
-     * 批次收尾后触发分级合并告警（Sprint 6）。
-     * <ul>
-     *   <li>任务未配置 alert_level（SEVERE_ONLY / SEVERE_WARNING）→ 不触发</li>
-     *   <li>批次已发送（alert_sent=1）→ 跳过（幂等）</li>
-     *   <li>按任务触发等级过滤达到等级的明细：SEVERE 必触发；WARNING 仅在 SEVERE_WARNING 时触发</li>
-     *   <li>达到等级的明细非空 → 发「失败」类告警（ALERT_FAILURE）</li>
-     *   <li>无达到等级的明细且批次全部执行成功（SUCCESS）→ 发「成功」通知（ALERT_SUCCESS），
-     *       表示质量检查全部通过；执行失败/部分失败（PARTIAL_FAILED/FAILED）不发成功通知</li>
-     *   <li>合并为一条邮件（fireBatch），只写一条 alert_history（summary 聚合本次命中的多条规则）</li>
-     * </ul>
-     * 告警实际是否发出由 alert_rule（QUALITY 类型 + 接收用户 + 触发条件）决定；未配置规则则静默跳过。
+     * 批次收尾（降级记 error）：终态回写 + last_trigger_at + 评分重算 + 合并告警全在服务端串联，
+     * 失败靠对账语义兜底。
      */
-    private void fireBatchAlert(QualityJob job, QualityCheckBatch batch) {
-        if (job == null || batch == null) {
-            return;
-        }
-        if (job.getAlertLevel() == null || job.getAlertLevel().isBlank()) {
-            return;
-        }
-        if (batch.getAlertSent() != null && batch.getAlertSent() == 1) {
-            return;
-        }
-        List<QualityCheckDetail> details = listDetailsByBatch(batch.getId());
-        if (details.isEmpty()) {
-            return;
-        }
-        boolean severeOnly = "SEVERE_ONLY".equalsIgnoreCase(job.getAlertLevel());
-        List<AlertItem> items = new java.util.ArrayList<>();
-        for (QualityCheckDetail d : details) {
-            if (!isAlertable(d.getResultLevel(), severeOnly)) {
-                continue;
-            }
-            items.add(toAlertItem(d));
-        }
+    private void finishBatchDegraded(Long batchId, String status) {
         try {
-            if (!items.isEmpty()) {
-                // 失败类：存在达到任务告警等级的规则 → 发「失败」告警
-                fireBatchAlert(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
-                        AlertConstants.ALERT_FAILURE, items, batch.getId());
-            } else if ("SUCCESS".equalsIgnoreCase(batch.getStatus())) {
-                // 成功类：批次全部执行成功且判定层无达到告警等级的规则 → 发「成功」通知
-                // （执行失败/部分失败不发成功通知，避免误报）
-                List<AlertItem> okItems = details.stream()
-                        .map(this::toAlertItem)
-                        .toList();
-                fireBatchAlert(AlertConstants.OBJECT_TYPE_QUALITY, job.getId(),
-                        AlertConstants.ALERT_SUCCESS, okItems, batch.getId());
-            }
+            QualityBatchFinishRequest request = new QualityBatchFinishRequest();
+            request.setStatus(status);
+            // endedAt/durationMs 留空由服务端兜底（now / startedAt→endedAt）
+            qualityExecutionApi.finishBatch(batchId, request);
         } catch (Exception e) {
-            logger.warn("质量分级告警触发失败: jobId={}, batchId={}", job.getId(), batch.getId(), e);
-        } finally {
-            // 无论是否命中规则，本批次都标记为已处理，避免重复尝试
-            markAlertSent(batch.getId());
+            logger.error("质量批次收尾失败（降级，靠对账兜底）: batchId={}, status={}", batchId, status, e);
         }
-    }
-
-    /** 质量明细 → alert-api 批量告警条目 */
-    private AlertItem toAlertItem(QualityCheckDetail d) {
-        AlertItem item = new AlertItem();
-        item.setLevel(d.getResultLevel());
-        item.setRuleName(d.getRuleName());
-        item.setDetail(buildDetailDesc(d));
-        return item;
     }
 
     /**
-     * 经 alert-service 远程触发单条告警（Feign）。
+     * 经 alert-service 远程触发单条告警（Feign，超时告警用）。
      * 失败经 RemoteCalls 降级（warn + 计数）按「未发送」处理，不影响主执行流程（最终一致）。
      *
      * @return 是否发送成功（Result 拆信封；异常按 false）
@@ -662,309 +546,5 @@ public class QualityCheckService {
             var result = alertApi.fire(request);
             return result != null && Boolean.TRUE.equals(result.data());
         }, false);
-    }
-
-    /**
-     * 经 alert-service 远程批量触发告警（Feign，含质量批次 batchId）。
-     * 失败经 RemoteCalls 降级（warn + 计数）按「未发送」处理，不影响主执行流程（最终一致）。
-     *
-     * @return 是否发送成功（Result 拆信封；异常按 false）
-     */
-    private boolean fireBatchAlert(String objectType, Long objectId, String alertType,
-                                   List<AlertItem> items, Long batchId) {
-        return RemoteCalls.execute("alert.fireBatch", () -> {
-            AlertFireBatchRequest request = new AlertFireBatchRequest();
-            request.setObjectType(objectType);
-            request.setObjectId(objectId);
-            request.setAlertType(alertType);
-            request.setItems(items);
-            request.setBatchId(batchId);
-            var result = alertApi.fireBatch(request);
-            return result != null && Boolean.TRUE.equals(result.data());
-        }, false);
-    }
-
-    /**
-     * 判断某分级是否达到当前任务的告警触发等级。
-     * 严重必触发；警告仅在「严重+警告」模式下触发；通过/不可用不触发（R2：SQL 失败/UNAVAILABLE 不告警）。
-     */
-    private boolean isAlertable(String level, boolean severeOnly) {
-        if (level == null) {
-            return false;
-        }
-        if (AlertConstants.QUALITY_LEVEL_SEVERE.equals(level)) {
-            return true;
-        }
-        if (AlertConstants.QUALITY_LEVEL_WARNING.equals(level)) {
-            return !severeOnly;
-        }
-        return false;
-    }
-
-    /** 规则类型 → 中文展示（与前端 QUALITY_TYPE_LABEL 对齐），避免邮件/告警详情出现英文枚举 */
-    private static final java.util.Map<String, String> RULE_TYPE_LABEL = java.util.Map.of(
-            "COMPLETENESS", "完整性",
-            "UNIQUENESS", "唯一性",
-            "RANGE", "值域范围",
-            "CUSTOM_SQL", "自定义 SQL"
-    );
-
-    /** 判定等级 → 中文展示（与前端 QUALITY_CHECK_LEVEL_LABEL 对齐） */
-    private static final java.util.Map<String, String> LEVEL_LABEL = java.util.Map.of(
-            AlertConstants.QUALITY_LEVEL_PASS, "通过",
-            AlertConstants.QUALITY_LEVEL_WARNING, "警告",
-            AlertConstants.QUALITY_LEVEL_SEVERE, "严重",
-            AlertConstants.QUALITY_LEVEL_UNAVAILABLE, "不可用"
-    );
-
-    /**
-     * 数字格式化：去尾零 + 最多 4 位小数（避免 0.166670 / 1.000000 这种长尾零看着乱）。
-     * null 返回 null。
-     */
-    private static String formatNumber(BigDecimal v) {
-        if (v == null) return null;
-        BigDecimal stripped = v.stripTrailingZeros();
-        String s;
-        if (stripped.scale() <= 0) {
-            // 整数（如 1.000000 → 1）
-            s = stripped.toBigInteger().toString();
-        } else if (stripped.scale() > 4) {
-            s = stripped.setScale(4, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
-        } else {
-            s = stripped.toPlainString();
-        }
-        return s;
-    }
-
-    /**
-     * 构建单条命中明细描述（用于邮件正文/告警详情 summary）。
-     * <p>
-     * 输出格式示例：{@code 类型:完整性 ｜ 结果值:0.1667 ｜ 阈值:警告≥0 · 严重≥0.2 → 警告}
-     * <ul>
-     *   <li>类型与等级用中文（避免英文枚举出现在用户界面/邮件）</li>
-     *   <li>字段用全角竖线「｜」分隔，便于前端按段解析并结构化展示</li>
-     *   <li>数字去尾零 + 最多 4 位小数，避免 0.166670 / 1.000000 这种长尾零看着乱</li>
-     * </ul>
-     */
-    private String buildDetailDesc(QualityCheckDetail d) {
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        if (d.getRuleType() != null) {
-            sb.append("类型:").append(RULE_TYPE_LABEL.getOrDefault(d.getRuleType(), d.getRuleType()));
-            first = false;
-        }
-        String valueText = formatNumber(d.getResultValue());
-        if (valueText != null) {
-            if (!first) sb.append(" ｜ ");
-            sb.append("结果值:").append(valueText);
-            first = false;
-        }
-        // 判定依据：阈值区间 + 命中档位，让收件人无需进系统即可理解"为什么判严重"
-        if (d.getRuleId() != null) {
-            QualityRule rule = ruleMapper.selectById(d.getRuleId());
-            if (rule != null && (rule.getWarningThreshold() != null || rule.getSevereThreshold() != null)) {
-                if (!first) sb.append(" ｜ ");
-                sb.append("阈值:");
-                boolean firstTh = true;
-                String warnText = formatNumber(rule.getWarningThreshold());
-                if (warnText != null) {
-                    sb.append("警告≥").append(warnText);
-                    firstTh = false;
-                }
-                String sevText = formatNumber(rule.getSevereThreshold());
-                if (sevText != null) {
-                    if (!firstTh) sb.append(" · ");
-                    sb.append("严重≥").append(sevText);
-                }
-                // 末尾追加命中档位（中文，与前端徽章对应；用户反馈"只是把英文换成中文，不要去掉内容"）
-                if (d.getResultLevel() != null) {
-                    sb.append(" → ").append(LEVEL_LABEL.getOrDefault(d.getResultLevel(), d.getResultLevel()));
-                }
-            }
-        }
-        if (d.getErrorMessage() != null && !d.getErrorMessage().isBlank()) {
-            if (!first) sb.append(" ｜ ");
-            sb.append("错误:").append(d.getErrorMessage());
-        }
-        return sb.length() == 0 ? null : sb.toString();
-    }
-
-    private void markAlertSent(Long batchId) {
-        try {
-            QualityCheckBatch update = new QualityCheckBatch();
-            update.setId(batchId);
-            update.setAlertSent(1);
-            batchMapper.updateById(update);
-        } catch (Exception e) {
-            logger.warn("标记批次告警已发送失败: batchId={}", batchId, e);
-        }
-    }
-
-    // ==================== 查询（供 QualityCheckController 使用） ====================
-
-    public QualityCheckBatch requireBatch(Long id) {
-        QualityCheckBatch batch = batchMapper.selectById(id);
-        if (batch == null) {
-            throw new BusinessException(ErrorCode.QUALITY_CHECK_BATCH_NOT_FOUND, "质量检查批次不存在: " + id);
-        }
-        return batch;
-    }
-
-    public List<QualityCheckDetail> listDetailsByBatch(Long batchId) {
-        return detailMapper.selectList(new QueryWrapper<QualityCheckDetail>()
-                .eq("batch_id", batchId).orderByAsc("id"));
-    }
-
-    /**
-     * 分页查询批次列表（按 job / trigger_type / status 过滤）。
-     */
-    public PageResult<QualityCheckBatchDTO> listBatches(QualityCheckQueryRequest request) {
-        QueryWrapper<QualityCheckBatch> wrapper = new QueryWrapper<>();
-        if (request.getJobId() != null) {
-            wrapper.eq("job_id", request.getJobId());
-        }
-        if (request.getTriggerType() != null && !request.getTriggerType().isBlank()) {
-            wrapper.eq("trigger_type", request.getTriggerType());
-        }
-        if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            wrapper.eq("status", request.getStatus());
-        }
-        if (request.getStartTimeFrom() != null && !request.getStartTimeFrom().isBlank()
-                && request.getStartTimeTo() != null && !request.getStartTimeTo().isBlank()) {
-            // started_at 是 timestamp 类型，需转 LocalDateTime，否则 PG 报 timestamp >= varchar 类型错误
-            wrapper.between("started_at",
-                    LocalDateTime.parse(request.getStartTimeFrom()),
-                    LocalDateTime.parse(request.getStartTimeTo()));
-        }
-        wrapper.orderByDesc("id");
-
-        IPage<QualityCheckBatch> page = batchMapper.selectPage(
-                new Page<>(request.getPage(), request.getPageSize()), wrapper);
-        List<QualityCheckBatchDTO> records = page.getRecords().stream()
-                .map(this::toBatchDTO)
-                .toList();
-        return new PageResult<>(records, page.getTotal(), page.getCurrent(), page.getSize());
-    }
-
-    /**
-     * 批次详情（含明细）。
-     */
-    public QualityCheckBatchDTO getBatchDetail(Long batchId) {
-        QualityCheckBatch batch = requireBatch(batchId);
-        QualityCheckBatchDTO dto = toBatchDTO(batch);
-        List<QualityCheckDetailDTO> details = listDetailsByBatch(batchId).stream()
-                .map(this::toDetailDTO)
-                .toList();
-        dto.setDetails(details);
-        // 告警对应：经 alert-service 按 quality_batch_id 远程反查本批次触发的告警记录
-        // （含规则名/发送状态/时间），供详情展示；远程失败降级为空列表，不阻断详情查询
-        dto.setAlertHistories(listAlertHistories(batchId));
-        return dto;
-    }
-
-    /** 远程反查批次告警记录（Feign）；失败经 RemoteCalls 降级（warn + 计数）并返回空列表 */
-    private List<com.datanest.alert.api.dto.AlertHistoryDTO> listAlertHistories(Long batchId) {
-        return RemoteCalls.execute("alert.listByQualityBatch", () -> {
-            var result = alertApi.listByQualityBatch(batchId);
-            return result != null && result.data() != null ? result.data() : List.of();
-        }, List.of());
-    }
-
-    private QualityCheckBatchDTO toBatchDTO(QualityCheckBatch batch) {
-        QualityCheckBatchDTO dto = new QualityCheckBatchDTO();
-        dto.setId(batch.getId());
-        dto.setJobId(batch.getJobId());
-        dto.setJobName(batch.getJobName());
-        dto.setTriggerType(batch.getTriggerType());
-        dto.setStatus(batch.getStatus());
-        dto.setStartedAt(batch.getStartedAt());
-        dto.setEndedAt(batch.getEndedAt());
-        dto.setDurationMs(batch.getDurationMs());
-        dto.setErrorMessage(batch.getErrorMessage());
-        dto.setCreatedAt(batch.getCreatedAt());
-        // 汇总规则数/成功/失败（执行层语义：SQL 是否跑成功）
-        List<QualityCheckDetail> details = listDetailsByBatch(batch.getId());
-        dto.setRuleCount(details.size());
-        dto.setSuccessCount((int) details.stream().filter(d -> d.getSuccess() != null && d.getSuccess() == 1).count());
-        dto.setFailedCount(details.size() - (dto.getSuccessCount() == null ? 0 : dto.getSuccessCount()));
-        // 汇总分级四档计数（判定层语义：结果是否达标，与成功/失败列并存）
-        int pass = 0, warning = 0, severe = 0, unavailable = 0;
-        for (QualityCheckDetail d : details) {
-            String level = d.getResultLevel();
-            if (AlertConstants.QUALITY_LEVEL_PASS.equals(level)) {
-                pass++;
-            } else if (AlertConstants.QUALITY_LEVEL_WARNING.equals(level)) {
-                warning++;
-            } else if (AlertConstants.QUALITY_LEVEL_SEVERE.equals(level)) {
-                severe++;
-            } else if (AlertConstants.QUALITY_LEVEL_UNAVAILABLE.equals(level)) {
-                unavailable++;
-            }
-        }
-        dto.setPassCount(pass);
-        dto.setWarningCount(warning);
-        dto.setSevereCount(severe);
-        dto.setUnavailableCount(unavailable);
-        return dto;
-    }
-
-    private QualityCheckDetailDTO toDetailDTO(QualityCheckDetail detail) {
-        QualityCheckDetailDTO dto = new QualityCheckDetailDTO();
-        dto.setId(detail.getId());
-        dto.setBatchId(detail.getBatchId());
-        dto.setRuleId(detail.getRuleId());
-        dto.setRuleName(detail.getRuleName());
-        dto.setRuleType(detail.getRuleType());
-        dto.setTableId(detail.getTableId());
-        dto.setResultMetric(detail.getResultMetric());
-        dto.setResultValue(detail.getResultValue());
-        dto.setResultLevel(detail.getResultLevel());
-        dto.setSuccess(detail.getSuccess());
-        dto.setErrorMessage(detail.getErrorMessage());
-        dto.setExecutedSql(detail.getExecutedSql());
-        dto.setCreatedAt(detail.getCreatedAt());
-        if (detail.getTableId() != null) {
-            MetadataTable table = tableMapper.selectById(detail.getTableId());
-            if (table != null) {
-                dto.setTableName(table.getTableName());
-            }
-        }
-        // 判定依据：经规则回填阈值，供前端展示"为什么判严重"
-        if (detail.getRuleId() != null) {
-            QualityRule rule = ruleMapper.selectById(detail.getRuleId());
-            if (rule != null) {
-                dto.setWarningThreshold(rule.getWarningThreshold());
-                dto.setSevereThreshold(rule.getSevereThreshold());
-            }
-        }
-        return dto;
-    }
-
-    // ==================== private ====================
-
-    private QualityJob requireJob(Long id) {
-        QualityJob job = jobMapper.selectById(id);
-        if (job == null) {
-            throw new BusinessException(ErrorCode.QUALITY_JOB_NOT_FOUND, "质量任务不存在: " + id);
-        }
-        return job;
-    }
-
-    private QualityRule requireRule(Long id) {
-        QualityRule rule = ruleMapper.selectById(id);
-        if (rule == null) {
-            throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + id);
-        }
-        return rule;
-    }
-
-    /**
-     * 取任务引用且启用的规则（经 quality_job_rule 关联表）。
-     */
-    private List<QualityRule> listEnabledRulesByJob(Long jobId) {
-        return ruleMapper.selectList(new QueryWrapper<QualityRule>()
-                .inSql("id", "SELECT rule_id FROM quality_job_rule WHERE job_id = " + jobId)
-                .eq("enabled", 1)
-                .orderByAsc("id"));
     }
 }

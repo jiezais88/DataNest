@@ -4,6 +4,7 @@ import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
+import com.datanest.common.util.JdbcUrlBuilder;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import org.slf4j.Logger;
@@ -41,14 +42,11 @@ public class GenericSqlExecutor {
 
     private final EngineeringDatasourceApi datasourceApi;
     private final EncryptionConfig encryptionConfig;
-    private final ConnectionTester connectionTester;
 
     public GenericSqlExecutor(EngineeringDatasourceApi datasourceApi,
-                              EncryptionConfig encryptionConfig,
-                              ConnectionTester connectionTester) {
+                              EncryptionConfig encryptionConfig) {
         this.datasourceApi = datasourceApi;
         this.encryptionConfig = encryptionConfig;
-        this.connectionTester = connectionTester;
     }
 
     /**
@@ -67,7 +65,7 @@ public class GenericSqlExecutor {
 
     public PreviewResult execute(DataSourceInfo ds, String sql) {
         String password = encryptionConfig.decrypt(ds.getEncryptedPassword());
-        String url = connectionTester.buildJdbcUrl(
+        String url = JdbcUrlBuilder.buildJdbcUrl(
                 ds.getType(), ds.getHost(), ds.getPort(),
                 ds.getDatabaseName(), ds.getSchemaName());
 

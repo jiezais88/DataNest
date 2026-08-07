@@ -1,7 +1,10 @@
 package com.datanest.task.core.service;
 
-import com.datanest.task.core.entity.LineageRecord;
-import com.datanest.task.core.mapper.LineageRecordMapper;
+import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.Result;
+import com.datanest.governance.api.MetadataWriteApi;
+import com.datanest.governance.api.dto.LineageRecordBatchRequest;
+import com.datanest.governance.api.dto.LineageRecordItemDTO;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
@@ -20,7 +23,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -29,16 +31,19 @@ import java.util.Set;
 /**
  * SQL 血缘提取器
  * 基于 JSqlParser 从 SQL 语句中提取源表与目标表，写入 lineage_record。
+ * <p>
+ * 微服务化 4.2：lineage_record 写入改为经 {@link MetadataWriteApi} Feign 调 app-governance
+ * （lineage/records:batch，RemoteCalls 降级：血缘丢失不影响执行结果）；SQL 解析仍留在本地。
  */
 @Service
 public class SqlLineageExtractor {
 
     private static final Logger logger = LoggerFactory.getLogger(SqlLineageExtractor.class);
 
-    private final LineageRecordMapper lineageRecordMapper;
+    private final MetadataWriteApi metadataWriteApi;
 
-    public SqlLineageExtractor(LineageRecordMapper lineageRecordMapper) {
-        this.lineageRecordMapper = lineageRecordMapper;
+    public SqlLineageExtractor(MetadataWriteApi metadataWriteApi) {
+        this.metadataWriteApi = metadataWriteApi;
     }
 
     /**
@@ -94,10 +99,9 @@ public class SqlLineageExtractor {
             sourceTables.remove(targetTable);
         }
 
-        List<LineageRecord> records = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
+        List<LineageRecordItemDTO> records = new ArrayList<>();
         for (String source : sourceTables) {
-            LineageRecord r = new LineageRecord();
+            LineageRecordItemDTO r = new LineageRecordItemDTO();
             r.setSourceTable(normalizeTable(source));
             r.setTargetTable(normalizeTable(targetTable));
             r.setDagId(dagId);
@@ -106,15 +110,14 @@ public class SqlLineageExtractor {
             r.setNodeName(nodeName);
             r.setExecutionId(executionId);
             r.setLineageType("SQL");
-            r.setCreatedAt(now);
             records.add(r);
         }
         // Sprint 5：字段级血缘提取（仅覆盖直接列映射场景，见 ADR-S5-005）
         extractColumnMappings(stmt, targetTable, sourceTables, records, dagId, dagName, nodeId, nodeName,
-                executionId, now);
+                executionId);
         if (records.isEmpty() && targetTable != null) {
             // 只有目标表、没有源表的情况（如 CREATE TABLE 无 CTAS）也记录一条
-            LineageRecord r = new LineageRecord();
+            LineageRecordItemDTO r = new LineageRecordItemDTO();
             r.setSourceTable(null);
             r.setTargetTable(normalizeTable(targetTable));
             r.setDagId(dagId);
@@ -123,7 +126,6 @@ public class SqlLineageExtractor {
             r.setNodeName(nodeName);
             r.setExecutionId(executionId);
             r.setLineageType("SQL");
-            r.setCreatedAt(now);
             records.add(r);
         }
         saveRecords(records);
@@ -138,10 +140,9 @@ public class SqlLineageExtractor {
         if (outputTables == null || outputTables.isEmpty()) {
             return;
         }
-        LocalDateTime now = LocalDateTime.now();
-        List<LineageRecord> records = new ArrayList<>(outputTables.size());
+        List<LineageRecordItemDTO> records = new ArrayList<>(outputTables.size());
         for (String table : outputTables) {
-            LineageRecord r = new LineageRecord();
+            LineageRecordItemDTO r = new LineageRecordItemDTO();
             r.setSourceTable(null);
             r.setTargetTable(normalizeTable(table));
             r.setDagId(dagId);
@@ -150,7 +151,6 @@ public class SqlLineageExtractor {
             r.setNodeName(nodeName);
             r.setExecutionId(executionId);
             r.setLineageType("PYTHON");
-            r.setCreatedAt(now);
             records.add(r);
         }
         saveRecords(records);
@@ -168,8 +168,8 @@ public class SqlLineageExtractor {
      *   - 字段级记录与表级记录并存（表级血缘仍作为图谱锚点）。
      */
     private void extractColumnMappings(Statement stmt, String targetTable, Set<String> sourceTables,
-                                       List<LineageRecord> records, Long dagId, String dagName,
-                                       String nodeId, String nodeName, Long executionId, LocalDateTime now) {
+                                       List<LineageRecordItemDTO> records, Long dagId, String dagName,
+                                       String nodeId, String nodeName, Long executionId) {
         if (targetTable == null || sourceTables.size() != 1) {
             return;
         }
@@ -208,7 +208,7 @@ public class SqlLineageExtractor {
             if (sourceColumn == null || targetColumn == null) {
                 continue;
             }
-            LineageRecord r = new LineageRecord();
+            LineageRecordItemDTO r = new LineageRecordItemDTO();
             r.setSourceTable(normalizeTable(singleSource));
             r.setSourceColumn(sourceColumn);
             r.setTargetTable(normalizeTable(targetTable));
@@ -219,7 +219,6 @@ public class SqlLineageExtractor {
             r.setNodeName(nodeName);
             r.setExecutionId(executionId);
             r.setLineageType("SQL");
-            r.setCreatedAt(now);
             records.add(r);
         }
     }
@@ -251,15 +250,22 @@ public class SqlLineageExtractor {
         return null;
     }
 
-    private void saveRecords(List<LineageRecord> records) {
+    /**
+     * 血缘记录批量写入（RemoteCalls 降级：血缘丢失不影响执行结果；createdAt 由服务端填当前时间）。
+     */
+    private void saveRecords(List<LineageRecordItemDTO> records) {
         if (records == null || records.isEmpty()) {
             return;
         }
-        if (records.size() == 1) {
-            lineageRecordMapper.insert(records.get(0));
-        } else {
-            lineageRecordMapper.insertBatch(records);
-        }
+        RemoteCalls.execute("governance.lineage.records-batch", () -> {
+            LineageRecordBatchRequest request = new LineageRecordBatchRequest();
+            request.setRecords(records);
+            Result<Integer> result = metadataWriteApi.saveLineageRecords(request);
+            if (result == null || result.data() == null || result.data() < records.size()) {
+                logger.warn("血缘记录批量写入条数不符（降级/部分丢失）: expected={}, actual={}",
+                        records.size(), result == null ? null : result.data());
+            }
+        });
     }
 
     private String tableNameOf(net.sf.jsqlparser.schema.Table table) {

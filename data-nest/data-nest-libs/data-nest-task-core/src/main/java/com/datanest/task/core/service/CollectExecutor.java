@@ -1,66 +1,83 @@
 package com.datanest.task.core.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.alert.api.AlertApi;
 import com.datanest.alert.api.dto.AlertFireRequest;
 import com.datanest.common.constant.DataSourceStatus;
 import com.datanest.common.constant.ExecutionStatus;
-import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.TaskTriggerType;
+import com.datanest.common.exception.BusinessException;
+import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.governance.api.CollectWriteApi;
+import com.datanest.governance.api.GovernanceObjectApi;
+import com.datanest.governance.api.dto.CollectDetectDeletedTablesRequest;
+import com.datanest.governance.api.dto.CollectHistoryCreateRequest;
+import com.datanest.governance.api.dto.CollectHistoryFinishRequest;
+import com.datanest.governance.api.dto.CollectHistoryInfoDTO;
+import com.datanest.governance.api.dto.CollectLogAppendRequest;
+import com.datanest.governance.api.dto.CollectTaskInfoDTO;
+import com.datanest.governance.api.dto.CollectTaskMarkStatusRequest;
+import com.datanest.governance.api.dto.CollectUpsertColumnsRequest;
+import com.datanest.governance.api.dto.CollectUpsertTableRequest;
+import com.datanest.governance.api.dto.DetectDeletedResultDTO;
+import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
+import com.datanest.governance.api.dto.UpsertColumnsResultDTO;
+import com.datanest.governance.api.dto.UpsertTableResultDTO;
 import com.datanest.task.core.collect.ColumnMetadata;
 import com.datanest.task.core.collect.ExtractorFactory;
 import com.datanest.task.core.collect.MetadataExtractor;
 import com.datanest.task.core.collect.TableMetadata;
-import com.datanest.task.core.entity.*;
-import com.datanest.task.core.mapper.*;
+import com.datanest.task.core.constant.AlertConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * 元数据采集任务执行核心，供 data-nest-worker 调用。
  * 本身不依赖 XXL-JOB 注解，保持 task-core 为纯库。
+ * <p>
+ * 微服务化 4.2：collect_task/collect_history/collect_execution_log/collect_change_detail/
+ * metadata_table/metadata_column 的读写全部改为经 {@link CollectWriteApi} Feign 调 app-governance；
+ * 变更明细由服务端在 upsert/detect 的 diff 逻辑里落库并返回计数，本类只做抽取与统计累加。
+ * 容错红线：任务读取/mark-running/history init 失败 fail-fast；执行中写
+ * （upsert/detect/日志/变更）与收尾（finish/mark-status）RemoteCalls 降级
+ * （采集渐进落库语义不变，失败靠对账兜底）。
  */
 @Service
 public class CollectExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(CollectExecutor.class);
 
-    private final CollectTaskMapper collectTaskMapper;
-    private final CollectHistoryMapper collectHistoryMapper;
-    private final CollectExecutionLogMapper logMapper;
-    private final CollectChangeDetailMapper changeDetailMapper;
+    /** 执行日志缓冲批量刷写阈值（每 50 条 flush 一次，结束再 flush） */
+    private static final int LOG_FLUSH_THRESHOLD = 50;
+
+    private final CollectWriteApi collectWriteApi;
+    private final GovernanceObjectApi governanceObjectApi;
     private final EngineeringDatasourceApi datasourceApi;
-    private final MetadataTableMapper metadataTableMapper;
-    private final MetadataColumnMapper metadataColumnMapper;
     private final ExtractorFactory extractorFactory;
     private final AlertApi alertApi;
-    private final QualityAutoTriggerService qualityAutoTriggerService;
 
-    public CollectExecutor(CollectTaskMapper collectTaskMapper, CollectHistoryMapper collectHistoryMapper,
-                           CollectExecutionLogMapper logMapper, CollectChangeDetailMapper changeDetailMapper,
-                           EngineeringDatasourceApi datasourceApi, MetadataTableMapper metadataTableMapper,
-                           MetadataColumnMapper metadataColumnMapper, ExtractorFactory extractorFactory,
-                           AlertApi alertApi,
-                           QualityAutoTriggerService qualityAutoTriggerService) {
-        this.collectTaskMapper = collectTaskMapper;
-        this.collectHistoryMapper = collectHistoryMapper;
-        this.logMapper = logMapper;
-        this.changeDetailMapper = changeDetailMapper;
+    public CollectExecutor(CollectWriteApi collectWriteApi,
+                           GovernanceObjectApi governanceObjectApi,
+                           EngineeringDatasourceApi datasourceApi,
+                           ExtractorFactory extractorFactory,
+                           AlertApi alertApi) {
+        this.collectWriteApi = collectWriteApi;
+        this.governanceObjectApi = governanceObjectApi;
         this.datasourceApi = datasourceApi;
-        this.metadataTableMapper = metadataTableMapper;
-        this.metadataColumnMapper = metadataColumnMapper;
         this.extractorFactory = extractorFactory;
         this.alertApi = alertApi;
-        this.qualityAutoTriggerService = qualityAutoTriggerService;
     }
 
     public void execute(String param) {
@@ -93,18 +110,13 @@ public class CollectExecutor {
         return parts.length > 1 ? parts[1].trim() : TaskTriggerType.CRON.getCode();
     }
 
-    // 采集为渐进式落库，失败记录需在事务外即时提交，故不使用方法级事务。
-    // （此前同类自调用使 @Transactional 不生效；且 rollbackFor 会把已写入的 FAILED 失败记录一并回滚）
+    // 采集为渐进式落库，失败记录即时生效，不使用方法级事务（远程端点逐条提交）。
     public void runTask(Long taskId, String triggerType) {
         logger.info("runTask 开始执行，taskId={}，triggerType={}", taskId, triggerType);
-        CollectTask task = collectTaskMapper.selectById(taskId);
-        if (task == null) {
-            logger.error("runTask 任务不存在: taskId={}", taskId);
-            throw new IllegalArgumentException("任务不存在: " + taskId);
-        }
-        // 设置运行中状态
-        task.setStatus(ExecutionStatus.RUNNING.getCode());
-        collectTaskMapper.updateById(task);
+        // 执行开始 fail-fast：任务读不到不启动采集
+        CollectTaskInfoDTO task = getTaskOrThrow(taskId);
+        // 设置运行中状态（fail-fast：标记不上不跑"无登记执行"）
+        markTaskStatusOrThrow(taskId, ExecutionStatus.RUNNING.getCode(), null, null);
         logger.info("runTask 任务状态已更新为 RUNNING: taskId={}", taskId);
 
         // 经 engineering 服务 Feign 读取数据源连接（fail-fast，不走 RemoteCalls 降级：
@@ -122,8 +134,9 @@ public class CollectExecutor {
         }
 
         logger.info("runTask 准备初始化历史记录，taskId={}", taskId);
-        CollectHistory history = initHistory(task, triggerType);
-        logger.info("runTask 历史记录已初始化，historyId={}", history.getId());
+        Long historyId = createHistoryOrThrow(task, triggerType);
+        logger.info("runTask 历史记录已初始化，historyId={}", historyId);
+        LogBuffer logBuffer = new LogBuffer(historyId);
         List<String> scope = task.getScope() != null && !task.getScope().isEmpty()
                 ? task.getScope()
                 : Collections.singletonList(null);
@@ -144,46 +157,56 @@ public class CollectExecutor {
 
         MetadataExtractor extractor = extractorFactory.getExtractor(ds.getType());
         try {
-            log(history, "INFO", "开始采集任务：" + task.getName() + "，数据源：" + ds.getName());
+            logBuffer.log("INFO", "开始采集任务：" + task.getName() + "，数据源：" + ds.getName());
             for (String schema : scope) {
                 // 协作式停止：手动停止接口会把历史状态置为 TERMINATED，每轮迭代前重查以便尽快退出
-                if (isTerminated(history.getId())) {
+                if (isTerminated(historyId)) {
                     terminated = true;
                     break;
                 }
                 List<TableMetadata> tables = extractor.extractTables(ds, schema);
                 dbCount++;
-                log(history, "INFO", "采集到 " + tables.size() + " 张表，范围：" + (schema == null ? "默认" : schema));
+                logBuffer.log("INFO", "采集到 " + tables.size() + " 张表，范围：" + (schema == null ? "默认" : schema));
                 Set<String> collectedTableNames = tables.stream()
                         .map(TableMetadata::getTableName)
                         .collect(Collectors.toSet());
                 for (TableMetadata table : tables) {
-                    if (isTerminated(history.getId())) {
+                    if (isTerminated(historyId)) {
                         terminated = true;
                         break;
                     }
-                    TableChange change = upsertTable(task, ds, table, history.getId());
-                    if (change.added) addedTables++;
-                    if (change.updated) updatedTables++;
+                    // 执行中写失败 RemoteCalls 降级：单表 upsert 失败记 error 并跳过本表，不中断整体采集
+                    UpsertTableResultDTO tableResult = upsertTableRemote(ds, table, historyId);
+                    if (tableResult == null || tableResult.getTableId() == null) {
+                        continue;
+                    }
+                    if (Boolean.TRUE.equals(tableResult.getIsNew())) addedTables++;
+                    if (Boolean.TRUE.equals(tableResult.getChanged())) updatedTables++;
                     tableCount++;
-                    ColumnChange colChange = upsertColumns(change.tableId, table, history.getId(), change.added);
-                    addedColumns += colChange.added;
-                    updatedColumns += colChange.updated;
-                    deletedColumns += colChange.deleted;
+                    UpsertColumnsResultDTO colResult = upsertColumnsRemote(tableResult.getTableId(), table,
+                            historyId, Boolean.TRUE.equals(tableResult.getIsNew()));
+                    if (colResult != null) {
+                        // 复活字段对齐原语义计入 added
+                        addedColumns += nz(colResult.getAddedCount()) + nz(colResult.getResurrectedCount());
+                        updatedColumns += nz(colResult.getUpdatedCount());
+                        deletedColumns += nz(colResult.getDeletedCount());
+                    }
                     columnCount += table.getColumns().size();
                 }
                 if (terminated) {
                     // 停止时跳过删除检测：表清单未采完，若继续会把未采集的表误判为已删除
                     break;
                 }
-                int deletedInSchema = detectDeletedTables(ds, tables, collectedTableNames, history.getId());
-                deletedTables += deletedInSchema;
+                DetectDeletedResultDTO detectResult = detectDeletedTablesRemote(ds, tables, collectedTableNames, historyId);
+                if (detectResult != null) {
+                    deletedTables += nz(detectResult.getDeletedTableCount());
+                }
             }
             if (terminated) {
                 lastStatus = ExecutionStatus.TERMINATED.getCode();
-                log(history, "INFO", "手动停止，已采集部分保留");
+                logBuffer.log("INFO", "手动停止，已采集部分保留");
             } else {
-                log(history, "INFO", "采集完成：库/表/字段 = " + dbCount + "/" + tableCount + "/" + columnCount
+                logBuffer.log("INFO", "采集完成：库/表/字段 = " + dbCount + "/" + tableCount + "/" + columnCount
                         + "，新增/修改/删除表 = " + addedTables + "/" + updatedTables + "/" + deletedTables
                         + "，新增/修改/删除字段 = " + addedColumns + "/" + updatedColumns + "/" + deletedColumns);
             }
@@ -191,33 +214,29 @@ public class CollectExecutor {
             logger.error("采集任务执行失败: taskId={}", taskId, e);
             errorMessage = e.getMessage();
             lastStatus = ExecutionStatus.FAILED.getCode();
-            log(history, "ERROR", "采集失败：" + errorMessage);
+            logBuffer.log("ERROR", "采集失败：" + errorMessage);
         }
 
         // 收尾前最后确认一次停止状态：停止请求若恰好落在循环最后一次检查之后，
         // 这里兜底，避免 finishHistory/updateTaskStatus 把 TERMINATED 覆盖回 SUCCESS
-        if (!terminated && ExecutionStatus.SUCCESS.getCode().equals(lastStatus) && isTerminated(history.getId())) {
+        if (!terminated && ExecutionStatus.SUCCESS.getCode().equals(lastStatus) && isTerminated(historyId)) {
             terminated = true;
             lastStatus = ExecutionStatus.TERMINATED.getCode();
-            log(history, "INFO", "手动停止，已采集部分保留");
+            logBuffer.log("INFO", "手动停止，已采集部分保留");
         }
 
         // 停止分支同样走收尾：lastStatus 为 TERMINATED，finishHistory/updateTaskStatus 只会保持终态并补统计
-        finishHistory(history, tableCount, columnCount, dbCount, addedTables, updatedTables, deletedTables,
+        logBuffer.flush();
+        finishHistory(historyId, tableCount, columnCount, dbCount, addedTables, updatedTables, deletedTables,
                 addedColumns, updatedColumns, deletedColumns, errorMessage, lastStatus);
-        updateTaskStatus(task, history, lastStatus);
+        markTaskStatus(taskId, lastStatus, historyId, LocalDateTime.now());
 
         // Sprint 5：采集任务成功/失败告警（按 alert_rule 配置，经 alert-service 远程触发；手动停止不发告警）
         if (ExecutionStatus.SUCCESS.getCode().equals(lastStatus)) {
             fireAlert("COLLECT_TASK", taskId, "SUCCESS",
                     "采集完成：表 " + tableCount + "，字段 " + columnCount);
             // Sprint 8：采集任务成功后触发绑定的质量任务自动检查（失败不影响采集结果）
-            try {
-                qualityAutoTriggerService.triggerOnSuccess(
-                        QualityAutoTriggerService.OBJECT_TYPE_COLLECT_TASK, taskId);
-            } catch (Exception e) {
-                logger.error("质量任务自动触发失败（不影响采集结果）: taskId={}", taskId, e);
-            }
+            triggerQualityOnSuccess(AlertConstants.OBJECT_TYPE_COLLECT_TASK, taskId);
         } else if (ExecutionStatus.FAILED.getCode().equals(lastStatus)) {
             fireAlert("COLLECT_TASK", taskId, "FAILURE", errorMessage);
         }
@@ -245,294 +264,184 @@ public class CollectExecutor {
         }, false);
     }
 
-    private CollectHistory initHistory(CollectTask task, String triggerType) {
-        logger.info("initHistory 开始，taskId={}，triggerType={}", task.getId(), triggerType);
-        CollectHistory history = new CollectHistory();
-        history.setTaskId(task.getId());
-        history.setTaskName(task.getName());
-        history.setDatasourceId(task.getDatasourceId());
-        history.setTriggerType(triggerType);
-        history.setStatus(ExecutionStatus.RUNNING.getCode());
-        history.setStartedAt(LocalDateTime.now());
-        history.setDbCount(0);
-        history.setTableCount(0);
-        history.setColumnCount(0);
-        history.setAddedTableCount(0);
-        history.setUpdatedTableCount(0);
-        history.setDeletedTableCount(0);
-        history.setAddedColumnCount(0);
-        history.setUpdatedColumnCount(0);
-        history.setDeletedColumnCount(0);
-        logger.info("initHistory 准备插入 collect_history，taskId={}", task.getId());
-        collectHistoryMapper.insert(history);
-        logger.info("initHistory 插入完成，historyId={}", history.getId());
-        return history;
+    /**
+     * 触发绑定该对象的质量任务自动检查（经 governance 批量端点，RemoteCalls 降级，失败不影响采集结果）。
+     */
+    private void triggerQualityOnSuccess(String objectType, Long objectId) {
+        RemoteCalls.execute("governance.quality.auto-trigger", () -> {
+            QualityAutoTriggerBatchRequest request = new QualityAutoTriggerBatchRequest();
+            request.setObjectType(objectType);
+            request.setObjectIds(List.of(objectId));
+            governanceObjectApi.qualityAutoTriggerBatch(request);
+        });
     }
 
-    private void log(CollectHistory history, String level, String message) {
-        CollectExecutionLog log = new CollectExecutionLog();
-        log.setHistoryId(history.getId());
-        log.setTaskId(history.getTaskId());
-        log.setLevel(level);
-        log.setMessage(message);
-        logMapper.insert(log);
+    // ==================== 执行开始处：fail-fast ====================
+
+    /** 读取采集任务定义，读不到（含熔断降级返回空）按「任务不存在」fail-fast。 */
+    private CollectTaskInfoDTO getTaskOrThrow(Long taskId) {
+        Result<CollectTaskInfoDTO> result = collectWriteApi.getTask(taskId);
+        CollectTaskInfoDTO task = result == null ? null : result.data();
+        if (task == null) {
+            logger.error("runTask 任务不存在: taskId={}", taskId);
+            throw new IllegalArgumentException("任务不存在: " + taskId);
+        }
+        return task;
     }
 
-    // 手动停止通过 DB 状态传递（不走 XXL-JOB kill），执行器循环中重查实现协作式退出
-    private boolean isTerminated(Long historyId) {
-        CollectHistory current = collectHistoryMapper.selectById(historyId);
-        return current != null && ExecutionStatus.TERMINATED.getCode().equals(current.getStatus());
-    }
-
-    private TableChange upsertTable(CollectTask task, DataSourceInfo ds, TableMetadata table, Long historyId) {
-        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
-        wrapper.eq("datasource_id", ds.getId())
-                .eq("database_name", table.getDatabaseName())
-                .eq("COALESCE(schema_name, '')", table.getSchemaName() == null ? "" : table.getSchemaName())
-                .eq("table_name", table.getTableName());
-        MetadataTable existing = metadataTableMapper.selectOne(wrapper);
-
-        if (existing == null) {
-            MetadataTable mt = new MetadataTable();
-            mt.setDatasourceId(ds.getId());
-            mt.setDatabaseName(table.getDatabaseName());
-            mt.setSchemaName(table.getSchemaName());
-            mt.setTableName(table.getTableName());
-            mt.setTableComment(table.getTableComment());
-            mt.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
-            mt.setLastCollectHistoryId(historyId);
-            metadataTableMapper.insert(mt);
-
-            // 记录新增表变更明细
-            writeChangeDetail(historyId, "ADDED_TABLE", table.getDatabaseName(),
-                    table.getSchemaName(), table.getTableName(), null, null, null);
-            return new TableChange(mt.getId(), true, false);
-        } else {
-            boolean wasOffline = !MetadataSourceStatus.ONLINE.getCode().equals(existing.getSourceStatus());
-            boolean commentChanged = !Objects.equals(existing.getTableComment(), table.getTableComment());
-            if (commentChanged) {
-                String oldComment = existing.getTableComment();
-                existing.setTableComment(table.getTableComment());
-
-                // 记录表注释变更
-                writeChangeDetail(historyId, "MODIFIED_TABLE", table.getDatabaseName(),
-                        table.getSchemaName(), table.getTableName(), null, oldComment, table.getTableComment());
-            }
-            if (wasOffline) {
-                existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
-            }
-            // 无论表结构是否变化，都更新 last_collect_history_id，确保最近采集信息准确
-            existing.setLastCollectHistoryId(historyId);
-            metadataTableMapper.updateById(existing);
-            return new TableChange(existing.getId(), false, commentChanged);
+    /** 执行开始的状态回写（置 RUNNING），失败 fail-fast。 */
+    private void markTaskStatusOrThrow(Long taskId, String status, Long lastHistoryId, LocalDateTime lastExecuteTime) {
+        CollectTaskMarkStatusRequest request = new CollectTaskMarkStatusRequest();
+        request.setStatus(status);
+        request.setLastHistoryId(lastHistoryId);
+        request.setLastExecuteTime(lastExecuteTime == null ? null : formatTime(lastExecuteTime));
+        Result<Void> result = collectWriteApi.markTaskStatus(taskId, request);
+        if (result == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "采集任务状态回写失败（governance 不可达）: taskId=" + taskId);
         }
     }
 
-    private ColumnChange upsertColumns(Long tableId, TableMetadata table, Long historyId, boolean tableIsNew) {
-        List<MetadataColumn> existingColumns = metadataColumnMapper.selectList(
-                new QueryWrapper<MetadataColumn>().eq("table_id", tableId));
-        Map<String, MetadataColumn> existingMap = existingColumns.stream()
-                .collect(Collectors.toMap(MetadataColumn::getColumnName, c -> c, (a, b) -> a));
+    /** 初始化采集历史（RUNNING，统计列清零），失败 fail-fast。 */
+    private Long createHistoryOrThrow(CollectTaskInfoDTO task, String triggerType) {
+        CollectHistoryCreateRequest request = new CollectHistoryCreateRequest();
+        request.setTaskId(task.getId());
+        request.setTaskName(task.getName());
+        request.setDatasourceId(task.getDatasourceId());
+        request.setTriggerType(triggerType);
+        Result<Long> result = collectWriteApi.createHistory(request);
+        if (result == null || result.data() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "创建采集历史失败（governance 不可达）: taskId=" + task.getId());
+        }
+        return result.data();
+    }
 
-        int added = 0;
-        int updated = 0;
-        int deleted = 0;
-        for (ColumnMetadata cm : table.getColumns()) {
-            MetadataColumn existing = existingMap.get(cm.getColumnName());
-            if (existing == null) {
-                MetadataColumn col = new MetadataColumn();
-                col.setTableId(tableId);
-                col.setColumnName(cm.getColumnName());
-                col.setColumnComment(cm.getColumnComment());
-                col.setDataType(cm.getDataType());
-                col.setOrdinalPosition(cm.getOrdinalPosition());
-                col.setNullable(cm.getNullable());
-                col.setColumnDefault(cm.getColumnDefault());
-                col.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
-                col.setLastCollectHistoryId(historyId);
-                metadataColumnMapper.insert(col);
-                added++;
+    // ==================== 执行中/收尾写：RemoteCalls 降级 ====================
 
-                // 新增表的字段随表一起作为 ADDED_TABLE，便于前端展开；
-                // 已存在表新增的字段属于字段变更，记为 ADDED_COLUMN。
-                String newValue = formatColumnValue(cm.getDataType(), cm.getNullable(), cm.getColumnComment());
-                if (tableIsNew) {
-                    writeChangeDetail(historyId, "ADDED_TABLE", table.getDatabaseName(),
-                            table.getSchemaName(), table.getTableName(), cm.getColumnName(),
-                            null, newValue);
-                } else {
-                    writeChangeDetail(historyId, "ADDED_COLUMN", table.getDatabaseName(),
-                            table.getSchemaName(), table.getTableName(), cm.getColumnName(),
-                            null, newValue);
-                }
-            } else {
-                boolean wasOffline = !MetadataSourceStatus.ONLINE.getCode().equals(existing.getSourceStatus());
-                String oldDataType = existing.getDataType();
-                String oldComment = existing.getColumnComment();
-                Integer oldOrdinal = existing.getOrdinalPosition();
-                Boolean oldNullable = existing.getNullable();
-                String oldDefault = existing.getColumnDefault();
+    /**
+     * 元数据表 upsert（变更明细服务端落库，计数随响应返回）。
+     * 失败降级返回 null，调用方记 error 后跳过本表（不中断整体采集）。
+     */
+    private UpsertTableResultDTO upsertTableRemote(DataSourceInfo ds, TableMetadata table, Long historyId) {
+        return RemoteCalls.execute("governance.collect.upsert-table", () -> {
+            CollectUpsertTableRequest request = new CollectUpsertTableRequest();
+            request.setDatasourceId(ds.getId());
+            request.setDatabaseName(table.getDatabaseName());
+            request.setSchemaName(table.getSchemaName());
+            request.setTableName(table.getTableName());
+            request.setTableComment(table.getTableComment());
+            request.setCollectHistoryId(historyId);
+            Result<UpsertTableResultDTO> result = collectWriteApi.upsertTable(request);
+            return result == null ? null : result.data();
+        }, null);
+    }
 
-                boolean dataTypeChanged = !Objects.equals(oldDataType, cm.getDataType());
-                boolean commentChanged = !Objects.equals(oldComment, cm.getColumnComment());
-                boolean ordinalChanged = !Objects.equals(oldOrdinal, cm.getOrdinalPosition());
-                boolean nullableChanged = !Objects.equals(oldNullable, cm.getNullable());
-                boolean defaultChanged = !Objects.equals(oldDefault, cm.getColumnDefault());
-
-                if (wasOffline) {
-                    // 之前被标记为删除的字段重新出现，按新增字段处理
-                    existing.setColumnComment(cm.getColumnComment());
-                    existing.setDataType(cm.getDataType());
-                    existing.setOrdinalPosition(cm.getOrdinalPosition());
-                    existing.setNullable(cm.getNullable());
-                    existing.setColumnDefault(cm.getColumnDefault());
-                    existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
-                    existing.setLastCollectHistoryId(historyId);
-                    metadataColumnMapper.updateById(existing);
-                    added++;
-
-                    String newValue = formatColumnValue(cm.getDataType(), cm.getNullable(), cm.getColumnComment());
-                    writeChangeDetail(historyId, tableIsNew ? "ADDED_TABLE" : "ADDED_COLUMN",
-                            table.getDatabaseName(), table.getSchemaName(), table.getTableName(),
-                            cm.getColumnName(), null, newValue);
-                } else if (dataTypeChanged || commentChanged || ordinalChanged || nullableChanged || defaultChanged) {
-                    existing.setColumnComment(cm.getColumnComment());
-                    existing.setDataType(cm.getDataType());
-                    existing.setOrdinalPosition(cm.getOrdinalPosition());
-                    existing.setNullable(cm.getNullable());
-                    existing.setColumnDefault(cm.getColumnDefault());
-                    existing.setLastCollectHistoryId(historyId);
-                    metadataColumnMapper.updateById(existing);
-                    updated++;
-
-                    // 表变更与字段变更分开；字段内部按属性分项记录
-                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_TYPE", dataTypeChanged,
-                            oldDataType, cm.getDataType());
-                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_COMMENT", commentChanged,
-                            oldComment, cm.getColumnComment());
-                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_ORDINAL", ordinalChanged,
-                            String.valueOf(oldOrdinal), String.valueOf(cm.getOrdinalPosition()));
-                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_NULLABLE", nullableChanged,
-                            formatNullable(oldNullable), formatNullable(cm.getNullable()));
-                    writeColumnChangeDetail(historyId, table, existing, cm, "MODIFIED_COLUMN_DEFAULT", defaultChanged,
-                            formatDefault(oldDefault), formatDefault(cm.getColumnDefault()));
-                }
-                // 从已有字段集合中移除，剩余即为已删除字段
-                existingMap.remove(cm.getColumnName());
+    /**
+     * 元数据字段 diff upsert（变更明细服务端落库，计数随响应返回）。
+     * 失败降级返回 null（本表字段统计不计入，不中断整体采集）。
+     */
+    private UpsertColumnsResultDTO upsertColumnsRemote(Long tableId, TableMetadata table, Long historyId, boolean tableIsNew) {
+        return RemoteCalls.execute("governance.collect.upsert-columns", () -> {
+            CollectUpsertColumnsRequest request = new CollectUpsertColumnsRequest();
+            request.setTableId(tableId);
+            request.setCollectHistoryId(historyId);
+            request.setDatabaseName(table.getDatabaseName());
+            request.setSchemaName(table.getSchemaName());
+            request.setTableName(table.getTableName());
+            request.setTableIsNew(tableIsNew);
+            List<CollectUpsertColumnsRequest.ColumnItem> columns = new ArrayList<>(table.getColumns().size());
+            for (ColumnMetadata cm : table.getColumns()) {
+                CollectUpsertColumnsRequest.ColumnItem item = new CollectUpsertColumnsRequest.ColumnItem();
+                item.setColumnName(cm.getColumnName());
+                item.setDataType(cm.getDataType());
+                item.setColumnComment(cm.getColumnComment());
+                item.setOrdinalPosition(cm.getOrdinalPosition());
+                item.setNullable(cm.getNullable());
+                item.setColumnDefault(cm.getColumnDefault());
+                columns.add(item);
             }
+            request.setColumns(columns);
+            Result<UpsertColumnsResultDTO> result = collectWriteApi.upsertColumns(request);
+            return result == null ? null : result.data();
+        }, null);
+    }
+
+    /**
+     * 删除表检测（变更明细服务端落库，计数随响应返回）。
+     * 失败降级返回 null（本次不计删除统计，不中断整体采集）。
+     */
+    private DetectDeletedResultDTO detectDeletedTablesRemote(DataSourceInfo ds, List<TableMetadata> collectedTables,
+                                                             Set<String> collectedTableNames, Long historyId) {
+        if (collectedTables.isEmpty()) {
+            // 对齐原语义：清单为空不做删除检测，避免清单未采完误判删除
+            return null;
         }
-
-        // 剩余字段为源库中已不存在的字段
-        for (MetadataColumn remaining : existingMap.values()) {
-            if (!MetadataSourceStatus.ONLINE.getCode().equals(remaining.getSourceStatus())) {
-                continue;
-            }
-            String oldValue = formatColumnValue(remaining.getDataType(), remaining.getNullable(), remaining.getColumnComment());
-            remaining.setSourceStatus(MetadataSourceStatus.OFFLINE.getCode());
-            remaining.setLastCollectHistoryId(historyId);
-            metadataColumnMapper.updateById(remaining);
-            deleted++;
-
-            writeChangeDetail(historyId, "DELETED_COLUMN", table.getDatabaseName(), table.getSchemaName(),
-                    table.getTableName(), remaining.getColumnName(), oldValue, null);
-        }
-        return new ColumnChange(added, updated, deleted);
+        TableMetadata first = collectedTables.get(0);
+        return RemoteCalls.execute("governance.collect.detect-deleted-tables", () -> {
+            CollectDetectDeletedTablesRequest request = new CollectDetectDeletedTablesRequest();
+            request.setDatasourceId(ds.getId());
+            request.setDatabaseName(first.getDatabaseName());
+            request.setSchemaName(first.getSchemaName());
+            request.setCollectHistoryId(historyId);
+            request.setCurrentTableNames(new ArrayList<>(collectedTableNames));
+            Result<DetectDeletedResultDTO> result = collectWriteApi.detectDeletedTables(request);
+            return result == null ? null : result.data();
+        }, null);
     }
 
-    private String formatColumnValue(String dataType, Boolean nullable, String comment) {
-        return dataType + "|"
-                + (Boolean.TRUE.equals(nullable) ? "true" : "false") + "|"
-                + (comment == null ? "" : comment);
-    }
-
-    private void writeColumnChangeDetail(Long historyId, TableMetadata table, MetadataColumn existing,
-                                         ColumnMetadata cm, String changeType, boolean changed,
-                                         String oldValue, String newValue) {
-        if (!changed) {
-            return;
-        }
-        writeChangeDetail(historyId, changeType, table.getDatabaseName(), table.getSchemaName(),
-                table.getTableName(), cm.getColumnName(), oldValue, newValue);
-    }
-
-    private String formatNullable(Boolean nullable) {
-        return Boolean.TRUE.equals(nullable) ? "可为空" : "不可为空";
-    }
-
-    private String formatDefault(String defaultValue) {
-        return defaultValue == null ? "NULL" : defaultValue;
-    }
-
-    private void finishHistory(CollectHistory history, int tableCount, int columnCount, int dbCount,
+    /** 收尾采集历史（终态 + 统计列），失败 RemoteCalls 降级（靠对账兜底）。 */
+    private void finishHistory(Long historyId, int tableCount, int columnCount, int dbCount,
                                int addedTables, int updatedTables, int deletedTables,
                                int addedColumns, int updatedColumns, int deletedColumns,
                                String errorMessage, String status) {
-        LocalDateTime now = LocalDateTime.now();
-        history.setStatus(status);
-        history.setEndedAt(now);
-        history.setDurationMs(java.time.Duration.between(history.getStartedAt(), now).toMillis());
-        history.setTableCount(tableCount);
-        history.setColumnCount(columnCount);
-        history.setDbCount(dbCount);
-        history.setAddedTableCount(addedTables);
-        history.setUpdatedTableCount(updatedTables);
-        history.setDeletedTableCount(deletedTables);
-        history.setAddedColumnCount(addedColumns);
-        history.setUpdatedColumnCount(updatedColumns);
-        history.setDeletedColumnCount(deletedColumns);
-        history.setErrorMessage(errorMessage);
-        collectHistoryMapper.updateById(history);
+        RemoteCalls.execute("governance.collect.finish-history", () -> {
+            CollectHistoryFinishRequest request = new CollectHistoryFinishRequest();
+            request.setStatus(status);
+            request.setErrorMessage(errorMessage);
+            // endedAt/durationMs 留空由服务端兜底（now / startedAt→endedAt）
+            request.setTableCount(tableCount);
+            request.setColumnCount(columnCount);
+            request.setDbCount(dbCount);
+            request.setAddedTableCount(addedTables);
+            request.setUpdatedTableCount(updatedTables);
+            request.setDeletedTableCount(deletedTables);
+            request.setAddedColumnCount(addedColumns);
+            request.setUpdatedColumnCount(updatedColumns);
+            request.setDeletedColumnCount(deletedColumns);
+            collectWriteApi.finishHistory(historyId, request);
+        });
     }
 
-    private int detectDeletedTables(DataSourceInfo ds, List<TableMetadata> collectedTables,
-                                    Set<String> collectedTableNames, Long historyId) {
-        if (collectedTables.isEmpty()) {
-            return 0;
+    /** 收尾任务状态回写（终态 + lastHistoryId + lastExecuteTime），失败 RemoteCalls 降级。 */
+    private void markTaskStatus(Long taskId, String status, Long lastHistoryId, LocalDateTime lastExecuteTime) {
+        RemoteCalls.execute("governance.collect.mark-task-status", () -> {
+            CollectTaskMarkStatusRequest request = new CollectTaskMarkStatusRequest();
+            request.setStatus(status);
+            request.setLastHistoryId(lastHistoryId);
+            request.setLastExecuteTime(lastExecuteTime == null ? null : formatTime(lastExecuteTime));
+            collectWriteApi.markTaskStatus(taskId, request);
+        });
+    }
+
+    // 手动停止通过 DB 状态传递（不走 XXL-JOB kill），执行器循环中重查实现协作式退出。
+    // 远程读取失败按未停止处理（与本地 selectById 返回 null 语义一致）。
+    private boolean isTerminated(Long historyId) {
+        CollectHistoryInfoDTO current = RemoteCalls.execute("governance.collect.get-history", () -> {
+            Result<CollectHistoryInfoDTO> result = collectWriteApi.getHistory(historyId);
+            return result == null ? null : result.data();
+        }, null);
+        return current != null && ExecutionStatus.TERMINATED.getCode().equals(current.getStatus());
+    }
+
+    private void failTask(CollectTaskInfoDTO task, String triggerType, String message) {
+        try {
+            Long historyId = createHistoryOrThrow(task, triggerType);
+            finishHistory(historyId, 0, 0, 0, 0, 0, 0, 0, 0, 0, message, ExecutionStatus.FAILED.getCode());
+            markTaskStatus(task.getId(), ExecutionStatus.FAILED.getCode(), historyId, LocalDateTime.now());
+        } catch (Exception e) {
+            logger.error("failTask 收尾回写失败: taskId={}", task.getId(), e);
         }
-        TableMetadata first = collectedTables.get(0);
-        String databaseName = first.getDatabaseName();
-        String schemaName = first.getSchemaName();
-
-        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
-        wrapper.eq("datasource_id", ds.getId())
-                .eq("database_name", databaseName)
-                .eq("COALESCE(schema_name, '')", schemaName == null ? "" : schemaName)
-                .eq("source_status", MetadataSourceStatus.ONLINE.getCode());
-        List<MetadataTable> existingTables = metadataTableMapper.selectList(wrapper);
-
-        int deleted = 0;
-        for (MetadataTable existing : existingTables) {
-            if (!collectedTableNames.contains(existing.getTableName())) {
-                existing.setSourceStatus(MetadataSourceStatus.OFFLINE.getCode());
-                existing.setLastCollectHistoryId(historyId);
-                metadataTableMapper.updateById(existing);
-
-                // 同步把该表下的字段也标记为已删除
-                MetadataColumn columnUpdate = new MetadataColumn();
-                columnUpdate.setSourceStatus(MetadataSourceStatus.OFFLINE.getCode());
-                metadataColumnMapper.update(columnUpdate,
-                        new QueryWrapper<MetadataColumn>().eq("table_id", existing.getId()));
-
-                writeChangeDetail(historyId, "DELETED_TABLE", existing.getDatabaseName(),
-                        existing.getSchemaName(), existing.getTableName(), null,
-                        existing.getTableComment(), null);
-                deleted++;
-            }
-        }
-        return deleted;
-    }
-
-    private void updateTaskStatus(CollectTask task, CollectHistory history, String status) {
-        task.setLastHistoryId(history.getId());
-        task.setLastExecuteTime(LocalDateTime.now());
-        task.setStatus(status);
-        collectTaskMapper.updateById(task);
-    }
-
-    private void failTask(CollectTask task, String triggerType, String message) {
-        CollectHistory history = initHistory(task, triggerType);
-        finishHistory(history, 0, 0, 0, 0, 0, 0, 0, 0, 0, message, ExecutionStatus.FAILED.getCode());
-        updateTaskStatus(task, history, ExecutionStatus.FAILED.getCode());
         throw new RuntimeException(message);
     }
 
@@ -545,43 +454,48 @@ public class CollectExecutor {
         return result == null ? null : result.data();
     }
 
-    private void writeChangeDetail(Long historyId, String changeType, String dbName,
-                                   String schemaName, String tableName, String columnName,
-                                   String oldValue, String newValue) {
-        CollectChangeDetail detail = new CollectChangeDetail();
-        detail.setHistoryId(historyId);
-        detail.setChangeType(changeType);
-        detail.setDatabaseName(dbName);
-        detail.setSchemaName(schemaName);
-        detail.setTableName(tableName);
-        detail.setColumnName(columnName);
-        detail.setOldValue(oldValue);
-        detail.setNewValue(newValue);
-        detail.setCreatedAt(LocalDateTime.now());
-        changeDetailMapper.insert(detail);
+    private static String formatTime(LocalDateTime time) {
+        return time == null ? null : time.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
     }
 
-    private static class TableChange {
-        final Long tableId;
-        final boolean added;
-        final boolean updated;
+    private static int nz(Integer value) {
+        return value == null ? 0 : value;
+    }
 
-        TableChange(Long tableId, boolean added, boolean updated) {
-            this.tableId = tableId;
-            this.added = added;
-            this.updated = updated;
+    /**
+     * 执行日志缓冲：攒批经 logs:append 远程写入（每 50 条 flush + 结束 flush），
+     * 失败 RemoteCalls 降级丢弃本批（日志不阻断采集主流程）。
+     */
+    private class LogBuffer {
+
+        private final Long historyId;
+        private final List<CollectLogAppendRequest.Entry> buffer = new ArrayList<>();
+
+        LogBuffer(Long historyId) {
+            this.historyId = historyId;
         }
-    }
 
-    private static class ColumnChange {
-        final int added;
-        final int updated;
-        final int deleted;
+        void log(String level, String message) {
+            CollectLogAppendRequest.Entry entry = new CollectLogAppendRequest.Entry();
+            entry.setLevel(level);
+            entry.setMessage(message);
+            buffer.add(entry);
+            if (buffer.size() >= LOG_FLUSH_THRESHOLD) {
+                flush();
+            }
+        }
 
-        ColumnChange(int added, int updated, int deleted) {
-            this.added = added;
-            this.updated = updated;
-            this.deleted = deleted;
+        void flush() {
+            if (buffer.isEmpty()) {
+                return;
+            }
+            List<CollectLogAppendRequest.Entry> batch = new ArrayList<>(buffer);
+            buffer.clear();
+            RemoteCalls.execute("governance.collect.logs-append", () -> {
+                CollectLogAppendRequest request = new CollectLogAppendRequest();
+                request.setEntries(batch);
+                collectWriteApi.appendLogs(historyId, request);
+            });
         }
     }
 }

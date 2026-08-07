@@ -8,7 +8,7 @@ import com.datanest.task.core.dto.QualityScoreConfigDTO;
 import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.task.core.dto.QualityScoreQueryRequest;
 import com.datanest.task.core.dto.QualityTableRuleResultDTO;
-import com.datanest.task.core.service.QualityScoreService;
+import com.datanest.governance.service.QualityScoreService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;

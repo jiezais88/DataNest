@@ -19,7 +19,6 @@
     <modules>
         <module>data-nest-common</module>
         <module>data-nest-task-core-entity</module>
-        <module>data-nest-task-core-governance</module>
         <module>data-nest-task-core</module>
     </modules>
 </project>

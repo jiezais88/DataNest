@@ -16,6 +16,9 @@ import com.datanest.engineering.api.dto.SyncHistoryInfo;
 import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.engineering.api.dto.SyncLogAppendRequest;
 import com.datanest.engineering.api.dto.SyncStatusMarkRequest;
+import com.datanest.governance.api.GovernanceObjectApi;
+import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
+import com.datanest.task.core.constant.AlertConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -45,20 +48,20 @@ public class SyncJobExecutorService {
     private final MetadataRegistrationService metadataRegistrationService;
     private final SyncJobRetryService syncJobRetryService;
     private final AlertApi alertApi;
-    private final QualityAutoTriggerService qualityAutoTriggerService;
+    private final GovernanceObjectApi governanceObjectApi;
 
     public SyncJobExecutorService(EngineeringSyncJobApi syncJobApi,
                                   AddaxJobService addaxJobService,
                                   MetadataRegistrationService metadataRegistrationService,
                                   SyncJobRetryService syncJobRetryService,
                                   AlertApi alertApi,
-                                  QualityAutoTriggerService qualityAutoTriggerService) {
+                                  GovernanceObjectApi governanceObjectApi) {
         this.syncJobApi = syncJobApi;
         this.addaxJobService = addaxJobService;
         this.metadataRegistrationService = metadataRegistrationService;
         this.syncJobRetryService = syncJobRetryService;
         this.alertApi = alertApi;
-        this.qualityAutoTriggerService = qualityAutoTriggerService;
+        this.governanceObjectApi = governanceObjectApi;
     }
 
     /**
@@ -98,7 +101,7 @@ public class SyncJobExecutorService {
             fireAlert("SYNC_JOB", syncJobId, "SUCCESS", "同步任务执行成功，写入 "
                     + result.writeRows() + " 行");
             // Sprint 8：同步任务成功后触发绑定的质量任务自动检查
-            triggerQualityOnSuccess(QualityAutoTriggerService.OBJECT_TYPE_SYNC_JOB, syncJobId);
+            triggerQualityOnSuccess(AlertConstants.OBJECT_TYPE_SYNC_JOB, syncJobId);
             return;
         }
 
@@ -129,14 +132,16 @@ public class SyncJobExecutorService {
     }
 
     /**
-     * 触发绑定该对象的质量任务自动检查（失败不影响主任务执行结果）。
+     * 触发绑定该对象的质量任务自动检查（经 governance 批量端点，RemoteCalls 降级，失败不影响主任务执行结果）。
+     * 微服务化 4.2：worker 侧不再直连 QualityAutoTriggerService（本地编排），改走 Feign。
      */
     private void triggerQualityOnSuccess(String objectType, Long objectId) {
-        try {
-            qualityAutoTriggerService.triggerOnSuccess(objectType, objectId);
-        } catch (Exception e) {
-            logger.error("质量任务自动触发失败（不影响同步结果）: type={}, objectId={}", objectType, objectId, e);
-        }
+        RemoteCalls.execute("governance.quality.auto-trigger", () -> {
+            QualityAutoTriggerBatchRequest request = new QualityAutoTriggerBatchRequest();
+            request.setObjectType(objectType);
+            request.setObjectIds(List.of(objectId));
+            governanceObjectApi.qualityAutoTriggerBatch(request);
+        });
     }
 
     /**

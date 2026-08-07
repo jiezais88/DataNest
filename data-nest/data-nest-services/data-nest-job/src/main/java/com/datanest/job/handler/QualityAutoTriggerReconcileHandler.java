@@ -1,6 +1,5 @@
 package com.datanest.job.handler;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDagApi;
@@ -9,11 +8,11 @@ import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.DagNodeInfo;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.governance.api.GovernanceObjectApi;
+import com.datanest.governance.api.GovernanceOpsApi;
+import com.datanest.governance.api.dto.AutoTriggerBindingRequest;
+import com.datanest.governance.api.dto.AutoTriggeredBatchQueryRequest;
 import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
-import com.datanest.task.core.entity.QualityCheckBatch;
-import com.datanest.task.core.entity.QualityJob;
-import com.datanest.task.core.mapper.QualityCheckBatchMapper;
-import com.datanest.task.core.mapper.QualityJobMapper;
+import com.datanest.governance.api.dto.QualityJobBindingDTO;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
@@ -23,7 +22,6 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -39,8 +37,9 @@ import java.util.Set;
  * AUTO_TRIGGER 批次」的漏触发节点，经 governance 批量接口补发。
  * <p>
  * 微服务化 3.3：dag_execution 扫描 / node_execution 读取 / dag_node 解析改经
- * EngineeringDagExecutionApi / EngineeringDagApi 远程获取（RemoteCalls 降级本轮跳过）；
- * quality_job / quality_check_batch 为治理域表，本阶段仍本地读取。
+ * EngineeringDagExecutionApi / EngineeringDagApi 远程获取（RemoteCalls 降级本轮跳过）。
+ * 微服务化 4.3：quality_job 绑定查询与 quality_check_batch 批次查重改经 GovernanceOpsApi
+ * （auto-trigger-bindings / batches/auto-triggered-since），job 不再直连治理表。
  * <p>
  * 补发天然幂等：重复补发最多多跑一次质量检查；补发失败下轮再补（窗口内）。
  */
@@ -62,23 +61,19 @@ public class QualityAutoTriggerReconcileHandler {
 
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String OBJECT_TYPE_DAG_NODE = "DAG_NODE";
-    private static final String TRIGGER_TYPE_AUTO = "AUTO_TRIGGER";
 
     private final EngineeringDagExecutionApi dagExecutionApi;
     private final EngineeringDagApi dagApi;
-    private final QualityJobMapper qualityJobMapper;
-    private final QualityCheckBatchMapper qualityCheckBatchMapper;
+    private final GovernanceOpsApi governanceOpsApi;
     private final GovernanceObjectApi governanceObjectApi;
 
     public QualityAutoTriggerReconcileHandler(EngineeringDagExecutionApi dagExecutionApi,
                                               EngineeringDagApi dagApi,
-                                              QualityJobMapper qualityJobMapper,
-                                              QualityCheckBatchMapper qualityCheckBatchMapper,
+                                              GovernanceOpsApi governanceOpsApi,
                                               GovernanceObjectApi governanceObjectApi) {
         this.dagExecutionApi = dagExecutionApi;
         this.dagApi = dagApi;
-        this.qualityJobMapper = qualityJobMapper;
-        this.qualityCheckBatchMapper = qualityCheckBatchMapper;
+        this.governanceOpsApi = governanceOpsApi;
         this.governanceObjectApi = governanceObjectApi;
     }
 
@@ -149,60 +144,48 @@ public class QualityAutoTriggerReconcileHandler {
             return;
         }
 
-        // 4. 批量查这些 dag_node.id 上绑定的启用质量任务
-        List<QualityJob> jobs = qualityJobMapper.selectList(new QueryWrapper<QualityJob>()
-                .eq("enabled", 1)
-                .eq("auto_trigger_enabled", 1)
-                .eq("auto_trigger_object_type", OBJECT_TYPE_DAG_NODE)
-                .in("auto_trigger_object_id", nodeEndTimesByDagNodeId.keySet()));
-        if (jobs.isEmpty()) {
+        // 4. 查这些 dag_node.id 上绑定的启用质量任务（governance 内部端点；降级为空按「无绑定」本轮跳过）
+        AutoTriggerBindingRequest bindingRequest = new AutoTriggerBindingRequest();
+        bindingRequest.setDagNodeIds(List.copyOf(nodeEndTimesByDagNodeId.keySet()));
+        List<QualityJobBindingDTO> bindings = RemoteCalls.execute("governance.ops.auto-trigger-bindings", () -> {
+            Result<List<QualityJobBindingDTO>> result = governanceOpsApi.autoTriggerBindings(bindingRequest);
+            return result == null || result.data() == null ? List.of() : result.data();
+        }, List.of());
+        if (bindings.isEmpty()) {
             XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size() + "，无绑定质量任务");
             return;
         }
         Map<Long, List<Long>> jobIdsByDagNodeId = new HashMap<>();
         Set<Long> jobIds = new HashSet<>();
-        for (QualityJob job : jobs) {
-            jobIdsByDagNodeId.computeIfAbsent(job.getAutoTriggerObjectId(), k -> new ArrayList<>()).add(job.getId());
-            jobIds.add(job.getId());
+        for (QualityJobBindingDTO binding : bindings) {
+            jobIdsByDagNodeId.computeIfAbsent(binding.getObjectId(), k -> new ArrayList<>()).add(binding.getJobId());
+            jobIds.add(binding.getJobId());
         }
 
-        // 5. 批量查窗口内已有的 AUTO_TRIGGER 批次（一次查询，内存判定覆盖）
-        LocalDateTime earliestNodeEnd = nodeEndTimesByDagNodeId.values().stream()
-                .flatMap(Collection::stream)
-                .min(LocalDateTime::compareTo)
-                .orElse(now);
-        Map<Long, List<LocalDateTime>> batchTimesByJobId = new HashMap<>();
-        List<QualityCheckBatch> batches = qualityCheckBatchMapper.selectList(new QueryWrapper<QualityCheckBatch>()
-                .select("job_id", "created_at")
-                .in("job_id", jobIds)
-                .eq("trigger_type", TRIGGER_TYPE_AUTO)
-                .ge("created_at", earliestNodeEnd.minusMinutes(BATCH_TOLERANCE_MINUTES)));
-        for (QualityCheckBatch batch : batches) {
-            batchTimesByJobId.computeIfAbsent(batch.getJobId(), k -> new ArrayList<>()).add(batch.getCreatedAt());
-        }
-
-        // 任一绑定任务缺少「节点 end_time - 1 分钟之后」的 AUTO_TRIGGER 批次 → 判定漏触发
+        // 5. 逐节点查重：绑定任务在「该节点最晚 end_time - 容忍量」之后已有 AUTO_TRIGGER 批次则视为覆盖，
+        //    否则判定漏触发（端点返回去重 jobId 列表；绑定节点数少，逐节点一次远程调用，非热路径）
         Set<Long> missedDagNodeIds = new LinkedHashSet<>();
         for (Map.Entry<Long, List<LocalDateTime>> entry : nodeEndTimesByDagNodeId.entrySet()) {
             List<Long> boundJobIds = jobIdsByDagNodeId.get(entry.getKey());
             if (boundJobIds == null) {
                 continue;
             }
-            for (LocalDateTime nodeEndTime : entry.getValue()) {
-                LocalDateTime threshold = nodeEndTime.minusMinutes(BATCH_TOLERANCE_MINUTES);
-                for (Long jobId : boundJobIds) {
-                    boolean covered = batchTimesByJobId.getOrDefault(jobId, List.of()).stream()
-                            .anyMatch(createdAt -> !createdAt.isBefore(threshold));
-                    if (!covered) {
-                        missedDagNodeIds.add(entry.getKey());
-                        break;
-                    }
-                }
+            LocalDateTime latestNodeEnd = entry.getValue().stream().max(LocalDateTime::compareTo).orElse(now);
+            AutoTriggeredBatchQueryRequest batchQuery = new AutoTriggeredBatchQueryRequest();
+            batchQuery.setJobIds(boundJobIds);
+            batchQuery.setSince(latestNodeEnd.minusMinutes(BATCH_TOLERANCE_MINUTES)
+                    .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            List<Long> coveredJobIds = RemoteCalls.execute("governance.ops.auto-triggered-since", () -> {
+                Result<List<Long>> result = governanceOpsApi.autoTriggeredJobIdsSince(batchQuery);
+                return result == null || result.data() == null ? List.of() : result.data();
+            }, List.of());
+            if (!new HashSet<>(coveredJobIds).containsAll(boundJobIds)) {
+                missedDagNodeIds.add(entry.getKey());
             }
         }
         if (missedDagNodeIds.isEmpty()) {
             XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size()
-                    + ", 绑定任务=" + jobs.size() + "，无漏触发");
+                    + ", 绑定任务=" + jobIds.size() + "，无漏触发");
             return;
         }
 
@@ -214,7 +197,7 @@ public class QualityAutoTriggerReconcileHandler {
         RemoteCalls.execute("quality.auto-trigger-reconcile",
                 () -> governanceObjectApi.qualityAutoTriggerBatch(request));
         logger.info("质量自动触发对账完成: scannedDags={}, scannedNodes={}, boundJobs={}, missed={}, reissued={}",
-                dags.size(), nodes.size(), jobs.size(), missedDagNodeIds.size(), reissueIds.size());
+                dags.size(), nodes.size(), jobIds.size(), missedDagNodeIds.size(), reissueIds.size());
         XxlJobHelper.handleSuccess("扫描执行=" + dags.size() + ", 节点=" + nodes.size()
                 + ", 漏触发=" + missedDagNodeIds.size() + ", 补发=" + reissueIds.size());
     }

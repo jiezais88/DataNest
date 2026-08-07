@@ -9,6 +9,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.common.util.JdbcUrlBuilder;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.EngineeringSyncJobApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
@@ -105,20 +106,17 @@ public class AddaxJobService {
 
     private final EngineeringSyncJobApi syncJobApi;
     private final EngineeringDatasourceApi datasourceApi;
-    private final ConnectionTester connectionTester;
     private final AddaxLogParser addaxLogParser;
     private final ObjectMapper objectMapper;
     private final EncryptionConfig encryptionConfig;
     private final IncrementalFieldTypeResolver incrementalFieldTypeResolver;
 
     public AddaxJobService(EngineeringSyncJobApi syncJobApi, EngineeringDatasourceApi datasourceApi,
-                           ConnectionTester connectionTester,
                            AddaxLogParser addaxLogParser, ObjectMapper objectMapper,
                            EncryptionConfig encryptionConfig,
                            IncrementalFieldTypeResolver incrementalFieldTypeResolver) {
         this.syncJobApi = syncJobApi;
         this.datasourceApi = datasourceApi;
-        this.connectionTester = connectionTester;
         this.addaxLogParser = addaxLogParser;
         this.objectMapper = objectMapper;
         this.encryptionConfig = encryptionConfig;
@@ -328,7 +326,8 @@ public class AddaxJobService {
     private Map<String, Object> buildReader(SyncJobInfo job, DataSourceInfo source,
                                             String sourceDb, String sourceTable,
                                             SourceTableDetail detail) {
-        String jdbcUrl = connectionTester.buildJdbcUrl(source);
+        String jdbcUrl = JdbcUrlBuilder.buildJdbcUrl(source.getType(), source.getHost(), source.getPort(),
+                source.getDatabaseName(), source.getSchemaName());
         List<String> columns = buildReaderColumns(job, detail);
         boolean incremental = SyncMode.INCREMENTAL.getCode().equalsIgnoreCase(job.getSyncMode());
 

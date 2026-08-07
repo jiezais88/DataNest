@@ -44,6 +44,11 @@ public class EngineeringDatasourceApiFallbackFactory implements FallbackFactory<
             public Result<Void> updateStatus(Long id, DataSourceStatusUpdateRequest request) {
                 return Result.ok(null);
             }
+
+            @Override
+            public Result<Void> refreshStatuses() {
+                return Result.ok(null);
+            }
         };
     }
 }

@@ -2,6 +2,7 @@ package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.DataSourceType;
+import com.datanest.common.util.JdbcUrlBuilder;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.SyncJobInfo;
 import org.slf4j.Logger;
@@ -42,11 +43,9 @@ public class IncrementalFieldTypeResolver {
     @Value("${datanest.doris.password:}")
     private String dorisQueryPassword;
 
-    private final ConnectionTester connectionTester;
     private final EncryptionConfig encryptionConfig;
 
-    public IncrementalFieldTypeResolver(ConnectionTester connectionTester, EncryptionConfig encryptionConfig) {
-        this.connectionTester = connectionTester;
+    public IncrementalFieldTypeResolver(EncryptionConfig encryptionConfig) {
         this.encryptionConfig = encryptionConfig;
     }
 
@@ -70,7 +69,8 @@ public class IncrementalFieldTypeResolver {
      */
     public TypeCategory resolveSourceFieldType(DataSourceInfo source, SyncJobInfo job,
                                                String sourceTable, String fieldName) {
-        String jdbcUrl = connectionTester.buildJdbcUrl(source);
+        String jdbcUrl = JdbcUrlBuilder.buildJdbcUrl(source.getType(), source.getHost(), source.getPort(),
+                source.getDatabaseName(), source.getSchemaName());
         String password = encryptionConfig.decrypt(source.getEncryptedPassword());
         String sourceDb = job.getSourceDatabase() != null && !job.getSourceDatabase().isBlank()
                 ? job.getSourceDatabase() : source.getDatabaseName();

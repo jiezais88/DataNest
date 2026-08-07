@@ -2,6 +2,7 @@ package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.config.EncryptionConfig;
@@ -25,8 +26,6 @@ import com.datanest.governance.api.dto.DatasourceReferencesDTO;
 import com.datanest.governance.api.dto.ReferenceItemDTO;
 import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
-import com.datanest.task.core.service.ConnectionTester;
-import com.datanest.task.core.service.DataSourceRefreshService;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.system.api.SystemUserApi;
@@ -49,21 +48,18 @@ public class DataSourceService {
     private final DataSourceConnectionMapper dataSourceMapper;
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
-    private final DataSourceRefreshService dataSourceRefreshService;
     private final SystemUserApi systemUserApi;
     private final EngineeringSyncJobApi engineeringSyncJobApi;
     private final GovernanceDatasourceApi governanceDatasourceApi;
 
     public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester,
-                             DataSourceRefreshService dataSourceRefreshService,
                              SystemUserApi systemUserApi,
                              EngineeringSyncJobApi engineeringSyncJobApi,
                              GovernanceDatasourceApi governanceDatasourceApi) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
-        this.dataSourceRefreshService = dataSourceRefreshService;
         this.systemUserApi = systemUserApi;
         this.engineeringSyncJobApi = engineeringSyncJobApi;
         this.governanceDatasourceApi = governanceDatasourceApi;
@@ -349,8 +345,40 @@ public class DataSourceService {
         return references;
     }
 
+    /**
+     * 刷新全部活跃数据源（status IN NORMAL/ERROR）的连接状态：逐个连接测试 + 状态回写，全本地。
+     * 微服务化 4.3：原 task-core-governance 的 DataSourceRefreshService 逻辑下沉本服务
+     * （datasource_connection 归 engineering，无需再经 Feign 自调用），
+     * 供 data-nest-job 经内部端点 {@code POST /engineering/internal/datasources/refresh-statuses} 触发。
+     * 单个数据源失败只记 error 并回写 ERROR 状态，不影响其余数据源。
+     */
     public void refreshAllStatuses() {
-        dataSourceRefreshService.refreshAllStatuses();
+        List<DataSourceConnection> list = dataSourceMapper.selectList(new QueryWrapper<DataSourceConnection>()
+                .in("status", DataSourceStatus.NORMAL.getCode(), DataSourceStatus.ERROR.getCode()));
+        for (DataSourceConnection entity : list) {
+            try {
+                TestConnectionResult result = testAndUpdateStatus(entity.getId());
+                logger.info("Refreshed data source status: id={}, name={}, success={}",
+                        entity.getId(), entity.getName(), result.isSuccess());
+            } catch (Exception e) {
+                logger.error("Failed to refresh data source status: id={}, name={}", entity.getId(), entity.getName(), e);
+                markRefreshError(entity.getId(), "定时刷新异常: " + e.getMessage());
+            }
+        }
+    }
+
+    /** 刷新异常时回写 ERROR 状态（失败仅记 warn，下轮刷新会再试） */
+    private void markRefreshError(Long id, String errorMessage) {
+        try {
+            dataSourceMapper.update(null, new UpdateWrapper<DataSourceConnection>()
+                    .set("status", DataSourceStatus.ERROR.getCode())
+                    .set("error_message", errorMessage)
+                    .set("last_test_time", LocalDateTime.now())
+                    .set("updated_at", LocalDateTime.now())
+                    .eq("id", id));
+        } catch (Exception e) {
+            logger.warn("回写数据源刷新异常状态失败: id={}", id, e);
+        }
     }
 
     private void updateStatus(DataSourceConnection entity, TestConnectionResult result) {

@@ -16,7 +16,6 @@ import com.datanest.system.entity.Role;
 import com.datanest.system.entity.User;
 import com.datanest.system.mapper.RoleMapper;
 import com.datanest.system.mapper.UserMapper;
-import com.datanest.task.core.service.SysUserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

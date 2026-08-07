@@ -3,8 +3,8 @@ package com.datanest.engineering.controller;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.Result;
+import com.datanest.engineering.service.DataPreviewService;
 import com.datanest.task.core.dto.DataPreviewResult;
-import com.datanest.task.core.service.DataPreviewService;
 import org.springframework.web.bind.annotation.*;
 
 @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)

@@ -41,10 +41,10 @@
             <artifactId>data-nest-engineering-api</artifactId>
         </dependency>
 
-        <!-- DataNest Task Core Governance（执行内核调用质量自动触发等治理编排服务） -->
+        <!-- DataNest Governance API（微服务化 4.2：治理表读写经 Feign 调 app-governance） -->
         <dependency>
             <groupId>com.datanest</groupId>
-            <artifactId>data-nest-task-core-governance</artifactId>
+            <artifactId>data-nest-governance-api</artifactId>
         </dependency>
 
         <!-- Spring Context (provided by consumers) -->

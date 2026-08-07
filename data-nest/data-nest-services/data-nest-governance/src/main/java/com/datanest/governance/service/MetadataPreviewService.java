@@ -11,7 +11,7 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.governance.dto.MetadataPreviewResult;
-import com.datanest.task.core.entity.MetadataTable;
+import com.datanest.governance.entity.MetadataTable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 

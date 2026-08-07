@@ -1,9 +1,9 @@
 package com.datanest.system.controller.internal;
 
 import com.datanest.common.model.Result;
-import com.datanest.task.core.entity.SysUser;
-import com.datanest.task.core.mapper.SysUserMapper;
-import com.datanest.task.core.service.SysUserService;
+import com.datanest.system.entity.SysUser;
+import com.datanest.system.mapper.SysUserMapper;
+import com.datanest.system.service.SysUserService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;

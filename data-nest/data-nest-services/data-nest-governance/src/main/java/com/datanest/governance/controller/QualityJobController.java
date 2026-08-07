@@ -8,7 +8,7 @@ import com.datanest.task.core.dto.QualityJobCreateRequest;
 import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
-import com.datanest.task.core.service.QualityJobService;
+import com.datanest.governance.service.QualityJobService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 

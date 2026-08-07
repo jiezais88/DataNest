@@ -14,7 +14,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 // 微服务化 3.4：治理表跨域读写收进 governance 内部端点，启用 GovernanceDatasourceApi client。
 @EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api", "com.datanest.engineering.api",
         "com.datanest.governance.api"})
-@MapperScan(basePackages = {"com.datanest.engineering.mapper", "com.datanest.task.core.mapper"})
+@MapperScan("com.datanest.engineering.mapper")
 public class EngineeringApplication {
 
     public static void main(String[] args) {

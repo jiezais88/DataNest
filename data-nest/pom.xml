@@ -160,13 +160,6 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- DataNest Task Core Governance -->
-            <dependency>
-                <groupId>com.datanest</groupId>
-                <artifactId>data-nest-task-core-governance</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
             <!-- DataNest Task Core -->
             <dependency>
                 <groupId>com.datanest</groupId>

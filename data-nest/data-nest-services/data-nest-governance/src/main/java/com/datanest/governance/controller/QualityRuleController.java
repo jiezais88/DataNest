@@ -9,7 +9,7 @@ import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
 import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
-import com.datanest.task.core.service.QualityRuleService;
+import com.datanest.governance.service.QualityRuleService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 

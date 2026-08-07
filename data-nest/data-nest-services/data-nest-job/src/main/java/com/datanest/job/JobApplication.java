@@ -1,6 +1,5 @@
 package com.datanest.job;
 
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
@@ -11,7 +10,6 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api", "com.datanest.governance.api",
         "com.datanest.engineering.api"})
-@MapperScan("com.datanest.task.core.mapper")
 public class JobApplication {
 
     public static void main(String[] args) {

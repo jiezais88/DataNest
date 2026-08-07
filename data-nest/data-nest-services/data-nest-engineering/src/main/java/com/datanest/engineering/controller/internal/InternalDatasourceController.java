@@ -4,6 +4,7 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.DataSourceStatusUpdateRequest;
 import com.datanest.engineering.api.dto.IdsRequest;
+import com.datanest.engineering.service.DataSourceService;
 import com.datanest.engineering.service.internal.InternalDatasourceService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,9 +28,12 @@ import java.util.Map;
 public class InternalDatasourceController {
 
     private final InternalDatasourceService datasourceService;
+    private final DataSourceService dataSourceService;
 
-    public InternalDatasourceController(InternalDatasourceService datasourceService) {
+    public InternalDatasourceController(InternalDatasourceService datasourceService,
+                                        DataSourceService dataSourceService) {
         this.datasourceService = datasourceService;
+        this.dataSourceService = dataSourceService;
     }
 
     /** 按 id 查询数据源（全字段含 encryptedPassword，内部端点） */
@@ -54,6 +58,16 @@ public class InternalDatasourceController {
     @PutMapping("/{id}/status")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestBody DataSourceStatusUpdateRequest request) {
         datasourceService.updateStatus(id, request);
+        return Result.ok(null);
+    }
+
+    /**
+     * 刷新全部活跃数据源连接状态（逐个连接测试 + 状态回写，全本地）。
+     * 微服务化 4.3：job 的 dataSourceStatusRefreshHandler 改经本端点触发。
+     */
+    @PostMapping("/refresh-statuses")
+    public Result<Void> refreshStatuses() {
+        dataSourceService.refreshAllStatuses();
         return Result.ok(null);
     }
 }

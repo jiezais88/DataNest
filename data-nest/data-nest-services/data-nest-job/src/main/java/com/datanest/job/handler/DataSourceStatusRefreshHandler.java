@@ -1,6 +1,7 @@
 package com.datanest.job.handler;
 
-import com.datanest.task.core.service.DataSourceRefreshService;
+import com.datanest.common.internal.RemoteCalls;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
@@ -9,28 +10,27 @@ import org.springframework.stereotype.Component;
 
 /**
  * 定时刷新数据源连接状态。
+ * <p>
+ * 微服务化 4.3：datasource_connection 归 engineering，刷新逻辑（逐个连接测试 + 状态回写）
+ * 下沉 engineering 内部端点 {@code POST /engineering/internal/datasources/refresh-statuses}，
+ * 本 handler 只负责调度触发。RemoteCalls 容错：engineering 不可用本轮跳过，下轮调度再来。
  */
 @Component
 public class DataSourceStatusRefreshHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSourceStatusRefreshHandler.class);
 
-    private final DataSourceRefreshService dataSourceRefreshService;
+    private final EngineeringDatasourceApi datasourceApi;
 
-    public DataSourceStatusRefreshHandler(DataSourceRefreshService dataSourceRefreshService) {
-        this.dataSourceRefreshService = dataSourceRefreshService;
+    public DataSourceStatusRefreshHandler(EngineeringDatasourceApi datasourceApi) {
+        this.datasourceApi = datasourceApi;
     }
 
     @XxlJob("dataSourceStatusRefreshHandler")
     public void refresh() {
         logger.info("Starting scheduled data source status refresh");
-        try {
-            dataSourceRefreshService.refreshAllStatuses();
-            XxlJobHelper.handleSuccess();
-            logger.info("Scheduled data source status refresh completed");
-        } catch (Exception e) {
-            logger.error("Scheduled data source status refresh failed", e);
-            XxlJobHelper.handleFail("数据源状态刷新失败: " + e.getMessage());
-        }
+        RemoteCalls.execute("engineering.datasource.refresh-statuses", () -> datasourceApi.refreshStatuses());
+        logger.info("Scheduled data source status refresh triggered");
+        XxlJobHelper.handleSuccess();
     }
 }

@@ -1,0 +1,92 @@
+package com.datanest.governance.service.internal;
+
+import com.datanest.governance.entity.MetadataTable;
+import com.datanest.governance.entity.QualityRuleTemplate;
+import org.springframework.util.StringUtils;
+
+import java.math.BigDecimal;
+
+/**
+ * 质量规则执行 SQL 生成器（Sprint 6 配置层）。
+ * <p>
+ * 规则 {@code sql_expression} 执行时动态生成：把模板 SQL 中的占位符
+ * {@code {table}} / {@code {column}} / {@code {min}} / {@code {max}} 替换为具体值。
+ * 本次提供生成函数供预览，下一批执行校验直接复用。
+ * <p>
+ * 占位符约定（对齐内置模板种子数据）：
+ * <ul>
+ *   <li>{@code {table}}  → 完整表名（schema.table，schema 为空则仅 table）</li>
+ *   <li>{@code {column}} → 检查字段名</li>
+ *   <li>{@code {min}}    → 值域下限（RANGE）</li>
+ *   <li>{@code {max}}    → 值域上限（RANGE）</li>
+ * </ul>
+ * <p>
+ * 微服务化 4.1：自 task-core-governance 复制（仅改 package 与实体 import 为本地包），task-core 原版保留。
+ */
+public final class RuleSqlGenerator {
+
+    private RuleSqlGenerator() {
+    }
+
+    /**
+     * 生成最终执行 SQL。
+     *
+     * @param template    来源模板（其 sql_template 含占位符；CUSTOM_SQL 模板 sql_template 为 null）
+     * @param table       目标元数据表（用于拼 {@code {table}} 完整表名）
+     * @param columnName  检查字段（可空）
+     * @param rangeMin    值域下界（RANGE 类型专用，{min} 来源；可空）
+     * @param rangeMax    值域上界（RANGE 类型专用，{max} 来源；可空）
+     * @param customSql   自定义 SQL（模板为 CUSTOM_SQL 时使用，可为 null）
+     * @return 替换占位符后的最终 SQL；模板 SQL 为空且无自定义 SQL 时返回 null
+     */
+    public static String generate(QualityRuleTemplate template, MetadataTable table,
+                                  String columnName, BigDecimal rangeMin, BigDecimal rangeMax, String customSql) {
+        String result;
+        if (template == null) {
+            // 无模板（如自定义 SQL 规则未选模板）：仅替换 {table} 占位符，其余按用户 SQL 原样返回
+            result = customSql;
+        } else if (isCustomSql(template)) {
+            // CUSTOM_SQL 模板：模板无 sql_template，直接采用用户 SQL，仅替换 {table}
+            result = customSql;
+        } else {
+            String sqlTemplate = template.getSqlTemplate();
+            if (!StringUtils.hasText(sqlTemplate)) {
+                result = customSql;
+            } else {
+                result = sqlTemplate;
+            }
+        }
+        if (result == null) {
+            return null;
+        }
+        result = result.replace("{table}", buildFullTableName(table));
+        // {column} 仅在显式指定检查字段时替换；整表检查/未指定列时保留占位符，
+        // 由执行层检测到残留占位符后跳过该规则（避免生成 COUNT() 等非法 SQL）
+        if (StringUtils.hasText(columnName)) {
+            result = result.replace("{column}", columnName);
+        }
+        result = result.replace("{min}", rangeMin == null ? "" : rangeMin.stripTrailingZeros().toPlainString());
+        result = result.replace("{max}", rangeMax == null ? "" : rangeMax.stripTrailingZeros().toPlainString());
+        return result;
+    }
+
+    /**
+     * 判断模板是否为自定义 SQL 类型。
+     */
+    public static boolean isCustomSql(QualityRuleTemplate template) {
+        return template != null && "CUSTOM_SQL".equalsIgnoreCase(template.getType());
+    }
+
+    /**
+     * 拼接完整表名：schema.table（schema 为空则仅 table）。对齐项目 schemaName + "." + tableName 范式。
+     */
+    public static String buildFullTableName(MetadataTable table) {
+        if (table == null) {
+            return "";
+        }
+        if (StringUtils.hasText(table.getSchemaName())) {
+            return table.getSchemaName() + "." + table.getTableName();
+        }
+        return table.getTableName();
+    }
+}

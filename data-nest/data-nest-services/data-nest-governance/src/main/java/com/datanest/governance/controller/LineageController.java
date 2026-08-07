@@ -6,7 +6,7 @@ import com.datanest.common.model.Result;
 import com.datanest.governance.dto.LineageGraphDTO;
 import com.datanest.governance.service.LineageService;
 import com.datanest.task.core.dto.LineageColumnLinkDTO;
-import com.datanest.task.core.entity.LineageRecord;
+import com.datanest.governance.entity.LineageRecord;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
