@@ -23,12 +23,6 @@
             <artifactId>data-nest-common</artifactId>
         </dependency>
 
-        <!-- DataNest Task Core -->
-        <dependency>
-            <groupId>com.datanest</groupId>
-            <artifactId>data-nest-task-core</artifactId>
-        </dependency>
-
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -107,12 +101,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-
-        <!-- Fastjson2（AlertRuleService 在 task-core 中为 provided，system 需显式声明） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
         </dependency>
     </dependencies>
 

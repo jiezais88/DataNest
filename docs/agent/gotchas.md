@@ -20,9 +20,9 @@
 
 ## 二、告警相关（当前有效，AGENTS.md 正文保留精简版）
 
-- **告警邮件需要 worker/job/governance 也配邮件**：`spring-boot-starter-mail` 在 `data-nest-alert` 模块是 **compile** 依赖（告警模块自己发信，经 task-core → alert 传递给所有消费方，消费方 pom **无需**再显式声明 mail 依赖）。但各服务仍需 `application.yml` 导入 `shared-alert.yaml`、docker-compose 配 `MAIL_*` 环境变量，否则 `MailService` 报"未配置 JavaMailSender"（历史表仍会记录，邮件实际没发）。governance 因注入 `QualityCheckService` → `AlertFiringService` → `MailService` 也必须能拿到 mail 类（已由 alert 模块 compile 依赖传递解决，无需单独配 MAIL 环境变量——governance 不实际发邮件，告警在 worker）。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`（空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）。
+- **【已过时，微服务化后不再成立】告警邮件需要 worker/job/governance 也配邮件**：阶段 1 起邮件配置已集中到 app-alert（shared-alert.yaml 下沉其本地配置），其余服务不再 import shared-alert、不配 `MAIL_*` 环境变量；告警 fire 全部经 alert-api Feign 调用。`data-nest-alert` 模块也已删除。本地 MailHog 需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`（空值配 `mail.smtp.auth=true` 会报 `Authentication failed`）——此条对 app-alert 仍有效。
 - **DAG 告警在哪触发**：SUCCESS/FAILURE 在 **app-worker**（执行终态回调 listener），TIMEOUT 在 **app-job**（`dagNodeTimeoutAlertHandler`）。排查邮件问题查对应容器日志，别只看 engineering。
-- **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改 `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含 QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。
+- **`alert_rule.object_type` 有数据库 CHECK 约束**：原仅允许 `DAG/SYNC_JOB/COLLECT_TASK`，扩 QUALITY 时除改 `AlertRuleService.validate()` 白名单外，**还必须跑 Flyway `V3.6.6__alert_rule_quality_object_type.sql`** drop 旧约束重建为含 QUALITY，否则在告警中心建「质量」规则会报 `check constraint "alert_rule_object_type_check"` 违反。【注：微服务化拆库后 QUALITY 已含在 datanest_alert 基线 V1.0.0 中，V3.6.6 脚本已归档 `scripts/migration-legacy/`；此条仅供追溯历史库。】
 
 ## 三、DAG / 条件节点（当前有效，AGENTS.md 正文保留精简版）
 
@@ -35,8 +35,8 @@
 ## 四、Flyway / 迁移脚本（当前有效，AGENTS.md 正文保留精简版）
 
 - **格式化工具会破坏已应用 Flyway 脚本的 checksum**：曾出现 IDE/格式化工具把迁移 SQL 按语法树拆行（如 `id\n BIGSERIAL\n PRIMARY\n KEY`、`VARCHAR\n(100)`），导致已应用迁移的本地文件内容与数据库 `flyway_schema_history` 记录的 checksum 不一致，`app-system` 启动时 Flyway validate 报 `Migration checksum mismatch` 而退出，后续新迁移也无法执行。处理：用 flyway 镜像对 postgres 执行 `repair`（`docker run --rm --network datanest-net -v <migration目录>:/flyway/sql:ro flyway/flyway:11.14.1 -url="jdbc:postgresql://middleware-postgres:5432/datanest" -user="datanest" -password="datanest123" repair`）固化 checksum。**预防**：所有 Flyway 脚本统一用紧凑单行风格，**不要用格式化工具拆分**（已 2026-08-04 全量重写 + repair 固化）。
-- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在 `data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package data-nest-system` 并重建 `app-system` 镜像，否则容器内 jar 仍是旧脚本。
-- **新增迁移脚本版本号必须大于数据库已有最高版本**：曾新增 `V3.6.10` 时库内已有 `V3.7.0`，Flyway 按版本排序判定新迁移乱序，报 `Detected resolved migration not applied to database` 而 app-system 启动失败。处理：新脚本版本号取「库内最高版本+1」（如 `V3.7.1`）。**预防**：先查 `flyway_schema_history` 最高版本再定新编号；`mvn clean package`（避免 target/classes 残留已删除的旧脚本被带进 jar）。
+- **【已过时，微服务化后不再成立】Flyway repair 脚本位于 task-core 之外的 system 模块**：旧单库时代 migration 集中在 `data-nest-system`，改脚本须重打 app-system 镜像。拆库后各持库服务独立管理本库 `db/migration`，改谁的脚本重建谁的镜像。
+- **新增迁移脚本版本号必须大于本库已有最高版本**：曾新增 `V3.6.10` 时库内已有 `V3.7.0`，Flyway 按版本排序判定新迁移乱序，报 `Detected resolved migration not applied to database` 而启动失败。处理：新脚本版本号取「库内最高版本+1」。**预防**：先查对应库 `flyway_schema_history` 最高版本再定新编号；`mvn clean package`（避免 target/classes 残留已删除的旧脚本被带进 jar）。【微服务化后按各服务本库独立编号：基线 V1.0.0，后续 V1.1.0+ 各自演进；规则本身仍有效。】
 
 ## 五、质量执行（当前有效，AGENTS.md 正文保留精简版）
 
@@ -81,3 +81,18 @@
 - **健康度文案**：EXCELLENT=优秀/GOOD=良好/WARNING=一般/BAD=差，「差」筛选 value=`BAD`。
 - **扣分配置弹窗**：`getByRole('dialog', {name:'扣分配置（质量评分全局配置）'})`，改配置后**需重新执行才重算**（评分只在批次收尾重算，不实时重算存量）。
 - **spec 自带播种**（`ensureTestUsers+seedExecTables+seedExecMetadata+seedQualityScores`），支持 `SKIP_SETUP=1` 独立运行，绕开 Sprint5 collect-task 播种。
+
+
+## 八、微服务化改造踩坑（阶段 1-5，2026-08-06/07，当前有效）
+
+- **Feign `lb://` 必须依赖 `spring-cloud-starter-loadbalancer`**：governance/alert-service 原本就有，engineering/worker/job 缺失导致启动报 `No Feign Client for loadBalancing defined`，已在三个 pom 补齐。后续给服务加 Feign client 时先确认该依赖。
+- **新服务必须显式声明 `spring-boot-starter-validation`**：该依赖在 common 是 provided，而 `GlobalExceptionHandler` 引用 jakarta.validation 类；缺了启动报 `NoClassDefFoundError: jakarta/validation/ConstraintViolationException`（app-alert 踩过）。新服务脚手架时记得带上。
+- **启动类 scanBasePackages 只追加 `com.datanest.common.internal`，不要扫整个 common**：扫全包会误装配 `SchedulerClient`（`@Value("${xxl.job.admin.addresses}")` 无默认值，未引 shared-xxljob 的服务会启动失败）。
+- **`FeignHttpMessageConverters` 并发缺陷（上游 issue #1307）**：spring-cloud-openfeign 已知 bug——该类未初始化时被并发调用，`getConverters()` 返回空/含 null 的列表，症状是并发首次调用偶发 `'messageConverters' must not be empty`，一次性、不再复现。**Workaround**：common `FeignContextWarmup` 启动期遍历 `FeignClientFactory.getContextNames()`，逐 client 子上下文取 `FeignHttpMessageConverters` 并显式调 `getConverters()` 强制初始化。⚠️ 两个关键细节（5.0.2 源码确认）：① 5.x 中该 bean 在 `FeignClientsConfiguration` 里**按 client 子上下文各一个**，主容器没有（只预热主容器会静默跳过）；② 仅取 Decoder bean 不触发转换器初始化，必须显式调 `getConverters()`。依赖升级到含修复的 spring-cloud 版本后可移除本 workaround。
+- **Feign 查询/路径参数禁止用 `LocalDateTime`**：Feign 的 Spring ConversionService 会把 LocalDateTime 查询参数按 locale 格式化（如 `from=8/7/26, 6:20 AM`），服务端按 ISO 解析报 500（job 对账 handler 调 `succeeded-between` 踩过）。**规则**：契约的查询/路径参数一律 ISO String，调用方用 `DateTimeFormatter.ISO_LOCAL_DATE_TIME` 格式化；请求体里的 LocalDateTime 走 Jackson 不受影响。
+- **无库服务必须排除 DataSource 系自动配置**：worker/job 无 DataSource 时启动报 `Failed to configure a DataSource`，已在两服务 application.yml 排除 `DataSourceAutoConfiguration/DataSourceTransactionManagerAutoConfiguration/MybatisPlusAutoConfiguration`（Boot 4 类名在 `org.springframework.boot.jdbc.autoconfigure` 包，注意不是旧包名）。
+- **Flyway 是代码驱动的，yaml 不生效**：项目 jar 里没有 spring-boot-flyway autoconfigure 模块，`spring.flyway` yaml 配置**不生效**；各持库服务靠本地 `FlywayConfig`（@Bean initMethod=migrate，baselineOnMigrate）。**版本比较忽略尾随零**：baseline marker "1" == "1.0.0"，故存量库跳过 V1.0.0、空库正常执行，勿误判为脚本没跑。**`pg_dump --data-only` 不带 setval**：拆库搬数据后序列不自增，须用 DO 块按 max(id) 同步全部序列（阶段 5 已做过一次）。
+- **DS 状态映射终态保护（SKIPPED 不可逆）**：`DagExecutionSyncService` 按 DS 实例状态同步节点状态时，`isTerminalStatus`（SUCCESS/FAILED/SKIPPED/TERMINATED）不可逆，只允许推进 WAITING/RUNNING。背景：远程化后 HTTP 延迟使 sync 可能在 worker 回调（SKIPPED 已落库）后按 DS state=7(SUCCESS) 覆盖回去（条件分支非命中节点曾因此 SKIPPED→SUCCESS）。finalizeIfAllDone 复用同一 helper，改动时保持该保护。
+- **XXL-JOB 3.x 管理 API**：`POST /auth/doLogin`（表单 userName/password/ifRemember）→ 拿 cookie → `POST /jobinfo/trigger?id=&executorParam=&addressList=`；context-path 为 `/`，**不是**老版本的 /login + /xxl-job-admin 前缀。手动触发 handler 对账/验证时用这套。
+- **MapperScan 同名 bean 冲突曾是过渡期手段**：实体/mapper 逐域迁移期间新旧副本同名共存，`@MapperScan` 加过 `nameGenerator=FullyQualifiedAnnotationBeanNameGenerator`。**已全部回退**（旧副本删除后冲突消失），现在各服务只扫本地包，不要再加。
+- **组件扫描不受 MapperScan nameGenerator 管**：同名 @Service 被两处扫描时 nameGenerator 无效，需显式 bean 名（曾把 governance 本地 ScoreCalculator bean 名改为 `governanceScoreCalculator`）。entity 模块删除后此类冲突已消失，但新增同名组件时注意。

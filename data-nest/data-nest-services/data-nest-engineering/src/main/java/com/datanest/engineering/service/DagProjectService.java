@@ -10,7 +10,7 @@ import com.datanest.alert.api.AlertApi;
 import com.datanest.engineering.dto.DagProjectCreateRequest;
 import com.datanest.engineering.dto.DagProjectDTO;
 import com.datanest.engineering.dto.DagProjectUpdateRequest;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.engineering.entity.*;
 import com.datanest.engineering.mapper.*;
 import com.datanest.common.internal.RemoteCalls;

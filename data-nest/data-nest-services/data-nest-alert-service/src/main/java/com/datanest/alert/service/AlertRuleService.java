@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.datanest.alert.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.alert.dto.AlertObjectOptionDTO;
 import com.datanest.alert.dto.AlertRuleDTO;
 import com.datanest.alert.entity.*;

@@ -15,7 +15,7 @@ import com.datanest.common.scheduler.SchedulerClient;
 import com.datanest.alert.api.AlertApi;
 import com.datanest.engineering.api.EngineeringObjectApi;
 import com.datanest.engineering.api.dto.ObjectNameRequest;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityJobCreateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

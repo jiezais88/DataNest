@@ -1,4 +1,4 @@
-package com.datanest.task.core.constant;
+package com.datanest.common.constant;
 
 import java.math.BigDecimal;
 

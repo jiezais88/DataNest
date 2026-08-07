@@ -2,7 +2,14 @@
 
 > 独立改造（不属于任何 Sprint）。总目标：共享 jar 进程内调用 → OpenFeign 远程调用 + 按域拆库。
 > 已确认决策：OpenFeign + Nacos；按域拆库（阶段 5 才拆）；最终一致性（Feign + 重试 + 对账，无分布式事务无 MQ）；新建 app-alert 独立告警服务；worker/job 最终不持库（纯执行节点，经 Feign 回写 owner）。
-> **当前进度：阶段 1-5 已完成 ✅（2026-08-07，已按域拆 4 库）。下一阶段：阶段 6（清理收尾），等用户安排。**
+> **当前进度：阶段 1-6 全部完成 ✅（2026-08-07）。微服务化改造收官：7 服务 + 4 库 + Feign 远程调用体系。**
+
+## 阶段 6 范围（清理收尾，2026-08-07 完成 ✅）
+
+- **6.1 entity 模块清退**：`data-nest-task-core-entity` 已删除——dto 包（37 类）迁入 task-core（包名不变零改动）；AlertConstants（两份逐字节相同的副本合并）+ QualityScoreConstants 迁入 common（`com.datanest.common.constant`，16 处 import 已改）；system pom 瘦身（移除 task-core + fastjson2 依赖，system 已无任何 task-core 引用）。
+- **6.2 文档同步**：`docs/agent/architecture.md` 整体重写为微服务架构（三层目录、服务/库表清单、调用拓扑、内部调用机制）；`conventions-backend.md` 新增 §9 服务间调用规范 + Flyway 每服务独立演进；`gotchas.md` 新增微服务化踩坑 11 条、过时条目已标注。
+- **6.3 最终全量回归（全部通过）**：7 容器 healthy；同步/DAG（n5_e SKIPPED）/采集/质量 E2E 全绿；告警中心/资产搜索/元数据页面冒烟 200；全 6 服务 RemoteCalls 零失败。
+- **最终形态**：libs 只剩 common + task-core（执行内核）；apis 4 个契约模块；services 7 个服务（gateway/system/alert/engineering/governance/worker/job）；4 个业务库按域隔离；task-core 仅作为 worker/job/engineering/governance 的共享执行代码库保留（不再持有任何表实体）。
 
 ## 阶段 5 范围（拆库 + 配置整理，2026-08-07 完成 ✅）
 

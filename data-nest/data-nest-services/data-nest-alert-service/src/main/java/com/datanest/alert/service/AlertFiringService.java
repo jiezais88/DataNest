@@ -1,7 +1,7 @@
 package com.datanest.alert.service;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
-import com.datanest.alert.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.alert.entity.AlertHistory;
 import com.datanest.alert.entity.AlertRule;
 import com.datanest.alert.mapper.AlertHistoryMapper;

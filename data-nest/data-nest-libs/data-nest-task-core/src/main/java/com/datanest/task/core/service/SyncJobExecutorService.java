@@ -18,7 +18,7 @@ import com.datanest.engineering.api.dto.SyncLogAppendRequest;
 import com.datanest.engineering.api.dto.SyncStatusMarkRequest;
 import com.datanest.governance.api.GovernanceObjectApi;
 import com.datanest.governance.api.dto.QualityAutoTriggerBatchRequest;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

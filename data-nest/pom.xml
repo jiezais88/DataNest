@@ -165,13 +165,6 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- DataNest Task Core Entity -->
-            <dependency>
-                <groupId>com.datanest</groupId>
-                <artifactId>data-nest-task-core-entity</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
             <!-- DataNest Task Core -->
             <dependency>
                 <groupId>com.datanest</groupId>

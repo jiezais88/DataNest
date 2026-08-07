@@ -29,13 +29,12 @@ DataNest 是一个数据平台，技术栈如下：
 
 > **task-core 历史拆分**：原 `data-nest-task-core` 曾按依赖分层拆为 4 模块（entity/alert/task-core-governance/task-core），包名 `com.datanest.task.core.*` 不变。微服务化后：alert 独立为 app-alert、task-core-governance 已删除、entity 只剩 dto+constant（SysUser 已迁 system）。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**。详见 `docs/agent/architecture.md`。
 >
-> **微服务化改造（2026-08-06 起，阶段 1-5 已完成）**：共享 jar 进程内调用 → OpenFeign + Nacos 远程调用 + 按域拆 4 库（最终一致性，无分布式事务无 MQ）。总方案与全程记录见 `docs/microservices-refactor/handoff.md`（跨会话恢复先读它）。task-core-governance 已删除；task-core-entity 只剩 dto+constant（SysUser 已迁 system）；剩余共享模块待阶段 6 清理。
+> **微服务化改造（2026-08-06 起，已全部完成）**：共享 jar 进程内调用 → OpenFeign + Nacos 远程调用 + 按域拆 4 库（最终一致性，无分布式事务无 MQ）。总方案与全程记录见 `docs/microservices-refactor/handoff.md`（跨会话恢复先读它）。已删除模块：data-nest-alert（独立为 app-alert）、task-core-governance、task-core-entity（dto 迁 task-core、constant 迁 common）。
 
 | 模块 | 说明 |
 |------|------|
 | `data-nest-common` | 公共组件（SchedulerClient、InternalTokenFilter/Feign 拦截器等），最底层底座 |
-| `data-nest-task-core-entity` | 仅剩 dto 包 + constant（AlertConstants/QualityScoreConstants），阶段 6 清退 |
-| `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等；全部 DB 访问经 Feign） |
+| `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等 + 共享 dto 包；全部 DB 访问经 Feign） |
 | `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
 | `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（内部端点 + DTO + fallbackFactory） |
 | `data-nest-alert-service` | **独立告警服务**（app-alert，com.datanest.alert.*）：告警规则/历史/触发/邮件 + dag_alert_config/history |

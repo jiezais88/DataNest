@@ -10,7 +10,7 @@ import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
-import com.datanest.task.core.constant.QualityScoreConstants;
+import com.datanest.common.constant.QualityScoreConstants;
 import com.datanest.task.core.dto.QualityScoreConfigDTO;
 import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.task.core.dto.QualityScoreQueryRequest;

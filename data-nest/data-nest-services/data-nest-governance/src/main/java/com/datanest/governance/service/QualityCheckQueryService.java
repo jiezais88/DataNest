@@ -16,7 +16,7 @@ import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.QualityCheckBatchMapper;
 import com.datanest.governance.mapper.QualityCheckDetailMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.task.core.dto.QualityCheckBatchDTO;
 import com.datanest.task.core.dto.QualityCheckDetailDTO;
 import com.datanest.task.core.dto.QualityCheckQueryRequest;

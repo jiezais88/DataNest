@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.alert.api.dto.DagExecutionInfo;
 import com.datanest.alert.api.dto.DagNodeTimeoutRequest;
 import com.datanest.alert.api.dto.NodeExecutionInfo;
-import com.datanest.alert.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.alert.entity.AlertHistory;
 import com.datanest.alert.entity.DagAlertConfig;
 import com.datanest.alert.entity.DagAlertHistory;

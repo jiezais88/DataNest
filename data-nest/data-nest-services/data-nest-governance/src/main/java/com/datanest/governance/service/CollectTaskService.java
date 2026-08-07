@@ -16,7 +16,7 @@ import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
 import com.datanest.governance.dto.CollectTaskUpdateRequest;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import com.datanest.governance.entity.CollectChangeDetail;
 import com.datanest.governance.entity.CollectExecutionLog;
 import com.datanest.governance.entity.CollectHistory;

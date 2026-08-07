@@ -25,7 +25,7 @@ import com.datanest.governance.mapper.QualityCheckDetailMapper;
 import com.datanest.governance.mapper.QualityJobMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityRuleTemplateMapper;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

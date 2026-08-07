@@ -15,7 +15,7 @@ import com.datanest.governance.api.dto.QualityDetailCreateRequest;
 import com.datanest.governance.api.dto.QualityExecutionPlanDTO;
 import com.datanest.governance.api.dto.QualityExecutionPlanRequest;
 import com.datanest.governance.api.dto.QualityRulePlanRequest;
-import com.datanest.task.core.constant.AlertConstants;
+import com.datanest.common.constant.AlertConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

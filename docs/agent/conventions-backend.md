@@ -13,7 +13,7 @@
 | ORM | MyBatis-Plus 3.5.17 | PostgreSQL 分页插件已配置 |
 | 安全/登录 | Sa-Token 1.45.0 | Redis 集中式 Token |
 | JSON | Fastjson2 2.0.52（业务序列化）+ Jackson 3（Spring 默认） | Sprint 3 起 Fastjson2 替代 Jackson ObjectMapper |
-| 数据库迁移 | Flyway 10.22.0 | 脚本统一在 `data-nest-system/src/main/resources/db/migration` |
+| 数据库迁移 | Flyway 10.22.0 | 每服务独立管理本库 `src/main/resources/db/migration`（基线 V1.0.0），代码驱动（FlywayConfig bean） |
 | 密码加密 | Spring Security `PasswordEncoder`（BCrypt） | `data-nest-system` 已配置 |
 
 ## 2. 统一响应协议
@@ -69,14 +69,16 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - 时间字段统一用 `java.time.LocalDateTime`。
 - 布尔字段在实体中用 `Boolean`，数据库中用 `SMALLINT` 或 `BOOLEAN` 按 Flyway 脚本约定。
 - 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层用 Fastjson2 解析/组装。
+- **实体/mapper 归 owner 服务本地包**（`com.datanest.<域>.entity/mapper`），不再共享实体模块（`data-nest-task-core-entity` 已删除）。跨服务取数一律走对应 Feign 契约模块，禁止跨域直读表。
 
 ### Flyway 脚本格式约定（硬约束）
 
-- 迁移脚本统一在 `data-nest-system/src/main/resources/db/migration`，命名 `V<版本>__<描述>.sql`。
+- **每服务独立管理本库迁移**：脚本在各持库服务自己的 `src/main/resources/db/migration`（system/alert-service/engineering/governance），基线为 `V1.0.0__baseline.sql`，后续各自从 `V1.1.0+` 独立演进。worker/job/gateway 无库无迁移。
+- **Flyway 是代码驱动的**：项目 jar 里没有 spring-boot-flyway autoconfigure 模块，`spring.flyway` 的 yaml **不生效**；各持库服务靠本地 `FlywayConfig`（@Bean initMethod=migrate，baselineOnMigrate）触发。新增迁移只需放脚本 + 重启对应服务。
+- 旧单库时代的 72 个迁移脚本已归档 `scripts/migration-legacy/`，仅供追溯，不再执行。
 - **所有迁移脚本统一用紧凑单行 SQL 风格**（如 `id BIGSERIAL PRIMARY KEY,`、`VARCHAR(100) NOT NULL`、`COMMENT ON COLUMN x IS '...'` 单行）。
 - **禁止用 IDE/格式化工具拆分迁移 SQL**：格式化工具会破坏已应用脚本的 checksum，触发 Flyway validate 失败（见 gotchas.md）。
-- 新增脚本参考 `V3.6.1__sprint6_quality_job_rule.sql`（紧凑、带文件头注释、带 COMMENT）。
-- 已应用脚本**不要随意改动**；确需调整格式/语义时，必须用 flyway `repair` 固化 checksum 并重启 `app-system` 验证。
+- 已应用脚本**不要随意改动**；确需调整格式/语义时，必须用 flyway `repair` 固化 checksum 并重启对应服务验证。
 
 ## 6. Mapper 与 SQL
 
@@ -97,19 +99,30 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - Controller 加 `@RestController`，类级 `@RequestMapping("/<资源>")`。
 - 路径使用 RESTful 风格，动作通过 HTTP 方法 + 路径表达：`GET /datasources/{id}`、`POST /datasources`、`PUT /datasources/{id}`、`DELETE /datasources/{id}`、`POST /datasources/page`、`POST /datasources/{id}/test`。
 - 权限注解 `@SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)`，角色代码与前端 `src/constants/roles.ts` 保持一致；左侧菜单显隐以 `src/components/Sidebar.tsx` 为准。
-- 网关路由：`/api/system/**` → `data-nest-system`，`/api/engineering/**` → `data-nest-engineering`，`/api/governance/**` → `data-nest-governance`。
-- 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`，Controller 路径不要重复写前缀。
+- 网关路由：`/api/system/**` → `data-nest-system`，`/api/engineering/**` → `data-nest-engineering`，`/api/governance/**` → `data-nest-governance`，`/api/alert/**` → `data-nest-alert-service`。
+- 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`、`/alert`（worker `/worker`、job `/job` 无对外 Controller），Controller 路径不要重复写前缀。
 - **列表接口**：当前代码实现多为 `POST /{resource}/page`（如 `/api/engineering/datasources/page`、`/api/engineering/sync-jobs/page`），请求体带 keyword + 筛选 + 分页；新增/详情/删除仍用 RESTful 方法表达。
 - 工程侧 Controller 前缀：数据源/同步任务为 `/engineering/*`，DAG/项目管理为 `/dev/*`，执行历史为 `/dag-executions`；网关已配置 StripPrefix，前端统一以 `/api/engineering/...` 调用。
 
-## 9. 配置与 Nacos
+## 9. 服务间调用规范（微服务化后）
+
+- **跨服务取数/写数一律走 Feign 契约模块**（`data-nest-apis/` 下 alert-api / engineering-api / governance-api / system-api），禁止跨域直读表、禁止跨域 SQL JOIN。
+- **契约模块写法**：`@FeignClient` 接口 + `fallbackFactory`（fallback 包内 @Component 实现）+ DTO 独立（契约 DTO 放 api 模块自己的包，不依赖服务方实体）。消费方 pom 声明 api 模块依赖，启动类 `@EnableFeignClients(basePackages)` 追加对应 api 包，scanBasePackages 追加 fallback 所在包。
+- **服务端点统一放 `/internal/**` 路径**（context-path 之内），由 common 的 `InternalTokenFilter` + `X-Internal-Token` 鉴权；token 经 Nacos `shared-rpc.yaml` 下发，本地未配置时放行。
+- **降级统一走 common `RemoteCalls.execute(description, supplier, fallback)`**，不要手写 try-catch 样板。读路径降级空集合/空 Map；告警 fire 等旁路失败只记日志。
+- **fail-closed 例外清单**（远端不可用必须拒绝操作，改动时注意保持）：`QualityJobService` 删除前告警引用校验、`AssetCatalogService.assignOwner` 用户存在性校验、`AlertRuleService` 保存规则时对象名解析。
+- **禁 N+1**：循环里需要另一服务的数据时，在提供方加批量端点一次取回（如 `nodes/resolve`、`auto-trigger/batch`、`usernames` 批量回填），禁止逐条循环调 Feign。
+- **Feign 查询/路径参数禁止用 `LocalDateTime`**（Feign 的 ConversionService 会按 locale 格式化，服务端 ISO 解析失败）——契约参数一律用 ISO String，调用方 `DateTimeFormatter.ISO_LOCAL_DATE_TIME` 格式化。请求体里的 LocalDateTime 走 Jackson 不受影响。
+- 新增 Feign client 时确认消费方 pom 有 `spring-cloud-starter-loadbalancer`（`lb://` 必需），缺了启动报 `No Feign Client for loadBalancing defined`。
+
+## 10. 配置与 Nacos
 
 - `application.yml` 只保留端口、`spring.application.name`、`context-path`、`spring.config.import` 和模块级简单配置。
 - 数据库、Redis、Doris、XXL-JOB、Addax、安全等配置走 Nacos `shared-configs`。
 - 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
 - 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。
 
-## 10. 日志
+## 11. 日志
 
 - **公用 logback 配置（生产级）**：`data-nest-common/src/main/resources/logback-spring.xml`，随 common 进入全部后端服务（gateway/system/engineering/governance/worker/job）classpath 根自动生效。
 - **三通道**：console（docker logs 在线排查）+ 全量滚动文件 + ERROR 单独滚动文件（排障第一入口）；文件输出全部走 **AsyncAppender 异步队列**（queueSize 8192、`neverBlock=true` 队列满丢弃不阻塞业务、`discardingThreshold=0` 不主动丢 INFO）。

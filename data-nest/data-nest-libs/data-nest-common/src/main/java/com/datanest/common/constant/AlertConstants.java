@@ -1,7 +1,9 @@
-package com.datanest.alert.constant;
+package com.datanest.common.constant;
 
 /**
  * Sprint 5：通用告警中心常量。
+ * <p>
+ * 微服务化 6.1：由 task-core(entity) 与 alert-service 中两份内容相同的副本合并迁入 common 模块。
  */
 public final class AlertConstants {
 
