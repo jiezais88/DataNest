@@ -84,6 +84,14 @@
 - **扣分配置弹窗**：`getByRole('dialog', {name:'扣分配置（质量评分全局配置）'})`，改配置后**需重新执行才重算**（评分只在批次收尾重算，不实时重算存量）。
 - **spec 自带播种**（`ensureTestUsers+seedExecTables+seedExecMetadata+seedQualityScores`），支持 `SKIP_SETUP=1` 独立运行，绕开 Sprint5 collect-task 播种。
 
+### 资产目录 E2E（sprint7/asset-catalog.spec.ts，2026-08-07，32 用例全绿）
+
+- **拆库后 E2E 必须用 sprint7 的 db 模块**：`e2e/sprint7/helpers/db.ts`（`psqlGov/psqlEng/psqlSys`）按域连新库；**sprint5/6 的 `helpers/db.ts` 仍写旧 datanest 库（已冻结），播种/断言对新架构无效**，s5/s6 适配是遗留任务。
+- **资产树计数徽章定位**：全部/未分类是 `button.group`、域/主题是 `div.group`，选中态还有 activeBar 也是 `span.rounded-full`——徽章按纯数字文本过滤（hasText `/^\d+$/`）。
+- **血缘图谱节点标题是全名 `库.表`**（非短表名）；详情页指标卡文本与侧边栏菜单/基础信息 kv 撞名（质量评分/字段数），断言限定 `getByRole('main')` + `.first()`。
+- **分类树计数接口的 tableCount/totalCount/uncategorizedCount 是 Long → JSON 字符串**，API 断言先 `Number()`。
+- **已修 bug（搜索态配置负责人不刷新）**：`AssignOwnerModal onSaved` 原为浏览态 `reload`，搜索态列表由 keyword 驱动 useEffect 不感知；改 `reloadCurrent`（搜索态 bump refreshKey 重搜）。改动前端后**必须 `pnpm build` + `docker compose build app-frontend`**（Dockerfile 只 COPY 本地 `dist/`，容器内不构建，直接 build 镜像会用到旧产物）。
+
 
 ## 八、微服务化改造踩坑（阶段 1-5，2026-08-06/07，当前有效）
 

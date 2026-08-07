@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-07 | **阶段**：F1 前端+联调完成（含修订轮：合并单页 + 后端补 4 接口，冒烟全绿）→ 待 F1 E2E 或并行启动 F2
+> **更新时间**：2026-08-07 | **阶段**：F1 全部闭环（后端+前端+E2E 32 用例全绿，含 1 个 E2E 发现的前端 bug 已修复）→ 可启动 F2
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -17,7 +17,7 @@
 | Sprint 7 PRD                             | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-PRD.md`（v1.0）                                                |
 | Sprint 7 技术设计                        | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-技术文档.md`（v1.0，含 4 个技术决策 D1~D4）                     |
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
-| **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 前端完成 | 后端 ✅ + 前端 ✅（2026-08-07，含修订轮：合并单页 + 后端补接口，联调冒烟全绿，见 §6.1）；E2E 待后续会话                |
+| **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
 | **F2 任务模板库**（DD-09）               | ⏳ 未开始 | 前后端+测试闭环（见 §6.2）                                                                     |
 | **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
@@ -156,11 +156,18 @@
 - 树计数/健康度筛选/批量接口/负责人口径 → 本轮已全部补齐，不再是偏差。
 - 后端补丁（`MetadataService.applyUsernameNames`）：`getTable` 补 `ownerName` 回填；修存量 NPE（immutable map `get(null)`，自动采集表 created_by 为 null 时详情 500），三处判空。
 
-**测试**（后端自测 ✅ / 联调 ✅ / E2E ⏳）
+**测试**（后端自测 ✅ / 联调 ✅ / E2E ✅ 2026-08-07）
 - [x] 后端 Postman/curl 自测：`/assets/search`、分类 CRUD、分配分类/负责人、改名级联、删除校验 + 修订轮（树计数/healthLevel/search datasourceId/批量/用户选项/Doris 回显）
 - [x] 前端联调冒烟（临时 Playwright 脚本，用完即删，共 5 轮）：合并页计数徽章、下拉即时过滤（BAD→1 行 orders）、管理条、Doris 回显、三指标卡、分类增删、批量分配+移出还原、负责人清除/重设（新选项接口）、删除被引用分类 4009 拦截——全绿无控制台错误，种子数据已还原
-- [ ] 新建 `e2e/sprint7/e2e/asset-catalog.spec.ts`（搜索→详情→分类 主链路）
-- [ ] F1 全块闭环后 §2 看板置 ✅（E2E 完成后）
+- [x] `e2e/sprint7/e2e/asset-catalog.spec.ts`（32 用例全绿，1.2 分钟；共 9 轮迭代修选择器/断言）：DC-05 树计数+浏览过滤+即时筛选、DC-01 四维搜索+空态+重置+搜索态筛选、DC-02/03/04 详情页（三指标卡/字段/血缘 from 回跳/空态/质量页签/Doris 兜底/返回）、DC-05 维护（增删域/主题、改名级联 UI+DB 双断言、4009/子分类拦截、批量分配+移出、详情页分配/清除分类、负责人配置/清除）、权限隔离（engineer/analyst UI 隐藏 + API 拒绝）、API 辅助（sort=score、相关度分值 120/60/20、healthLevel/datasourceId、树计数、批量接口返回数、execute 冒烟）
+- [x] **E2E 发现并修复 1 个前端 bug**：搜索态下「配置负责人」保存成功但列表不刷新——`AssignOwnerModal onSaved={reload}` 只刷浏览态 usePagedList；修复为 `reloadCurrent`（搜索态 bump `searchRefreshKey` 重搜，浏览态 reload），`src/pages/assets/index.tsx`。已 `pnpm build` + 重建 app-frontend 验证
+- [x] F1 全块闭环，§2 看板置 ✅
+
+**E2E 设施说明（sprint7 新增，后续 F2/F3/F4 复用）**
+- `e2e/sprint7/helpers/db.ts`：拆库版 psql（`psqlGov/psqlEng/psqlSys`）。**sprint5/6 helpers 仍写旧 datanest 库（拆库后已冻结，播种对线上服务无效），新测试一律用 sprint7 的 db 模块**；s5/s6 helpers 的拆库适配是遗留任务（本次用户确认不动）。
+- `e2e/sprint7/helpers/seed.ts`：幂等播种（e2e_s7 前缀 + 固定 ID 900007*）——3 测试用户（s7_govadmin/engineer/analyst）、e2e_s7_mysql_ds 数据源、5 张元数据表（含 1 张 BUILTIN_DORIS）、分类体系（交易域[订单/退款]+用户域）、4 档质量评分、T1 的 3 规则+1 批次 3 明细、2 条血缘。spec beforeAll 自带播种，支持 `SKIP_SETUP=1` 独立运行；global-setup/teardown 已注册 sprint7。
+- F1 开发自测残留（交易域/用户域分类 + orders/order_items 分类/负责人）已经用户确认在 seed 中清理（`cleanupResidue`）。
+- 跑法：`cd data-nest/data-nest-frontend && SKIP_SETUP=1 npx playwright test e2e/sprint7/e2e/asset-catalog.spec.ts`
 
 ---
 

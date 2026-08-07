@@ -120,6 +120,8 @@ export default function AssetsPage() {
     // ============ 搜索态（关键词或下拉变化即时重搜） ============
     const [searchList, setSearchList] = useState<AssetSearchItem[]>([]);
     const [searchLoading, setSearchLoading] = useState(false);
+    /** 搜索态刷新信号：治理员操作（配置负责人等）保存后需重搜，否则列表仍是旧值 */
+    const [searchRefreshKey, setSearchRefreshKey] = useState(0);
 
     useEffect(() => {
         const kw = keyword.trim();
@@ -142,7 +144,13 @@ export default function AssetsPage() {
         return () => {
             cancelled = true;
         };
-    }, [keyword, datasourceId, healthLevel]);
+    }, [keyword, datasourceId, healthLevel, searchRefreshKey]);
+
+    /** 按当前态刷新列表：搜索态重搜，浏览态重查 */
+    const reloadCurrent = () => {
+        if (isSearch) setSearchRefreshKey(k => k + 1);
+        else reload();
+    };
 
     // ============ 搜索/重置 ============
     const handleSearch = () => {
@@ -457,7 +465,7 @@ export default function AssetsPage() {
                 currentOwnerId={ownerTarget?.ownerUserId}
                 currentOwnerName={ownerTarget?.ownerName}
                 onClose={() => setOwnerTarget(null)}
-                onSaved={reload}
+                onSaved={reloadCurrent}
             />
 
             {/* 移出分类确认 */}
