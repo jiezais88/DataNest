@@ -147,6 +147,7 @@ public class MetadataService {
     @Transactional(readOnly = true)
     public List<MetadataTable> listTables(Long datasourceId, String databaseName, String schemaName) {
         List<MetadataTable> tables = metadataTableMapper.selectTablesByDatasourceDatabaseSchema(datasourceId, databaseName, schemaName);
+        applyDatasourceNames(tables);
         applyUsernameNames(tables);
         return tables;
     }
@@ -308,6 +309,7 @@ public class MetadataService {
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
+        applyDatasourceNames(List.of(table));
         applyUsernameNames(List.of(table));
         return table;
     }
@@ -363,6 +365,31 @@ public class MetadataService {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
             return 0L;
+        }
+    }
+
+    /**
+     * 批量回填数据源名称/类型（微服务化 5.0：替代原 datasource_connection 跨域 JOIN）。
+     * 全部 datasourceId 一次 Feign 批量调用；engineering 不可用时经 RemoteCalls 降级为空 Map
+     * （datasourceName/datasourceType 列为 null），不阻断查询。
+     * 内置 Doris（datasource_id = -1）在 engineering 查不到，与原 LEFT JOIN 未命中一致，保持 null。
+     */
+    private void applyDatasourceNames(List<MetadataTable> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return;
+        }
+        List<Long> dsIds = tables.stream()
+                .map(MetadataTable::getDatasourceId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, DataSourceInfo> dsMap = batchGetDatasources(dsIds);
+        for (MetadataTable table : tables) {
+            DataSourceInfo ds = dsMap.get(table.getDatasourceId());
+            if (ds != null) {
+                table.setDatasourceName(ds.getName());
+                table.setDatasourceType(ds.getType());
+            }
         }
     }
 

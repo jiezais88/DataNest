@@ -256,7 +256,37 @@ public class AlertRuleService {
                                                 Long objectId, String alertType, String sendStatus) {
         IPage<AlertHistory> p = alertHistoryMapper.selectHistoryPage(new Page<>(page, pageSize),
                 objectType, objectId, alertType, sendStatus);
+        applyHistoryObjectNames(p.getRecords());
         return new PageResult<>(p.getRecords(), p.getTotal(), page, pageSize);
+    }
+
+    /**
+     * 回填告警历史的 objectName（微服务化 5.0：替代原跨域 JOIN）。
+     * 按 objectType 分组，每种类型一次批量 Feign 调用（DAG/SYNC_JOB → engineering，
+     * COLLECT_TASK/QUALITY → governance），避免 N+1；
+     * 远端不可用时经 RemoteCalls 降级为空 Map（objectName 列为 null），列表接口正常返回。
+     */
+    private void applyHistoryObjectNames(List<AlertHistory> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        Map<String, List<Long>> idsByType = new HashMap<>();
+        for (AlertHistory record : records) {
+            if (record.getObjectType() != null && record.getObjectId() != null) {
+                idsByType.computeIfAbsent(record.getObjectType(), k -> new ArrayList<>())
+                        .add(record.getObjectId());
+            }
+        }
+        Map<String, Map<Long, String>> namesByType = new HashMap<>();
+        for (Map.Entry<String, List<Long>> entry : idsByType.entrySet()) {
+            namesByType.put(entry.getKey(), fetchObjectNames(entry.getKey(), entry.getValue()));
+        }
+        for (AlertHistory record : records) {
+            Map<Long, String> names = namesByType.get(record.getObjectType());
+            if (names != null) {
+                record.setObjectName(names.get(record.getObjectId()));
+            }
+        }
     }
 
     /**

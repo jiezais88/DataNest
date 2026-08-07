@@ -23,30 +23,30 @@ DataNest 是一个数据平台，技术栈如下：
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
 - **调度**：XXL-JOB（官方镜像），数据库为 `datanest_scheduler`（不是 `xxl_job`）
 - **目标数仓**：内置 Doris（当前在 `192.168.119.135:9030`）
+- **业务库（2026-08-07 起按域拆 4 库）**：`datanest_system`（sys_*，app-system）、`datanest_alert`（alert_*+dag_alert_*，app-alert）、`datanest_engineering`（sync/dag/datasource 13 表，app-engineering）、`datanest_governance`（metadata/collect/quality 等 19 表，app-governance）；均在 middleware-postgres 同实例。**worker/job 无库**（纯执行/调度节点，application.yml 已排除 DataSource 自动配置）。旧 `datanest` 库保留只读观察后下线。各服务 Flyway 独立管理本库（`db/migration/V1.0.0__baseline.sql` 起，代码驱动见 §6）
 
 ### 核心模块
 
-> **task-core 拆分（2026-08-05 三步重构）**：原 `data-nest-task-core` 按依赖分层拆分，**包名 `com.datanest.task.core.*` 保持不变**。依赖链：`common ← task-core-entity ← task-core-governance ← task-core`。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**。详见 `docs/agent/architecture.md`。
+> **task-core 历史拆分**：原 `data-nest-task-core` 曾按依赖分层拆为 4 模块（entity/alert/task-core-governance/task-core），包名 `com.datanest.task.core.*` 不变。微服务化后：alert 独立为 app-alert、task-core-governance 已删除、entity 只剩 dto+constant（SysUser 已迁 system）。所有消费方服务（engineering/governance/worker/job/system）**只显式声明依赖 `data-nest-task-core`**。详见 `docs/agent/architecture.md`。
 >
-> **微服务化改造（2026-08-06 起，进行中）**：共享 jar 进程内调用 → OpenFeign + Nacos 远程调用 + 按域拆库（最终一致性，无分布式事务无 MQ）。总方案与进度见 `docs/microservices-refactor/handoff.md`（跨会话恢复先读它）。**阶段 1 已完成**：告警域独立为 `data-nest-alert-service`（app-alert），原 `data-nest-alert` 模块已删除。
+> **微服务化改造（2026-08-06 起，阶段 1-5 已完成）**：共享 jar 进程内调用 → OpenFeign + Nacos 远程调用 + 按域拆 4 库（最终一致性，无分布式事务无 MQ）。总方案与全程记录见 `docs/microservices-refactor/handoff.md`（跨会话恢复先读它）。task-core-governance 已删除；task-core-entity 只剩 dto+constant（SysUser 已迁 system）；剩余共享模块待阶段 6 清理。
 
 | 模块 | 说明 |
 |------|------|
 | `data-nest-common` | 公共组件（SchedulerClient、InternalTokenFilter/Feign 拦截器等），最底层底座 |
-| `data-nest-task-core-entity` | 共享实体/mapper/constant/dto 底座 + `SysUserService`（告警类已迁出）。被所有消费方共用 |
-| `data-nest-task-core-governance` | 治理编排服务（QualityRuleService 等） |
-| `data-nest-task-core` | 纯执行内核（SyncJobExecutorService/QualityCheckService 等；告警调用经 alert-api Feign） |
+| `data-nest-task-core-entity` | 仅剩 dto 包 + constant（AlertConstants/QualityScoreConstants），阶段 6 清退 |
+| `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等；全部 DB 访问经 Feign） |
 | `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
-| `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（阶段 1 仅内部端点骨架，后续阶段扩充）。app-alert 依赖 |
+| `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（内部端点 + DTO + fallbackFactory） |
 | `data-nest-alert-service` | **独立告警服务**（app-alert，com.datanest.alert.*）：告警规则/历史/触发/邮件 + dag_alert_config/history |
-| `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API） |
-| `data-nest-worker` | Addax 实际执行方（质量检查执行 handler 也在 worker） |
-| `data-nest-governance` | 数据治理服务（元数据、数据标准、质量/评分 Controller） |
-| `data-nest-job` | XXL-JOB executor，平台定时任务 |
-| `data-nest-system` | 认证、用户、权限 |
+| `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API；13 表本地持有） |
+| `data-nest-worker` | Addax 实际执行方（**无任何业务库**，全部经 Feign 回写） |
+| `data-nest-governance` | 数据治理服务（元数据、数据标准、质量编排/评分；19 表本地持有） |
+| `data-nest-job` | XXL-JOB executor，平台定时任务（**无任何业务库**，handler 全部端点化） |
+| `data-nest-system` | 认证、用户、权限（SysUser 体系本地持有） |
 | `data-nest-gateway` | 网关入口 |
 
-> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。**容错三件套已内置**：`shared-feign.yaml` 全局超时（connect 2s/read 5s）+ 重试（Retryer.Default ×3）+ Resilience4j 熔断（各 client 配 fallbackFactory）；消费方降级统一用 common 的 `RemoteCalls.execute(描述, 调用, 降级值)`（自动 warn 日志 + `remote_call_failed_total` 指标），不要手写 try-catch 样板。读路径降级空集合；**fail-closed 例外**：删除前置校验类调用必须让异常传播（现有 2 处：QualityJobService 告警引用校验、AssetCatalogService.assignOwner）。
+> **服务间调用规则**：跨服务调用一律走对应 `*-api` 模块的 Feign client（`/internal/**` 端点，`X-Internal-Token` 头鉴权），禁止再跨服务共享 Service/Mapper 进程内调用。**容错三件套已内置**：`shared-rpc.yaml` 全局超时（connect 2s/read 5s）+ 重试（Retryer.Default ×3）+ Resilience4j 熔断（各 client 配 fallbackFactory）+ 内部令牌；消费方降级统一用 common 的 `RemoteCalls.execute(描述, 调用, 降级值)`（自动 warn 日志 + `remote_call_failed_total` 指标），不要手写 try-catch 样板。读路径降级空集合；**fail-closed 例外**：删除前置校验类调用必须让异常传播（现有 2 处：QualityJobService 告警引用校验、AssetCatalogService.assignOwner）。
 > **禁止逐条循环远程调用（N+1）**：循环场景必须提供批量端点（如 `usernames?ids=`、`dags/{dagId}/nodes/resolve`、`quality/auto-trigger/batch`）。
 > **Feign 契约的查询/路径参数禁止用 LocalDateTime**（Feign 的 ConversionService 会按 locale 格式化成 `8/7/26, 6:20 AM`，服务端解析失败）——一律 ISO String（`DateTimeFormatter.ISO_LOCAL_DATE_TIME`）；请求体里的 LocalDateTime 走 Jackson 不受影响。
 > **用户名回填**：`SysUserService` 仅 app-system 内部使用；其它服务列表页的 createdBy/updatedBy 名称回填一律经 `data-nest-system-api` 的 `SystemUserApi.usernames`（批量，失败降级空 Map）。
@@ -159,7 +159,7 @@ docker compose up -d --no-deps app-engineering app-worker
 |------|------|-----------|-----------|
 | 网关入口 | 所有 API 统一入口 | http://localhost:8080 | - |
 | admin 登录 | 获取全局 token | `POST /api/system/auth/login` | admin / admin123 |
-| PostgreSQL 业务库 | DataNest 业务主库 | `docker exec -it datanest-middleware-postgres psql -U datanest -d datanest` | datanest / datanest123 |
+| PostgreSQL 业务库 | 按域 4 库：`datanest_system` / `datanest_alert` / `datanest_engineering` / `datanest_governance` | `docker exec -it datanest-middleware-postgres psql -U datanest -d <库名>` | datanest / datanest123（旧 datanest 库只读观察，勿写） |
 | MySQL root | 管理 MySQL 所有库 | `docker exec -it datanest-middleware-mysql mysql -u root -proot123` | root / root123 |
 | MySQL nacos | 查 Nacos 配置、业务库 | `docker exec -it datanest-middleware-mysql mysql -u nacos -pnacos123` | nacos / nacos123 |
 | Nacos 配置库 | 存储所有 shared-configs | `nacos.config_info` 表（在 middleware-mysql） | - |
@@ -183,6 +183,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和 `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
 - **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需重启对应服务。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
+- **无库服务必须排除 DataSource 自动配置（2026-08-07 起）**：worker/job 无任何业务库（纯执行/调度节点），两服务 application.yml 已 `spring.autoconfigure.exclude` 排除 `DataSourceAutoConfiguration`/`DataSourceTransactionManagerAutoConfiguration`/`MybatisPlusAutoConfiguration`（Boot 4 类名在 `org.springframework.boot.jdbc.autoconfigure` 包）——不排会启动报 `Failed to configure a DataSource`。注意 worker 的 Doris 连接是 `DorisDataSourceConfig` 手工构建，不受影响。
 
 ### 告警（2026-08-06 起已独立为 app-alert 服务）
 
@@ -206,9 +207,11 @@ docker compose up -d --no-deps app-engineering app-worker
 
 ### Flyway / 迁移脚本
 
-- **禁止用格式化工具拆分迁移 SQL**：会破坏已应用脚本 checksum，触发 `Migration checksum mismatch` 使 app-system 退出。所有迁移脚本统一**紧凑单行风格**；确需调整时用 flyway `repair` 固化 checksum 并重启 `app-system`。
-- **Flyway repair 脚本位于 task-core 之外的 system 模块**：migration 脚本在 `data-nest-services/data-nest-system/src/main/resources/db/migration`，改脚本后必须重新 `mvn package -pl data-nest-system` 并重建 `app-system` 镜像，否则容器内 jar 仍是旧脚本。
-- **新增迁移脚本版本号必须大于数据库已有最高版本**：先查 `flyway_schema_history` 最高版本再定新编号（取「最高+1」，如 `V3.7.1`）；否则 Flyway 报 `Detected resolved migration not applied to database` 使 app-system 启动失败。`mvn clean package` 避免 target/classes 残留已删除旧脚本。
+- **Flyway 是代码驱动（2026-08-07 起）**：项目 jar 未引入 spring-boot-flyway autoconfigure 模块，`spring.flyway` 的 yaml 配置**不生效**；4 个持库服务各自有 `config/FlywayConfig.java`（`@Bean(initMethod="migrate")` + baselineOnMigrate）。新增服务要复制这个类。
+- **每服务独立管理本库迁移**：migration 脚本在各服务 `src/main/resources/db/migration`（基线 V1.0.0，后续各自从 V1.1.0 起演进）。改脚本后必须重新 package 该服务并重建对应镜像。72 个拆分前旧脚本归档在 `data-nest/scripts/migration-legacy/`（仅供查阅，不在 flyway 路径）。
+- **Flyway 版本比较忽略尾随零**：baseline marker "1" 与 "1.0.0" 排序相等（存量库跳过 V1.0.0 靠的就是这个）；新增脚本版本号必须大于本库 `flyway_schema_history` 最高版本，否则报 `Detected resolved migration not applied to database` 启动失败。
+- **禁止用格式化工具拆分迁移 SQL**：会破坏已应用脚本 checksum，触发 `Migration checksum mismatch`。所有迁移脚本统一**紧凑单行风格**；确需调整时用 flyway `repair` 固化 checksum 并重启对应服务。
+- **pg_dump --data-only 不带序列 setval**：跨库迁移数据后必须手动同步序列（`SELECT setval(seq, (SELECT max(id) FROM t))`，pg_depend 关联查询可批量生成），否则 serial 列插数据撞主键。
 
 ### 质量
 

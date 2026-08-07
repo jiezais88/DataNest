@@ -99,6 +99,18 @@
                 <version>${mybatis-plus.version}</version>
             </dependency>
 
+            <!-- Flyway -->
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-core</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-postgresql</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+
             <!-- Fastjson2（最新稳定版，Sprint 3 起替代 Jackson ObjectMapper 做 JSON 序列化） -->
             <dependency>
                 <groupId>com.alibaba.fastjson2</groupId>

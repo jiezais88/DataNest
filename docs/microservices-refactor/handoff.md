@@ -2,7 +2,21 @@
 
 > 独立改造（不属于任何 Sprint）。总目标：共享 jar 进程内调用 → OpenFeign 远程调用 + 按域拆库。
 > 已确认决策：OpenFeign + Nacos；按域拆库（阶段 5 才拆）；最终一致性（Feign + 重试 + 对账，无分布式事务无 MQ）；新建 app-alert 独立告警服务；worker/job 最终不持库（纯执行节点，经 Feign 回写 owner）。
-> **当前进度：阶段 1/2/3/4 已完成 ✅（2026-08-07）。下一阶段：阶段 5（拆库 + Flyway 基线 + 数据迁移），等用户安排。**
+> **当前进度：阶段 1-5 已完成 ✅（2026-08-07，已按域拆 4 库）。下一阶段：阶段 6（清理收尾），等用户安排。**
+
+## 阶段 5 范围（拆库 + 配置整理，2026-08-07 完成 ✅）
+
+**形态**：多数据库（用户决策）——datanest_system（5 表）/ datanest_alert（6 表）/ datanest_engineering（13 表）/ datanest_governance（19 表），全部在 middleware-postgres 同一实例。worker/job 无库（纯执行/调度节点）。
+
+**实施记录**：
+- **5.0 拆库前哨**：消除最后两处跨域 SQL JOIN——app-alert `selectHistoryPage`（删 4 个外域 JOIN，对象名改按类型分组 Feign 批量回填）、governance `MetadataTableMapper` 4 个查询（删 datasource_connection JOIN，Feign batchGet 回填）。
+- **5.1**：4 份基线脚本（从在线库 pg_dump --schema-only 生成，清理 `\restrict` 行）落位各服务 `db/migration/V1.0.0__baseline.sql`；72 个旧脚本归档 `scripts/migration-legacy/`；compose 按服务注入 PG_DATABASE；worker/job 摘 shared-datasource import；shared-alert 下沉 app-alert；shared-internal+shared-feign 合并为 **shared-rpc.yaml**（已推送 Nacos，旧 3 个 dataId 已删除）。
+- **5.2**：CREATE DATABASE ×4 → 应用基线 → 停写拷贝数据（行数逐表核对一致）→ **序列 setval 修正**（pg_dump --data-only 不带 setval，已用 DO 块按 max(id) 同步全部序列）→ 切换启动。
+- **踩坑修复**：
+  - worker/job 无 DataSource 时启动报 `Failed to configure a DataSource` → 两服务 application.yml 排除 `DataSourceAutoConfiguration/DataSourceTransactionManagerAutoConfiguration/MybatisPlusAutoConfiguration`（Boot 4 类名在 `org.springframework.boot.jdbc.autoconfigure` 包）。
+  - **Flyway 是代码驱动的**：项目 jar 里没有 spring-boot-flyway autoconfigure 模块，`spring.flyway` yaml **不生效**；各服务靠 `FlywayConfig`（@Bean initMethod=migrate，baselineOnMigrate）。已为 alert/engineering/governance 补 FlywayConfig，4 个服务的 inert spring.flyway yaml 已删除。Flyway 版本比较忽略尾随零：baseline marker "1" == "1.0.0"，故存量库跳过 V1.0.0、空库正常执行。
+- **验证（全部通过）**：4 库 flyway_schema_history 基线标记就位；同步/DAG（n5_e SKIPPED）/采集/质量（3 明细+聚合告警+alert 库单条记录）E2E 全绿；告警历史跨域名称回填正常；旧 datanest 库写入已冻结（10:17 后无新数据）；全服务 RemoteCalls 零失败。
+- **旧库处置**：datanest 库保留只读观察一个迭代，之后下线。
 
 ## 阶段 4 范围（governance 域远程化，2026-08-07 完成 ✅）
 
@@ -120,8 +134,8 @@
 2. **阶段 2（已完成 ✅）**：system 域远程化（SysUserService → Feign）+ dag-finished N+1 批量化修复
 3. **阶段 3（已完成 ✅）**：engineering 域远程化（worker/job 执行回写链路）
 4. **阶段 4（已完成 ✅）**：governance 域远程化（质量/采集/元数据/血缘回写）
-5. 阶段 5：拆库 + Flyway 基线 + 数据迁移（datanest_system / datanest_alert / datanest_engineering / datanest_governance）
-6. 阶段 6：删除 task-core 剩余共享模块、文档收尾、全量回归
+5. **阶段 5（已完成 ✅）**：拆库（多数据库 4 库）+ Flyway 基线 + 数据迁移 + 配置整理
+6. 阶段 6：删除 task-core 残余共享模块（entity 只剩 dto+constant）、文档收尾、全量回归
 
 ## 阶段 1 范围
 
@@ -210,3 +224,13 @@
 6. 重点回归：质量三种触发（手动/定时/自动）、采集全流程、元数据/血缘、合规检查、批次详情告警反查（quality_batch_id 链路）。
 
 阶段 5（拆库，**先处理 app-alert `selectHistoryPage` 跨表 LEFT JOIN**）→ 阶段 6（删 task-core 剩余模块、AlertConstants 双份合并、docs/agent/* 同步、全量回归）。
+
+**阶段 5 配置整理清单（2026-08-07 评审决定，与拆库一起做）**：
+
+**阶段 5 拆库形态决策（2026-08-07）**：**多数据库**（datanest_system / datanest_alert / datanest_engineering / datanest_governance），不用单库多 schema——硬边界使跨域直读物理不可能，独立权限/备份/Flyway。实施要点：PG volume 已有数据，init 脚本不会重跑，4 个库手动 CREATE DATABASE；旧 datanest 库保留只读观察一个迭代再下线。
+1. shared-datasource.yaml 拆 4 个 per-service 数据源配置（datanest_system/datanest_alert/datanest_engineering/datanest_governance）——worker/job 无库不需要
+2. shared-alert.yaml 下沉 app-alert 本地配置（单消费方，共享无意义）
+3. 摘掉 worker/job 的 shared-datasource.yaml import（4.4 后两服务无任何本地 DB 访问，PG 连接池是死配置；摘掉时验证无 DataSource 时 MyBatis-Plus 自动配置正常退让）
+4. shared-internal.yaml + shared-feign.yaml 合并为 shared-rpc.yaml（同属服务间调用域）
+5. 评估 shared-doris + shared-addax 合并（同属执行引擎域）、shared-quality 归属
+6. Nacos config_info 里被合并/下线的旧 dataId 要清理

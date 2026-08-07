@@ -369,11 +369,6 @@ services:
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=middleware-postgres
-      - PG_PORT=5432
-      - PG_USER=datanest
-      - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
     ports:
@@ -415,7 +410,7 @@ services:
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
+      - PG_DATABASE=datanest_system
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
     # 不暴露宿主机端口，仅通过 app-gateway 访问
@@ -456,7 +451,7 @@ services:
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
+      - PG_DATABASE=datanest_alert
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
       # MailHog 本地邮件测试
@@ -624,7 +619,7 @@ services:
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
+      - PG_DATABASE=datanest_engineering
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
@@ -676,7 +671,7 @@ services:
       - PG_PORT=5432
       - PG_USER=datanest
       - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
+      - PG_DATABASE=datanest_governance
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
@@ -716,11 +711,6 @@ services:
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=middleware-postgres
-      - PG_PORT=5432
-      - PG_USER=datanest
-      - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob
@@ -768,11 +758,6 @@ services:
       - NACOS_PORT=8848
       - NACOS_USERNAME=nacos
       - NACOS_PASSWORD=nacos
-      - PG_HOST=middleware-postgres
-      - PG_PORT=5432
-      - PG_USER=datanest
-      - PG_PASSWORD=datanest123
-      - PG_DATABASE=datanest
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
       - XXL_JOB_HOST=middleware-xxljob

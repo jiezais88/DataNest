@@ -17,8 +17,7 @@ spring:
       - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-dolphinscheduler.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-internal.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-feign.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:
@@ -31,6 +30,7 @@ spring:
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:nacos}
         file-extension: yaml
+
 
 datanest:
   engineering:

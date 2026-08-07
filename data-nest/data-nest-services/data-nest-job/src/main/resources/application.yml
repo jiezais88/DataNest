@@ -7,16 +7,22 @@ spring:
   application:
     name: data-nest-job
 
+  # 微服务化阶段 5：job 为纯调度节点，无任何业务库（全部经 Feign 调 owner 服务），
+  # 排除数据源相关自动配置避免 "Failed to configure a DataSource" 启动失败。
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
+      - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration
+
   config:
     import:
       - optional:nacos:shared-nacos.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-dolphinscheduler.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-internal.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-feign.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:

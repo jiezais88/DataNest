@@ -39,17 +39,13 @@ public interface AlertHistoryMapper extends BaseMapper<AlertHistory> {
 
     /**
      * 告警历史分页查询。
-     * 列表展示需要对象名：按 object_type 分别 LEFT JOIN dag / sync_job / collect_task / quality_job，
-     * 以 COALESCE 取到 object_name（冗余到查询结果，不落库）。
+     * 微服务化 5.0：dag / sync_job / collect_task / quality_job 均属外域，跨库 JOIN 已移除，
+     * objectName 由调用方（AlertRuleService.listHistory）经 Feign 按 objectType 分组批量回填；
+     * ruleName 仍走同域 alert_rule JOIN（冗余 rule_name 列兜底）。
      */
     @Select("<script>" +
-            "SELECT ah.*, COALESCE(d.name, sj.name, ct.name, qj.name) AS objectName, " +
-            "COALESCE(ar.name, ah.rule_name) AS ruleName " +
+            "SELECT ah.*, COALESCE(ar.name, ah.rule_name) AS ruleName " +
             "FROM alert_history ah " +
-            "LEFT JOIN dag d ON ah.object_type = 'DAG' AND d.id = ah.object_id " +
-            "LEFT JOIN sync_job sj ON ah.object_type = 'SYNC_JOB' AND sj.id = ah.object_id " +
-            "LEFT JOIN collect_task ct ON ah.object_type = 'COLLECT_TASK' AND ct.id = ah.object_id " +
-            "LEFT JOIN quality_job qj ON ah.object_type = 'QUALITY' AND qj.id = ah.object_id " +
             "LEFT JOIN alert_rule ar ON ah.alert_rule_id = ar.id " +
             "<where>" +
             "  <if test='objectType != null and objectType != \"\"'> AND ah.object_type = #{objectType} </if>" +

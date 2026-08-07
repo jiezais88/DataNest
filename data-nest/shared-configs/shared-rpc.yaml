@@ -1,4 +1,16 @@
-# Feign 全局容错配置（消费方：使用 Feign 的服务：alert-service/engineering/governance/worker/job）
+# ============================================
+# shared-rpc.yaml
+# 服务间调用：内部令牌 + Feign 超时/重试/熔断
+# 消费方：system / alert-service / engineering / governance / worker / job
+# （由 shared-internal.yaml + shared-feign.yaml 合并而来）
+# ============================================
+
+datanest:
+  internal:
+    # 内部调用令牌：生产环境务必通过 DATANEST_INTERNAL_TOKEN 环境变量覆盖默认值
+    token: ${DATANEST_INTERNAL_TOKEN:datanest-internal-dev-token}
+
+# Feign 全局容错配置
 # 注意：Spring Cloud OpenFeign 5.x（Boot 4）已移除旧 feign.* 命名空间，
 #       必须使用 spring.cloud.openfeign.*，否则配置静默失效（circuitbreaker 不装配会导致 fallbackFactory 不生效）。
 spring:

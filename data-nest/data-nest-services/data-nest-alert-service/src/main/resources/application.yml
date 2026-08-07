@@ -13,9 +13,7 @@ spring:
       - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-alert.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-internal.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-feign.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:
@@ -28,3 +26,20 @@ spring:
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:nacos}
         file-extension: yaml
+
+
+  # DAG 告警邮件配置（原 shared-alert.yaml 下沉，仅本服务消费）
+  # 默认关闭告警；生产环境通过环境变量注入真实 SMTP 后开启。
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    from: ${MAIL_FROM:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+datanest:
+  alert:
+    enabled: ${ALERT_ENABLED:false}
