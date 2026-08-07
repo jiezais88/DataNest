@@ -9,7 +9,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
         "com.datanest.alert.api", "com.datanest.system.api", "com.datanest.engineering.api", "com.datanest.governance.api"})
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api", "com.datanest.engineering.api",
-        "com.datanest.governance.api"})
+        "com.datanest.governance.api", "com.datanest.worker.feign"})
 public class WorkerApplication {
 
     public static void main(String[] args) {

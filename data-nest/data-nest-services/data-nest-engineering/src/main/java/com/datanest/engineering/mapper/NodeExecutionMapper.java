@@ -91,6 +91,9 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
             "ds_task_instance_id = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.dsTaskInstanceId,jdbcType=BIGINT}</foreach> " +
             "END::bigint, " +
+            "powerjob_instance_id = CASE id " +
+            "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.powerjobInstanceId,jdbcType=BIGINT}</foreach> " +
+            "END::bigint, " +
             "start_time = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.startTime,jdbcType=TIMESTAMP}</foreach> " +
             "END::timestamp, " +

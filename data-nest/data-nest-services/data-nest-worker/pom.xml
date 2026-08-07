@@ -29,6 +29,13 @@
             <artifactId>data-nest-alert-api</artifactId>
         </dependency>
 
+        <!-- DataNest Engineering API（DAG 节点执行/回调经 Feign 读 dag 定义与执行记录，
+             原经 task-core 传递，显式声明避免依赖陈旧快照的传递链） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-engineering-api</artifactId>
+        </dependency>
+
         <!-- Feign lb:// 服务发现调用必需 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

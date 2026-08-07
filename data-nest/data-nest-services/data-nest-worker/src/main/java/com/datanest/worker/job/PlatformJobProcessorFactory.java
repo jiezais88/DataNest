@@ -63,7 +63,7 @@ public class PlatformJobProcessorFactory implements ProcessorFactory {
                 String param = StringUtils.hasText(context.getInstanceParams())
                         ? context.getInstanceParams() : context.getJobParams();
                 try {
-                    handler.execute(param);
+                    handler.execute(context);
                     return new ProcessResult(true, handlerName + " 执行成功");
                 } catch (Exception e) {
                     logger.error("{} 执行失败: param={}", handlerName, param, e);

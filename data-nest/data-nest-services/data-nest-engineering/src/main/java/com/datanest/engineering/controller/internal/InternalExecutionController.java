@@ -6,6 +6,7 @@ import com.datanest.engineering.api.dto.CleanupRequest;
 import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
 import com.datanest.engineering.api.dto.NodeExecutionBatchUpdateRequest;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
@@ -61,6 +62,12 @@ public class InternalExecutionController {
     @PostMapping("/dag-executions")
     public Result<Long> createExecution(@RequestBody DagExecutionCreateRequest request) {
         return Result.ok(executionService.createExecution(request));
+    }
+
+    /** P3：按 PowerJob 工作流实例补齐执行记录（worker 处理 cron 触发实例时经 Feign 调用） */
+    @PostMapping("/dag/ensure-execution")
+    public Result<Long> ensureExecution(@RequestBody EnsureDagExecutionRequest request) {
+        return Result.ok(executionService.ensureExecutionByWfInstance(request));
     }
 
     @PostMapping("/dag-executions/{id}/finalize")

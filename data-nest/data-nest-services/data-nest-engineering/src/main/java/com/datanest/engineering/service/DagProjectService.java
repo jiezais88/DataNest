@@ -7,6 +7,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.alert.api.AlertApi;
+import com.datanest.common.scheduler.PowerJobWorkflowClient;
 import com.datanest.engineering.dto.DagProjectCreateRequest;
 import com.datanest.engineering.dto.DagProjectDTO;
 import com.datanest.engineering.dto.DagProjectUpdateRequest;
@@ -31,10 +32,8 @@ import java.util.Objects;
 
 /**
  * DAG 项目服务
- * 每个项目同步对应一个 DS 项目
- *
- * Sprint 3 P0-3：调 DS API 真创建项目，存 ds_project_code
- * Sprint 3 P2-4：删 DagProject 同步删 DS 项目
+ * P3：PowerJob 无项目概念（工作流统一挂 data-nest-worker App），不再同步 DS 项目；
+ * dag_project.ds_project_code 列保留至 P4 切流清理，仅作历史数据展示。
  */
 @Service
 public class DagProjectService {
@@ -47,14 +46,15 @@ public class DagProjectService {
     private final DagEdgeMapper dagEdgeMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
-    private final DolphinSchedulerClient dolphinSchedulerClient;
+    private final PowerJobWorkflowClient powerJobWorkflowClient;
     private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
 
     public DagProjectService(DagProjectMapper dagProjectMapper, DagMapper dagMapper,
                              DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                              DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
-                             DolphinSchedulerClient dolphinSchedulerClient, SystemUserApi systemUserApi,
+                             PowerJobWorkflowClient powerJobWorkflowClient,
+                             SystemUserApi systemUserApi,
                              AlertApi alertApi) {
         this.dagProjectMapper = dagProjectMapper;
         this.dagMapper = dagMapper;
@@ -62,16 +62,14 @@ public class DagProjectService {
         this.dagEdgeMapper = dagEdgeMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
-        this.dolphinSchedulerClient = dolphinSchedulerClient;
+        this.powerJobWorkflowClient = powerJobWorkflowClient;
         this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
     }
 
     /**
      * 创建项目。
-     * 顺序：先 DB 事务提交，再在 afterCommit 调 DS 建项目并回写 ds_project_code。
-     * 旧顺序（先 DS 后 insert）在 insert 失败时会产生 DS 孤儿项目；
-     * 新顺序下 DS 失败则补偿删除 DB 行并抛出可重试的业务异常，两边都不留孤儿。
+     * P3：PowerJob 无项目概念，仅落 DB（原 afterCommit 调 DS 建项目并回写 ds_project_code 的逻辑已摘除）。
      */
     @Transactional
     public DagProjectDTO create(DagProjectCreateRequest request) {
@@ -79,39 +77,13 @@ public class DagProjectService {
         if (dagProjectMapper.selectByName(request.getName()) != null) {
             throw new BusinessException(ErrorCode.PROJECT_NAME_EXISTS);
         }
-        // 2. 先入 DB（ds_project_code 暂为 null，提交后由 DS 创建结果回写）
+        // 2. 入 DB
         DagProject project = new DagProject();
         project.setName(request.getName());
         project.setDescription(request.getDescription());
         project.setCreatedBy(currentUserId());
         project.setCreatedAt(LocalDateTime.now());
         dagProjectMapper.insert(project);
-
-        // 3. 事务提交后在 DS 创建项目（P0-3）；失败则补偿删除 DB 行，报可重试错误
-        Long projectId = project.getId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    Long dsProjectCode = dolphinSchedulerClient.createProject(request.getName(), request.getDescription());
-                    DagProject fresh = dagProjectMapper.selectById(projectId);
-                    if (fresh != null) {
-                        fresh.setDsProjectCode(dsProjectCode);
-                        fresh.setUpdatedAt(LocalDateTime.now());
-                        dagProjectMapper.updateById(fresh);
-                    }
-                } catch (Exception e) {
-                    logger.error("DS 项目创建失败，补偿删除 DB 项目行: projectId={}, name={}", projectId, request.getName(), e);
-                    try {
-                        dagProjectMapper.deleteById(projectId);
-                    } catch (Exception ex) {
-                        logger.error("补偿删除 DB 项目行失败，需人工清理: projectId={}", projectId, ex);
-                    }
-                    throw new BusinessException(ErrorCode.DS_API_ERROR,
-                            "DolphinScheduler 项目创建失败，请重试: " + e.getMessage());
-                }
-            }
-        });
         return toDTO(project);
     }
 
@@ -133,11 +105,11 @@ public class DagProjectService {
     }
 
     /**
-     * Sprint 3 P2-4：删除 DataNest DagProject 时级联删除项目下所有 DAG，并同步删 DS 项目。
-     * DS 删失败不回滚 DataNest DB（孤儿 DS 项目/工作流可以人工清理；DS 删失败场景不阻塞 DataNest 操作）。
+     * Sprint 3 P2-4：删除 DataNest DagProject 时级联删除项目下所有 DAG。
+     * P3：DS 项目概念已摘除；级联清理改为删除各 DAG 的 PowerJob 工作流（失败仅警告，不阻塞 DataNest 操作）。
      *
-     * 事务边界：DB 删除在事务内完成；所有 DS HTTP 调用放到 afterCommit，
-     * 避免 DB 回滚时 DS 侧资源已被误删（不可恢复）。
+     * 事务边界：DB 删除在事务内完成；所有 PowerJob HTTP 调用放到 afterCommit，
+     * 避免 DB 回滚时远端资源已被误删（不可恢复）。
      */
     @Transactional
     public void delete(Long id) {
@@ -146,12 +118,11 @@ public class DagProjectService {
             throw new BusinessException(ErrorCode.DAG_NOT_FOUND, "DAG 项目不存在: " + id);
         }
 
-        // 1. 抓取 DS 侧信息（提交后清理用）
-        Long dsProjectCode = project.getDsProjectCode();
+        // 1. 抓取 PowerJob 侧信息（提交后清理用）
         List<Dag> dags = dagMapper.selectList(new QueryWrapper<Dag>().eq("project_id", id));
-        List<DagDsRef> dsRefs = dags.stream()
-                .map(d -> new DagDsRef(d.getId(), d.getName(), d.getReleaseState(),
-                        d.getDsScheduleId(), d.getDsProcessDefinitionCode()))
+        List<Long> workflowIds = dags.stream()
+                .map(Dag::getPowerjobWorkflowId)
+                .filter(Objects::nonNull)
                 .toList();
 
         // 2. 级联删除项目下所有 DAG 的 DB 数据
@@ -176,47 +147,23 @@ public class DagProjectService {
         // 3. 删 DB 项目
         dagProjectMapper.deleteById(id);
 
-        // 4. 事务提交后清理 DS 侧：先清各 DAG 的调度/工作流，再删 DS 项目（失败仅警告，不抛异常）
+        // 4. 事务提交后清理 PowerJob 侧工作流（失败仅警告，不抛异常）
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                for (DagDsRef ref : dsRefs) {
-                    if (ref.dsScheduleId() != null && dsProjectCode != null) {
-                        try {
-                            dolphinSchedulerClient.deleteSchedule(dsProjectCode, ref.dsScheduleId());
-                        } catch (Exception e) {
-                            logger.warn("删除项目时 DS 调度清理失败: projectId={}, dagId={}, scheduleId={}",
-                                    id, ref.dagId(), ref.dsScheduleId(), e);
-                        }
-                    }
-                    if (ref.dsProcessDefinitionCode() != null && dsProjectCode != null) {
-                        try {
-                            if ("ONLINE".equalsIgnoreCase(ref.releaseState())) {
-                                dolphinSchedulerClient.releaseWorkflow(dsProjectCode,
-                                        ref.dsProcessDefinitionCode(), ref.dagName(), "OFFLINE");
-                            }
-                            dolphinSchedulerClient.deleteWorkflow(dsProjectCode, ref.dsProcessDefinitionCode());
-                        } catch (Exception e) {
-                            logger.warn("删除项目时 DS 工作流清理失败: projectId={}, dagId={}, dsCode={}",
-                                    id, ref.dagId(), ref.dsProcessDefinitionCode(), e);
-                        }
-                    }
-                }
-                if (dsProjectCode != null) {
+                for (Long workflowId : workflowIds) {
                     try {
-                        dolphinSchedulerClient.deleteProject(dsProjectCode);
+                        powerJobWorkflowClient.deleteWorkflow(WORKER_APP_NAME, workflowId);
                     } catch (Exception e) {
-                        logger.warn("DS 项目清理失败: dagProjectId={}, dsCode={}", id, dsProjectCode, e);
+                        logger.warn("删除项目时 PowerJob 工作流清理失败: projectId={}, workflowId={}", id, workflowId, e);
                     }
                 }
             }
         });
     }
 
-    /** 删除项目时需要延后到事务提交后清理的 DS 侧引用快照 */
-    private record DagDsRef(Long dagId, String dagName, String releaseState,
-                            Long dsScheduleId, Long dsProcessDefinitionCode) {
-    }
+    /** DAG 相关节点 job 与工作流统一挂在 data-nest-worker App（appId=2） */
+    private static final String WORKER_APP_NAME = "data-nest-worker";
 
     /**
      * 经 alert-service 远程级联清理 DAG 的告警域数据：告警规则（PRD §7）、dag_alert_config、

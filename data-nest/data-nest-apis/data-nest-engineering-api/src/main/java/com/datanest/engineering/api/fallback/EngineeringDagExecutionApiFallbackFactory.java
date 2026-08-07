@@ -7,6 +7,7 @@ import com.datanest.engineering.api.dto.CleanupRequest;
 import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
 import com.datanest.engineering.api.dto.NodeExecutionBatchUpdateRequest;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
@@ -48,6 +49,11 @@ public class EngineeringDagExecutionApiFallbackFactory implements FallbackFactor
 
             @Override
             public Result<Long> createExecution(DagExecutionCreateRequest request) {
+                return Result.ok(null);
+            }
+
+            @Override
+            public Result<Long> ensureExecution(EnsureDagExecutionRequest request) {
                 return Result.ok(null);
             }
 

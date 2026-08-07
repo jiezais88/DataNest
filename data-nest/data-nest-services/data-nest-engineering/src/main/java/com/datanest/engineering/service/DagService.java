@@ -4,11 +4,13 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.alert.api.AlertApi;
-import com.datanest.engineering.config.DolphinSchedulerConfig;
+import com.datanest.common.scheduler.PJDag;
+import com.datanest.common.scheduler.PowerJobWorkflowClient;
 import com.datanest.engineering.dto.*;
 import com.datanest.governance.api.GovernanceDatasourceApi;
 import com.datanest.common.constant.AlertConstants;
@@ -35,7 +37,7 @@ import java.util.stream.Collectors;
  * DAG 核心服务
  * - CRUD（Project 内）
  * - 拓扑校验（环 + 孤立节点）
- * - 同步到 DS ProcessDefinition
+ * - 同步到 PowerJob Workflow（P3：替换 DS ProcessDefinition）
  * - 删除同步清理
  */
 @Service
@@ -43,14 +45,17 @@ public class DagService {
 
     private static final Logger logger = LoggerFactory.getLogger(DagService.class);
 
+    /** DAG 相关节点 job 与工作流统一挂在 data-nest-worker App（appId=2） */
+    private static final String WORKER_APP_NAME = "data-nest-worker";
+
     private final DagMapper dagMapper;
     private final DagNodeMapper dagNodeMapper;
     private final DagEdgeMapper dagEdgeMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
     private final DagTopologyService topologyService;
-    private final DolphinSchedulerClient dolphinSchedulerClient;
-    private final DagDsConverter dagDsConverter;
+    private final PowerJobWorkflowClient powerJobWorkflowClient;
+    private final DagPowerJobConverter dagPowerJobConverter;
     private final DagProjectService dagProjectService;   // 用于校验项目存在（暂不直接调，留接口）
     private final DagVersionService dagVersionService;
     private final SystemUserApi systemUserApi;
@@ -59,8 +64,8 @@ public class DagService {
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
-                      DagTopologyService topologyService, DolphinSchedulerClient dolphinSchedulerClient,
-                      DagDsConverter dagDsConverter, DagProjectService dagProjectService,
+                      DagTopologyService topologyService, PowerJobWorkflowClient powerJobWorkflowClient,
+                      DagPowerJobConverter dagPowerJobConverter, DagProjectService dagProjectService,
                       DagVersionService dagVersionService, SystemUserApi systemUserApi,
                       AlertApi alertApi,
                       GovernanceDatasourceApi governanceDatasourceApi) {
@@ -70,8 +75,8 @@ public class DagService {
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.topologyService = topologyService;
-        this.dolphinSchedulerClient = dolphinSchedulerClient;
-        this.dagDsConverter = dagDsConverter;
+        this.powerJobWorkflowClient = powerJobWorkflowClient;
+        this.dagPowerJobConverter = dagPowerJobConverter;
         this.dagProjectService = dagProjectService;
         this.dagVersionService = dagVersionService;
         this.systemUserApi = systemUserApi;
@@ -104,20 +109,19 @@ public class DagService {
         dag.setCreatedAt(LocalDateTime.now());
         dagMapper.insert(dag);
 
-        // 4. 保存节点 + 边（新建时无已有 code）
-        Map<String, Long> codeMap = saveNodesAndEdges(dag.getId(), payload, Map.of());
+        // 4. 保存节点 + 边（新建无旧节点，PowerJob 注册信息无需平移）
+        saveNodesAndEdges(dag.getId(), payload, null);
 
-        // 5. 同步到 DS（HTTP 调用不能放在 DB 事务里：事务提交后再同步，失败仅记日志，异步重试兜底）
-        //    新建时 payload 没有 id，但 DS task 的 httpBody 需要回传 dagId，因此先回填
+        // 5. 同步到 PowerJob（HTTP 调用不能放在 DB 事务里：事务提交后再同步，失败仅记日志，触发时懒注册兜底）
         Long dagId = dag.getId();
         payload.setId(dagId);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
-                    syncToDs(dagId, payload, codeMap);
+                    syncToScheduler(dagId);
                 } catch (Exception e) {
-                    logger.error("DAG 创建后同步 DS 异常（不影响已提交的 DB 数据）: dagId={}", dagId, e);
+                    logger.error("DAG 创建后同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}", dagId, e);
                 }
             }
         });
@@ -157,43 +161,48 @@ public class DagService {
         }
         existing.setUpdatedBy(currentUserId());
         existing.setUpdatedAt(LocalDateTime.now());
-        // 记录更新前的 DS 侧状态，用于提交后先下线再重新同步
-        boolean wasOnline = "ONLINE".equalsIgnoreCase(existing.getReleaseState());
-        Long dsProjectCode = existing.getDsProjectCode() == null
-                ? DolphinSchedulerConfig.DEFAULT_DS_PROJECT_CODE : existing.getDsProjectCode();
-        Long dsProcessDefinitionCode = existing.getDsProcessDefinitionCode();
-        String dagName = existing.getName();
         dagMapper.updateById(existing);
 
-        // 复用旧节点的 DS task code（节点重命名后保持不变）
-        Map<String, Long> existingCodeMap = dagNodeMapper.selectByDagId(id).stream()
-                .filter(n -> n.getNodeId() != null && n.getDsTaskCode() != null)
-                .collect(Collectors.toMap(DagNode::getNodeId, DagNode::getDsTaskCode, (a, b) -> a));
-
-        // 清空旧 nodes/edges 再插
+        // 清空旧 nodes/edges 再插。
+        // 先抓旧节点：保留节点的 powerjob_job_id / powerjob_node_id 按 nodeId 平移到新行（server 侧资源按 id 幂等更新），
+        // 被移除节点的 PowerJob 资源在事务提交后清理
+        List<DagNode> oldNodes = dagNodeMapper.selectByDagId(id);
+        Map<String, DagNode> oldNodeByNodeId = oldNodes.stream()
+                .collect(Collectors.toMap(DagNode::getNodeId, n -> n, (a, b) -> a));
+        Set<String> newNodeIds = payload.getNodes() == null ? Set.of()
+                : payload.getNodes().stream().map(DagNodePayload::getNodeId).collect(Collectors.toSet());
+        List<DagNode> removedNodes = oldNodes.stream()
+                .filter(n -> !newNodeIds.contains(n.getNodeId()))
+                .toList();
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
-        Map<String, Long> codeMap = saveNodesAndEdges(id, payload, existingCodeMap);
+        saveNodesAndEdges(id, payload, oldNodeByNodeId);
 
         // 生成版本快照（与 DB 更新在同一事务，失败则整体回滚）
         dagVersionService.createVersion(id);
 
-        // 重新同步到 DS（HTTP 调用不能放在 DB 事务里：提交后先下线旧定义，再全量同步）
+        // 重新同步到 PowerJob（HTTP 调用不能放在 DB 事务里：提交后全量覆盖式同步，
+        // PowerJob saveWorkflow 带 id 即整体更新，无需 DS 那样的先下线再更新）
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
-                    if (wasOnline && dsProcessDefinitionCode != null) {
-                        try {
-                            dolphinSchedulerClient.releaseWorkflow(dsProjectCode,
-                                    dsProcessDefinitionCode, dagName, "OFFLINE");
-                        } catch (Exception e) {
-                            logger.warn("DS 下线失败，继续同步: dagId={}", id, e);
-                        }
-                    }
-                    syncToDs(id, payload, codeMap);
+                    syncToScheduler(id);
                 } catch (Exception e) {
-                    logger.error("DAG 更新后同步 DS 异常（不影响已提交的 DB 数据）: dagId={}", id, e);
+                    logger.error("DAG 更新后同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}", id, e);
+                }
+                // 被移除节点的 PowerJob 节点 job 清理（工作流节点记录由 saveWorkflow 服务端自动物理删除；
+                // 同步失败时残留的 workflow_node_info 由下次成功同步兜底，job 清理失败仅记 warn 留待人工处理）
+                for (DagNode removed : removedNodes) {
+                    if (removed.getPowerjobJobId() == null) {
+                        continue;
+                    }
+                    try {
+                        powerJobWorkflowClient.deleteNodeJob(WORKER_APP_NAME, removed.getPowerjobJobId());
+                    } catch (Exception e) {
+                        logger.warn("清理被移除节点的 PowerJob job 失败（留待人工清理）: dagId={}, nodeId={}, jobId={}",
+                                id, removed.getNodeId(), removed.getPowerjobJobId(), e);
+                    }
                 }
             }
         });
@@ -219,12 +228,12 @@ public class DagService {
             throw new BusinessException(ErrorCode.DAG_REFERENCED,
                     "该 DAG 被子 DAG 节点引用，无法删除", referencingNames);
         }
-        // 先抓取 DS 侧信息，DB 提交后再做 DS 清理（HTTP 调用不能放在 DB 事务里）
-        Long dsProjectCode = dag.getDsProjectCode();
-        Long dsScheduleId = dag.getDsScheduleId();
-        Long dsProcessDefinitionCode = dag.getDsProcessDefinitionCode();
-        String releaseState = dag.getReleaseState();
-        String dagName = dag.getName();
+        // 先抓取 PowerJob 侧信息（工作流 ID + 各节点 jobId），DB 提交后再做清理（HTTP 调用不能放在 DB 事务里）
+        Long powerjobWorkflowId = dag.getPowerjobWorkflowId();
+        List<Long> nodeJobIds = dagNodeMapper.selectByDagId(id).stream()
+                .map(DagNode::getPowerjobJobId)
+                .filter(Objects::nonNull)
+                .toList();
 
         // 1. DB 清理：级联删除 execution 及 node_execution
         List<DagExecution> executions = dagExecutionMapper.selectByDagId(id);
@@ -252,37 +261,28 @@ public class DagService {
         // 原来同事务，现在接受最终一致——远程失败仅记 warn，不阻断主删除流程，残留由人工或后续补偿清理
         cleanupAlertData(id, executionIds);
 
-        // 2. DS 清理：事务提交后执行（先删定时调度，否则 schedule 孤儿会继续触发已删除的工作流；再下线 + 删除工作流）
-        //    补偿：DB 已提交不能回滚，DS 清理失败时记 error 日志并抛业务异常提示用户人工清理残留
+        // 2. PowerJob 清理：事务提交后删除工作流（cron 随工作流一并删除，无 DS 独立 schedule 概念）
+        //    补偿：DB 已提交不能回滚，清理失败时记 error 日志并抛业务异常提示用户人工清理残留
+        //    节点 job 是 server 侧独立资源，随工作流删除后逐个 deleteNodeJob（尽力而为，失败仅记 warn）
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                boolean failed = false;
-                if (dsScheduleId != null && dsProjectCode != null) {
+                if (powerjobWorkflowId != null) {
                     try {
-                        dolphinSchedulerClient.deleteSchedule(dsProjectCode, dsScheduleId);
+                        powerJobWorkflowClient.deleteWorkflow(WORKER_APP_NAME, powerjobWorkflowId);
                     } catch (Exception e) {
-                        failed = true;
-                        logger.error("DS 调度清理失败（DB 已删除，需人工清理 DS 残留）: dagId={}, scheduleId={}",
-                                id, dsScheduleId, e);
+                        logger.error("PowerJob 工作流清理失败（DB 已删除，需人工清理 PowerJob 残留）: dagId={}, workflowId={}",
+                                id, powerjobWorkflowId, e);
+                        throw new BusinessException(ErrorCode.DS_API_ERROR,
+                                "DAG 已删除，但 PowerJob 侧残留清理失败，请联系管理员人工清理");
                     }
                 }
-                if (dsProcessDefinitionCode != null && dsProjectCode != null) {
+                for (Long nodeJobId : nodeJobIds) {
                     try {
-                        if ("ONLINE".equalsIgnoreCase(releaseState)) {
-                            dolphinSchedulerClient.releaseWorkflow(dsProjectCode,
-                                    dsProcessDefinitionCode, dagName, "OFFLINE");
-                        }
-                        dolphinSchedulerClient.deleteWorkflow(dsProjectCode, dsProcessDefinitionCode);
+                        powerJobWorkflowClient.deleteNodeJob(WORKER_APP_NAME, nodeJobId);
                     } catch (Exception e) {
-                        failed = true;
-                        logger.error("DS 工作流清理失败（DB 已删除，需人工清理 DS 残留）: dagId={}, dsCode={}",
-                                id, dsProcessDefinitionCode, e);
+                        logger.warn("PowerJob 节点 job 清理失败（留待人工清理）: dagId={}, jobId={}", id, nodeJobId, e);
                     }
-                }
-                if (failed) {
-                    throw new BusinessException(ErrorCode.DS_API_ERROR,
-                            "DAG 已删除，但 DolphinScheduler 侧残留清理失败，请联系管理员人工清理");
                 }
             }
         });
@@ -356,97 +356,102 @@ public class DagService {
     }
 
     /**
-     * 同步 DataNest DAG 到 DS ProcessDefinition
-     * 1) 如已有 ds_process_definition_code：更新；否则创建
-     * 2) 发布 OFFLINE → ONLINE
-     * 3) 写回 ds_process_definition_code / release_state
+     * 同步 DataNest DAG 到 PowerJob Workflow（P3：替换 DS ProcessDefinition 同步）
+     * 1) 逐节点 saveNodeJob 注册/更新 WORKFLOW 类型的节点 job（dag_node.powerjob_job_id 有值带 id 更新，无则新建），回写
+     * 2) 逐节点 saveWorkflowNode 注册/更新 server 侧工作流节点记录（dag_node.powerjob_node_id 有值带 id 更新，无则新建），回写
+     *    同步子 DAG 节点为 NESTED_WORKFLOW 类型（nodeType=3），无独立 job，jobId 填子 DAG 的 powerjobWorkflowId
+     * 3) 装配 PJDag（Node.nodeId=powerjob_node_id，Edge from/to 同理）后 saveWorkflow
+     *    （已有 powerjob_workflow_id 则带 id 全量覆盖；CRON 配置随工作流一并下发；
+     *    server 端会物理删除本工作流下游离的 workflow_node_info，被移除节点的工作流节点记录随之清理）
+     * 4) 写回 powerjob_workflow_id / release_state
      *
-     * Sprint 3 改进（API 测试发现）：DS 同步失败不再回滚整个事务
-     * 理由：DS 端的格式校验（taskParams / taskDefinitionJson 格式）跟我们代码不同步时，
-     *       不应该让用户连 DAG 都创建不了。DAG 主数据先入 DB，DS 同步作为"尽力而为"的副作用。
-     *       后续通过 DagSyncService 异步重试同步。
+     * 懒注册：powerjob_workflow_id 为空的 DAG 在 trigger / 启停调度 / 编辑保存时走到本方法自动注册。
      *
-     * 注意：本方法含 DS HTTP 调用与 DB 写回，只能在事务提交后（afterCommit）以非事务方式调用，
+     * 沿用 DS 时代的容错语义（Sprint 3 改进）：同步失败不回滚事务、不向外抛错，
+     * DAG 主数据先入 DB，同步作为"尽力而为"的副作用，release_state=OFFLINE 由触发时重新同步兜底。
+     *
+     * 注意：本方法含 PowerJob HTTP 调用与 DB 写回，只能在事务提交后（afterCommit）以非事务方式调用，
      *       严禁在 @Transactional 方法内直接调用。
      */
-    private void syncToDs(Long dagId, DagPayload payload, Map<String, Long> codeMap) {
+    public void syncToScheduler(Long dagId) {
         Dag dag = dagMapper.selectById(dagId);
-        Long dsProjectCode = resolveDsProjectCode(dag);
-        if (dsProjectCode == null) {
-            logger.error("DS 工作流同步失败：DAG 项目不存在或缺少 dsProjectCode, dagId={}, projectId={}",
-                    dagId, dag.getProjectId());
-            dag.setReleaseState("OFFLINE");
-            dag.setUpdatedAt(LocalDateTime.now());
-            dagMapper.updateById(dag);
+        if (dag == null) {
+            logger.warn("PowerJob 工作流同步跳过：DAG 不存在（可能已删除）: dagId={}", dagId);
             return;
         }
-        List<DsTaskDefinition> taskDefs = dagDsConverter.toDsTaskDefinitions(payload, codeMap);
-        String locations = dagDsConverter.buildLocationsJson(payload, codeMap);
-        String relations = dagDsConverter.buildTaskRelationJson(payload, codeMap);
-        String globalParams = "[]";
-        Integer timeout = 0;
+        List<DagNode> nodes = dagNodeMapper.selectByDagId(dagId);
+        List<DagEdge> edges = dagEdgeMapper.selectByDagId(dagId);
 
-        Long newCode = null;
-        boolean isCreate = dag.getDsProcessDefinitionCode() == null;
+        Long newWorkflowId;
         try {
-            if (isCreate) {
-                newCode = dolphinSchedulerClient.createWorkflowDefinition(
-                        dsProjectCode, dag.getName(), dag.getName(),
-                        taskDefs, relations, locations, globalParams, "PARALLEL", timeout);
-            } else {
-                // DS 工作流处于 ONLINE 时不能直接更新，需要先 OFFLINE -> update -> ONLINE
-                dolphinSchedulerClient.releaseWorkflow(dsProjectCode, dag.getDsProcessDefinitionCode(), dag.getName(), "OFFLINE");
-                newCode = dolphinSchedulerClient.updateWorkflowDefinition(
-                        dsProjectCode, dag.getDsProcessDefinitionCode(), dag.getName(), dag.getName(),
-                        taskDefs, relations, locations, globalParams, "PARALLEL", timeout);
+            List<DagPowerJobConverter.NodeJobDef> defs = dagPowerJobConverter.toNodeJobDefs(dagId, nodes);
+            Map<Long, DagNode> nodeByPk = nodes.stream()
+                    .collect(Collectors.toMap(DagNode::getId, n -> n, (a, b) -> a));
+            for (DagPowerJobConverter.NodeJobDef def : defs) {
+                Long jobId;
+                if (def.nestedWorkflow()) {
+                    // 同步子 DAG：NESTED_WORKFLOW 节点无独立 job，jobId = 子 DAG 的 powerjobWorkflowId
+                    jobId = def.resolvedJobId();
+                } else {
+                    // ① 节点 job 注册/更新（powerjob_job_id 有值则带 id 更新，无则新建）
+                    jobId = powerJobWorkflowClient.saveNodeJob(WORKER_APP_NAME,
+                            def.powerjobJobId(), def.handler(), def.jobName(), def.jobParams());
+                }
+                // ② 工作流节点记录注册/更新（powerjob_node_id 有值则带 id 更新，无则新建）
+                Long pjNodeId = powerJobWorkflowClient.saveWorkflowNode(WORKER_APP_NAME, def.powerjobNodeId(),
+                        def.nestedWorkflow() ? DagPowerJobConverter.PJ_NODE_TYPE_NESTED_WORKFLOW
+                                : DagPowerJobConverter.PJ_NODE_TYPE_JOB,
+                        jobId, def.nodeName(), null, false);
+                // 节点类型由普通 job 改为同步子 DAG 时，清理遗留的旧节点 job 并清空 powerjob_job_id
+                Long writebackJobId = jobId;
+                if (def.nestedWorkflow()) {
+                    writebackJobId = null;
+                    if (def.powerjobJobId() != null) {
+                        try {
+                            powerJobWorkflowClient.deleteNodeJob(WORKER_APP_NAME, def.powerjobJobId());
+                        } catch (Exception e) {
+                            logger.warn("清理节点类型变更遗留的 PowerJob job 失败（留待人工清理）: dagId={}, nodeId={}, jobId={}",
+                                    dagId, def.nodeUuid(), def.powerjobJobId(), e);
+                        }
+                    }
+                }
+                // 回写 dag_node.powerjob_job_id / powerjob_node_id（显式 set 按主键定点更新，
+                // 既不覆盖 afterCommit 外的并发写，也支持嵌套节点把 powerjob_job_id 清空）
+                dagNodeMapper.update(null, new UpdateWrapper<DagNode>()
+                        .eq("id", def.dagNodeId())
+                        .set("powerjob_job_id", writebackJobId)
+                        .set("powerjob_node_id", pjNodeId));
+                // 同步到内存实体，供 buildWorkflowDag 装配 PJDag
+                DagNode node = nodeByPk.get(def.dagNodeId());
+                if (node != null) {
+                    node.setPowerjobJobId(writebackJobId);
+                    node.setPowerjobNodeId(pjNodeId);
+                }
             }
+            // ③ 装配 PJDag 并保存工作流（带 id 即全量覆盖更新；
+            //    server 端 validateAndConvert2String 会物理删除本工作流下游离的工作流节点记录）
+            PJDag pjDag = dagPowerJobConverter.buildWorkflowDag(nodes, edges, defs);
+            boolean isCron = "CRON".equalsIgnoreCase(dag.getTriggerType())
+                    && StringUtils.hasText(dag.getCronExpression());
+            // enable 语义对齐 P2 的 SchedulerClient：CRON 任务注册即带 cron，启停由 enable 控制；
+            // 非 CRON 工作流恒 enable（PowerJob 的 enable 只挡 cron 调度与失败重试，不挡 runWorkflow 手动触发）
+            boolean enable = !isCron || (dag.getScheduleEnabled() != null && dag.getScheduleEnabled() == 1);
+            newWorkflowId = powerJobWorkflowClient.saveWorkflow(WORKER_APP_NAME, dag.getPowerjobWorkflowId(),
+                    dag.getName(), isCron ? dag.getCronExpression() : null, enable, pjDag);
         } catch (Exception e) {
-            // 不抛异常：DS 同步失败不阻塞 DAG 创建；DAG 状态保持 OFFLINE，异步重试
-            logger.error("DS 工作流同步失败（不阻塞 DAG 创建）: dagId={}, dsProjectCode={}, err={}",
-                    dagId, dsProjectCode, e.getMessage());
-            dag.setDsProjectCode(dsProjectCode);
+            // 不抛异常：PowerJob 同步失败不阻塞 DAG 创建/更新；DAG 状态保持 OFFLINE，触发时懒注册重试
+            logger.error("PowerJob 工作流同步失败（不阻塞 DAG 保存）: dagId={}, err={}", dagId, e.getMessage(), e);
             dag.setReleaseState("OFFLINE");
             dag.setUpdatedAt(LocalDateTime.now());
             dagMapper.updateById(dag);
             return;
         }
 
-        // 发布到 ONLINE
-        try {
-            dolphinSchedulerClient.releaseWorkflow(dsProjectCode, newCode, dag.getName(), "ONLINE");
-        } catch (Exception e) {
-            logger.warn("DS 工作流发布失败: dagId={}, dsCode={}, err={}", dagId, newCode, e.getMessage());
-            // 发布失败：DB 标 OFFLINE，DS 端创建/更新但未上线
-            dag.setDsProjectCode(dsProjectCode);
-            dag.setDsProcessDefinitionCode(newCode);
-            dag.setReleaseState("OFFLINE");
-            dag.setUpdatedAt(LocalDateTime.now());
-            dagMapper.updateById(dag);
-            return;
-        }
-
-        dag.setDsProjectCode(dsProjectCode);
-        dag.setDsProcessDefinitionCode(newCode);
+        // ④ 写回工作流 ID 与发布状态
+        dag.setPowerjobWorkflowId(newWorkflowId);
         dag.setReleaseState("ONLINE");
-
-        // Sprint 3 AC-8/9：Cron DAG 同步 DS 调度
-        syncDsSchedule(dag, payload.getTriggerType(), payload.getCronExpression(),
-                Boolean.TRUE.equals(payload.getScheduleEnabled()), dsProjectCode, newCode);
-
         dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.updateById(dag);
-    }
-
-    /**
-     * 强制把当前 DB 中的 DAG 同步到 DS 并尝试上线。
-     * 用于触发前发现 release_state=OFFLINE 时自动修复，避免用户手动保存/发布。
-     */
-    public void syncToDs(Long dagId) {
-        DagPayload payload = getDetail(dagId);
-        Map<String, Long> codeMap = dagNodeMapper.selectByDagId(dagId).stream()
-                .filter(n -> n.getNodeId() != null && n.getDsTaskCode() != null)
-                .collect(Collectors.toMap(DagNode::getNodeId, DagNode::getDsTaskCode, (a, b) -> a));
-        syncToDs(dagId, payload, codeMap);
     }
 
     /**
@@ -480,86 +485,43 @@ public class DagService {
         dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.updateById(dag);
 
-        // DS 调度同步（HTTP 调用）放到事务提交后：避免 DB 回滚时 DS 侧产生孤儿 schedule
-        String triggerType = dag.getTriggerType();
-        String cronExpression = dag.getCronExpression();
-        Long dsProjectCode = dag.getDsProjectCode();
-        Long dsProcessDefinitionCode = dag.getDsProcessDefinitionCode();
+        // PowerJob 调度启停（HTTP 调用）放到事务提交后：避免 DB 回滚时调度侧状态与 DB 不一致
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
-                    // 重新读一行，避免用过期的内存实体回写覆盖提交后的数据
+                    // 重新读一行，避免用过期的内存实体
                     Dag fresh = dagMapper.selectById(id);
                     if (fresh == null) {
                         return;
                     }
-                    syncDsSchedule(fresh, triggerType, cronExpression, enabled, dsProjectCode, dsProcessDefinitionCode);
-                    // syncDsSchedule 会设置/清空 dsScheduleId，需要回写
-                    dagMapper.updateById(fresh);
+                    if (fresh.getPowerjobWorkflowId() == null) {
+                        // 懒注册：尚未同步过，走全量同步（saveWorkflow 会按 scheduleEnabled 带 cron + enable）
+                        syncToScheduler(id);
+                        return;
+                    }
+                    // 停调度=disableWorkflow（保留 workflowId）；启用=enableWorkflow（cron 已随 saveWorkflow 下发）
+                    if (enabled) {
+                        powerJobWorkflowClient.enableWorkflow(WORKER_APP_NAME, fresh.getPowerjobWorkflowId());
+                    } else {
+                        powerJobWorkflowClient.disableWorkflow(WORKER_APP_NAME, fresh.getPowerjobWorkflowId());
+                    }
                 } catch (Exception e) {
-                    logger.error("DAG 调度状态同步 DS 异常（不影响已提交的 DB 数据）: dagId={}, enabled={}", id, enabled, e);
+                    logger.error("DAG 调度状态同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}, enabled={}", id, enabled, e);
                 }
             }
         });
     }
 
-    /**
-     * 同步 DS 调度状态。
-     * - CRON + scheduleEnabled=true：创建/更新并上线 schedule
-     * - CRON + scheduleEnabled=false 或 非 CRON：删除已有 schedule
-     */
-    private void syncDsSchedule(Dag dag, String triggerType, String cronExpression,
-                                boolean scheduleEnabled, Long dsProjectCode, Long processDefinitionCode) {
-        boolean isCron = "CRON".equalsIgnoreCase(triggerType);
-        logger.info("开始同步 DS schedule: dagId={}, triggerType={}, scheduleEnabled={}, cronExpression={}, dsScheduleId={}, processDefinitionCode={}",
-                dag.getId(), triggerType, scheduleEnabled, cronExpression, dag.getDsScheduleId(), processDefinitionCode);
-        if (isCron && scheduleEnabled && StringUtils.hasText(cronExpression)) {
-            try {
-                String scheduleJson = buildDsScheduleJson(cronExpression);
-                logger.info("准备创建/更新 DS schedule: dagId={}, dsProjectCode={}, processDefinitionCode={}, scheduleJson={}",
-                        dag.getId(), dsProjectCode, processDefinitionCode, scheduleJson);
-                Long scheduleId = dolphinSchedulerClient.createOrUpdateSchedule(
-                        dsProjectCode, dag.getDsScheduleId(), processDefinitionCode, scheduleJson);
-                logger.info("DS schedule 创建/更新成功: dagId={}, scheduleId={}", dag.getId(), scheduleId);
-                dag.setDsScheduleId(scheduleId);
-            } catch (Exception e) {
-                logger.warn("DS 调度同步失败: dagId={}, cron={}", dag.getId(), cronExpression, e);
-            }
-        } else if (dag.getDsScheduleId() != null) {
-            try {
-                logger.info("准备删除 DS schedule: dagId={}, dsProjectCode={}, scheduleId={}",
-                        dag.getId(), dsProjectCode, dag.getDsScheduleId());
-                dolphinSchedulerClient.deleteSchedule(dsProjectCode, dag.getDsScheduleId());
-                logger.info("DS schedule 删除成功: dagId={}, scheduleId={}", dag.getId(), dag.getDsScheduleId());
-                dag.setDsScheduleId(null);
-            } catch (Exception e) {
-                logger.warn("DS 调度删除失败: dagId={}, scheduleId={}", dag.getId(), dag.getDsScheduleId(), e);
-            }
-        } else {
-            logger.info("无需同步 DS schedule: dagId={}, 非 CRON/未启用调度/无 cron 表达式且无已有 schedule", dag.getId());
-        }
-    }
-
-    private String buildDsScheduleJson(String cronExpression) {
-        // DS 3.4.2 schedule 格式：{"crontab":"...","startTime":"...","endTime":"...","timezoneId":"Asia/Shanghai"}
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime end = LocalDateTime.of(2099, 12, 31, 23, 59, 59);
-        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        return String.format(
-                "{\"crontab\":\"%s\",\"startTime\":\"%s\",\"endTime\":\"%s\",\"timezoneId\":\"Asia/Shanghai\"}",
-                cronExpression, fmt.format(now), fmt.format(end));
-    }
-
     // -------- helpers --------
 
     /**
-     * 保存节点和边，并生成/复用 DS task code。
-     * @return nodeId -> dsTaskCode 映射
+     * 保存节点和边（真正的批量插入，避免 N 次 round-trip）。
+     *
+     * @param oldNodeByNodeId 更新前的旧节点（nodeId → 旧行），用于把 powerjob_job_id / powerjob_node_id
+     *                        平移到新行（server 侧资源按 id 幂等更新）；新建 DAG 传 null
      */
-    private Map<String, Long> saveNodesAndEdges(Long dagId, DagPayload payload, Map<String, Long> existingCodeMap) {
-        Map<String, Long> codeMap = dagDsConverter.generateTaskCodes(payload, existingCodeMap);
-
+    private void saveNodesAndEdges(Long dagId, DagPayload payload, Map<String, DagNode> oldNodeByNodeId) {
         // Sprint 3 性能2：真正的批量插入，避免 N 次 round-trip
         if (payload.getNodes() != null && !payload.getNodes().isEmpty()) {
             List<DagNode> nodes = new ArrayList<>(payload.getNodes().size());
@@ -575,7 +537,12 @@ public class DagService {
                 node.setPositionX(np.getPositionX());
                 node.setPositionY(np.getPositionY());
                 node.setConfig(np.getConfig());
-                node.setDsTaskCode(codeMap.get(np.getNodeId()));
+                // 保留节点的 PowerJob 注册信息按 nodeId 平移（节点主键每次更新都会重建，注册 ID 不能丢）
+                DagNode old = oldNodeByNodeId == null ? null : oldNodeByNodeId.get(np.getNodeId());
+                if (old != null) {
+                    node.setPowerjobJobId(old.getPowerjobJobId());
+                    node.setPowerjobNodeId(old.getPowerjobNodeId());
+                }
                 node.setCreatedBy(uid);
                 node.setCreatedAt(now);
                 nodes.add(node);
@@ -599,7 +566,6 @@ public class DagService {
             }
             dagEdgeMapper.insertBatch(edges);
         }
-        return codeMap;
     }
 
     private void validateRequest(DagPayload payload) {
@@ -906,26 +872,6 @@ public class DagService {
      */
     private String buildSubDagRefPattern(Long subDagId) {
         return "\"subDagId\"\\s*:\\s*\\\"?" + subDagId + "\\\"?(?=[,}])";
-    }
-
-    /**
-     * 根据 DAG 的 projectId 解析对应的 DS project code。
-     * 优先使用 dag_project 表中的真实 ds_project_code，避免使用硬编码默认值。
-     */
-    private Long resolveDsProjectCode(Dag dag) {
-        if (dag == null || dag.getProjectId() == null) {
-            return null;
-        }
-        try {
-            DagProjectDTO project = dagProjectService.getById(dag.getProjectId());
-            if (project != null && project.getDsProjectCode() != null) {
-                return project.getDsProjectCode();
-            }
-        } catch (BusinessException e) {
-            logger.warn("DAG 所属项目不存在: projectId={}, err={}", dag.getProjectId(), e.getMessage());
-        }
-        // 兜底：兼容历史数据
-        return dag.getDsProjectCode() == null ? DolphinSchedulerConfig.DEFAULT_DS_PROJECT_CODE : dag.getDsProjectCode();
     }
 
     /**

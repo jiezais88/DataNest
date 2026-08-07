@@ -29,6 +29,9 @@ public class DagNodeInfo {
 
     private Long dsTaskCode;
 
+    /** PowerJob workflow_node_info 节点 ID（job 侧按它对齐 fetchWfInstanceInfo 返回的节点状态） */
+    private Long powerjobNodeId;
+
     private Long createdBy;
 
     private Long updatedBy;

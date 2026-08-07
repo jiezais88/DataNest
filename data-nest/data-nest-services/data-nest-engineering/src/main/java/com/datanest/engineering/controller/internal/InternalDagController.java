@@ -134,6 +134,7 @@ public class InternalDagController {
         info.setPositionY(entity.getPositionY());
         info.setConfig(entity.getConfig());
         info.setDsTaskCode(entity.getDsTaskCode());
+        info.setPowerjobNodeId(entity.getPowerjobNodeId());
         info.setCreatedBy(entity.getCreatedBy());
         info.setUpdatedBy(entity.getUpdatedBy());
         info.setCreatedAt(entity.getCreatedAt());

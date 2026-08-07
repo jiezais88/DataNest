@@ -18,6 +18,10 @@ public interface DagExecutionMapper extends BaseMapper<DagExecution> {
     @Select("SELECT * FROM dag_execution WHERE ds_process_instance_id = #{dsProcessInstanceId} LIMIT 1")
     DagExecution selectByDsProcessInstanceId(@Param("dsProcessInstanceId") Long dsProcessInstanceId);
 
+    /** P3：按 PowerJob 工作流实例 ID 反查执行记录（cron 触发补齐用） */
+    @Select("SELECT * FROM dag_execution WHERE powerjob_wf_instance_id = #{wfInstanceId} LIMIT 1")
+    DagExecution selectByPowerjobWfInstanceId(@Param("wfInstanceId") Long wfInstanceId);
+
     @Select("SELECT * FROM dag_execution WHERE status = 'RUNNING'")
     List<DagExecution> selectRunning();
 

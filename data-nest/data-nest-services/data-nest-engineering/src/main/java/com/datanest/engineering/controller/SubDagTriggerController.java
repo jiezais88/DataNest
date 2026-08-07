@@ -14,9 +14,10 @@ import java.util.Map;
 
 /**
  * 子 DAG 异步触发内部端点（Sprint 5）。
- * 由 DS HTTP 任务回调（DagDsConverter 将异步 SUB_DAG 节点映射为 HTTP 任务，URL 指向本端点）。
+ * P3：由 worker 的 dagSubDagAsyncHandler 调用（原 DS HTTP 任务回调已随 DS 下线废弃；
+ * DagDsConverter 不再使用，文件保留至 P4 统一清理）。
  * 决策 ADR-S3-008：内部接口不鉴权，依赖 Docker 网络隔离 + gateway 白名单。
- * 触发后父节点状态由 DagExecutionSyncService 轮询 DS 任务实例同步（HTTP 成功 → SUCCESS），
+ * 触发后父节点状态由 DagExecutionSyncService 轮询 PowerJob 工作流实例同步（节点 job 成功 → SUCCESS），
  * 因此本端点无需回写 node_execution。
  */
 @RestController
@@ -33,7 +34,7 @@ public class SubDagTriggerController {
 
     /**
      * 触发子 DAG 独立执行（不等待结果）。
-     * Body: { dagId, nodeId, subDagId, executionId }，executionId 为 DS 流程实例 ID。
+     * Body: { dagId, nodeId, subDagId }（P3 起不再携带 DS 流程实例 executionId）。
      */
     @PostMapping("/subdag/trigger")
     public Result<Map<String, Object>> triggerSubDag(@RequestBody Map<String, Object> body) {
@@ -63,8 +64,8 @@ public class SubDagTriggerController {
     }
 
     /**
-     * 本地异常处理：DS HTTP 任务只认 HTTP 状态码，触发失败必须返回非 2xx，
-     * 否则 DS 会误判父节点成功。
+     * 本地异常处理：调用方（worker dagSubDagAsyncHandler）按 HTTP 状态码判定成败，
+     * 触发失败必须返回非 2xx，否则会被误判为父节点成功。
      */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Result<Object>> handleBusinessException(BusinessException e) {

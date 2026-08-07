@@ -13,18 +13,28 @@ import com.datanest.common.model.PageResult;
 import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.DagEdgeInfo;
+import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
 import com.datanest.engineering.api.dto.NodeExecutionBatchUpdateRequest;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
 import com.datanest.engineering.api.dto.NodeLogAppendRequest;
+import com.datanest.engineering.entity.Dag;
+import com.datanest.engineering.entity.DagEdge;
 import com.datanest.engineering.entity.DagExecution;
+import com.datanest.engineering.entity.DagNode;
 import com.datanest.engineering.entity.NodeExecution;
 import com.datanest.engineering.entity.NodeExecutionLog;
+import com.datanest.engineering.mapper.DagEdgeMapper;
 import com.datanest.engineering.mapper.DagExecutionMapper;
+import com.datanest.engineering.mapper.DagMapper;
+import com.datanest.engineering.mapper.DagNodeMapper;
 import com.datanest.engineering.mapper.NodeExecutionLogMapper;
 import com.datanest.engineering.mapper.NodeExecutionMapper;
+import com.datanest.task.core.service.DagEdgeSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +44,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * DAG 执行记录域内部接口服务（engineering 归属表 dag_execution / node_execution / node_execution_log）。
@@ -57,15 +68,27 @@ public class InternalDagExecutionService {
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
     private final NodeExecutionLogMapper nodeExecutionLogMapper;
+    private final DagMapper dagMapper;
+    private final DagNodeMapper dagNodeMapper;
+    private final DagEdgeMapper dagEdgeMapper;
     private final AlertApi alertApi;
+
+    /** ensureExecutionByWfInstance 的进程内并发锁（按 wfInstanceId 双检，对齐原 worker 侧 EXECUTION_LOCKS 语义） */
+    private final Map<Long, Object> ensureExecutionLocks = new ConcurrentHashMap<>();
 
     public InternalDagExecutionService(DagExecutionMapper dagExecutionMapper,
                                        NodeExecutionMapper nodeExecutionMapper,
                                        NodeExecutionLogMapper nodeExecutionLogMapper,
+                                       DagMapper dagMapper,
+                                       DagNodeMapper dagNodeMapper,
+                                       DagEdgeMapper dagEdgeMapper,
                                        AlertApi alertApi) {
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.nodeExecutionLogMapper = nodeExecutionLogMapper;
+        this.dagMapper = dagMapper;
+        this.dagNodeMapper = dagNodeMapper;
+        this.dagEdgeMapper = dagEdgeMapper;
         this.alertApi = alertApi;
     }
 
@@ -124,6 +147,84 @@ public class InternalDagExecutionService {
     }
 
     /**
+     * P3：按 PowerJob 工作流实例补齐执行记录（POST /internal/dag/ensure-execution）。
+     * PowerJob cron 直接触发工作流时 DataNest 未显式 trigger，worker 节点 handler 处理首个节点前
+     * 经 Feign 调本方法：若该 wfInstanceId 已有 dag_execution 直接返回其 id；
+     * 否则创建 dag_execution（triggerType=SCHEDULED，status=RUNNING）+ 全量 WAITING node_execution。
+     * 语义对齐原 worker 侧 ensureDagExecution（DS 定时实例补齐），幂等并发控制用进程内按
+     * wfInstanceId 加锁双检（原 worker EXECUTION_LOCKS 同款）。
+     *
+     * @return dagExecutionId
+     */
+    @Transactional
+    public Long ensureExecutionByWfInstance(EnsureDagExecutionRequest request) {
+        if (request == null || request.getDagId() == null || request.getWfInstanceId() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "ensure-execution 缺少 dagId/wfInstanceId");
+        }
+        Long dagId = request.getDagId();
+        Long wfInstanceId = request.getWfInstanceId();
+        DagExecution existing = dagExecutionMapper.selectByPowerjobWfInstanceId(wfInstanceId);
+        if (existing != null) {
+            return existing.getId();
+        }
+        synchronized (ensureExecutionLocks.computeIfAbsent(wfInstanceId, k -> new Object())) {
+            existing = dagExecutionMapper.selectByPowerjobWfInstanceId(wfInstanceId);
+            if (existing != null) {
+                return existing.getId();
+            }
+            Dag dag = dagMapper.selectById(dagId);
+            if (dag == null) {
+                throw new BusinessException(ErrorCode.DAG_NOT_FOUND, "DAG 不存在: " + dagId);
+            }
+            LocalDateTime now = LocalDateTime.now();
+            DagExecution execution = new DagExecution();
+            execution.setDagId(dagId);
+            execution.setPowerjobWfInstanceId(wfInstanceId);
+            execution.setTriggerType("SCHEDULED");
+            execution.setStatus("RUNNING");
+            execution.setStartTime(now);
+            execution.setCreatedAt(now);
+            // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
+            execution.setEdgeSnapshot(DagEdgeSnapshot.capture(
+                    dagEdgeMapper.selectByDagId(dagId).stream().map(InternalDagExecutionService::toEdgeInfo).toList()));
+            try {
+                dagExecutionMapper.insert(execution);
+            } catch (DuplicateKeyException e) {
+                // uk_dag_execution_running 部分唯一索引触发：同 DAG 已有 RUNNING（并发 cron 实例或手动触发中）
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "DAG " + dagId + " 当前已有运行中的执行，定时实例执行记录补齐失败: wfInstanceId=" + wfInstanceId);
+            }
+
+            List<DagNode> dagNodes = dagNodeMapper.selectByDagId(dagId);
+            if (!dagNodes.isEmpty()) {
+                List<NodeExecution> nodes = new ArrayList<>(dagNodes.size());
+                for (DagNode dagNode : dagNodes) {
+                    NodeExecution node = new NodeExecution();
+                    node.setId(IdWorker.getId());
+                    node.setExecutionId(execution.getId());
+                    node.setNodeId(dagNode.getNodeId());
+                    node.setNodeName(dagNode.getNodeName());
+                    node.setNodeType(dagNode.getNodeType());
+                    node.setStatus("WAITING");
+                    nodes.add(node);
+                }
+                nodeExecutionMapper.insertBatch(nodes);
+            }
+            logger.info("为 PowerJob 定时实例补齐执行记录: dagId={}, wfInstanceId={}, executionId={}",
+                    dagId, wfInstanceId, execution.getId());
+            return execution.getId();
+        }
+    }
+
+    /** dag_edge 实体 → 边快照 DTO（DagEdgeSnapshot 只接收 DTO） */
+    private static DagEdgeInfo toEdgeInfo(DagEdge edge) {
+        DagEdgeInfo info = new DagEdgeInfo();
+        info.setSourceNodeId(edge.getSourceNodeId());
+        info.setTargetNodeId(edge.getTargetNodeId());
+        return info;
+    }
+
+    /**
      * 终态回写 + DAG 完成副作用：落库后在 engineering 进程内直接调 app-alert
      * 的 dagFinished（原 task-core DAG 完成监听器搬迁，RemoteCalls 容错降级，最终一致）。
      */
@@ -135,6 +236,9 @@ public class InternalDagExecutionService {
         execution.setStatus(request.getStatus());
         LocalDateTime endTime = request.getEndTime() != null ? request.getEndTime() : LocalDateTime.now();
         execution.setEndTime(endTime);
+        if (request.getErrorMessage() != null) {
+            execution.setErrorMessage(request.getErrorMessage());
+        }
         if (request.getDurationMs() != null) {
             execution.setDurationMs(request.getDurationMs());
         } else if (execution.getStartTime() != null) {
@@ -265,6 +369,7 @@ public class InternalDagExecutionService {
             entity.setVersion(item.getVersion());
             entity.setStatus(item.getStatus());
             entity.setDsTaskInstanceId(item.getDsTaskInstanceId());
+            entity.setPowerjobInstanceId(item.getPowerjobInstanceId());
             entity.setStartTime(item.getStartTime());
             entity.setEndTime(item.getEndTime());
             entity.setDurationMs(item.getDurationMs());
@@ -430,6 +535,7 @@ public class InternalDagExecutionService {
         info.setId(entity.getId());
         info.setDagId(entity.getDagId());
         info.setDsProcessInstanceId(entity.getDsProcessInstanceId());
+        info.setPowerjobWfInstanceId(entity.getPowerjobWfInstanceId());
         info.setTriggerType(entity.getTriggerType());
         info.setStatus(entity.getStatus());
         info.setStartTime(entity.getStartTime());
@@ -456,6 +562,7 @@ public class InternalDagExecutionService {
         info.setNodeType(entity.getNodeType());
         info.setStatus(entity.getStatus());
         info.setDsTaskInstanceId(entity.getDsTaskInstanceId());
+        info.setPowerjobInstanceId(entity.getPowerjobInstanceId());
         info.setSyncJobId(entity.getSyncJobId());
         info.setSyncJobHistoryId(entity.getSyncJobHistoryId());
         info.setStartTime(entity.getStartTime());

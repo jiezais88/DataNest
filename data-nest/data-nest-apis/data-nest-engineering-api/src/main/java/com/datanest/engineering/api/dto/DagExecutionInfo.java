@@ -16,6 +16,9 @@ public class DagExecutionInfo {
 
     private Long dsProcessInstanceId;
 
+    /** PowerJob 工作流实例 ID（替代 dsProcessInstanceId，切流后生效） */
+    private Long powerjobWfInstanceId;
+
     private String triggerType;
 
     private String status;

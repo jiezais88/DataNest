@@ -17,4 +17,7 @@ public class DagExecutionFinalizeRequest {
     private LocalDateTime endTime;
 
     private Long durationMs;
+
+    /** 失败原因（可空；P3 PowerJob 同步器收尾 FAILED 时携带） */
+    private String errorMessage;
 }

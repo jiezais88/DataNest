@@ -28,6 +28,9 @@ public class NodeExecutionBatchUpdateRequest {
 
         private Long dsTaskInstanceId;
 
+        /** PowerJob 任务实例 ID（替代 dsTaskInstanceId，切流后生效） */
+        private Long powerjobInstanceId;
+
         private LocalDateTime startTime;
 
         private LocalDateTime endTime;

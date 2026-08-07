@@ -6,6 +6,7 @@ import com.datanest.engineering.api.dto.CleanupRequest;
 import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
+import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
 import com.datanest.engineering.api.dto.NodeExecutionBatchUpdateRequest;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
@@ -46,6 +47,14 @@ public interface EngineeringDagExecutionApi {
     /** ensureDagExecution：插执行 + 批量插节点，一个事务，返回 execution id */
     @PostMapping("/dag-executions")
     Result<Long> createExecution(@RequestBody DagExecutionCreateRequest request);
+
+    /**
+     * P3：按 PowerJob 工作流实例补齐执行记录（worker 处理 cron 触发实例时调用）。
+     * 若该 wfInstanceId 已有 dag_execution 则直接返回其 id；否则创建（triggerType=SCHEDULED）
+     * 并预创建全量 WAITING node_execution，返回 dagExecutionId。
+     */
+    @PostMapping("/dag/ensure-execution")
+    Result<Long> ensureExecution(@RequestBody EnsureDagExecutionRequest request);
 
     /** 终态回写；服务端落库后触发 DAG 完成副作用（进程内 Feign 调 app-alert dagFinished） */
     @PostMapping("/dag-executions/{id}/finalize")

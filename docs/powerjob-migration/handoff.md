@@ -1,6 +1,6 @@
 # PowerJob 迁移 Handoff（XXL-JOB + DolphinScheduler → PowerJob 5.1.2）
 
-> **更新时间**：2026-08-07 | **阶段**：P0 Spike ✅ / P1 ✅ / **P2 XXL-JOB 替换 ✅（已上线验证）** → 待启动 P3（DS 替换）
+> **更新时间**：2026-08-07 | **阶段**：P0 ✅ / P1 ✅ / P2 XXL-JOB 替换 ✅ / **P3 DS 替换 ✅（DAG 链路已上线验证）** → 仅剩 P4 切流清理
 > **决策（用户已确认）**：① server 用官方镜像；② SchedulerClient 保持接口不变换实现（调用方零改动）；③ 与微服务重构串行（重构已全部完成，库已拆分为 datanest_system/alert/engineering/governance）。
 
 ## 0. 目标与范围
@@ -86,11 +86,38 @@
 - E2E `helpers/xxl.ts` 未重写（quality-checks/compliance/quality-alerts 三个 spec 依赖，E2E 任务时处理）。
 - 存量行 `xxl_job_id` 有值、`scheduler_job_id` 为 NULL → 视为未注册，触发时惰性重新注册（已验证无碍）。
 
-### P3 DS 替换（DAG 链路）
-- DagPowerJobConverter（节点→saveJob API 类型 + saveWorkflow PEWorkflowDAG）、worker 4 个节点 processor（调 DagNodeExecuteService 现有 handle*）、DagExecutionSyncService fetcher 换 fetchWfInstanceInfo、子 DAG NESTED_WORKFLOW、resolveExecution 补齐逻辑重写
+### P3 DS 替换（DAG 链路）（✅ 2026-08-07 完成并上线验证）
 
-### P4 切流清理
-- 停 middleware-ds-*/xxljob/zookeeper 容器、compose 清理（含 XXL env/depends_on 残留）、shared-xxljob.yaml 下线、ds_*/xxl_job_id 旧列清理脚本、文档全量更新（AGENTS.md/docs/agent 大量 DS/XXL 描述）
+**实现形态**：
+- common `PowerJobWorkflowClient`：saveNodeJob（支持按 id 更新）/saveWorkflowNode（addWorkflowNode 端点）/saveWorkflow/runWorkflow/fetchWfInstanceInfo/stopWfInstance/retryWfInstance/enable/disable/deleteWorkflow/deleteNodeJob。
+- **注册流四步**（DagService.syncToScheduler）：saveNodeJob（回写 dag_node.powerjob_job_id）→ saveWorkflowNode（回写 dag_node.powerjob_node_id，V1.2.0 新列）→ saveWorkflow（PJDag 的 Node.nodeId/Edge 全用 powerjob_node_id）→ 回写 powerjob_workflow_id。被移除节点 deleteNodeJob 清理；游离 workflow_node_info 由 server 自动物理删。
+- **worker 5 个节点 handler**（job/dag/ 包，PlatformJobHandler 路由）：dagSql/dagSync/dagPython/dagCondition/dagSubDagAsync。节点上下文：jobParams={dagId,nodeId,nodeType}；dagExecutionId 从 wfContext 读（见坑③），cron 触发缺失时经 Feign `ensureExecution`（engineering 新端点，按 powerjob_wf_instance_id 幂等补齐）。
+- **状态同步**（task-core DagExecutionSyncService 重写）：fetchWfInstanceInfo 一次拿全图；节点匹配链 = 快照 nodeId（workflow_node_info.id）→ DagNodeInfo.powerjobNodeId → node_execution；状态映射 5→SUCCESS/4→FAILED/9,10→TERMINATED/其余 RUNNING；wf 终态 3/4/10 后 WAITING→SKIPPED。存量 DS 执行一次性标 FAILED 兜底。
+- **trigger/stop/rerunFailed**：runWorkflow(initParams={"dagExecutionId":N}) / stopWfInstance / retryWfInstance（原执行就地续跑，不再新建执行记录；要求 workflow ENABLE）。
+- **懒注册**：trigger 时 release_state≠ONLINE **或 powerjobWorkflowId 为空** 都先同步（兼容 DS 时代存量 ONLINE DAG，见坑②）。
+
+**E2E 验收（2026-08-07，全部通过）**：
+- 单节点 SQL DAG（告警测试）：懒注册→执行 SUCCESS，wfInstanceId 回写，initParams 直取（无补齐路径调用）
+- 条件分支 DAG（E2E-条件节点多前驱）：A/B SQL SUCCESS → 条件C SUCCESS → 命中分支 D SUCCESS、未命中 E SKIPPED → 执行 SUCCESS
+- 重跑失败节点（重跑验收 DAG）：同 executionId 就地续跑，失败节点重跑（新时间戳）、成功节点保留未重跑——语义与 DS 的 startNodeList 等价
+- 未实测：stop（时序难捕捉，客户端方法已实测）、cron 触发 DAG（ensureExecution 补齐路径已在首轮验证中经过）、子 DAG 同步/异步（库中无 SUB_DAG 类型节点，需补测试夹具后验证）
+
+**P3 期踩坑（已修/已记）**：
+- ① **saveWorkflow 强制节点预注册**：dag.nodes[].nodeId 必须先经 `/openApi/addWorkflowNode` 落入 workflow_node_info 表，否则报 `can't find node info by id`；节点记录与 workflow 一经绑定不可复用到其他 workflow。
+- ② **存量 DAG 懒注册盲区**：DS 时代 release_state=ONLINE 但 powerjob_workflow_id=NULL，原懒注册条件只看 release_state 导致触发报「未同步」，已修为双条件。
+- ③ **wfContext 的 initParams 形态**：server 端 WorkflowInstanceManager 对合法 Map JSON 的 initParams**直接整体作为 wfContext**（dagExecutionId 是顶层 key），只有非 Map 时才包 `{"initParams":...}`——worker 侧两种形态都兼容（先读顶层 dagExecutionId，再回退 initParams key）。
+- ④ runWorkflow/fetchWfInstanceInfo 的 query param server 会正常解码（P2 的 instanceParams 问题是 RestTemplate String URL 模板展开双编码）；新 client 统一 URLEncoder 一次 + `postForEntity(URI,...)`。
+- ⑤ retryWfInstance 要求 workflow ENABLE（停调度的 DAG 不能重跑失败节点）；stopWfInstance 对已结束实例报 already stopped。
+- ⑥ `deleteJob`/`deleteWorkflow` 均为软删（status=99）；workflow_node_info 无 OpenAPI 删除接口，游离节点由 saveWorkflow 时 server 自动清理。
+
+### P4 切流清理（待做）
+- 停 middleware-ds-*/zookeeper 容器、compose 清理（含 XXL env/depends_on 残留、ds-* 服务与卷、mysql-connector jar 挂载、init-dolphinscheduler-db.sql/init-xxl-job 脚本挂载）
+- 删除 DS 侧死代码：DolphinSchedulerClient/DagDsConverter/DolphinSchedulerConfig/DagNodeCallbackController + worker 的 ensureDagExecution/resolveNodeExecution/getByDsInstance DS 链路 + EngineeringSubDagInternalApi 临时 Feign（需先在 engineering-api 落正式契约）
+- shared-dolphinscheduler.yaml / shared-xxljob.yaml 下线（Nacos 删 config_info 行 + 本地文件删除 + 各 application.yml 摘 import）
+- 旧列清理脚本：dag.ds_*/dag_node.ds_task_code/dag_execution.ds_process_instance_id/node_execution.ds_task_instance_id/dag_project.ds_project_code + 三表 xxl_job_id
+- ErrorCode.DS_API_ERROR 更名或保留（当前 PowerJob 错误也用它）
+- 文档全量更新：AGENTS.md（调度/容器/环境速查/已知坑大量 DS/XXL 描述）、docs/agent/architecture.md、README
+- E2E：`helpers/xxl.ts` 重写为 PowerJob client；补子 DAG 测试夹具验证 NESTED_WORKFLOW/dagSubDagAsyncHandler
 
 ## 4. 与微服务重构的协调（重构已全部完成）
 

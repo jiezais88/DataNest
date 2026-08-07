@@ -14,6 +14,7 @@ import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.DagInfo;
 import com.datanest.engineering.api.dto.DagNodeInfo;
+import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
 import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
 import com.datanest.engineering.api.dto.NodeLogAppendRequest;
@@ -100,14 +101,18 @@ public class DagNodeExecuteService {
         String rawSqlContent = stringOf(body.get("sqlContent"));
         Long dsProcessInstanceId = longOf(body.get("executionId"));
         Long dagId = longOf(body.get("dagId"));
+        // PowerJob 流程：handler 直传 dagExecutionId（initParams 或按 wfInstanceId 补齐），优先于 DS 反查
+        Long dagExecutionId = longOf(body.get("dagExecutionId"));
         if (nodeId == null || rawSqlContent == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / sqlContent");
         }
-        NodeExecutionLookup lookup = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
+        NodeExecutionLookup lookup = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId);
         if (lookup.nodeExecution == null) {
-            logger.warn("回调找不到对应 node_execution: nodeId={}, dsProcessInstanceId={}", nodeId, dsProcessInstanceId);
+            logger.warn("找不到对应 node_execution: nodeId={}, dagExecutionId={}, dsProcessInstanceId={}",
+                    nodeId, dagExecutionId, dsProcessInstanceId);
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
+                    "node execution not found: nodeId=" + nodeId + ", dagExecutionId=" + dagExecutionId
+                            + ", dsProcessInstanceId=" + dsProcessInstanceId);
         }
         NodeExecutionInfo ne = lookup.nodeExecution;
         // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行
@@ -291,12 +296,16 @@ public class DagNodeExecuteService {
 
         String lockToken = syncNodeMutexService.tryLock(syncJobId);
         try {
-            NodeExecutionLookup lookup = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
+            // PowerJob 流程：handler 直传 dagExecutionId，优先于 DS processInstanceId 反查
+            Long dagExecutionId = longOf(body.get("dagExecutionId"));
+            NodeExecutionLookup lookup = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId);
             if (lookup.nodeExecution == null) {
-                logger.warn("回调找不到对应 node_execution: nodeId={}, dsProcessInstanceId={}", nodeId, dsProcessInstanceId);
+                logger.warn("找不到对应 node_execution: nodeId={}, dagExecutionId={}, dsProcessInstanceId={}",
+                        nodeId, dagExecutionId, dsProcessInstanceId);
                 syncNodeMutexService.unlock(syncJobId, lockToken);
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                        "node execution not found: nodeId=" + nodeId + ", dsProcessInstanceId=" + dsProcessInstanceId);
+                        "node execution not found: nodeId=" + nodeId + ", dagExecutionId=" + dagExecutionId
+                                + ", dsProcessInstanceId=" + dsProcessInstanceId);
             }
             NodeExecutionInfo ne = lookup.nodeExecution;
             // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行（需释放锁）
@@ -342,8 +351,10 @@ public class DagNodeExecuteService {
         Long dagId = longOf(body.get("dagId"));
         Long dsProcessInstanceId = longOf(body.get("executionId"));
         String nodeId = stringOf(body.get("nodeId"));
-        if (dagId == null || dsProcessInstanceId == null || nodeId == null) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 dagId / executionId / nodeId");
+        // PowerJob 流程：dagExecutionId 直传（initParams / wfInstanceId 补齐），与 executionId 二选一
+        Long dagExecutionId = longOf(body.get("dagExecutionId"));
+        if (dagId == null || nodeId == null || (dsProcessInstanceId == null && dagExecutionId == null)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 dagId / nodeId / executionId(或 dagExecutionId)");
         }
 
         DagNodeInfo node = getDagNode(dagId, nodeId);
@@ -356,7 +367,7 @@ public class DagNodeExecuteService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Python 脚本为空: " + nodeId);
         }
 
-        NodeExecutionInfo ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
+        NodeExecutionInfo ne = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
         }
@@ -456,11 +467,13 @@ public class DagNodeExecuteService {
         String nodeId = stringOf(body.get("nodeId"));
         Long dagId = longOf(body.get("dagId"));
         Long dsProcessInstanceId = longOf(body.get("executionId"));
-        if (nodeId == null || dagId == null || dsProcessInstanceId == null) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / dagId / executionId");
+        // PowerJob 流程：dagExecutionId 直传（initParams / wfInstanceId 补齐），与 executionId 二选一
+        Long dagExecutionId = longOf(body.get("dagExecutionId"));
+        if (nodeId == null || dagId == null || (dsProcessInstanceId == null && dagExecutionId == null)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / dagId / executionId(或 dagExecutionId)");
         }
 
-        NodeExecutionInfo ne = resolveNodeExecution(nodeId, dagId, dsProcessInstanceId).nodeExecution;
+        NodeExecutionInfo ne = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
         }
@@ -707,6 +720,54 @@ public class DagNodeExecuteService {
 
 
     /**
+     * 节点执行记录定位：dagExecutionId 非空（PowerJob 流程，initParams 直给或按 wfInstanceId 补齐后直传）
+     * 时按执行记录直查节点；为空时回退 DS processInstanceId 反查/自动补齐（旧 HTTP 回调链路，P4 随 DS 清理）。
+     */
+    private NodeExecutionLookup resolveLookup(String nodeId, Long dagId, Long dsProcessInstanceId, Long dagExecutionId) {
+        if (dagExecutionId == null) {
+            return resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
+        }
+        NodeExecutionInfo ne = listExecutionNodes(dagExecutionId).stream()
+                .filter(n -> nodeId.equals(n.getNodeId()))
+                .findFirst().orElse(null);
+        return new NodeExecutionLookup(ne);
+    }
+
+    /**
+     * PowerJob cron 触发场景：initParams 无 dagExecutionId 时，按 wfInstanceId 调 engineering
+     * ensure-execution 端点补齐 dag_execution + 全量 WAITING node_execution（服务端按
+     * powerjob_wf_instance_id 列幂等，按 wfInstanceId 双检加锁），返回执行记录 id。
+     * fail-fast：端点不可达/降级返回空直接抛错，节点执行可见失败（对齐 ensureDagExecution 语义）。
+     *
+     * @return execution id；wfInstanceId 为空时返回 null
+     */
+    public Long ensureExecutionByWfInstance(Long dagId, Long wfInstanceId) {
+        if (wfInstanceId == null) {
+            return null;
+        }
+        EnsureDagExecutionRequest request = new EnsureDagExecutionRequest();
+        request.setDagId(dagId);
+        request.setWfInstanceId(wfInstanceId);
+        Long executionId;
+        try {
+            Result<Long> result = dagExecutionApi.ensureExecution(request);
+            executionId = result == null ? null : result.data();
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "按 wfInstanceId 补齐执行记录失败（engineering 不可达）: dagId=" + dagId
+                            + ", wfInstanceId=" + wfInstanceId + ": " + e.getMessage(), e);
+        }
+        if (executionId == null) {
+            // 熔断降级（fallback 返回空 data）
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "按 wfInstanceId 补齐执行记录失败: dagId=" + dagId + ", wfInstanceId=" + wfInstanceId);
+        }
+        logger.info("按 wfInstanceId 补齐执行记录: dagId={}, wfInstanceId={}, executionId={}",
+                dagId, wfInstanceId, executionId);
+        return executionId;
+    }
+
+    /**
      * 通过 DS processInstanceId 反查 dag_execution，再按 nodeId 查 node_execution。
      * 若 DS 是定时调度直接触发（DataNest 未显式 trigger），则自动补齐 dag_execution 与 node_execution。
      */
@@ -729,11 +790,15 @@ public class DagNodeExecuteService {
     }
 
     /**
-     * DS 定时调度直接触发时自动补齐 dag_execution + 全量 WAITING node_execution。
+     * 旧 DS 回调链路：DS 定时直接触发时自动补齐 dag_execution + 全量 WAITING node_execution。
      * 创建经 POST /dag-executions（engineering 端一个事务插执行 + 批量插节点），
-     * fail-fast：创建失败（含熔断降级、并发唯一索引冲突）直接抛错，节点回调可见失败。
+     * fail-fast：创建失败（含熔断降级、并发唯一索引冲突）直接抛错，节点执行可见失败。
+     * <p>
+     * 仅服务 DS 链路（processInstanceId 承载在 dag_execution.ds_process_instance_id 列）；
+     * PowerJob 链路已改走 ensure-execution 端点（见 {@link #ensureExecutionByWfInstance}），
+     * 本方法随 DS 清理（P4）一并下线。
      *
-     * @return execution id；DAG 不存在时返回 null（沿用原语义，回调报 node execution not found）
+     * @return execution id；DAG 不存在时返回 null（沿用原语义，节点执行报 node execution not found）
      */
     private Long ensureDagExecution(Long dagId, Long dsProcessInstanceId) {
         DagExecutionInfo existing = getExecutionByDsInstance(dsProcessInstanceId);

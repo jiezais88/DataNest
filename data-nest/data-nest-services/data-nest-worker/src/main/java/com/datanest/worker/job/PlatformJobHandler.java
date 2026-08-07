@@ -1,5 +1,8 @@
 package com.datanest.worker.job;
 
+import org.springframework.util.StringUtils;
+import tech.powerjob.worker.core.processor.TaskContext;
+
 /**
  * 平台任务处理器统一接口（PowerJob 迁移后替换 @XxlJob handler）。
  * <p>
@@ -23,4 +26,15 @@ public interface PlatformJobHandler {
      * @param param 执行参数（sync/collect 逗号分隔、quality 冒号分隔或 rule: 前缀）
      */
     void execute(String param);
+
+    /**
+     * 带完整上下文执行（P3 新增）：DAG 节点 handler 需要 workflowContext
+     * （取 initParams 中的 dagExecutionId / wfInstanceId），覆盖本方法。
+     * 默认实现保持原 param 语义：instanceParams 非空优先，否则 jobParams。
+     */
+    default void execute(TaskContext context) {
+        String param = StringUtils.hasText(context.getInstanceParams())
+                ? context.getInstanceParams() : context.getJobParams();
+        execute(param);
+    }
 }

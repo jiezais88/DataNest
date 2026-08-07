@@ -16,12 +16,14 @@ public interface DagNodeMapper extends BaseMapper<DagNode> {
     List<DagNode> selectByDagId(@Param("dagId") Long dagId);
 
     /**
-     * Sprint 3 性能优化：真正的批量插入
+     * Sprint 3 性能优化：真正的批量插入。
+     * P3：ds_task_code 不再写入（DS 下线），改为写入 powerjob_job_id / powerjob_node_id
+     * （更新时按 nodeId 从旧行平移，实现 server 侧资源按 id 幂等更新）。
      */
     @Insert("<script>" +
-            "INSERT INTO dag_node (id, dag_id, node_id, node_name, node_type, position_x, position_y, config, ds_task_code, created_by, updated_by, created_at, updated_at) VALUES " +
+            "INSERT INTO dag_node (id, dag_id, node_id, node_name, node_type, position_x, position_y, config, powerjob_job_id, powerjob_node_id, created_by, updated_by, created_at, updated_at) VALUES " +
             "<foreach collection='list' item='item' separator=','>" +
-            "(#{item.id}, #{item.dagId}, #{item.nodeId}, #{item.nodeName}, #{item.nodeType}, #{item.positionX}, #{item.positionY}, #{item.config}, #{item.dsTaskCode}, #{item.createdBy}, #{item.updatedBy}, #{item.createdAt}, #{item.updatedAt})" +
+            "(#{item.id}, #{item.dagId}, #{item.nodeId}, #{item.nodeName}, #{item.nodeType}, #{item.positionX}, #{item.positionY}, #{item.config}, #{item.powerjobJobId}, #{item.powerjobNodeId}, #{item.createdBy}, #{item.updatedBy}, #{item.createdAt}, #{item.updatedAt})" +
             "</foreach>" +
             "</script>")
     int insertBatch(@Param("list") List<DagNode> list);
