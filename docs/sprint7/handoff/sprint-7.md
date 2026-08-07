@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-06 | **阶段**：F1 后端已完成（curl 自测通过）→ 待 F1 前端/E2E 或并行启动 F2
+> **更新时间**：2026-08-07 | **阶段**：F1 前端+联调已完成（自动化冒烟全绿）→ 待 F1 E2E 或并行启动 F2
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -17,7 +17,7 @@
 | Sprint 7 PRD                             | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-PRD.md`（v1.0）                                                |
 | Sprint 7 技术设计                        | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-技术文档.md`（v1.0，含 4 个技术决策 D1~D4）                     |
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
-| **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | 🔄 后端完成 | 后端 ✅（2026-08-06，curl 自测通过，见 §6.1）；前端 3 页 + E2E 待后续会话                |
+| **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 前端完成 | 后端 ✅ + 前端 3 页 ✅（2026-08-07，联调冒烟全绿，见 §6.1）；E2E 待后续会话                |
 | **F2 任务模板库**（DD-09）               | ⏳ 未开始 | 前后端+测试闭环（见 §6.2）                                                                     |
 | **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
@@ -51,6 +51,7 @@
 | 文档/产物                                                             | 变更说明                                                                                              |
 |------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
 | **F1 后端实现（2026-08-06，本段为开发阶段新增）**                      | 见下方「F1 后端变更明细」                                                                             |
+| **F1 前端实现（2026-08-07）**                                       | 见 §6.1「前端」+「F1 前端偏差记录」：新增 `pages/assets/`（首页/详情/分类维护 + AssetTree/assetColumns/3 弹窗 + AssetLineageTab）、`types/asset.ts`、`api/asset.ts`；路由定为 `/asset-catalog`（nginx 冲突改名）；governance `MetadataService` 2 处补丁 |
 | `docs/sprint7/DataNest-Sprint7-PRD.md`（新增）                        | Sprint 7 数据资产目录产品文档 v1.0（12 章，对齐 Sprint6 PRD 范本；复用 vs 新增边界经代码核验）        |
 | `docs/sprint7/DataNest-Sprint7-技术文档.md`（新增）                   | Sprint 7 技术设计文档 v1.0（11 章，含 4 个技术决策、数据模型、接口、实现清单）；v1.1 补充 Python 数据拉取方案 B（通用连接注入） |
 | `docs/sprint7/handoff/sprint-7.md`（新增）                            | 本 Handoff                                                                                            |
@@ -131,16 +132,27 @@
 - [x] **全量重建并部署** app-system（Flyway V3.8.0 ✅）+ governance/engineering/worker/job，全部 healthy，镜像时间戳已确认
 - [x] curl 自测全过：分类 CRUD/树、4007/4008/4009/4010 校验、四维搜索命中与 score 排序（前缀 120>表名 100>注释 60>字段 40>负责人 20）、质量分/健康度/负责人名/数据源回填、browse 分页/sort=score/未分类、改名级联（交易域→交易→改回均一致）、删除引用拦截 + 无引用可删、无 token 1004
 
-**前端**（⏳ 待后续会话）
-- [ ] `Sidebar.tsx` 新增「数据资产」顶级入口（ALL_ROLES）+ `router/index.tsx` 新增 `/assets`、`/assets/:tableId`
-- [ ] 数据资产首页（大搜索框 + 分类树 + 资产卡片流，复用 `QualityScoreBadge`/`DsStatusBadge`/`Pagination`）
-- [ ] 资产详情页四页签（基础信息/字段/血缘/质量；血缘页签复用 `getLineageGraph` + 精简 ReactFlow，不改造现有 `LineageGraphPage`）
-- [ ] 分类体系维护 + 表分配分类/负责人
+**前端**（✅ 全部完成，2026-08-07 联调冒烟全绿）
+- [x] `Sidebar.tsx` 新增「数据资产」组（数据资产 ALL_ROLES + 分类体系 GOVERNANCE_WRITE_ROLES）+ `router/index.tsx` 新增 `/asset-catalog`、`/asset-catalog/:tableId`、`/asset-catalog/classification`
+- [x] 数据资产首页（左树右表：分类树 + 搜索/浏览双态表格，复用 `QualityScoreBadge`/`DsStatusBadge`/`Pagination`/`usePagedList`）
+- [x] 资产详情页四页签（基础信息/字段/血缘/质量，懒加载；血缘页签复用 `getLineageGraph` + 精简 ReactFlow 自绘 `AssetLineageTab`，不改造现有 `LineageGraphPage`）
+- [x] 分类体系维护页（分类树 CRUD + 改名级联刷新 + 表分配分类/负责人/移出 + 批量分配弹窗循环单表 PUT）
+- [x] 新增 `src/types/asset.ts` + `src/api/asset.ts`（8 端点封装）；`types/metadata.ts` 补 `dataDomain/dataTopic/ownerUserId/ownerName`
 
-**测试**（后端自测 ✅ / E2E ⏳）
+**F1 前端偏差记录（2026-08-07，均已确认或属后端限制）**
+- **路由改名 `/assets` → `/asset-catalog`**（用户确认）：nginx `location /assets/` 是 Vite 静态产物目录，SPA 路由同名会 301/404；PRD/技术文档已同步。
+- **树节点计数未做**：后端无分类计数接口，原型计数徽章降级，总数看表格 footer「共 N 条」。
+- **健康度筛选未做**：search/browse 均无 healthLevel 参数，F1 仅数据源筛选（浏览态走后端 `datasourceId`，搜索态 200 条内存过滤）。
+- **后端补丁 2 处**（governance `MetadataService.applyUsernameNames`）：① `getTable` 详情接口补 `ownerName` 回填（原只 search/browse DTO 回填）；② 修存量 NPE——`usernames()` 返回 immutable map，自动采集的表 `created_by/updated_by/owner_user_id` 全 null 时 `get(null)` 抛 NPE（products 详情 500），三处均判空。已重建 app-governance。
+- **批量分配无后端接口**：前端循环调单表 `PUT /tables/{id}/classification`，部分失败汇总提示。
+- **负责人候选人 = 已填邮箱用户**（复用 `/system/users/with-email`，与告警接收人同数据源）；无邮箱用户暂不可选为负责人。
+- 部署：本地 `pnpm build` → 重建 app-frontend；重建 app-governance。全部 healthy。
+
+**测试**（后端自测 ✅ / 联调 ✅ / E2E ⏳）
 - [x] 后端 Postman/curl 自测：`/assets/search`、分类 CRUD、分配分类/负责人、改名级联、删除校验（见上）
+- [x] 前端联调冒烟（临时 Playwright 脚本，用完即删）：首页浏览/树过滤/未分类/搜索、详情四页签（字段 8 行、血缘 2 节点 1 边、质量渲染）、分类新增/删除、分配/清除分类、配置/清除负责人、批量分配+移出还原、删除被引用分类 4009 拦截——全绿无控制台错误，种子数据已还原
 - [ ] 新建 `e2e/sprint7/e2e/asset-catalog.spec.ts`（搜索→详情→分类 主链路）
-- [ ] F1 全块闭环后 §2 看板置 ✅（当前标 🔄）
+- [ ] F1 全块闭环后 §2 看板置 ✅（E2E 完成后）
 
 ---
 

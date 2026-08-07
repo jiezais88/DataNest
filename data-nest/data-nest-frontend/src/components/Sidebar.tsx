@@ -9,6 +9,7 @@ import {
     HiOutlineBellAlert,
     HiOutlineCheckBadge,
     HiOutlineCheckCircle,
+    HiOutlineCircleStack,
     HiOutlineClipboardDocumentCheck,
     HiOutlineClipboardDocumentList,
     HiOutlineClock,
@@ -19,6 +20,7 @@ import {
     HiOutlineServer,
     HiOutlineShieldCheck,
     HiOutlineTableCells,
+    HiOutlineTag,
     HiOutlineUsers,
 } from 'react-icons/hi2';
 
@@ -61,6 +63,23 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 path: '/engineering/dags',
                 icon: <HiOutlineFolderOpen size={18}/>,
                 roles: ALL_ROLES
+            },
+        ],
+    },
+    {
+        group: '数据资产',
+        items: [
+            {
+                label: '数据资产',
+                path: '/asset-catalog',
+                icon: <HiOutlineCircleStack size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: '分类体系',
+                path: '/asset-catalog/classification',
+                icon: <HiOutlineTag size={18}/>,
+                roles: GOVERNANCE_WRITE_ROLES
             },
         ],
     },

@@ -115,6 +115,8 @@ docker compose up -d --no-deps app-engineering app-worker
 ### 注意
 
 - 构建后检查镜像时间戳，确认用了新 jar（遇到过 buildkit 缓存未更新的情况）。
+- **前端部署必须两步**：`app-frontend` 的 Dockerfile 只 `COPY dist/`（不在镜像内构建），改前端代码后必须先本地 `pnpm build` 再 `docker compose build app-frontend && up -d`，否则镜像里是旧产物。
+- **前端顶级路由不得与静态目录 `assets/` 同名**（nginx `location /assets/` 是 Vite 产物长缓存目录）：Sprint 7 资产目录路由因此用 `/asset-catalog`。新增顶级路由前先对照 `data-nest-frontend/nginx.conf`。
 - 只改动单一服务时，只重建该服务即可，不必全部重启。
 - worker 镜像基于 `wgzhao/addax:6.0.11` 多阶段构建，首次构建会下载 Addax 二进制。
 

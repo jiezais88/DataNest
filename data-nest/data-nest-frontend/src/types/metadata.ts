@@ -12,6 +12,11 @@ export interface MetadataTable {
     datasourceName?: string;
     datasourceType?: string;
     lastCollectHistoryId?: string;
+    /** Sprint 7 F1 资产目录：分类（数据域/主题，冗余存名称）与负责人 */
+    dataDomain?: string;
+    dataTopic?: string;
+    ownerUserId?: string;
+    ownerName?: string;
     /** Sprint 4 来源字段：SYNC / SQL / PYTHON 任务自动注册的表会带回来源 DAG/节点 */
     sourceType?: string;
     taskSourceType?: string;

@@ -398,14 +398,18 @@ public class MetadataService {
             return;
         }
         List<Long> userIds = tables.stream()
-                .flatMap(t -> Stream.of(t.getCreatedBy(), t.getUpdatedBy()))
+                .flatMap(t -> Stream.of(t.getCreatedBy(), t.getUpdatedBy(), t.getOwnerUserId()))
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
         Map<Long, String> usernameMap = usernames(userIds);
         for (MetadataTable table : tables) {
-            table.setCreatedByName(usernameMap.get(table.getCreatedBy()));
-            table.setUpdatedByName(usernameMap.get(table.getUpdatedBy()));
+            // 注意 usernames() 返回 immutable map，get(null) 会 NPE；created_by/updated_by/owner_user_id
+            // 对自动采集的表均可为 null，三处都必须判空（2026-08-07 联调踩：metadata_table 全 null 行 500）
+            table.setCreatedByName(table.getCreatedBy() == null ? null : usernameMap.get(table.getCreatedBy()));
+            table.setUpdatedByName(table.getUpdatedBy() == null ? null : usernameMap.get(table.getUpdatedBy()));
+            // Sprint 7 F1：表负责人名回填（资产详情页头部/基础信息展示）
+            table.setOwnerName(table.getOwnerUserId() == null ? null : usernameMap.get(table.getOwnerUserId()));
         }
     }
 

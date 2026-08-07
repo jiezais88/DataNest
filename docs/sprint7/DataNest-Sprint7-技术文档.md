@@ -30,7 +30,7 @@ Sprint 7 让数据分析师拥有一站式数据资产发现入口：在现有�
 用户确认资产目录 P0 五项复用现有 governance 模块扩展实现，不新建独立 `catalog-service`。
 
 - **后端**：新增 `AssetCatalogController`/`AssetCatalogService` 于 `data-nest-governance`（复用 `metadata_table`、血缘、质量评分能力）。
-- **前端**：新增「数据资产」顶级菜单，独立路由 `/assets`（首页搜索）+ `/assets/:tableId`（详情页）。
+- **前端**：新增「数据资产」顶级菜单，独立路由 `/asset-catalog`（首页搜索）+ `/asset-catalog/:tableId`（详情页）。> 注：原设计为 `/assets`，因与 nginx 静态资源目录 `/assets/`（Vite 构建产物）冲突改为 `/asset-catalog`（2026-08-07 联调确认）。
 - **依赖方向**：仅新增 governance 侧 Controller/Service 与 task-core-entity 共享实体字段扩展，不引入新模块。
 
 ### D-D2：血缘嵌入 → 复用数据 API + 精简渲染，保留独立血缘页
@@ -73,7 +73,7 @@ Sprint 7 让数据分析师拥有一站式数据资产发现入口：在现有�
 ```
 数据资产（分析师视角，复用治理能力）
   ├── DC-01 数据搜索：/assets/search 多维命中 + 相关度排序 + 质量回填
-  ├── DC-02 数据详情页：/assets/:tableId 页签聚合（基础信息/字段/血缘/质量）
+  ├── DC-02 数据详情页：/asset-catalog/:tableId 页签聚合（基础信息/字段/血缘/质量）
   ├── DC-03 血缘嵌入：复用 getLineageGraph + 精简渲染
   ├── DC-04 质量展示：复用 quality_score + quality_check_detail
   └── DC-05 分类浏览：asset_classification（数据域→主题两级） + metadata_table 分类字段
@@ -349,7 +349,7 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 | # | 事项 | 说明 | 状态 |
 |---|------|------|------|
 | B1 | Python 质量规则数据拉取 | ✅ 已消解（方案 B）：`PythonExecutor` 连接注入层从 Doris 专用抽象为通用连接注入（`conn.json`），沙箱 helper 增 `read_table(table, where, limit)` 按数据源 type 选驱动（pymysql/psycopg2/cx_Oracle）；不再用 `GenericSqlExecutor`（5s 超时+200 行截断不适合） | 明确 |
-| B2 | 资产详情页路由与元数据详情页关系 | `/assets/:tableId` 独立路由，需确认与现有 `/governance/metadata?tableId=` 的双入口展示差异 | 明确（并存） |
+| B2 | 资产详情页路由与元数据详情页关系 | `/asset-catalog/:tableId` 独立路由（原 `/assets` 与 nginx 静态目录冲突已改名），需确认与现有 `/governance/metadata?tableId=` 的双入口展示差异 | 明确（并存） |
 | B3 | 分类体系删除校验 SQL | 删除分类时按 `data_domain`/`data_topic` 匹配 `metadata_table` 引用 | 明确 |
 | B4 | 任务模板 config_template JSON 结构 | 同步/SQL/导出/采集四类任务的 config_template 具体字段占位 | 待实现细化 |
 
@@ -371,7 +371,7 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 ### 前端
 
 - [ ] `Sidebar.tsx` 新增「数据资产」顶级入口（ALL_ROLES）+「任务模板」（ENGINEERING_WRITE_ROLES）
-- [ ] `router/index.tsx` 新增 `/assets`（数据资产首页）、`/assets/:tableId`（详情页）、`/engineering/task-templates`
+- [ ] `router/index.tsx` 新增 `/asset-catalog`（数据资产首页）、`/asset-catalog/:tableId`（详情页）、`/engineering/task-templates`
 - [ ] 数据资产首页（大搜索框 + 分类树 + 资产卡片流，复用 `QualityScoreBadge`）
 - [ ] 资产详情页（基础信息/字段/血缘/质量四页签；血缘页签复用 `getLineageGraph` + 精简 ReactFlow）
 - [ ] 分类体系维护（治理员）、表分配分类/负责人
@@ -385,7 +385,7 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 | 验收项 | 落地位置 |
 |--------|----------|
 | AC-1 资产搜索 | `/assets/search` 多维命中 + 相关度排序 + < 2s |
-| AC-2 资产详情页 | `/assets/:tableId` 页签聚合 + < 3s |
+| AC-2 资产详情页 | `/asset-catalog/:tableId` 页签聚合 + < 3s |
 | AC-3 血缘嵌入 | 详情页血缘页签复用 `getLineageGraph` + 空态 |
 | AC-4 质量评分联动 | 详情页质量页签复用 `quality_score` + `quality_check_detail` |
 | AC-5 分类浏览 | `asset_classification` + `metadata_table` 分类字段 + 分类树浏览 |
