@@ -34,6 +34,8 @@
         <flyway.version>10.22.0</flyway.version>
         <fastjson2.version>2.0.52</fastjson2.version>
         <commons-pool2.version>2.12.0</commons-pool2.version>
+        <!-- springdoc 3.x 线适配 Spring Boot 4（2.x 线仅支持 Boot 3；Knife4j 4.5.0 未适配 Boot 4 未采用） -->
+        <springdoc.version>3.0.2</springdoc.version>
     </properties>
 
     <dependencyManagement>
@@ -128,6 +130,18 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-pool2</artifactId>
                 <version>${commons-pool2.version}</version>
+            </dependency>
+
+            <!-- springdoc OpenAPI（接口文档；webmvc 供业务服务，webflux-ui 供网关聚合页） -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+                <version>${springdoc.version}</version>
             </dependency>
 
             <!-- DataNest Common -->

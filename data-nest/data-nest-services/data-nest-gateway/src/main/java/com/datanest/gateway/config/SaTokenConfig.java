@@ -38,7 +38,15 @@ public class SaTokenConfig {
                         // 决策 ADR-S3-012：DS 回调内部接口走 gateway，不鉴权
                         // 决策 ADR-S3-008：依赖 Docker 网络隔离（datanest-net）
                         "/api/engineering/dev/internal/**",
-                        "/api/worker/dev/internal/**"
+                        "/api/worker/dev/internal/**",
+                        // 接口文档（springdoc 聚合页 + 各服务 OpenAPI JSON）：文档资源匿名可读，
+                        // 业务接口调试仍需用户在 swagger-ui 配置 Authorization 头（sa-token 保护不变）
+                        "/swagger-ui.html",
+                        "/swagger-ui/**",
+                        "/webjars/**",
+                        "/v3/api-docs/**",
+                        "/api/*/v3/api-docs/**",
+                        "/favicon.ico"
                 )
                 .setAuth(obj -> {
                     SaRouter.match("/**", StpUtil::checkLogin);

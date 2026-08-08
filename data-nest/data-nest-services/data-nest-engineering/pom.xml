@@ -181,6 +181,11 @@
             <artifactId>data-nest-system-api</artifactId>
         </dependency>
 
+        <!-- springdoc OpenAPI 接口文档（Boot 4 线；网关聚合页按服务切换） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

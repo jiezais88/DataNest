@@ -3,6 +3,7 @@ server:
   servlet:
     context-path: /governance
 
+
 spring:
   application:
     name: data-nest-governance
@@ -31,5 +32,9 @@ spring:
 
 
 datanest:
+  # 接口文档（springdoc，common DocsAutoConfiguration 读取；网关聚合页在线调试用前缀）
+  docs:
+    title: DataNest 数据治理服务 API（元数据/质量/血缘/资产目录/采集）
+    gateway-prefix: /api/governance
   governance:
     worker-appname: data-nest-worker

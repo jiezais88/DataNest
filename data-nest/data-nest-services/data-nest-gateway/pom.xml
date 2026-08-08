@@ -81,6 +81,12 @@
             <artifactId>fastjson2-extension</artifactId>
         </dependency>
 
+        <!-- springdoc WebFlux UI：托管聚合文档页 /swagger-ui.html（springdoc 3.x 适配 Boot 4） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

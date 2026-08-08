@@ -1,3 +1,4 @@
 com.datanest.common.config.CommonExceptionAutoConfiguration
+com.datanest.common.config.DocsAutoConfiguration
 com.datanest.common.jackson.JacksonConfig
 com.datanest.common.satoken.SaTokenCommonAutoConfiguration

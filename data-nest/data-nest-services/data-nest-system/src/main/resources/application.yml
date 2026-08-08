@@ -3,6 +3,13 @@ server:
   servlet:
     context-path: /system
 
+
+# 接口文档（springdoc，common DocsAutoConfiguration 读取；网关聚合页在线调试用前缀）
+datanest:
+  docs:
+    title: DataNest 系统服务 API（认证/用户/权限）
+    gateway-prefix: /api/system
+
 spring:
   application:
     name: data-nest-system

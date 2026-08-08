@@ -3,6 +3,7 @@ server:
   servlet:
     context-path: /alert
 
+
 spring:
   application:
     name: data-nest-alert
@@ -41,5 +42,9 @@ spring:
       mail.smtp.starttls.enable: true
 
 datanest:
+  # 接口文档（springdoc，common DocsAutoConfiguration 读取；网关聚合页在线调试用前缀）
+  docs:
+    title: DataNest 告警服务 API（告警规则/历史/DAG 告警）
+    gateway-prefix: /api/alert
   alert:
     enabled: ${ALERT_ENABLED:false}

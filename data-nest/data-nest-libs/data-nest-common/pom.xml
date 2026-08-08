@@ -72,6 +72,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- springdoc OpenAPI（provided，仅编译 DocsAutoConfiguration；业务服务按需显式引入） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
