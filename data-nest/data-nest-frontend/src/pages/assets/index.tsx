@@ -238,6 +238,8 @@ export default function AssetsPage() {
                 title: '操作',
                 key: 'action',
                 width: COL.OPERATION_2,
+                // 列总宽超过卡片时横向滚动，操作列钉在右侧
+                fixed: 'right' as const,
                 render: (_: unknown, r: AssetSearchItem) => (
                     <div className="flex items-center gap-ds-1">
                         <Tooltip title="配置负责人">
@@ -380,6 +382,7 @@ export default function AssetsPage() {
                             dataSource={tableData}
                             loading={loading}
                             pagination={false}
+                            scroll={{x: 1280}}
                             className="prototype-table prototype-table-flush"
                             onRow={(r) => ({
                                 onClick: () => openDetail(r.tableId),

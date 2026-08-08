@@ -14,7 +14,7 @@ Sprint 7 让数据分析师拥有一站式数据资产发现入口：在现有�
 
 1. **资产目录 P0 五项**（DC-01 数据搜索 / DC-02 数据详情页 / DC-03 血缘嵌入 / DC-04 质量评分展示 / DC-05 数据分类浏览）
 2. **NG5 子 DAG 参数下发**（主→子单向下发）
-3. **DD-09 任务模板库**（同步/SQL/导出/采集，区别于质量规则模板库）
+3. **DD-09 任务模板库**（同步/采集，区别于质量规则模板库；SQL/导出经 2026-08-08 用户确认本期不做）
 4. **DG-10 自定义质量规则增强**（新增 Python 规则类型 + 强化自定义 SQL）
 
 > **资产目录复用 governance 扩展实现，不新建独立 catalog-service**（用户确认）。直接消费现有 `metadata_table`/`metadata_column`、血缘 `getLineageGraph`、`quality_score` 表与质量检查结果能力。
@@ -91,10 +91,10 @@ Sprint 7 让数据分析师拥有一站式数据资产发现入口：在现有�
 
 ```
 任务模板 task_template（数据开发侧，区别于质量规则模板 quality_rule_template）
-  ├── 类型：SYNC 数据同步 / SQL SQL转换 / EXPORT 数据导出 / COLLECT 采集
-  ├── 来源：builtin 内置（平台预置，禁删）/ custom 自定义（用户将任务存为模板）
+  ├── 类型：SYNC 数据同步 / COLLECT 采集（2026-08-08 用户确认收敛：SQL 无独立任务实体仅为 DAG 节点类型、EXPORT 平台不存在，本期不做）
+  ├── 来源：builtin 内置（平台预置，禁改禁删）/ custom 自定义（用户将任务存为模板）
   └── config_template：JSON 模板含占位符 {source_table}/{target_db}/{schedule_cron} 等
-        一键创建 → 填充占位符 → 生成对应类型任务草稿
+        一键创建 → 填充占位符 → 生成对应类型任务草稿（SYNC 本地落 sync_job；COLLECT 经 governance 内部端点落 collect_task）
 ```
 
 ### 2.4 质量规则增强
@@ -113,6 +113,7 @@ Sprint 7 让数据分析师拥有一站式数据资产发现入口：在现有�
 ### 3.0 迁移脚本
 
 - Flyway 最新脚本编号 **`V3.7.1`**（compliance_check_ignore），本 Sprint 新脚本从 **`V3.8.0`** 起，放在 `data-nest-system/src/main/resources/db/migration/`。
+- **修订（2026-08-08，微服务化拆库后）**：F1 的 V3.8.0 为拆库前落点；自 F2 起按域落库——task_template 脚本为 engineering 库 `V1.5.0__sprint7_task_template.sql`（见 §3.2），后续 governance 域脚本（如 F4 质量扩展）落 governance 库对应版本号。
 - 迁移脚本统一**紧凑单行风格**，改动 `quality_rule_template.type` 的 CHECK 约束需 drop 重建（对齐 Sprint 6 V3.6.6 做法）。
 
 ### 3.1 `V3.8.0__sprint7_asset_catalog.sql`：资产目录分类 + 表扩展
@@ -140,18 +141,20 @@ Sprint 7 让数据分析师拥有一站式数据资产发现入口：在现有�
 
 > **冗余存名称**：分类浏览按名称匹配、资产卡片直接展示，避免每次 join 分类表；分类体系维护（增删改）时需同步校验 `metadata_table` 引用（PRD §7）。
 
-### 3.2 `V3.8.1__sprint7_task_template.sql`：任务模板库（DD-09）
+### 3.2 任务模板库（DD-09）：`task_template` 表
+
+> **落点修订（2026-08-08）**：按微服务化拆库约定，脚本为 `data-nest-engineering/src/main/resources/db/migration/V1.5.0__sprint7_task_template.sql`（engineering 库，不再用 V3.8.1/data-nest-system 路径）；同脚本播种 3 条内置模板（整表同步 / 增量同步（每日）/ 元数据全量采集，id 为 91 开头固定值，created_by=NULL 前端展示「系统」）。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | BIGINT PK | Snowflake |
 | name | VARCHAR(100) | 模板名称（唯一） |
-| type | VARCHAR(20) | `SYNC` 数据同步 / `SQL` SQL转换 / `EXPORT` 数据导出 / `COLLECT` 采集 |
-| category | VARCHAR(20) | `BUILTIN` 内置（禁删可复制）/ `CUSTOM` 自定义 |
+| type | VARCHAR(20) | `SYNC` 数据同步 / `COLLECT` 采集（服务层白名单校验，不加 DB CHECK，便于后续扩展类型） |
+| category | VARCHAR(20) | `BUILTIN` 内置（禁改禁删）/ `CUSTOM` 自定义 |
 | description | VARCHAR(500) | 模板说明 |
-| config_template | TEXT | JSON 模板，含占位符 `{source_table}`/`{target_db}`/`{schedule_cron}` 等 |
+| config_template | TEXT | JSON 模板：`{"placeholders":[{key,label,required,valueType,defaultValue}],"config":{对应类型创建请求，字符串值含 {key} 占位符}}`（B4 已定稿，2026-08-08） |
 | enabled | SMALLINT | 是否启用 |
-| created_by / updated_by / created_at / updated_at | - | 审计 |
+| created_by / updated_by / created_at / updated_at | - | 审计（updated_at 无 DB 默认值） |
 
 > 索引：`idx(type)`、`uk(name)`。与 `quality_rule_template`（质量规则模板）**完全独立**，两者对象、字段、落地表不同。
 
@@ -248,10 +251,12 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 
 ### 4.5 任务模板库（DD-09）
 
-- **内置模板**：平台预置（同步/SQL/导出/采集），`category=BUILTIN`，禁删可复制。
-- **自定义模板**：用户把已配置好的任务保存为模板（`category=CUSTOM`）。
-- **一键创建**：选模板 → 填占位符（`{source_table}`/`{target_db}`/`{schedule_cron}` 等）→ 校验必填占位符已填充（PRD R6）→ 生成对应类型任务草稿（同步任务 `sync_job`/SQL 任务等）→ 进入任务编辑/调度。
-- **删除**：模板被删除不影响已创建任务（快照式），删除模板仅校验无独占引用。
+> **类型范围收敛（2026-08-08 用户确认）**：仅 SYNC / COLLECT 两类（SQL 无独立任务实体仅为 DAG 节点类型、EXPORT 平台不存在，本期不做）。
+
+- **内置模板**：平台预置 3 条（整表同步 / 增量同步（每日）/ 元数据全量采集），`category=BUILTIN`，禁改禁删，可复制为自定义后修改（前端打开新增弹窗预填，无独立 copy 端点）。
+- **自定义模板**：用户把已配置好的任务保存为模板（`category=CUSTOM`，`POST /` 带 `sourceTaskId` 从任务另存为：SYNC 读本地 sync_job、COLLECT 经 `CollectWriteApi.getTask` 远程读；配置原样保留，单表 SYNC 的源表与 CRON 表达自动占位化为 `{source_table}`/`{schedule_cron}`）。
+- **一键创建**：选模板 → 填占位符（`valueType=DATASOURCE` 的渲染数据源下拉）→ 校验 config 中出现的占位符全部有值（用户填写优先，其次模板 `defaultValue`，否则 7305，PRD R6）→ 文本替换后反序列化为对应类型创建请求并手动触发 Bean Validation → SYNC 本地复用 `SyncJobService.create` 落 `sync_job`；COLLECT 经 `CollectWriteApi.createTask`（新增内部端点 `POST /governance/internal/collect/tasks`，createdBy 显式传入，fail-closed 异常传播）落 `collect_task` → 进入任务编辑/调度。
+- **删除**：模板被删除不影响已创建任务（快照式，任务不回引模板，无引用校验）；内置 7304 禁删。
 
 ### 4.6 Python 质量规则（DG-10）
 
@@ -288,11 +293,13 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
-| GET | `/` | 模板列表（含内置，按 type/category 过滤） | 超管/工程师 |
-| POST | `/` | 新增自定义模板（含从任务另存为） | 超管/工程师 |
-| PUT | `/{id}` | 编辑自定义模板 | 超管/工程师 |
-| DELETE | `/{id}` | 删除自定义模板（内置禁删） | 超管/工程师 |
-| POST | `/{id}/create-task` | 从模板一键创建任务（填占位符） | 超管/工程师 |
+| GET | `/` | 模板列表（含内置，按 type/category 过滤，createdByName 经 system-api 批量回填） | 超管/工程师 |
+| POST | `/` | 新增自定义模板（`sourceTaskId` 非空时从任务另存为：SYNC 本地读 / COLLECT 远程读） | 超管/工程师 |
+| PUT | `/{id}` | 编辑自定义模板（内置 7304 禁改；type 不可变更） | 超管/工程师 |
+| DELETE | `/{id}` | 删除自定义模板（内置 7304 禁删；快照式无引用校验） | 超管/工程师 |
+| POST | `/{id}/create-task` | 从模板一键创建任务（填占位符；COLLECT 经 `CollectWriteApi.createTask` 远程落 collect_task） | 超管/工程师 |
+
+> 配套内部端点（governance）：`POST /governance/internal/collect/tasks`（`CollectWriteApi.createTask`，Sprint 7 DD-09 新增，createdBy 显式传入）。错误码 7301~7307（common ErrorCode「Task template errors」段）。
 
 ### 5.3 质量规则增强（沿用 `QualityTemplateController`/`QualityRuleController`）
 
@@ -351,7 +358,7 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 | B1 | Python 质量规则数据拉取 | ✅ 已消解（方案 B）：`PythonExecutor` 连接注入层从 Doris 专用抽象为通用连接注入（`conn.json`），沙箱 helper 增 `read_table(table, where, limit)` 按数据源 type 选驱动（pymysql/psycopg2/cx_Oracle）；不再用 `GenericSqlExecutor`（5s 超时+200 行截断不适合） | 明确 |
 | B2 | 资产详情页路由与元数据详情页关系 | `/asset-catalog/:tableId` 独立路由（原 `/assets` 与 nginx 静态目录冲突已改名），需确认与现有 `/governance/metadata?tableId=` 的双入口展示差异 | 明确（并存） |
 | B3 | 分类体系删除校验 SQL | 删除分类时按 `data_domain`/`data_topic` 匹配 `metadata_table` 引用 | 明确 |
-| B4 | 任务模板 config_template JSON 结构 | 同步/SQL/导出/采集四类任务的 config_template 具体字段占位 | 待实现细化 |
+| B4 | 任务模板 config_template JSON 结构 | ✅ 已消解（2026-08-08 定稿）：`{"placeholders":[{key,label,required,valueType(TEXT/DATASOURCE),defaultValue}],"config":{对应类型创建请求，字符串值含 {key} 占位符}}`；类型范围同步收敛为 SYNC/COLLECT | 明确 |
 
 ---
 
@@ -359,10 +366,10 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 
 ### 后端
 
-- [ ] Flyway `V3.8.0`（asset_classification + metadata_table 分类/负责人字段）、`V3.8.1`（task_template）、`V3.8.2`（quality 类型扩展 PYTHON + python_script/python_template）
+- [ ] Flyway `V3.8.0`（asset_classification + metadata_table 分类/负责人字段，拆库前落于 data-nest-system）、engineering `V1.5.0`（task_template，拆库后按域落 engineering 库）、`V3.8.2`（quality 类型扩展 PYTHON + python_script/python_template）
 - [ ] task-core-entity：`MetadataTable` 加 `dataDomain`/`dataTopic`/`ownerUserId`；新增 `AssetClassification` entity/mapper；`SubDagNodeConfig` 加 `paramMappings`
 - [ ] governance `AssetCatalogService` + `AssetCatalogController`（§5.1）+ `AssetSearchItemDTO`/`AssetBrowseDTO`
-- [ ] engineering `TaskTemplateService` + `TaskTemplateController`（§5.2）+ `TaskTemplateCreateRequest`
+- [ ] engineering `TaskTemplateService` + `TaskTemplateController`（§5.2）+ DTO×4；governance-api `CollectWriteApi.createTask` + governance 内部端点（COLLECT 一键创建跨服务落地）；common `ErrorCode` 7301~7307
 - [ ] governance 质量增强：`QualityTemplateController`/`QualityRuleController` 支持 PYTHON；`QualityCheckService` PYTHON 执行链路（§4.6）
 - [ ] task-core `PythonExecutor` 改造（方案 B）：连接注入层从 Doris 写死抽象为通用连接注入（`conn.json`）+ 沙箱 helper 增 `read_table`（保留 `read_doris_table`/`write_doris_table` 供 DAG 节点向后兼容）
 - [ ] worker 镜像：预装 Python 数据源驱动（pymysql/psycopg2/cx_Oracle，按需）

@@ -470,7 +470,7 @@
       <div class="page-head">
         <div>
           <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-clipboard"/></svg>任务模板库</h1>
-          <div class="head-sub">常用数据开发任务模板，从模板一键创建任务。区别于「质量规则模板库」——本库面向同步 / SQL / 导出任务。</div>
+          <div class="head-sub">常用数据开发任务模板，从模板一键创建任务。区别于「质量规则模板库」——本库面向同步 / 采集任务（SQL/导出本期不做）。</div>
         </div>
         <button class="btn btn-primary" onclick="openModal('modal-new-template')"><svg class="hi"><use href="#i-plus"/></svg>新增自定义模板</button>
       </div>
@@ -480,8 +480,7 @@
           <div class="segmented">
             <span class="seg-item active">全部</span>
             <span class="seg-item">同步任务</span>
-            <span class="seg-item">SQL 任务</span>
-            <span class="seg-item">数据导出</span>
+            <span class="seg-item">采集任务</span>
           </div>
           <div class="actions"><span class="text-small">内置 3 · 自定义 2</span></div>
         </div>
@@ -489,11 +488,11 @@
           <table class="ant-table">
             <thead class="ant-table-thead"><tr><th style="width:180px">模板名称</th><th style="width:90px">类型</th><th style="width:70px">来源</th><th>说明</th><th style="width:130px">占位参数</th><th style="width:80px">状态</th><th style="width:90px">创建人</th><th style="width:170px">创建时间</th><th style="width:120px;text-align:center">操作</th></tr></thead>
             <tbody class="ant-table-tbody">
-              <tr><td><span class="cell-strong">数据同步</span></td><td><span class="mono-badge">SYNC</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">源→目标整表 / 增量同步，含字段映射占位符</td><td class="mono cell-muted">{source_table} {target_db}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm" onclick="openModal('modal-create-sync')"><svg class="hi-sm"><use href="#i-play"/></svg>一键创建</button></td></tr>
-              <tr><td><span class="cell-strong">参数化 SQL 转换</span></td><td><span class="mono-badge">SQL</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">读 Doris / MySQL 执行 SQL 转换，结果写目标表</td><td class="mono cell-muted">{biz_date} {sql}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
-              <tr><td><span class="cell-strong">数据导出</span></td><td><span class="mono-badge">EXPORT</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">按 SQL 导出 CSV / Excel 到指定位置</td><td class="mono cell-muted">{cron} {path}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">整表同步</span></td><td><span class="mono-badge">SYNC</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">源→目标整表同步，含数据源/库表占位符</td><td class="mono cell-muted">{source_datasource} {source_table} {target_db}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm" onclick="openModal('modal-create-sync')"><svg class="hi-sm"><use href="#i-play"/></svg>一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">增量同步（每日）</span></td><td><span class="mono-badge">SYNC</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">按增量字段每日定时同步，含调度 Cron 占位符</td><td class="mono cell-muted">{incremental_field} {schedule_cron}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">元数据全量采集</span></td><td><span class="mono-badge">COLLECT</span></td><td><span class="badge badge-accent">内置</span></td><td class="cell-muted">从源库全量采集元数据（库/表/字段）到数据治理</td><td class="mono cell-muted">{datasource} {scope}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>系统</td><td class="cell-muted">2026-08-01 10:00</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
               <tr><td><span class="cell-strong">订单表每日同步</span></td><td><span class="mono-badge">SYNC</span></td><td><span class="badge badge-neutral">自定义</span></td><td class="cell-muted">张三保存：订单相关表整表同步 + 增量字段 + 每日 02:00</td><td class="mono cell-muted">{source_table} {schedule_cron}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>张三</td><td class="cell-muted">2026-08-03 14:22</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
-              <tr><td><span class="cell-strong">GMV 汇总刷新</span></td><td><span class="mono-badge">SQL</span></td><td><span class="badge badge-neutral">自定义</span></td><td class="cell-muted">李四保存：刷新 ads_gmv 汇总 SQL，每日 03:00</td><td class="mono cell-muted">{biz_date}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>李四</td><td class="cell-muted">2026-08-04 09:40</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
+              <tr><td><span class="cell-strong">业务库元数据采集</span></td><td><span class="mono-badge">COLLECT</span></td><td><span class="badge badge-neutral">自定义</span></td><td class="cell-muted">李四保存：业务 Postgres 库每周全量采集，周一 03:00</td><td class="mono cell-muted">{datasource} {scope}</td><td><span class="badge badge-success"><span class="dot"></span>启用</span></td><td>李四</td><td class="cell-muted">2026-08-04 09:40</td><td style="text-align:center"><button class="btn btn-primary btn-sm">一键创建</button></td></tr>
             </tbody>
           </table>
         </div>
@@ -513,7 +512,7 @@
 
   <div class="modal-mask" id="modal-create-sync" style="display:none">
     <div class="modal" style="width:520px">
-      <div class="modal-head"><span class="ttl">从模板创建：数据同步</span><button class="hi-icon-btn" onclick="closeModal('modal-create-sync')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+      <div class="modal-head"><span class="ttl">从模板创建：整表同步</span><button class="hi-icon-btn" onclick="closeModal('modal-create-sync')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
       <div class="modal-body">
         <div class="form-item"><div class="fi-label">任务名称 <span class="req">*</span></div><input class="form-input" placeholder="如：dwd_orders 每日同步"></div>
         <div class="form-item"><div class="fi-label">源表 <span class="req">*</span> <span class="text-small" style="font-weight:400">（{source_table}）</span></div><input class="form-input mono" value="ods.orders"></div>
@@ -533,7 +532,7 @@
       <div class="modal-body">
         <div class="form-item"><div class="fi-label">模板名称 <span class="req">*</span></div><input class="form-input" placeholder="如：订单表每日同步"></div>
         <div class="form-item"><div class="fi-label">任务类型</div>
-          <div class="filter-select" style="width:100%"><select style="width:100%"><option>数据同步（SYNC）</option><option>SQL 任务</option><option>数据导出（EXPORT）</option><option>采集任务（COLLECT）</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+          <div class="filter-select" style="width:100%"><select style="width:100%"><option>数据同步（SYNC）</option><option>采集任务（COLLECT）</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
         </div>
         <div class="form-item"><div class="fi-label">模板说明</div><textarea class="form-textarea" placeholder="描述模板用途与占位符说明…" style="min-height:72px"></textarea></div>
         <div class="form-item"><div class="fi-label">从已配置任务另存</div>

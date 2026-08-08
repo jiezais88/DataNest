@@ -89,6 +89,15 @@ public enum ErrorCode {
     ALERT_RULE_NOT_FOUND(7201, "告警规则不存在"),
     ALERT_RULE_OBJECT_INVALID(7202, "告警规则对象类型非法"),
 
+    // Task template errors — Sprint 7 任务模板库（DD-09）
+    TASK_TEMPLATE_NOT_FOUND(7301, "任务模板不存在"),
+    TASK_TEMPLATE_NAME_EXISTS(7302, "任务模板名称已存在"),
+    TASK_TEMPLATE_TYPE_INVALID(7303, "任务模板类型非法"),
+    TASK_TEMPLATE_BUILTIN_READONLY(7304, "内置模板禁止修改或删除"),
+    TASK_TEMPLATE_PLACEHOLDER_MISSING(7305, "必填占位符未填充"),
+    TASK_TEMPLATE_CONFIG_INVALID(7306, "任务模板配置非法"),
+    TASK_TEMPLATE_CREATE_FAILED(7307, "从模板创建任务失败"),
+
     // Quality errors — Sprint 6 数据质量（规则模板库）
     QUALITY_TEMPLATE_NOT_FOUND(4201, "质量规则模板不存在"),
     QUALITY_TEMPLATE_NAME_EXISTS(4202, "质量规则模板名称已存在"),

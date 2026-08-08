@@ -8,6 +8,7 @@ import com.datanest.governance.api.dto.CollectHistoryCreateRequest;
 import com.datanest.governance.api.dto.CollectHistoryFinishRequest;
 import com.datanest.governance.api.dto.CollectHistoryInfoDTO;
 import com.datanest.governance.api.dto.CollectLogAppendRequest;
+import com.datanest.governance.api.dto.CollectTaskCreateInternalRequest;
 import com.datanest.governance.api.dto.CollectTaskInfoDTO;
 import com.datanest.governance.api.dto.CollectTaskMarkStatusRequest;
 import com.datanest.governance.api.dto.CollectUpsertColumnsRequest;
@@ -37,6 +38,11 @@ public class CollectWriteApiFallbackFactory implements FallbackFactory<CollectWr
         return new CollectWriteApi() {
             @Override
             public Result<CollectTaskInfoDTO> getTask(Long id) {
+                return Result.ok(null);
+            }
+
+            @Override
+            public Result<Long> createTask(CollectTaskCreateInternalRequest request) {
                 return Result.ok(null);
             }
 

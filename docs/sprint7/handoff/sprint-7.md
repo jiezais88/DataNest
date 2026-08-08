@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-07 | **阶段**：F1 全部闭环（后端+前端+E2E 32 用例全绿，含 1 个 E2E 发现的前端 bug 已修复）→ 可启动 F2
+> **更新时间**：2026-08-08 | **阶段**：F1 全部闭环 ✅；**F2 后端完成**（engineering+governance 已部署，curl 自测全过）→ 待 F2 前端 + E2E
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -18,7 +18,7 @@
 | Sprint 7 技术设计                        | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-技术文档.md`（v1.0，含 4 个技术决策 D1~D4）                     |
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
-| **F2 任务模板库**（DD-09）               | ⏳ 未开始 | 前后端+测试闭环（见 §6.2）                                                                     |
+| **F2 任务模板库**（DD-09）               | 🔄 后端完成 | 类型范围经用户确认收敛为 **SYNC + COLLECT**（SQL/EXPORT 不做）；后端 ✅（2026-08-08，curl 自测全过，见 §6.2）；待前端 + E2E |
 | **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
@@ -52,6 +52,7 @@
 |------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
 | **F1 后端实现（2026-08-06，本段为开发阶段新增）**                      | 见下方「F1 后端变更明细」                                                                             |
 | **F1 前端实现（2026-08-07，含当日修订轮）**                              | 见 §6.1「前端」+「F1 修订轮」：合并单页（方案 A）；后端补 4 接口（树计数/healthLevel/批量分配/用户选项）+ Doris 回显 + 2 处 `MetadataService` 补丁 |
+| **F2 后端实现（2026-08-08，本段为开发阶段新增）**                        | 见下方「F2 后端变更明细」                                                                             |
 | `docs/sprint7/DataNest-Sprint7-PRD.md`（新增）                        | Sprint 7 数据资产目录产品文档 v1.0（12 章，对齐 Sprint6 PRD 范本；复用 vs 新增边界经代码核验）        |
 | `docs/sprint7/DataNest-Sprint7-技术文档.md`（新增）                   | Sprint 7 技术设计文档 v1.0（11 章，含 4 个技术决策、数据模型、接口、实现清单）；v1.1 补充 Python 数据拉取方案 B（通用连接注入） |
 | `docs/sprint7/handoff/sprint-7.md`（新增）                            | 本 Handoff                                                                                            |
@@ -67,6 +68,23 @@
 - 与技术文档的偏差：① 分类重命名策略经用户确认为**级联更新** metadata_table 冗余名（技术文档 §3.1 只写了删除校验）；② `browse` 增加 `uncategorized=true` 参数实现「未分类」浏览（PRD §6.4）；③ 搜索得分实现为表名 100（前缀 +20）/注释 60/字段 40/负责人 20，与技术文档 §4.1 示例权重一致。
 - 部署：全量 `mvn clean package` + 重建 app-system/governance/engineering/worker/job 并 up，全部 healthy（镜像时间戳已核验）。
 - 自测环境残留数据：`asset_classification` 有「交易域（含主题：订单）/用户域」；`metadata_table` 的 orders/order_items 已分配交易域·订单，orders 负责人=admin。**E2E 种子数据可直接复用或清理后重建**。
+
+**F2 后端变更明细（2026-08-08，curl 自测全过、残留已清理）**
+- **范围偏差（用户确认）**：模板类型收敛为 **SYNC + COLLECT**——SQL 无独立任务实体（仅 DAG 节点类型）、EXPORT 平台不存在，本期不做；PRD/技术文档/原型已同步回落。
+- `data-nest-engineering/.../db/migration/V1.5.0__sprint7_task_template.sql`（新增，**拆库后按域落 engineering 库**，非技术文档原写的 V3.8.1/system）：`task_template` 表（uk(name) + idx(type)，type 服务层白名单无 DB CHECK，`updated_at` 无默认值）+ **播种 3 条内置模板**（整表同步/增量同步（每日）/元数据全量采集，id 910000000000000001~3 固定值，created_by=NULL 前端展示「系统」）。已应用（flyway_schema_history 1.5.0 success）。
+- `data-nest-common`：`ErrorCode` 新增 7301~7307（NOT_FOUND/NAME_EXISTS/TYPE_INVALID/BUILTIN_READONLY/PLACEHOLDER_MISSING/CONFIG_INVALID/CREATE_FAILED）。
+- `data-nest-engineering`：`TaskTemplate` entity/mapper + DTO×4（`TaskTemplateDTO`/`TaskTemplateSaveRequest`/`TemplateCreateTaskRequest`/`CreateTaskResultDTO`）+ `TaskTemplateService` + `TaskTemplateController`（`/task-templates`，5 端点，全部超管/工程师 OR）：GET 列表（type/category 过滤，createdByName 经 system-api 批量回填降级空 Map）、POST 新增（`sourceTaskId` 非空时从任务另存为——SYNC 本地读 sync_job、COLLECT 经 `CollectWriteApi.getTask` 远程读；配置原样保留，单表 SYNC 源表与 CRON 自动占位化为 `{source_table}`/`{schedule_cron}`）、PUT 编辑（内置 7304、type 不可变）、DELETE（内置 7304、快照式无引用校验）、POST `/{id}/create-task` 一键创建。
+- **B4 config_template 结构定稿**：`{"placeholders":[{key,label,required,valueType(TEXT/DATASOURCE),defaultValue}],"config":{对应类型创建请求，字符串值含 {key} 占位符}}`；一键创建 = 校验 config 中出现的占位符全部有值（用户填写优先，其次 defaultValue，否则 7305）→ 文本替换（引号/反斜杠转义）→ fastjson2 反序列化 → 手动 Bean Validation → SYNC 复用 `SyncJobService.create` 本地落库；COLLECT 走下述内部端点远程落库（fail-closed，Result.code≠200 时透传 governance 错误消息）。
+- `data-nest-governance-api`：`CollectWriteApi` 新增 `createTask`（`POST /governance/internal/collect/tasks`）+ `CollectTaskCreateInternalRequest` DTO（对齐 CollectTaskCreateRequest + createdBy 显式传入；**api 模块无 jakarta.validation 依赖，字段校验在 governance 服务端手动做**）+ fallback 补方法（降级返回 null，调用方按 null 判失败）。
+- `data-nest-governance`：`CollectTaskService.create` 抽 `doCreate` 私有方法 + 新增 `createInternal`（手动非空校验 + createdBy 用传入值）；`CollectWriteController` 注入 CollectTaskService 加端点。
+- 部署：重建 app-engineering + app-governance 并 up，healthy，Flyway 1.5.0 ✅。
+- curl 自测全过：列表/过滤/无 token 1004、内置 3 条播种、SYNC 一键创建落 sync_job（DB 验证）、COLLECT 一键创建跨服务落 collect_task（governance 库验证，createdBy=1）、7301/7302/7303/7304/7305/7306 各校验、从任务另存为（多表 SYNC 不抽 source_table 占位）、编辑/删除自定义、createdByName 回填 admin。自测残留（2 模板+1 sync_job+1 collect_task）已经 API 删除清理。
+- **坑**：Windows Git Bash curl `-d` 内联中文按 GBK 编码会触发服务端 `Invalid UTF-8 start byte`（9999 假象）——自测含中文的 JSON 体一律写临时 UTF-8 文件用 `--data-binary @file`。
+
+**F2 后端 Review（2026-08-08，按 AGENTS.md §7 三点审查 + 修复回归）**
+- 结论：架构融洽 ✅（Feign 契约/内部端点/拆库落点/容错三件套均合约定）、业务正确 ✅（修复后）、实现高效 ✅（无 N+1，usernames 批量回填）。
+- 修复 3 项（已重建 engineering + 回归冒烟通过）：① `list()` 的 `systemUserApi.usernames(...).data()` 未按项目惯例判空（Result 非 200 返回 null data 时 usernameMap=null → NPE 9999），已对齐 AssetCatalogService 的判空写法；② PUT 编辑原先必须重传完整 configTemplate（只改名称/说明会 7306），改为两者缺省保留原配置；③ 模板停用一键创建的错误码从 7301（语义不符）改 7307 +「模板已停用，无法创建任务」。
+- 遗留观察项（不改，前端开发时注意）：① 占位符约定必须位于 JSON 带引号字符串值内（播种模板均如此，列注释已说明）；② create/update 为 @Transactional 且另存为 COLLECT 时在事务内做只读 Feign getTask（短调用低风险）；③ 无启用/停用端点（原型亦无开关 UI，enabled 当前只读）。
 
 **原型对齐要点（2026-08-05-06，对照真实前端源码 + 自动化截图逐项修正）**
 - **自动化截图对比**：曾用临时 Playwright Python 脚本（已删）截真实前端 3 页（`/governance/metadata` 展开树、`/governance/data-quality`、`/governance/quality-templates`）+ 截原型 5 视图（assets/classification/task-template/subdag/python-rule）逐屏对比。脚本核心要点已固化到 `docs/agent/prototype-guide.md §7`（UI 登录、press Enter 提交、flex 滚动诊断等）。
@@ -98,7 +116,7 @@
 | B1 | Python 质量规则数据拉取            | ✅ 已消解（方案 B，用户确认）：`PythonExecutor` 连接注入层抽象为通用连接注入（`conn.json`）+ 沙箱 `read_table(table, where, limit)` 按数据源 type 选驱动；不再用 `GenericSqlExecutor`（5s 超时+200 行截断不适合） | 明确 |
 | B2 | 资产详情页路由与元数据详情页关系    | `/assets/:tableId` 独立路由，与现有 `/governance/metadata?tableId=` 双入口并存 | 明确   |
 | B3 | 分类体系删除校验 SQL                | 删除分类时按 `data_domain`/`data_topic` 匹配 `metadata_table` 引用        | 明确   |
-| B4 | 任务模板 config_template JSON 结构  | 同步/SQL/导出/采集四类任务的 config_template 具体字段占位                 | 待细化 |
+| B4 | 任务模板 config_template JSON 结构  | ✅ 已消解（2026-08-08 定稿）：`{"placeholders":[{key,label,required,valueType,defaultValue}],"config":{对应类型创建请求}}`；类型范围同步收敛 SYNC/COLLECT | 明确 |
 
 ## 6. 开发分阶段计划
 
@@ -171,27 +189,29 @@
 
 ---
 
-### 6.2 F2 任务模板库（DD-09）⏳ 未开始
+### 6.2 F2 任务模板库（DD-09）🔄 后端完成（2026-08-08）
 
-**范围**：任务模板 CRUD + 一键创建。
-**块内依赖**：Flyway → task-core-entity → engineering 服务 → 前端 1 页 → 联调。
+**范围**：任务模板 CRUD + 一键创建。**类型范围经用户确认收敛为 SYNC + COLLECT**（SQL/EXPORT 不做，见 §4 F2 明细）。
+**块内依赖**：Flyway → engineering 服务（entity 随服务本地，task-core-entity 已不存在）→ governance-api/governance 内部端点（COLLECT）→ 前端 1 页 → 联调。
 
-**后端**
-- [ ] Flyway `V3.8.1`：`task_template` 表（`updated_at` 无默认值）
-- [ ] task-core-entity：新增 `TaskTemplate` entity/mapper
-- [ ] engineering `TaskTemplateService`/`TaskTemplateController`：模板 CRUD + 一键创建（按 config_template 生成真实同步/SQL/导出/采集任务）
-- [ ] 重建 engineering + worker + 受影响消费方
+**后端**（✅ 全部完成，curl 自测通过，明细见 §4「F2 后端变更明细」）
+- [x] Flyway `V1.5.0`（engineering 库）：`task_template` 表 + 3 条内置模板播种（`updated_at` 无默认值）
+- [x] common：`ErrorCode` 7301~7307
+- [x] engineering `TaskTemplateService`/`TaskTemplateController`：模板 CRUD + 一键创建（SYNC 本地落 sync_job）+ 从任务另存为
+- [x] governance-api `CollectWriteApi.createTask` + governance `CollectTaskService.createInternal`/`CollectWriteController` 端点（COLLECT 跨服务一键创建，fail-closed）
+- [x] 重建 engineering + governance 并部署（healthy，Flyway 1.5.0 ✅）；worker/job 无需重建（不消费新端点/新错误码）
 
 **前端**
 - [ ] `Sidebar.tsx` 新增「任务模板」（ENGINEERING_WRITE_ROLES）+ `router/index.tsx` 新增 `/engineering/task-templates`
-- [ ] 任务模板库页（列表/新增/一键创建，对齐原型 `task-template` 视图：segmented 分组 + 内置/自定义徽章）
+- [ ] 任务模板库页（列表/新增/一键创建，对齐原型 `task-template` 视图：segmented 分组 + 内置/自定义徽章；**原型已同步为两类**：同步/采集）
+- [ ] 新增 `src/types/taskTemplate.ts` + `src/api/taskTemplate.ts`；一键创建表单按 `placeholders` 渲染（`valueType=DATASOURCE` 渲染数据源下拉）
 
 **测试**
-- [ ] 后端 Postman/curl 自测：模板 CRUD、一键创建后 sync_job 落库
+- [x] 后端 Postman/curl 自测：模板 CRUD、7301~7306 校验、一键创建后 sync_job/collect_task 落库（残留已清理）
 - [ ] 新建 `e2e/sprint7/e2e/task-templates.spec.ts`
 - [ ] 更新 §2 看板：F2 置 ✅
 
-> **待细化**：B4 `config_template` JSON 结构（同步/SQL/导出/采集四类占位）——开始 F2 后端前需先定。
+> **已消解**：B4 `config_template` JSON 结构（见 §5）；内置模板经 Flyway 播种（迁移内 INSERT 为本项目首例，固定 id + `ON CONFLICT DO NOTHING`）。
 
 ---
 

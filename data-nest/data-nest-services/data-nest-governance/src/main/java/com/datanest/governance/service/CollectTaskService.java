@@ -12,6 +12,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.alert.api.AlertApi;
+import com.datanest.governance.api.dto.CollectTaskCreateInternalRequest;
 import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
@@ -78,24 +79,56 @@ public class CollectTaskService {
 
     @Transactional
     public CollectTaskDTO create(CollectTaskCreateRequest request) {
-        if (countByName(request.getName()) > 0) {
+        return doCreate(request.getName(), request.getDatasourceId(), request.getScope(), request.getCollectMode(),
+                request.getTriggerType(), request.getCronExpression(), request.getDescription(), currentUserId());
+    }
+
+    /**
+     * 内部创建采集任务（Sprint 7 DD-09 任务模板一键创建，governance-api CollectWriteApi 契约）。
+     * 与 Web 侧 create 同逻辑，差异：无登录上下文，createdBy 由调用方显式传入；字段非空在此手动校验。
+     */
+    @Transactional
+    public Long createInternal(CollectTaskCreateInternalRequest request) {
+        if (request.getName() == null || request.getName().isBlank()) {
+            throw new BusinessException(ErrorCode.TASK_TEMPLATE_CREATE_FAILED, "任务名称不能为空");
+        }
+        if (request.getDatasourceId() == null) {
+            throw new BusinessException(ErrorCode.TASK_TEMPLATE_CREATE_FAILED, "数据源不能为空");
+        }
+        if (request.getScope() == null || request.getScope().isEmpty()) {
+            throw new BusinessException(ErrorCode.TASK_TEMPLATE_CREATE_FAILED, "采集范围不能为空");
+        }
+        if (request.getCollectMode() == null || request.getCollectMode().isBlank()) {
+            throw new BusinessException(ErrorCode.TASK_TEMPLATE_CREATE_FAILED, "采集模式不能为空");
+        }
+        if (request.getTriggerType() == null || request.getTriggerType().isBlank()) {
+            throw new BusinessException(ErrorCode.TASK_TEMPLATE_CREATE_FAILED, "触发方式不能为空");
+        }
+        Long createdBy = request.getCreatedBy() == null ? 0L : request.getCreatedBy();
+        return doCreate(request.getName(), request.getDatasourceId(), request.getScope(), request.getCollectMode(),
+                request.getTriggerType(), request.getCronExpression(), request.getDescription(), createdBy).getId();
+    }
+
+    private CollectTaskDTO doCreate(String name, Long datasourceId, List<String> scope, String collectMode,
+                                    String triggerType, String cronExpression, String description, Long createdBy) {
+        if (countByName(name) > 0) {
             throw new BusinessException(ErrorCode.TASK_NAME_EXISTS);
         }
 
         CollectTask task = new CollectTask();
-        task.setName(request.getName());
-        task.setDatasourceId(request.getDatasourceId());
+        task.setName(name);
+        task.setDatasourceId(datasourceId);
         task.setDatasourceName(""); // 执行时由采集引擎补充
-        task.setScope(request.getScope());
-        task.setCollectMode(request.getCollectMode());
-        task.setTriggerType(request.getTriggerType());
-        task.setCronExpression(request.getCronExpression());
+        task.setScope(scope);
+        task.setCollectMode(collectMode);
+        task.setTriggerType(triggerType);
+        task.setCronExpression(cronExpression);
         task.setStatus(CollectTaskStatus.NEVER_EXECUTED.getCode());
-        task.setDescription(request.getDescription());
+        task.setDescription(description);
         task.setScheduleEnabled(0);
-        task.setCreatedBy(currentUserId());
+        task.setCreatedBy(createdBy);
         task.setCreatedAt(LocalDateTime.now());
-        task.setNextExecutionTime(computeNextExecutionTime(request.getTriggerType(), request.getCronExpression()));
+        task.setNextExecutionTime(computeNextExecutionTime(triggerType, cronExpression));
 
         collectTaskMapper.insert(task);
 
@@ -103,8 +136,8 @@ public class CollectTaskService {
         // 远程调用移到事务提交后执行，事务内只做 DB 操作，避免回滚后在调度中心留下孤儿任务
         Long taskId = task.getId();
         String taskName = task.getName();
-        ScheduleType scheduleType = ScheduleType.fromTriggerType(request.getTriggerType());
-        String cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(request.getTriggerType()) ? request.getCronExpression() : "";
+        ScheduleType scheduleType = ScheduleType.fromTriggerType(triggerType);
+        String cron = TaskTriggerType.CRON.getCode().equalsIgnoreCase(triggerType) ? cronExpression : "";
         runAfterCommit("注册调度任务", () -> {
             Long schedulerJobId = schedulerService.registerJob(taskId, taskName, cron, scheduleType.getCode(), false);
             // 回填 schedulerJobId（此处已在原事务外，单行更新自动提交）

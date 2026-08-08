@@ -7,6 +7,7 @@ import com.datanest.governance.api.dto.CollectHistoryCreateRequest;
 import com.datanest.governance.api.dto.CollectHistoryFinishRequest;
 import com.datanest.governance.api.dto.CollectHistoryInfoDTO;
 import com.datanest.governance.api.dto.CollectLogAppendRequest;
+import com.datanest.governance.api.dto.CollectTaskCreateInternalRequest;
 import com.datanest.governance.api.dto.CollectTaskInfoDTO;
 import com.datanest.governance.api.dto.CollectTaskMarkStatusRequest;
 import com.datanest.governance.api.dto.CollectUpsertColumnsRequest;
@@ -35,6 +36,10 @@ public interface CollectWriteApi {
     /** 查询采集任务定义（全字段，供执行器读取 scope/增量配置等） */
     @GetMapping("/collect/tasks/{id}")
     Result<CollectTaskInfoDTO> getTask(@PathVariable("id") Long id);
+
+    /** 内部创建采集任务（Sprint 7 DD-09 任务模板一键创建），返回 taskId；降级返回 null，调用方 fail-closed */
+    @PostMapping("/collect/tasks")
+    Result<Long> createTask(@RequestBody CollectTaskCreateInternalRequest request);
 
     /** 回写任务状态（运行中置 RUNNING / 收尾回写终态 + lastHistoryId + lastExecuteTime） */
     @PostMapping("/collect/tasks/{id}/mark-status")

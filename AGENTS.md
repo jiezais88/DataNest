@@ -23,7 +23,7 @@ DataNest 是一个数据平台，技术栈如下：
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
 - **调度**：PowerJob 5.1.2（官方镜像，容器 `middleware-powerjob`，控制台/OpenAPI http://localhost:7700），数据库为 middleware-mysql 的 `powerjob` 库。两个 App：`data-nest-job`（id=1，13 个平台定时任务）/ `data-nest-worker`（id=2，业务任务与 DAG 节点执行）。原 XXL-JOB（8088）/ DolphinScheduler（12345）/ Zookeeper 已随 PowerJob 迁移（2026-08-07）全部下线
 - **目标数仓**：内置 Doris（当前在 `192.168.119.135:9030`）
-- **业务库（2026-08-07 起按域拆 4 库）**：`datanest_system`（sys_*，app-system）、`datanest_alert`（alert_*+dag_alert_*，app-alert）、`datanest_engineering`（sync/dag/datasource 13 表，app-engineering）、`datanest_governance`（metadata/collect/quality 等 19 表，app-governance）；均在 middleware-postgres 同实例。**worker/job 无库**（纯执行/调度节点，application.yml 已排除 DataSource 自动配置）。旧 `datanest` 库保留只读观察后下线。各服务 Flyway 独立管理本库（`db/migration/V1.0.0__baseline.sql` 起，代码驱动见 §6）
+- **业务库（2026-08-07 起按域拆 4 库）**：`datanest_system`（sys_*，app-system）、`datanest_alert`（alert_*+dag_alert_*，app-alert）、`datanest_engineering`（sync/dag/datasource/task_template 14 表，app-engineering）、`datanest_governance`（metadata/collect/quality 等 19 表，app-governance）；均在 middleware-postgres 同实例。**worker/job 无库**（纯执行/调度节点，application.yml 已排除 DataSource 自动配置）。旧 `datanest` 库保留只读观察后下线。各服务 Flyway 独立管理本库（`db/migration/V1.0.0__baseline.sql` 起，代码驱动见 §6）
 
 ### 核心模块
 
@@ -228,6 +228,7 @@ docker compose up -d --no-deps app-engineering app-worker
 
 ## 7. 代码与提交约定
 
+- **代码 Review 目的（2026-08-07 起）**：Review 开发的功能时聚焦三点——① **与当前架构融洽**（不破坏模块边界、依赖方向、服务间调用规则）；② **业务实现正确**（符合 PRD/技术文档语义，边界与异常路径处理到位）；③ **实现高效**（无过度设计、无 N+1/循环远程调用、无不必要的资源开销）。
 - 做 **最小改动**，不要顺手重构无关代码。
 - 改配置/改接口后，同步检查 yaml、Nacos 配置、注释、测试、前端调用点。
 - 新增依赖时检查作用域：`provided` 依赖需要在消费方显式声明。
