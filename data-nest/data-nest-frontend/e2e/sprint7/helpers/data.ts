@@ -101,6 +101,18 @@ export const BATCH_ID = '9000070000000000051';
 export const LINEAGE_UP_ID = '9000070000000000061';
 export const LINEAGE_DOWN_ID = '9000070000000000062';
 
+// ==================== F2 任务模板库（datanest_engineering.task_template / sync_job） ====================
+
+/** 内置模板（Flyway V1.5.0 播种，固定 id） */
+export const TPL_FULL_SYNC_NAME = '整表同步';
+export const TPL_INCR_SYNC_NAME = '增量同步（每日）';
+export const TPL_COLLECT_NAME = '元数据全量采集';
+
+/** 「另存为」候选同步任务（固定 ID，单表 SYNC，另存后期望自动抽 {source_table} 占位符） */
+export const TPL_SRC_JOB_ID = '9000070000000000071';
+export const TPL_SRC_JOB_NAME = 'e2e_s7_tpl_source_sync';
+export const TPL_SRC_TABLE = 'e2e_s7_src_orders';
+
 // ==================== F1 开发自测残留（用户确认清理后重建，seed 时幂等清除） ====================
 
 /** 残留分类 ID（交易域/订单/用户域） */

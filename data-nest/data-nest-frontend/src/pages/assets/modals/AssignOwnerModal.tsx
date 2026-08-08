@@ -53,25 +53,6 @@ export default function AssignOwnerModal({
             .finally(() => setLoading(false));
     }, [open, currentOwnerId, currentOwnerName]);
 
-    const handleSearch = (kw: string) => {
-        if (!kw) return;
-        setLoading(true);
-        getUserOptions(kw)
-            .then(list => {
-                setOptions(prev => {
-                    const map = new Map(prev.map(o => [o.value, o]));
-                    for (const u of list ?? []) {
-                        if (u.id && !map.has(u.id)) {
-                            map.set(u.id, {value: u.id, label: u.email ? `${u.username}（${u.email}）` : u.username});
-                        }
-                    }
-                    return Array.from(map.values());
-                });
-            })
-            .catch(() => {/* 静默 */})
-            .finally(() => setLoading(false));
-    };
-
     const handleSave = async () => {
         if (!tableId) return;
         setSaving(true);
@@ -108,10 +89,12 @@ export default function AssignOwnerModal({
                 <Select
                     showSearch
                     allowClear
-                    filterOption={false}
+                    // 客户端过滤：首次已拉全量（≤100 启用用户），输入即收窄选项
+                    // （不要用 filterOption=false + onSearch 合并——下拉不会收窄，虚拟滚动下目标选项可能不在 DOM）
+                    filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
                     value={selectValue}
                     onChange={(v) => setUserId(v)}
-                    onSearch={handleSearch}
                     loading={loading}
                     placeholder="搜索用户名或邮箱；留空 = 清除负责人"
                     options={options}

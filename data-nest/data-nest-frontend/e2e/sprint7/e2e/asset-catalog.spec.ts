@@ -140,6 +140,8 @@ test.describe('DC-05 分类浏览（左树右表）', () => {
 
         // 未分类 → 含 T4/T5，不含 T1
         await tree(page).getByRole('button', {name: /未分类/}).click();
+        // 全量 setup 下 s5/s6 种子表较多，未分类可能超过 10 条/页，先放大到 50 条/页再断言
+        await page.getByLabel('每页条数').selectOption('50');
         await expect(assetRow(page, T4_NAME)).toBeVisible();
         await expect(assetRow(page, T5_NAME)).toBeVisible();
         await expect(assetRow(page, T1_NAME)).toHaveCount(0);
@@ -443,6 +445,9 @@ test.describe('DC-05 分类维护（治理员写操作）', () => {
         await assetRow(page, T2_NAME).getByRole('button', {name: '配置负责人'}).click();
         const dialog = page.getByRole('dialog', {name: /配置负责人 ·/});
         await dialog.locator('.ant-select').click();
+        // 全量 setup 下用户较多，antd Select 虚拟滚动只渲染视口内选项；
+        // 输入关键字触发客户端过滤收窄选项（antd v6 搜索框类名是 .ant-select-input）
+        await dialog.locator('.ant-select input').pressSequentially(TEST_USERS.govAdmin.username);
         await page.locator('.ant-select-item-option', {hasText: TEST_USERS.govAdmin.username}).click();
         await dialog.getByRole('button', {name: '保存'}).click();
         await expect(notice(page, '负责人已更新')).toBeVisible();
@@ -466,8 +471,9 @@ test.describe('权限隔离（分析师/工程师只读）', () => {
     for (const [key, user] of Object.entries({engineer: TEST_USERS.engineer, analyst: TEST_USERS.analyst})) {
         test(`${key} 无分类维护入口（UI 隐藏 + API 拒绝）`, async ({page}) => {
             await gotoAs(page, user.username, user.password, '/asset-catalog');
-            // 读可用
+            // 读可用（树 + 表格；全量 setup 下默认浏览首屏不一定含 T1，用搜索确定命中）
             await expect(tree(page).getByText(D1_NAME, {exact: true})).toBeVisible();
+            await searchFor(page, T1_NAME);
             await expect(assetRow(page, T1_NAME)).toBeVisible();
             // 写入口全部隐藏
             await expect(page.getByRole('button', {name: '新增数据域'})).toHaveCount(0);

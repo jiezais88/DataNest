@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-08 | **阶段**：F1 全部闭环 ✅；**F2 前端完成**（联调冒烟全绿）→ 待 F2 E2E 或启动 F3
+> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ 全部闭环（E2E 全量 44 用例绿）→ 待启动 F3
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -18,7 +18,7 @@
 | Sprint 7 技术设计                        | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-技术文档.md`（v1.0，含 4 个技术决策 D1~D4）                     |
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
-| **F2 任务模板库**（DD-09）               | ✅ 前端完成 | 类型范围 SYNC + COLLECT；后端 ✅ + 前端 ✅（2026-08-08，联调冒烟全绿，见 §6.2）；E2E 待后续会话 |
+| **F2 任务模板库**（DD-09）               | ✅ 完成     | 类型范围 SYNC + COLLECT；后端+前端+E2E 全部闭环（2026-08-08，12 用例全绿，见 §6.2） |
 | **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
@@ -192,7 +192,7 @@
 
 ---
 
-### 6.2 F2 任务模板库（DD-09）🔄 前端完成（2026-08-08，E2E 待）
+### 6.2 F2 任务模板库（DD-09）✅ 全部完成（2026-08-08）
 
 **范围**：任务模板 CRUD + 一键创建。**类型范围经用户确认收敛为 SYNC + COLLECT**（SQL/EXPORT 不做，见 §4 F2 明细）。
 **块内依赖**：Flyway → engineering 服务（entity 随服务本地，task-core-entity 已不存在）→ governance-api/governance 内部端点（COLLECT）→ 前端 1 页 → 联调。
@@ -219,8 +219,12 @@
 **测试**
 - [x] 后端 Postman/curl 自测：模板 CRUD、7301~7306 校验、一键创建后 sync_job/collect_task 落库（残留已清理）
 - [x] 前端联调冒烟（临时 Playwright 脚本，用完即删）：列表/segmented 过滤/内置计数、一键创建 SYNC（填占位符 → sync_job 落库已验证并清理）、新增手动 JSON、另存为（选任务隐藏 JSON 框）、编辑（类型锁定）、删除、内置只读按钮集——全绿无控制台错误
-- [ ] 新建 `e2e/sprint7/e2e/task-templates.spec.ts`
-- [ ] 更新 §2 看板：F2 置 ✅（E2E 完成后）
+- [x] 新建 `e2e/sprint7/e2e/task-templates.spec.ts`（12 用例，serial）：列表/segmented/计数文案、权限隔离（分析师无入口+API 1005）、一键创建 SYNC×2（占位符表单/前端必填校验/cron 默认值/DB 落库验证）、COLLECT 跨服务落库、CRUD（手动 JSON/重名 7302/另存为占位化/编辑类型锁定/复制内置/删除/内置只读按钮集）。seed 新增 F2 fixture（另存为候选 sync_job 固定 ID + e2e_s7% 模板/任务清理）
+- [x] 更新 §2 看板：F2 置 ✅（2026-08-08，全量套件 44 用例全绿）
+
+**E2E 轮附带修复（2026-08-08）**
+- **组件真 bug**：`AssignOwnerModal` 原为 `filterOption={false}` + onSearch 合并选项——下拉不收窄，用户数多（全量 setup 下 s5/s6/s7 用户）时目标选项被 antd 虚拟滚动挤出 DOM。改为一次拉全量（≤100）+ 客户端 `filterOption` 过滤。
+- F1 spec 两处存量脆弱断言适配全量数据环境：① 未分类/默认浏览首屏超 10 条/页时目标行落第 2 页（未分类用例先切 50 条/页；权限隔离用例改搜索确定命中）；② 负责人下拉先输入关键字过滤再点（antd v6 搜索框类名 `.ant-select-input`，与 v5 不同）。
 
 > **已消解**：B4 `config_template` JSON 结构（见 §5）；内置模板经 Flyway 播种（迁移内 INSERT 为本项目首例，固定 id + `ON CONFLICT DO NOTHING`）。
 

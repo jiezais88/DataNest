@@ -44,6 +44,9 @@ import {
     LINEAGE_DOWN_ID,
     RESIDUE_CLASSIFICATION_IDS,
     RESIDUE_TABLE_IDS,
+    TPL_SRC_JOB_ID,
+    TPL_SRC_JOB_NAME,
+    TPL_SRC_TABLE,
 } from './data';
 
 /**
@@ -268,6 +271,27 @@ export function seedLineage(): void {
     `);
 }
 
+// ==================== F2 任务模板库 fixture（datanest_engineering.sync_job） ====================
+
+/** 「另存为」候选同步任务（幂等）；单表 SYNC，另存为时后端自动抽 {source_table} 占位符 */
+export function seedTaskTemplateFixtures(): void {
+    psqlEng(`DELETE FROM sync_job WHERE id = ${TPL_SRC_JOB_ID}`);
+    psqlEng(`
+        INSERT INTO sync_job
+        (id, name, source_datasource_id, source_database, source_tables, sync_mode, trigger_type,
+         target_database, target_table, created_by, created_at)
+        VALUES (${TPL_SRC_JOB_ID}, '${TPL_SRC_JOB_NAME}', ${DS_ID}, '${DB_NAME}', '["${TPL_SRC_TABLE}"]',
+                'FULL', 'MANUAL', 'dwd', 'e2e_s7_tgt_orders', 1, now())
+    `);
+}
+
+/** F2 测试产生的模板/任务清理（幂等；任务先删，模板后删） */
+export function cleanupTaskTemplateFixtures(): void {
+    psqlEng(`DELETE FROM sync_job WHERE id = ${TPL_SRC_JOB_ID} OR name LIKE 'e2e_s7%'`);
+    psqlEng(`DELETE FROM task_template WHERE name LIKE 'e2e_s7%'`);
+    psqlGov(`DELETE FROM collect_task WHERE name LIKE 'e2e_s7%'`);
+}
+
 // ==================== 清理 / 播种 ====================
 
 /** 清理全部 Sprint 7 测试数据（幂等） */
@@ -284,6 +308,7 @@ export async function cleanupAll(): Promise<void> {
         }
         psqlGov(`DELETE FROM asset_classification WHERE name LIKE 'e2e_s7%'`);
         psqlEng(`DELETE FROM datasource_connection WHERE id = ${DS_ID}`);
+        cleanupTaskTemplateFixtures();
     } catch (e) {
         console.warn('sprint7 cleanup gov/eng:', ERR(e));
     }
@@ -302,4 +327,6 @@ export async function seedAll(): Promise<void> {
     seedMetadata();
     seedQuality();
     seedLineage();
+    cleanupTaskTemplateFixtures();
+    seedTaskTemplateFixtures();
 }
