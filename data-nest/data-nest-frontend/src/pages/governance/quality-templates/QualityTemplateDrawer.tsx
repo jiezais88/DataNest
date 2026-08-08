@@ -9,6 +9,8 @@ interface TemplateFormData {
     type: QualityTemplateType;
     description: string;
     sqlTemplate: string;
+    /** Sprint 7 F4：PYTHON 模板脚本 */
+    pythonTemplate: string;
     resultMetric: string;
     enabled: number;
 }
@@ -18,6 +20,7 @@ const EMPTY_FORM: TemplateFormData = {
     type: 'CUSTOM_SQL',
     description: '',
     sqlTemplate: '',
+    pythonTemplate: '',
     resultMetric: '',
     enabled: 1,
 };
@@ -27,6 +30,7 @@ export const TYPE_OPTIONS: { value: QualityTemplateType; label: string }[] = [
     {value: 'UNIQUENESS', label: '唯一性检查'},
     {value: 'RANGE', label: '值域范围检查'},
     {value: 'CUSTOM_SQL', label: '自定义 SQL'},
+    {value: 'PYTHON', label: 'Python'},
 ];
 
 /** SQL 模板占位符说明，按类型动态提示 */
@@ -35,6 +39,7 @@ const PLACEHOLDER_HINT: Record<QualityTemplateType, string> = {
     UNIQUENESS: '如：SELECT COUNT(*) - COUNT(DISTINCT {column}) AS duplicate_count FROM {table}',
     RANGE: '如：SELECT COUNT(*) AS total, SUM(CASE WHEN {column} < {min} OR {column} > {max} THEN 1 ELSE 0 END) AS out_of_range FROM {table}',
     CUSTOM_SQL: '返回单个统计值的自定义校验 SQL，执行结果作为规则结果值',
+    PYTHON: 'def check(df)：接收目标表 DataFrame，返回 {\'指标名\': 数值}；可用 read_table(table, where, limit) 采样',
 };
 
 interface QualityTemplateDrawerProps {
@@ -68,6 +73,7 @@ export default function QualityTemplateDrawer({
                     type: editItem.type,
                     description: editItem.description || '',
                     sqlTemplate: editItem.sqlTemplate || '',
+                    pythonTemplate: editItem.pythonTemplate || '',
                     resultMetric: editItem.resultMetric || '',
                     enabled: editItem.enabled ?? 1,
                 });
@@ -90,7 +96,10 @@ export default function QualityTemplateDrawer({
         const nextErrors: Partial<Record<keyof TemplateFormData, string>> = {};
         if (!form.name.trim()) nextErrors.name = '请输入模板名称';
         if (!form.type) nextErrors.type = '请选择模板类型';
-        if (!form.sqlTemplate.trim()) nextErrors.sqlTemplate = '请输入校验 SQL 模板';
+        // PYTHON 模板校验脚本原文，其余类型校验 SQL 模板
+        if (form.type === 'PYTHON' ? !form.pythonTemplate.trim() : !form.sqlTemplate.trim()) {
+            nextErrors.sqlTemplate = form.type === 'PYTHON' ? '请输入 Python 校验脚本' : '请输入校验 SQL 模板';
+        }
         if (!form.resultMetric.trim()) nextErrors.resultMetric = '请输入结果指标名';
         setErrors(nextErrors);
         return Object.keys(nextErrors).length === 0;
@@ -193,20 +202,34 @@ export default function QualityTemplateDrawer({
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                        校验 SQL 模板 <span className="text-ds-danger">*</span>
+                        {form.type === 'PYTHON' ? 'Python 校验脚本' : '校验 SQL 模板'} <span className="text-ds-danger">*</span>
                     </label>
-                    <textarea
-                        value={form.sqlTemplate}
-                        onChange={(e) => updateField('sqlTemplate', e.target.value)}
-                        rows={5}
-                        disabled={readOnly}
-                        className={`${inputClass} resize-none font-mono`}
-                        placeholder={PLACEHOLDER_HINT[form.type]}
-                    />
+                    {form.type === 'PYTHON' ? (
+                        <textarea
+                            value={form.pythonTemplate}
+                            onChange={(e) => updateField('pythonTemplate', e.target.value)}
+                            rows={10}
+                            disabled={readOnly}
+                            spellCheck={false}
+                            className={`${inputClass} resize-y font-mono`}
+                            placeholder={PLACEHOLDER_HINT[form.type]}
+                        />
+                    ) : (
+                        <textarea
+                            value={form.sqlTemplate}
+                            onChange={(e) => updateField('sqlTemplate', e.target.value)}
+                            rows={5}
+                            disabled={readOnly}
+                            className={`${inputClass} resize-none font-mono`}
+                            placeholder={PLACEHOLDER_HINT[form.type]}
+                        />
+                    )}
                     {errors.sqlTemplate &&
                         <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.sqlTemplate}</p>}
                     <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
-                        占位符：{'{table}'} / {'{column}'} / {'{min}'} / {'{max}'}，应用时替换为具体表/字段/阈值
+                        {form.type === 'PYTHON'
+                            ? '批量应用时脚本原文带入规则；规则执行时按结果指标名从返回 dict 取值分级'
+                            : <>占位符：{'{table}'} / {'{column}'} / {'{min}'} / {'{max}'}，应用时替换为具体表/字段/阈值</>}
                     </p>
                 </div>
 

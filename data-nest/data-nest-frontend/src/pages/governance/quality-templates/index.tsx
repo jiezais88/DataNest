@@ -40,6 +40,7 @@ const TYPE_LABEL: Record<QualityTemplateType, string> = {
     UNIQUENESS: '唯一性检查',
     RANGE: '值域范围检查',
     CUSTOM_SQL: '自定义 SQL',
+    PYTHON: 'Python',
 };
 
 /** 内置模板创建人/修改人展示"系统"（内置数据 createdByName/updatedByName 为 null） */

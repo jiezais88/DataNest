@@ -17,6 +17,8 @@ import type {
     QualityScore,
     QualityScoreConfig,
     QualityScoreQueryParams,
+    QualityScriptTestResult,
+    QualitySqlPreviewResult,
     QualityTableRuleResult,
 } from '../types/quality';
 import type {PageResult, Result} from '../types/common';
@@ -191,6 +193,19 @@ export function getTableQualityRuleResults(tableId: string) {
 export function executeTableQualityRules(tableId: string) {
     return request.post<Result<null>>(`/governance/quality/scores/table/${tableId}/execute`);
 }
+
+/** Sprint 7 F4：PYTHON 规则脚本试跑（保存前验证，governance 本地沙箱） */
+export const testQualityPythonScript = (data: { tableId: string; pythonScript: string }) =>
+    request.post<Result<QualityScriptTestResult>>('/governance/quality/rules/test-script', data, {timeout: 320000}).then(r => r.data);
+
+/** Sprint 7 F4：CUSTOM_SQL 执行预览（多指标列 + 样例行，供选 resultMetric） */
+export const previewExecuteQualitySql = (data: {
+    tableId: string;
+    sqlExpression: string;
+    columnName?: string;
+    rangeMin?: number;
+    rangeMax?: number;
+}) => request.post<Result<QualitySqlPreviewResult>>('/governance/quality/rules/preview-execute', data, {timeout: 60000}).then(r => r.data);
 
 /** 读质量评分全局扣分配置（「扣分配置」弹窗回显） */
 export function getQualityScoreConfig() {

@@ -12,7 +12,8 @@ import {
 import {isWithoutSchema} from '../../../constants/datasource';
 import type {MetadataColumn, MetadataTable, MetadataDatasource} from '../../../types/metadata';
 import {QUALITY_TYPE_OPTIONS} from '../../../types/quality';
-import {listQualityTemplates} from '../../../api/quality';
+import type {QualityScriptTestResult, QualitySqlPreviewResult} from '../../../types/quality';
+import {listQualityTemplates, previewExecuteQualitySql, testQualityPythonScript} from '../../../api/quality';
 import type {QualityRule, QualityRuleCreateRequest, QualityRuleTemplate, QualityRuleType} from '../../../types/quality';
 
 interface QualityRuleFormData {
@@ -28,6 +29,8 @@ interface QualityRuleFormData {
     columnName: string;
     checkField: number;
     sqlExpression: string;
+    /** Sprint 7 F4：PYTHON 规则脚本 */
+    pythonScript: string;
     warningThreshold: string;
     severeThreshold: string;
     resultMetric: string;
@@ -46,6 +49,7 @@ const EMPTY_FORM: QualityRuleFormData = {
     columnName: '',
     checkField: 0,
     sqlExpression: '',
+    pythonScript: '',
     warningThreshold: '',
     severeThreshold: '',
     resultMetric: '',
@@ -103,7 +107,14 @@ export default function QualityRuleDrawer({
 
     const isRange = form.type === 'RANGE';
     const isCustomSql = form.type === 'CUSTOM_SQL';
+    const isPython = form.type === 'PYTHON';
     const needsColumn = form.type === 'UNIQUENESS' || form.type === 'RANGE' || (form.type === 'COMPLETENESS' && form.checkField === 1);
+
+    // Sprint 7 F4：脚本试跑 / SQL 预览结果（行内展示，非 toast）
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState<QualityScriptTestResult | null>(null);
+    const [previewing, setPreviewing] = useState(false);
+    const [previewResult, setPreviewResult] = useState<QualitySqlPreviewResult | null>(null);
 
     // 选表后加载字段
     useEffect(() => {
@@ -132,6 +143,7 @@ export default function QualityRuleDrawer({
                     columnName: editItem.columnName || '',
                     checkField: editItem.checkField ?? 0,
                     sqlExpression: editItem.sqlExpression || '',
+                    pythonScript: editItem.pythonScript || '',
                     warningThreshold: editItem.warningThreshold != null ? String(editItem.warningThreshold) : '',
                     severeThreshold: editItem.severeThreshold != null ? String(editItem.severeThreshold) : '',
                     resultMetric: editItem.resultMetric || '',
@@ -161,11 +173,11 @@ export default function QualityRuleDrawer({
         }
     }, [open, editItem]);
 
-    // 规则类型变化：按类型加载对应模板（模板类规则必选；CUSTOM_SQL 无模板依赖）
+    // 规则类型变化：按类型加载对应模板（模板类规则必选；CUSTOM_SQL/PYTHON 无模板依赖）
     useEffect(() => {
         if (!open || readOnly) return;
         const type = form.type;
-        if (type === 'CUSTOM_SQL') {
+        if (type === 'CUSTOM_SQL' || type === 'PYTHON') {
             setTemplates([]);
             updateField('templateId', '');
             return;
@@ -283,11 +295,13 @@ export default function QualityRuleDrawer({
     const validate = (): boolean => {
         const nextErrors: Partial<Record<keyof QualityRuleFormData, string>> = {};
         if (!form.name.trim()) nextErrors.name = '请输入规则名称';
-        if (!isCustomSql && !form.templateId) nextErrors.templateId = '请选择规则模板';
+        if (!isCustomSql && !isPython && !form.templateId) nextErrors.templateId = '请选择规则模板';
         if (!form.datasourceId) nextErrors.datasourceId = '请选择数据源';
         if (!form.tableId) nextErrors.tableId = '请选择目标表';
         if (needsColumn && !form.columnName.trim()) nextErrors.columnName = '请选择检查字段';
         if (isCustomSql && !form.sqlExpression.trim()) nextErrors.sqlExpression = '请输入自定义校验 SQL';
+        if (isPython && !form.pythonScript.trim()) nextErrors.pythonScript = '请输入 Python 校验脚本';
+        if (isPython && !form.resultMetric.trim()) nextErrors.resultMetric = '请输入结果指标名（脚本返回 dict 的键）';
         if (isRange) {
             if (!form.warningThreshold.trim() || !form.severeThreshold.trim()) {
                 nextErrors.warningThreshold = '请填写值域下限';
@@ -299,6 +313,42 @@ export default function QualityRuleDrawer({
         if (!form.weight.trim() || Number(form.weight) < 1) nextErrors.weight = '权重最小为 1';
         setErrors(nextErrors);
         return Object.keys(nextErrors).length === 0;
+    };
+
+    /** Sprint 7 F4：PYTHON 脚本试跑（结果行内展示） */
+    const handleTestScript = async () => {
+        if (!form.tableId || !form.pythonScript.trim()) return;
+        setTesting(true);
+        setTestResult(null);
+        try {
+            const result = await testQualityPythonScript({tableId: form.tableId, pythonScript: form.pythonScript});
+            setTestResult(result);
+        } catch {
+            setTestResult({success: false, error: '试跑请求失败'});
+        } finally {
+            setTesting(false);
+        }
+    };
+
+    /** Sprint 7 F4：CUSTOM_SQL 执行预览（多指标列 + 样例行，点列名回填 resultMetric） */
+    const handlePreviewSql = async () => {
+        if (!form.tableId || !form.sqlExpression.trim()) return;
+        setPreviewing(true);
+        setPreviewResult(null);
+        try {
+            const result = await previewExecuteQualitySql({
+                tableId: form.tableId,
+                sqlExpression: form.sqlExpression.trim(),
+                columnName: form.columnName.trim() || undefined,
+                rangeMin: form.warningThreshold.trim() ? Number(form.warningThreshold) : undefined,
+                rangeMax: form.severeThreshold.trim() ? Number(form.severeThreshold) : undefined,
+            });
+            setPreviewResult(result);
+        } catch {
+            setPreviewResult({success: false, error: '预览请求失败'});
+        } finally {
+            setPreviewing(false);
+        }
     };
 
     const handleSubmit = async () => {
@@ -316,6 +366,7 @@ export default function QualityRuleDrawer({
                 columnName: needsColumn ? form.columnName.trim() : undefined,
                 checkField: form.checkField,
                 sqlExpression: isCustomSql ? form.sqlExpression.trim() : undefined,
+                pythonScript: isPython ? form.pythonScript : undefined,
                 warningThreshold: form.warningThreshold.trim() ? Number(form.warningThreshold) : undefined,
                 severeThreshold: form.severeThreshold.trim() ? Number(form.severeThreshold) : undefined,
                 resultMetric: form.resultMetric.trim() || undefined,
@@ -389,7 +440,7 @@ export default function QualityRuleDrawer({
                         </select>
                     </div>
 
-                    {!isCustomSql && (
+                    {!isCustomSql && !isPython && (
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 规则模板 <span className="text-ds-danger">*</span>
@@ -498,12 +549,15 @@ export default function QualityRuleDrawer({
                         {errors.tableId && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.tableId}</p>}
                     </div>
 
-                    {/* 检查字段 / 检查方式 */}
+                    {/* 检查字段 / 检查方式（PYTHON 为可选：脚本内可 read_table 自行拉取） */}
                     {form.type !== 'CUSTOM_SQL' && (
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                                {form.type === 'COMPLETENESS' ? '检查方式' : '检查字段'}
+                                {isPython ? '检查字段' : form.type === 'COMPLETENESS' ? '检查方式' : '检查字段'}
                                 {needsColumn && <span className="text-ds-danger"> *</span>}
+                                {isPython && (
+                                    <span className="text-ds-nano text-ds-text-muted font-normal">（可选，脚本内可通过 read_table 拉取该表数据）</span>
+                                )}
                             </label>
                             {form.type === 'COMPLETENESS' && (
                                 <div className="flex gap-ds-2 mb-ds-2">
@@ -533,25 +587,27 @@ export default function QualityRuleDrawer({
                                     </button>
                                 </div>
                             )}
-                            {needsColumn && (
+                            {needsColumn || isPython ? (
                                 <select
                                     value={form.columnName}
                                     onChange={(e) => updateField('columnName', e.target.value)}
                                     disabled={readOnly || !form.tableId}
                                     className={selectClass}
                                 >
-                                    <option value="">{columnsLoading ? '加载字段中...' : '请选择检查字段'}</option>
+                                    <option value="">
+                                        {columnsLoading ? '加载字段中...' : isPython ? '（可选）请选择检查字段' : '请选择检查字段'}
+                                    </option>
                                     {columns.map((c) => (
                                         <option key={c.id} value={c.columnName}>{c.columnName}</option>
                                     ))}
                                 </select>
-                            )}
+                            ) : null}
                             {needsColumn && errors.columnName &&
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.columnName}</p>}
                         </div>
                     )}
 
-                    {/* 自定义 SQL */}
+                    {/* 自定义 SQL（Sprint 7 F4：执行预览多指标列，点列名回填结果指标） */}
                     {isCustomSql && (
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
@@ -567,6 +623,136 @@ export default function QualityRuleDrawer({
                             />
                             {errors.sqlExpression &&
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.sqlExpression}</p>}
+                            {!readOnly && (
+                                <div className="mt-ds-2">
+                                    <DsButton
+                                        variant="secondary"
+                                        disabled={previewing || !form.tableId || !form.sqlExpression.trim()}
+                                        onClick={handlePreviewSql}
+                                    >
+                                        {previewing ? '执行中...' : '执行预览'}
+                                    </DsButton>
+                                    {!form.tableId && (
+                                        <span className="ml-ds-2 text-ds-nano text-ds-text-muted">请先选择目标表</span>
+                                    )}
+                                </div>
+                            )}
+                            {previewResult && (
+                                <div
+                                    className="mt-ds-2 border border-ds-border-subtle rounded-ds-sm p-ds-3 bg-ds-bg-root">
+                                    {previewResult.success ? (
+                                        <>
+                                            <div className="text-ds-nano text-ds-text-muted mb-ds-2">
+                                                {previewResult.message || '执行成功'}
+                                                {previewResult.truncated && '（样例行已截断）'}
+                                                ，点击列名回填「结果指标名」：
+                                            </div>
+                                            <div className="flex flex-wrap gap-ds-1 mb-ds-2">
+                                                {(previewResult.columns ?? []).map(col => (
+                                                    <button
+                                                        key={col}
+                                                        type="button"
+                                                        onClick={() => updateField('resultMetric', col)}
+                                                        className={`px-ds-2 py-0.5 rounded-ds-xs font-mono text-[11px] border transition-colors ${
+                                                            form.resultMetric === col
+                                                                ? 'border-ds-accent bg-ds-accent-light text-ds-accent font-semibold'
+                                                                : 'border-ds-border-subtle bg-white text-ds-text-secondary hover:border-ds-accent'
+                                                        }`}
+                                                    >
+                                                        {col}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {(previewResult.rows ?? []).length > 0 && (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-ds-nano font-mono">
+                                                        <thead>
+                                                        <tr>
+                                                            {(previewResult.columns ?? []).map(col => (
+                                                                <th key={col}
+                                                                    className="text-left px-ds-2 py-1 text-ds-text-muted border-b border-ds-border-subtle">{col}</th>
+                                                            ))}
+                                                        </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                        {(previewResult.rows ?? []).slice(0, 5).map((row, i) => (
+                                                            <tr key={i}>
+                                                                {row.map((cell, j) => (
+                                                                    <td key={j}
+                                                                        className="px-ds-2 py-1 text-ds-text-secondary border-b border-ds-border-subtle">
+                                                                        {cell === null ? 'NULL' : String(cell)}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="text-ds-small text-ds-danger break-all">
+                                            预览失败：{previewResult.error || '未知错误'}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Python 脚本（Sprint 7 F4，对齐原型 python-rule 视图） */}
+                    {isPython && (
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                Python 脚本 <span className="text-ds-danger">*</span>
+                            </label>
+                            <textarea
+                                value={form.pythonScript}
+                                onChange={(e) => updateField('pythonScript', e.target.value)}
+                                rows={12}
+                                disabled={readOnly}
+                                spellCheck={false}
+                                className={`${inputClass} resize-y font-mono`}
+                                placeholder={'def check(df):\n    """接收目标表 DataFrame，返回 {\'指标名\': 数值}"""\n    if df.empty:\n        return {\'null_rate\': 0.0}\n    return {\'null_rate\': float(df[\'amount\'].isnull().mean())}'}
+                            />
+                            {errors.pythonScript &&
+                                <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.pythonScript}</p>}
+                            <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                约定：`def check(df)` 接收目标表 DataFrame；内部可调用 `read_table(table, where=None, limit=None)` 按需采样；返回 dict 统计值。
+                            </p>
+                            {!readOnly && (
+                                <div className="mt-ds-2">
+                                    <DsButton
+                                        variant="secondary"
+                                        disabled={testing || !form.tableId || !form.pythonScript.trim()}
+                                        onClick={handleTestScript}
+                                    >
+                                        {testing ? '试跑中（最长约 5 分钟）...' : '测试脚本'}
+                                    </DsButton>
+                                    {!form.tableId && (
+                                        <span className="ml-ds-2 text-ds-nano text-ds-text-muted">请先选择目标表</span>
+                                    )}
+                                </div>
+                            )}
+                            {testResult && (
+                                <div
+                                    className="mt-ds-2 border border-ds-border-subtle rounded-ds-sm p-ds-3 bg-ds-bg-root">
+                                    {testResult.success ? (
+                                        <>
+                                            <div className="text-ds-small text-ds-success font-semibold mb-ds-1">
+                                                执行成功{testResult.durationMs != null && `（${testResult.durationMs}ms）`}
+                                            </div>
+                                            <pre className="text-ds-nano font-mono text-ds-text-secondary whitespace-pre-wrap break-all">
+                                                {JSON.stringify(testResult.result, null, 2)}
+                                            </pre>
+                                        </>
+                                    ) : (
+                                        <div className="text-ds-small text-ds-danger break-all whitespace-pre-wrap">
+                                            执行失败：{testResult.error || '未知错误'}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -609,7 +795,7 @@ export default function QualityRuleDrawer({
                     <div className="grid grid-cols-2 gap-ds-3">
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                                结果指标名
+                                结果指标名{isPython && <span className="text-ds-danger"> *</span>}
                             </label>
                             <input
                                 value={form.resultMetric}
@@ -619,6 +805,13 @@ export default function QualityRuleDrawer({
                                 className={`${inputClass} font-mono`}
                                 placeholder="如：null_rate"
                             />
+                            {isPython && (
+                                <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
+                                    从脚本返回 dict 中选择一个键作为结果指标，用于阈值分级判定
+                                </p>
+                            )}
+                            {errors.resultMetric &&
+                                <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.resultMetric}</p>}
                         </div>
                         <div>
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">

@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ F3 ✅ 全部闭环（E2E 全量 48 用例绿）；F4 后端 ✅（Review+自测全绿，待前端/测试）
+> **更新时间**：2026-08-08 | **阶段**：F1~F4 全部闭环 ✅（E2E 全量 57 用例绿）→ 待收尾（§6.5）
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -20,7 +20,7 @@
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
 | **F2 任务模板库**（DD-09）               | ✅ 完成     | 类型范围 SYNC + COLLECT；后端+前端+E2E 全部闭环（2026-08-08，12 用例全绿，见 §6.2） |
 | **F3 子 DAG 参数下发**（NG5）            | ✅ 完成    | 后端+前端+E2E 全部闭环（2026-08-08，UI 4 用例 + 执行链路 4 用例共 8 用例全绿 ×2 轮，见 §6.3） |
-| **F4 Python 质量规则**（DG-10）          | 🔄 后端 ✅ | 后端+Review 完成（2026-08-08，PYTHON 类型+通用连接注入+双新端点，curl 自测全绿，见 §6.4）；待前端/测试 |
+| **F4 Python 质量规则**（DG-10）          | ✅ 完成    | 后端+前端+E2E 全部闭环（2026-08-08，5 用例全绿含真实沙箱试跑，见 §6.4） |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
 | Sprint 7 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
 
@@ -301,7 +301,7 @@
 
 ---
 
-### 6.4 F4 Python 质量规则（DG-10）🔄 后端完成（2026-08-08）
+### 6.4 F4 Python 质量规则（DG-10）✅ 全部完成（2026-08-08）
 
 **范围**：新增 PYTHON 规则类型 + 强化自定义 SQL。
 **口径确认（2026-08-08 用户确认）**：① CUSTOM_SQL 强化后端新增**执行预览端点**（多指标列选择）；② 新增**测试脚本端点**（原型「测试脚本」按钮，技术文档 §5.3 未列）；③ worker 装 `psycopg2-binary` + `oracledb`（thin 模式无需 Oracle client；Oracle 测试库在 compose 注释中，本期不可验证）。
@@ -315,15 +315,20 @@
 - [x] 新端点：`POST /quality/rules/test-script`（保存前试跑，返回 dict/错误/耗时）+ `POST /quality/rules/preview-execute`（CUSTOM_SQL 真实执行预览，仅 SELECT/WITH，返回列清单+截断样例行供选 resultMetric）；均治理员/超管
 - [x] 重建 engineering + worker + governance + job + system（task-core 消费方全量），全部 healthy，Flyway 1.3.0 ✅
 
-**前端**
-- [ ] `types/quality.ts` 扩展 `QualityTemplateType`/`QUALITY_TYPE_LABEL`/`QUALITY_TYPE_OPTIONS` 加 PYTHON
-- [ ] 质量规则表单扩展 PYTHON 类型（Python 脚本编辑区 + 测试脚本按钮，对齐原型 `python-rule` 视图）；CUSTOM_SQL 表单接 preview-execute 多指标预览
-- [ ] 质量模板库支持 PYTHON 模板（pythonTemplate 编辑）
+**前端**（✅ 全部完成，2026-08-08 联调冒烟全绿）
+- [x] `types/quality.ts`：`QualityTemplateType`/LABEL/OPTIONS 加 PYTHON + `pythonTemplate/pythonScript` 字段 + 两个结果类型；`api/quality.ts` 加 `testQualityPythonScript`（timeout 320s）/`previewExecuteQualitySql`
+- [x] `QualityRuleDrawer`：PYTHON 类型（模板选择隐藏、脚本编辑区 + 约定 hint、检查字段可选、结果指标必填）+「测试脚本」按钮（结果/耗时/失败 traceback 行内展示）；CUSTOM_SQL 加「执行预览」（列 chips 点击回填结果指标 + 样例行表格 + 截断提示）
+- [x] `QualityTemplateDrawer`：PYTHON 模板（`pythonTemplate` 脚本编辑区，校验分支互斥；列表页类型标签补 Python）
+
+**前端 Review（2026-08-08，按 AGENTS.md §7 三点）**
+- 架构融洽 ✅：类型走既有单一出处（LABEL/OPTIONS 各处自动获得 Python 标签）；新端点封装沿用既有风格；无新依赖；脚本编辑用 textarea 而非 Monaco（短脚本 + Drawer 内嵌语义，Monaco 属 DAG 全屏编辑器场景）；两个表单均为右侧 Drawer 符合 §7 分工
+- 业务正确 ✅：PYTHON 脚本+结果指标必填对齐后端 `@AssertTrue`；模板校验分支（PYTHON 要 pythonTemplate、其余要 sqlTemplate）对齐后端「模板必填排除 PYTHON」；payload 按类型互斥（sqlExpression/pythonScript 不混传）；预览透传 columnName/阈值作 {column}/{min}/{max} 占位符来源对齐请求 DTO
+- 实现高效 ✅：试跑/预览仅点击触发；模板下拉沿用按类型懒加载；无 N+1/轮询
 
 **测试**
 - [x] 后端 Postman/curl 自测：模板/规则 CRUD 校验（4203/400）、test-script 三驱动（Doris/MySQL/PG）+ 采样（read_table limit）+ 失败 traceback、执行链路三档（PASS 0.0 / WARNING 0.25 / UNAVAILABLE 坏脚本）、批量应用 PYTHON 模板、update 保留脚本、preview-execute 多指标列 + DML/占位符拦截、无 token 1004；残留已清（见 §4「F4 后端变更明细」）
-- [ ] 新建 `e2e/sprint7/e2e/quality-python.spec.ts`
-- [ ] 更新 §2 看板：F4 置 ✅
+- [x] 新建 `e2e/sprint7/e2e/quality-python.spec.ts`（5 用例 serial）：PYTHON 模板 CRUD（DB 断言 python_template）、PYTHON 规则（模板选择隐藏/可选检查字段/**测试脚本真实沙箱试跑断言 dict**/必填校验/DB 断言 python_script/编辑回显/删除）、CUSTOM_SQL 执行预览（多指标列 chips + 点列回填 + 样例行）。test-script 用环境真实 mysql 数据源（种子数据源假密码连不上，与后端自测同口径）；e2e_s7_f4% 前缀 afterAll DB 兜底清理
+- [x] 更新 §2 看板：F4 置 ✅（2026-08-08，全量套件 57 用例全绿）
 
 ---
 

@@ -5,7 +5,7 @@
  */
 
 /** 模板类型：完整性 / 唯一性 / 值域范围 / 自定义 SQL */
-export type QualityTemplateType = 'COMPLETENESS' | 'UNIQUENESS' | 'RANGE' | 'CUSTOM_SQL';
+export type QualityTemplateType = 'COMPLETENESS' | 'UNIQUENESS' | 'RANGE' | 'CUSTOM_SQL' | 'PYTHON';
 
 /** 质量规则模板（列表 / 详情响应） */
 export interface QualityRuleTemplate {
@@ -15,6 +15,8 @@ export interface QualityRuleTemplate {
     description?: string;
     /** 校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等 */
     sqlTemplate?: string;
+    /** Python 校验脚本模板（Sprint 7 F4，type=PYTHON 时有值） */
+    pythonTemplate?: string;
     /** 结果指标名，如 null_rate / duplicate_count / out_of_range_rate */
     resultMetric?: string;
     /** 是否内置：1 内置，0 自定义 */
@@ -33,6 +35,8 @@ export interface QualityRuleTemplateCreateRequest {
     type: QualityTemplateType;
     description?: string;
     sqlTemplate?: string;
+    /** Sprint 7 F4：PYTHON 模板的脚本原文 */
+    pythonTemplate?: string;
     resultMetric?: string;
     enabled?: number;
 }
@@ -152,6 +156,7 @@ export const QUALITY_TYPE_LABEL: Record<QualityRuleType, string> = {
     UNIQUENESS: '唯一性',
     RANGE: '值域范围',
     CUSTOM_SQL: '自定义 SQL',
+    PYTHON: 'Python',
 };
 
 /** 质量规则/模板类型下拉选项（单一出处） */
@@ -160,7 +165,30 @@ export const QUALITY_TYPE_OPTIONS: {value: QualityRuleType; label: string}[] = [
     {value: 'UNIQUENESS', label: QUALITY_TYPE_LABEL.UNIQUENESS},
     {value: 'RANGE', label: QUALITY_TYPE_LABEL.RANGE},
     {value: 'CUSTOM_SQL', label: QUALITY_TYPE_LABEL.CUSTOM_SQL},
+    {value: 'PYTHON', label: QUALITY_TYPE_LABEL.PYTHON},
 ];
+
+/** Python 脚本试跑结果（Sprint 7 F4，POST /quality/rules/test-script） */
+export interface QualityScriptTestResult {
+    success: boolean;
+    /** check(df) 返回的结果 dict */
+    result?: Record<string, unknown>;
+    /** 失败原因（stderr 截断） */
+    error?: string;
+    durationMs?: number;
+}
+
+/** CUSTOM_SQL 执行预览结果（Sprint 7 F4，POST /quality/rules/preview-execute） */
+export interface QualitySqlPreviewResult {
+    success: boolean;
+    /** 返回列名（多指标列清单，供选择 resultMetric） */
+    columns?: string[];
+    /** 样例行（按 columns 顺序，最多 50 行） */
+    rows?: unknown[][];
+    truncated?: boolean;
+    message?: string;
+    error?: string;
+}
 
 /** 规则结果校验指标：如 null_rate / duplicate_count / out_of_range_rate */
 export type QualityResultMetric = string;
@@ -195,6 +223,8 @@ export interface QualityRule {
     checkField?: number;
     /** 实际校验 SQL（CUSTOM_SQL 时落库；模板类为空） */
     sqlExpression?: string;
+    /** Python 校验脚本（Sprint 7 F4，type=PYTHON 时落库） */
+    pythonScript?: string;
     /** 警告阈值（RANGE 时为值域下限 {min}） */
     warningThreshold?: number;
     /** 严重阈值（RANGE 时为值域上限 {max}） */
@@ -222,6 +252,8 @@ export interface QualityRuleCreateRequest {
     columnName?: string;
     checkField?: number;
     sqlExpression?: string;
+    /** Sprint 7 F4：PYTHON 规则脚本（def check(df) 返回 dict） */
+    pythonScript?: string;
     warningThreshold?: number;
     severeThreshold?: number;
     resultMetric?: string;
@@ -238,6 +270,8 @@ export interface QualityRuleUpdateRequest {
     columnName?: string;
     checkField?: number;
     sqlExpression?: string;
+    /** Sprint 7 F4：PYTHON 规则脚本 */
+    pythonScript?: string;
     warningThreshold?: number;
     severeThreshold?: number;
     resultMetric?: string;
