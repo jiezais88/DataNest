@@ -1,7 +1,7 @@
 # ============================================
 # shared-doris.yaml
-# Apache Doris 连接信息 (Sprint 1 使用)
-# 消费方: engineering-service, data-service
+# Apache Doris 连接信息
+# 消费方: engineering / worker
 # ============================================
 datanest:
   doris:

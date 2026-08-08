@@ -63,6 +63,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 icon: <HiOutlineFolderOpen size={18}/>,
                 roles: ALL_ROLES
             },
+            {
+                label: '任务模板库',
+                path: '/engineering/task-templates',
+                icon: <HiOutlineClipboardDocumentList size={18}/>,
+                roles: ENGINEERING_WRITE_ROLES
+            },
         ],
     },
     {

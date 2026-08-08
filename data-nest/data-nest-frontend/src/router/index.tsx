@@ -24,6 +24,7 @@ const AlertCenterPage = lazyPage(() => import('../pages/system/alert-center/Aler
 const DataStandardsPage = lazyPage(() => import('../pages/governance/data-standards'));
 const StandardCompliancePage = lazyPage(() => import('../pages/governance/compliance'));
 const DagsPage = lazyPage(() => import('../pages/engineering/dags'));
+const TaskTemplatesPage = lazyPage(() => import('../pages/engineering/task-templates'));
 const ProjectDagsPage = lazyPage(() => import('../pages/engineering/dags/project'));
 const DagExecutionsGlobalPage = lazyPage(() => import('../pages/engineering/dag-executions'));
 const QualityTemplatesPage = lazyPage(() => import('../pages/governance/quality-templates'));
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
             {path: 'engineering/sync-jobs/:syncJobId/history', element: <SyncJobHistoryRedirect/>},
             {path: 'engineering/sync-job-history', element: <SyncJobHistoryGlobalPage/>},
             {path: 'engineering/dags', element: <DagsPage/>},
+            {path: 'engineering/task-templates', element: <TaskTemplatesPage/>},
             {path: 'engineering/dags/:projectId', element: <ProjectDagsPage/>},
             {path: 'engineering/dags/:id/executions', element: <DagExecutionsRedirect/>},
             {path: 'engineering/dag-executions', element: <DagExecutionsGlobalPage/>},

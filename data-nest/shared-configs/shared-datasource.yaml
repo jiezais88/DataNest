@@ -1,11 +1,13 @@
 # ============================================
 # shared-datasource.yaml
 # PostgreSQL 数据源共享配置
-# 消费方: system-service
+# 消费方: system / alert-service / engineering / governance（按域各自一库，见 docker-compose 的 PG_DATABASE 注入）
+# 注意：PG_DATABASE 故意不设默认值（fail-fast）——拆库后旧共享库 datanest 已冻结，
+#       本地 IDE 启动必须显式配置 PG_DATABASE 环境变量，避免静默误连旧库。
 # ============================================
 spring:
   datasource:
-    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DATABASE:datanest}
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DATABASE}
     username: ${PG_USER:datanest}
     password: ${PG_PASSWORD:datanest123}
     driver-class-name: org.postgresql.Driver

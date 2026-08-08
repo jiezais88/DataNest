@@ -14,10 +14,14 @@ powerjob:
     server-address: ${POWERJOB_SERVER_HOST:middleware-powerjob}:${POWERJOB_SERVER_PORT:7700}
     # worker 通信端口（多实例部署时需各自唯一，默认 27777）
     port: ${POWERJOB_WORKER_PORT:27777}
-    # worker 与 server 通信协议（AKKA / HTTP）
-    protocol: AKKA
-    # 本地任务持久化策略：disk（H2 落盘）或 memory
-    store-strategy: ${POWERJOB_STORE_STRATEGY:disk}
+    # worker 与 server 通信协议（AKKA / HTTP）。5.x 官方推荐 HTTP（AKKA 仅为兼容保留，后续大版本移除）；
+    # server 官方镜像同时监听 AKKA(10086)/HTTP(10010)，切换只需 worker 侧改配置
+    protocol: HTTP
+    # 本地任务持久化策略：disk（H2 落盘）或 memory。项目全部任务为 STANDALONE+BUILT_IN（无 MapReduce/Broadcast），
+    # 本地 H2 仅存分片状态属死重（实测容器内仅 32K），memory 贴合容器语义并规避 H2 文件非正常停止损坏风险
+    store-strategy: ${POWERJOB_STORE_STRATEGY:memory}
+    # 任务返回结果最大长度（默认 8192，超长静默截断）：Addax/SQL 失败堆栈易超 8K，调大便于排查
+    max-result-length: ${POWERJOB_MAX_RESULT_LENGTH:32768}
     # 允许 server 未就绪时先启动 worker（本地开发友好，生产可改 false）
     allow-lazy-connect-server: ${POWERJOB_ALLOW_LAZY_CONNECT:true}
 

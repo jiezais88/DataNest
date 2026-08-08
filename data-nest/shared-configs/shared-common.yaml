@@ -1,7 +1,7 @@
 # ============================================
 # shared-common.yaml
 # 公共运行时配置：Redis、Jackson、MVC、LoadBalancer、MyBatis-Plus、日志、Actuator
-# 消费方：gateway / system-service / engineering-service / governance-service / job / worker
+# 消费方：gateway / system / alert-service / engineering / governance / job / worker
 # ============================================
 
 spring:
@@ -45,7 +45,8 @@ mybatis-plus:
 logging:
   level:
     root: info
-    com.datanest: debug
+    # 业务包日志级别：默认 info（mapper DEBUG 会刷屏）；排查时通过 DATANEST_LOG_LEVEL=debug 按需开启
+    com.datanest: ${DATANEST_LOG_LEVEL:info}
     org.springframework.cloud.loadbalancer: info
 
 management:

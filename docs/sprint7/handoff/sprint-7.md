@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-08 | **阶段**：F1 全部闭环 ✅；**F2 后端完成**（engineering+governance 已部署，curl 自测全过）→ 待 F2 前端 + E2E
+> **更新时间**：2026-08-08 | **阶段**：F1 全部闭环 ✅；**F2 前端完成**（联调冒烟全绿）→ 待 F2 E2E 或启动 F3
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -18,7 +18,7 @@
 | Sprint 7 技术设计                        | ✅ 完成   | `docs/sprint7/DataNest-Sprint7-技术文档.md`（v1.0，含 4 个技术决策 D1~D4）                     |
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
-| **F2 任务模板库**（DD-09）               | 🔄 后端完成 | 类型范围经用户确认收敛为 **SYNC + COLLECT**（SQL/EXPORT 不做）；后端 ✅（2026-08-08，curl 自测全过，见 §6.2）；待前端 + E2E |
+| **F2 任务模板库**（DD-09）               | ✅ 前端完成 | 类型范围 SYNC + COLLECT；后端 ✅ + 前端 ✅（2026-08-08，联调冒烟全绿，见 §6.2）；E2E 待后续会话 |
 | **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
@@ -53,6 +53,9 @@
 | **F1 后端实现（2026-08-06，本段为开发阶段新增）**                      | 见下方「F1 后端变更明细」                                                                             |
 | **F1 前端实现（2026-08-07，含当日修订轮）**                              | 见 §6.1「前端」+「F1 修订轮」：合并单页（方案 A）；后端补 4 接口（树计数/healthLevel/批量分配/用户选项）+ Doris 回显 + 2 处 `MetadataService` 补丁 |
 | **F2 后端实现（2026-08-08，本段为开发阶段新增）**                        | 见下方「F2 后端变更明细」                                                                             |
+| **F2 后端 Review（2026-08-08）** | 按 AGENTS.md §7 三点审查通过；修复 3 项（usernames 判空对齐项目惯例/PUT 编辑缺省保留原配置/停用模板错误码 7301→7307），已重建 engineering + 回归冒烟 |
+| **PowerJob worker 配置优化（2026-08-08，用户确认三项全做）** | 对照 5.1.2 starter 源码 `PowerJobProperties` 全量键审查 `shared-powerjob.yaml`：① `protocol: AKKA→HTTP`（官方推荐方向）；② `store-strategy: disk→memory`（项目全部 STANDALONE+BUILT_IN 无 MapReduce，本地 H2 属死重）；③ 新增 `max-result-length: 32768`。yaml+Nacos 已同步，restart job/worker 后验证：server 日志两 App 心跳均为 HTTP、app-job 秒级任务执行+上报成功、worker 侧 `jdbc:h2:mem:` 生效。AGENTS.md §1 已同步 |
+| **全量配置审计与优化（2026-08-08，用户确认全做）** | 审计 8 个 shared-configs + 7 个服务 application.yml + Nacos config_info 实况。应用 3 项：① `shared-datasource.yaml` 的 `PG_DATABASE` 去默认值 fail-fast（原默认指向已冻结旧库 `datanest`，本地 IDE 无 env 会静默误连；docker 由 compose 注入不受影响）；② `shared-common.yaml` 日志 `com.datanest: debug→${DATANEST_LOG_LEVEL:info}`（消除 mapper DEBUG 刷屏，Nacos 推送后 LoggingRebinder 热生效无需重启，已实证 job/worker 40s 内 0 行 DEBUG）；③ 4 处消费方注释勘误（datasource/common/security/doris）。核查无需动：config_info 无陈旧 dataId、InternalFeignRetryer 存在、openfeign 命名空间正确、worker/job DataSource 排除正确、gateway 路由一致。AGENTS.md §6 已同步 |
 | `docs/sprint7/DataNest-Sprint7-PRD.md`（新增）                        | Sprint 7 数据资产目录产品文档 v1.0（12 章，对齐 Sprint6 PRD 范本；复用 vs 新增边界经代码核验）        |
 | `docs/sprint7/DataNest-Sprint7-技术文档.md`（新增）                   | Sprint 7 技术设计文档 v1.0（11 章，含 4 个技术决策、数据模型、接口、实现清单）；v1.1 补充 Python 数据拉取方案 B（通用连接注入） |
 | `docs/sprint7/handoff/sprint-7.md`（新增）                            | 本 Handoff                                                                                            |
@@ -189,7 +192,7 @@
 
 ---
 
-### 6.2 F2 任务模板库（DD-09）🔄 后端完成（2026-08-08）
+### 6.2 F2 任务模板库（DD-09）🔄 前端完成（2026-08-08，E2E 待）
 
 **范围**：任务模板 CRUD + 一键创建。**类型范围经用户确认收敛为 SYNC + COLLECT**（SQL/EXPORT 不做，见 §4 F2 明细）。
 **块内依赖**：Flyway → engineering 服务（entity 随服务本地，task-core-entity 已不存在）→ governance-api/governance 内部端点（COLLECT）→ 前端 1 页 → 联调。
@@ -201,15 +204,23 @@
 - [x] governance-api `CollectWriteApi.createTask` + governance `CollectTaskService.createInternal`/`CollectWriteController` 端点（COLLECT 跨服务一键创建，fail-closed）
 - [x] 重建 engineering + governance 并部署（healthy，Flyway 1.5.0 ✅）；worker/job 无需重建（不消费新端点/新错误码）
 
-**前端**
-- [ ] `Sidebar.tsx` 新增「任务模板」（ENGINEERING_WRITE_ROLES）+ `router/index.tsx` 新增 `/engineering/task-templates`
-- [ ] 任务模板库页（列表/新增/一键创建，对齐原型 `task-template` 视图：segmented 分组 + 内置/自定义徽章；**原型已同步为两类**：同步/采集）
-- [ ] 新增 `src/types/taskTemplate.ts` + `src/api/taskTemplate.ts`；一键创建表单按 `placeholders` 渲染（`valueType=DATASOURCE` 渲染数据源下拉）
+**前端**（✅ 全部完成，2026-08-08 联调冒烟全绿）
+- [x] `Sidebar.tsx` 新增「任务模板库」（数据开发组，ENGINEERING_WRITE_ROLES）+ `router/index.tsx` 新增 `/engineering/task-templates` + 面包屑
+- [x] 任务模板库页（`pages/engineering/task-templates/`）：segmented 类型分组（全部/同步/采集，前端过滤）+ 内置/自定义徽章 + 占位参数列 + 状态列 + 操作列（fixed right）：一键创建（停用禁用）/内置仅「复制为自定义」/自定义编辑+删除；底部 info notice（快照式说明）
+- [x] 新增 `src/types/taskTemplate.ts` + `src/api/taskTemplate.ts`；`CreateTaskModal` 按 `placeholders` 动态渲染（`valueType=DATASOURCE` → 数据源下拉，defaultValue 预填，required 前端校验 + 后端 7305 兜底）；`TemplateFormModal` 新增/编辑/复制三态（编辑仅传名称/说明保留原配置；另存为与手动 JSON 二选一，类型切换重置候选任务）
+
+**前端 Review（2026-08-08，按 AGENTS.md §7 三点）**
+- 架构融洽 ✅：API 走统一封装新风格（`.then(r=>r.data)`）；权限前后端一致（ENGINEERING_WRITE_ROLES）；复用 Ds* 组件/notify/COL/formatDateTime，无新依赖、无硬编码颜色；单栏列表页按 §8 约定整页滚动（未滥用固定撑满）
+- 业务正确 ✅：占位符表单对齐 B4 结构；编辑语义对齐后端「缺省保留原配置」；内置只读 + 复制路径走手动配置；停用模板按钮禁用（7307 兜底）
+- 实现高效 ✅：列表全量一次拉取前端过滤；数据源下拉仅在含 DATASOURCE 占位符时拉取；另存候选按类型懒拉一次；无 N+1/轮询
+- 说明：一键创建成功仅 toast 不跳页（对齐原型「生成任务」语义）；`parseTemplatePlaceholders` 从组件文件导出有一条 react-refresh warning（项目已有同类，可接受）
+- 追加修订（2026-08-08 用户反馈）：模板新增/编辑/复制表单由居中 DsModal 改**右侧 Drawer**（`TemplateFormDrawer`，640px）——平台惯例：实体主表单全部走右侧 Drawer（数据源/同步/采集/质量任务等 8 处同类）；存量例外**用户管理 `UserModal` 一并改为 `UserDrawer`**。「弹窗 vs 抽屉分工」规则已写入 `docs/agent/conventions-frontend.md` §7。
 
 **测试**
 - [x] 后端 Postman/curl 自测：模板 CRUD、7301~7306 校验、一键创建后 sync_job/collect_task 落库（残留已清理）
+- [x] 前端联调冒烟（临时 Playwright 脚本，用完即删）：列表/segmented 过滤/内置计数、一键创建 SYNC（填占位符 → sync_job 落库已验证并清理）、新增手动 JSON、另存为（选任务隐藏 JSON 框）、编辑（类型锁定）、删除、内置只读按钮集——全绿无控制台错误
 - [ ] 新建 `e2e/sprint7/e2e/task-templates.spec.ts`
-- [ ] 更新 §2 看板：F2 置 ✅
+- [ ] 更新 §2 看板：F2 置 ✅（E2E 完成后）
 
 > **已消解**：B4 `config_template` JSON 结构（见 §5）；内置模板经 Flyway 播种（迁移内 INSERT 为本项目首例，固定 id + `ON CONFLICT DO NOTHING`）。
 

@@ -1,7 +1,7 @@
 # ============================================
 # shared-security.yaml
 # Sa-Token JWT + CORS + 加密密钥共享配置
-# 消费方: gateway, system-service, engineering-service, governance-service
+# 消费方: gateway / system / alert-service / engineering / governance / worker / job
 # ============================================
 sa-token:
   # JWT 模式

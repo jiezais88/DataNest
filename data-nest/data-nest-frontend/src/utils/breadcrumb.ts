@@ -23,6 +23,7 @@ export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步任务', leaf: true},
     '/engineering/sync-job-history': {group: '数据工程', label: '同步任务历史', leaf: true},
     '/engineering/dags': {group: '数据开发', label: '项目管理', leaf: true},
+    '/engineering/task-templates': {group: '数据开发', label: '任务模板库', leaf: true},
     '/engineering/dag-executions': {group: '数据工程', label: 'DAG 执行历史', leaf: true},
     '/governance/collect-tasks': {group: '数据治理', label: '采集任务', leaf: true},
     '/governance/collect-task-history': {group: '数据治理', label: '采集任务历史', leaf: true},

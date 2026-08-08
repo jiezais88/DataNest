@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import type {CreateUserParams, UpdateUserParams, UserVO} from '../api/auth';
+import Drawer from './Drawer';
 import DsButton from './DsButton';
-import DsModal from './DsModal';
 import DsSpinner from './DsSpinner';
 import {ROLE_OPTIONS} from '../constants/roles';
 
@@ -16,7 +16,8 @@ interface Props {
 
 const ALL_ROLES = ROLE_OPTIONS.map((o) => ({code: o.value, name: o.label}));
 
-export default function UserModal({open, editUser, mode, submitting = false, onClose, onSubmit}: Props) {
+/** 用户 创建/编辑/查看（实体主表单，平台惯例走右侧 Drawer） */
+export default function UserDrawer({open, editUser, mode, submitting = false, onClose, onSubmit}: Props) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -66,19 +67,18 @@ export default function UserModal({open, editUser, mode, submitting = false, onC
         : username && password && password.length >= 6 && selectedRoles.length > 0;
 
     return (
-        <DsModal
+        <Drawer
             open={open}
             onClose={onClose}
-            title={isView ? '详情' : (isEdit ? '编辑用户' : '创建用户')}
-            width="w-[520px]"
+            title={isView ? '用户详情' : (isEdit ? '编辑用户' : '创建用户')}
             footer={
                 isView ? (
-                    <DsButton variant="ghost" onClick={onClose}>
+                    <DsButton variant="secondary" onClick={onClose}>
                         关闭
                     </DsButton>
                 ) : (
                     <>
-                        <DsButton variant="ghost" onClick={onClose} disabled={submitting}>
+                        <DsButton variant="secondary" onClick={onClose} disabled={submitting}>
                             取消
                         </DsButton>
                         <DsButton type="button" onClick={handleSubmit} disabled={!canSubmit || submitting}>
@@ -147,6 +147,6 @@ export default function UserModal({open, editUser, mode, submitting = false, onC
                                placeholder="请输入手机号"/>
                     </div>
             </div>
-        </DsModal>
+        </Drawer>
     );
 }

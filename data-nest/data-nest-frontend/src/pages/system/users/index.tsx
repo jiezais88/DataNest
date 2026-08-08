@@ -7,7 +7,7 @@ import {createUser, getUsers, resetPassword, toggleUserStatus, updateUser} from 
 import {formatDateTime} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
 import usePagedList from '../../../hooks/usePagedList';
-import UserModal from '../../../components/UserModal';
+import UserDrawer from '../../../components/UserDrawer';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
 import DsModal from '../../../components/DsModal';
@@ -226,6 +226,15 @@ export default function UsersPage() {
             ),
         },
         {
+            title: '手机号',
+            dataIndex: 'phone',
+            width: 130,
+            ellipsis: true,
+            render: (v?: string) => (
+                <span className="text-ds-small text-ds-text-secondary">{v || '-'}</span>
+            ),
+        },
+        {
             title: '状态',
             dataIndex: 'enabled',
             width: COL.STATUS,
@@ -426,7 +435,7 @@ export default function UsersPage() {
             </div>
 
             {/* Modals */}
-            <UserModal
+            <UserDrawer
                 open={modalOpen}
                 editUser={editUser}
                 mode={modalMode}

@@ -89,6 +89,7 @@ catch (err) {
 - 字体、字号、间距、圆角、阴影、z-index 等均使用 `ds-*` token。
 - antd Table 统一用 `className="prototype-table prototype-table-flush"` + `pagination={false}`，分页用手写 `components/Pagination`。
 - 弹窗统一用 `components/DsModal`，按钮用 `components/DsButton`，状态徽章用 `components/DsStatusBadge`。
+- **弹窗 vs 抽屉分工（2026-08-08 定）**：实体的创建/编辑主表单（字段多、含配置，从列表页进入）一律用右侧 `components/Drawer`（命名 `XxxDrawer.tsx`，范本：DataSourceDrawer/SyncJobDrawer/QualityJobDrawer）；面板类查看/分析（字段血缘、执行详情）也用 Drawer。居中 `DsModal` 只用于：确认（ConfirmDialog）、轻量操作（分配、3-5 个字段以内的小表单）、聚焦代码编辑器（SQL/Python）、结果/详情查看。
 - 表格列宽参考 `src/constants/table.ts` 中的 `COL`，同类列在不同页面保持相近宽度。
 - **源码全部为 `.tsx`**，不要新增 `.jsx`；图标统一使用 `react-icons`（以 `HiOutline*` 系列为主）。
 

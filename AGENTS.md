@@ -21,7 +21,7 @@ DataNest 是一个数据平台，技术栈如下：
 - **前端**：独立容器 `app-frontend`（源码目录 `data-nest/data-nest-frontend`），通过 `app-gateway:8080` 统一入口
 - **部署**：Docker Compose，所有服务在同一 `datanest-net` 网络
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
-- **调度**：PowerJob 5.1.2（官方镜像，容器 `middleware-powerjob`，控制台/OpenAPI http://localhost:7700），数据库为 middleware-mysql 的 `powerjob` 库。两个 App：`data-nest-job`（id=1，13 个平台定时任务）/ `data-nest-worker`（id=2，业务任务与 DAG 节点执行）。原 XXL-JOB（8088）/ DolphinScheduler（12345）/ Zookeeper 已随 PowerJob 迁移（2026-08-07）全部下线
+- **调度**：PowerJob 5.1.2（官方镜像，容器 `middleware-powerjob`，控制台/OpenAPI http://localhost:7700），数据库为 middleware-mysql 的 `powerjob` 库。两个 App：`data-nest-job`（id=1，13 个平台定时任务）/ `data-nest-worker`（id=2，业务任务与 DAG 节点执行）。**worker 通信协议 HTTP（非 AKKA，2026-08-08 切换，官方推荐方向）、store-strategy=memory（项目无 MapReduce/Broadcast，本地 H2 属死重）、max-result-length=32768**（`shared-powerjob.yaml`）。原 XXL-JOB（8088）/ DolphinScheduler（12345）/ Zookeeper 已随 PowerJob 迁移（2026-08-07）全部下线
 - **目标数仓**：内置 Doris（当前在 `192.168.119.135:9030`）
 - **业务库（2026-08-07 起按域拆 4 库）**：`datanest_system`（sys_*，app-system）、`datanest_alert`（alert_*+dag_alert_*，app-alert）、`datanest_engineering`（sync/dag/datasource/task_template 14 表，app-engineering）、`datanest_governance`（metadata/collect/quality 等 19 表，app-governance）；均在 middleware-postgres 同实例。**worker/job 无库**（纯执行/调度节点，application.yml 已排除 DataSource 自动配置）。旧 `datanest` 库保留只读观察后下线。各服务 Flyway 独立管理本库（`db/migration/V1.0.0__baseline.sql` 起，代码驱动见 §6）
 
@@ -76,6 +76,7 @@ DataNest 是一个数据平台，技术栈如下：
 ### 文档同步约定
 
 - **全局 `AGENTS.md`**：当项目架构、环境信息、已知坑、构建规则发生变化时更新。判断标准：这个变更如果下个会话不知道，可能会踩坑或做错决策。更新到 `AGENTS.md` 或 `docs/agent/` 下的对应子文档，避免 AGENTS.md 无限膨胀。
+- **适时自动优化（2026-08-07 起）**：Agent 在工作中发现 `AGENTS.md` 及 `docs/agent/` 内容有过时、缺失、重复或结构不合理时，**应主动顺手优化**（修正错误表述、补充已验证的新结论、精简冗余、把膨胀内容下沉到子文档），不必等用户明确要求；但**涉及删除有效信息、改变约定含义、或Agent 自己不确定的改动，必须先和用户沟通确认后再改**。
 - **Sprint Handoff 文档**：每个子会话结束时更新当前 Sprint 的状态看板、Blocker、变更清单、Next Action。
 - **Sprint 配套文档**：一个 Sprint 通常包含技术文档、产品文档、UI 原型。开发过程中如果对需求、接口、字段、页面交互做了微调，必须同步回落到对应文档，保持"代码实现 = 文档描述"。
 - **代码与文档不一致时必须询问**：当 Agent 发现当前实现和已有文档、原型存在偏差时，**必须暂停并询问用户**"这是有意的临时调整，还是需要同步更新文档？"，不要擅自替用户决定。
@@ -180,7 +181,9 @@ docker compose up -d --no-deps app-engineering app-worker
 - **Nacos API 可能 401**：直接查 `middleware-mysql` 的 `nacos.config_info` 表更可靠。
 - **Doris 是外部主机**：不在 docker-compose 里，部署/清理时不要以为重启容器会影响 Doris。
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和 `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
-- **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需重启对应服务。
+- **Nacos 配置修改后可能不实时生效**：部分服务对 `@Value` 注入无热刷新能力，改完配置后需重启对应服务。例外：`logging.level.*` 走 Spring `LoggingRebinder`，Nacos 推送后**热生效无需重启**（2026-08-08 实证）。
+- **业务包日志默认 info（2026-08-08 起）**：`shared-common.yaml` 的 `com.datanest` 级别改为 `${DATANEST_LOG_LEVEL:info}`——原全量 DEBUG 导致 mapper SQL 日志刷屏。排查时在 compose 给对应服务加 `DATANEST_LOG_LEVEL=debug` 环境变量重启即可。
+- **`PG_DATABASE` 无默认值（fail-fast，2026-08-08 起）**：`shared-datasource.yaml` 不再兜底旧 `datanest` 库；本地 IDE 启动必须显式配 `PG_DATABASE` 环境变量（docker 由 compose 注入，不受影响），避免静默误连已冻结的旧共享库。
 - **MailHog 清空**：`DELETE http://localhost:8025/api/v1/messages`（v2 端点会 404）。
 - **无库服务必须排除 DataSource 自动配置（2026-08-07 起）**：worker/job 无任何业务库（纯执行/调度节点），两服务 application.yml 已 `spring.autoconfigure.exclude` 排除 `DataSourceAutoConfiguration`/`DataSourceTransactionManagerAutoConfiguration`/`MybatisPlusAutoConfiguration`（Boot 4 类名在 `org.springframework.boot.jdbc.autoconfigure` 包）——不排会启动报 `Failed to configure a DataSource`。注意 worker 的 Doris 连接是 `DorisDataSourceConfig` 手工构建，不受影响。
 
