@@ -15,7 +15,7 @@ public class QualityRuleTemplateUpdateRequest {
     @Size(max = 100, message = "模板名称不能超过 100 字符")
     private String name;
 
-    /** 模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL */
+    /** 模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL / PYTHON（Sprint 7 DG-10 加 PYTHON） */
     @NotBlank(message = "模板类型不能为空")
     private String type;
 
@@ -24,6 +24,9 @@ public class QualityRuleTemplateUpdateRequest {
 
     /** 校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等；CUSTOM_SQL 可由用户填写具体 SQL */
     private String sqlTemplate;
+
+    /** Python 模板脚本（def check(df) 形式；PYTHON 类型模板用，Sprint 7 DG-10） */
+    private String pythonTemplate;
 
     /** 结果指标名 */
     @Size(max = 50, message = "结果指标名不能超过 50 字符")

@@ -218,6 +218,7 @@ docker compose up -d --no-deps app-engineering app-worker
 ### 质量
 
 - **质量执行在 app-worker（Sprint 8 执行层）**：`qualityCheckExecuteHandler` 注册在 PowerJob App `data-nest-worker`，`QualityCheckService` 在 worker 容器内执行。手动/定时/自动三种触发统一投递到该 handler。改 task-core 的质量执行代码后必须重建 **app-worker**（不只是 governance）。
+- **PYTHON 质量规则（Sprint 7 DG-10）**：规则类型扩为 5 类（+PYTHON，governance 库 V1.3.0 重建 CHECK）。`PythonExecutor.executeQualityCheck` 质量模式：通用 `conn.json` 连接注入（`PythonConnectionResolver` 共享）+ `read_table(table, where, limit)` + `check(df)` 返回 dict 按 `result_metric` 取值复用 `determineLevel`，失败 UNAVAILABLE。新端点 `POST /quality/rules/test-script`（governance 本地沙箱试跑）与 `POST /quality/rules/preview-execute`（CUSTOM_SQL 多指标执行预览，仅 SELECT/WITH）。坑：沙箱禁 `socket` 与 pymysql 冲突（质量模式已放开，DAG 节点保持禁令其 read_doris_table 存量不可用）；Doris 凭据必须从 `DorisDataSourceConfig` 静态 getter 取（system property 读不到 @Value 值）。详见 gotchas §五。
 - **质量任务定时 = 每任务独立注册 PowerJob（不再全局扫描）**：`startSchedule` 按需 `registerJob`/`startJob`（SchedulerClient → saveJob/enableJob），`stopSchedule` 仅 `stopJob`（disableJob，保留 `scheduler_job_id`），`delete` 注销，`update` 里 cron 变更会 `updateJob` 同步。`quality_job` 使用 `scheduler_job_id` 字段。已废弃 `QualityCheckHandler` 全局扫描。
 - **质量执行调度参数带触发类型**：手动/自动显式传 `jobId:MANUAL` / `jobId:AUTO_TRIGGER`（带冒号，经 PowerJob instanceParams 传递）；**定时触发用注册时保存的纯 `jobId`（无冒号）**，handler 对无冒号 param 默认按 `SCHEDULED`。排查"定时触发落库成 MANUAL"先看 handler 的 param 解析。
 - **质量结果值提取坑（RANGE）**：Doris/MySQL 对空表 `SUM(...)` 返回 **NULL**（非 0），且 JDBC 列名可能大小写变化。`computeRangeRatio` 已对列名大小写不敏感匹配，`total=0` 或 `out` 为 NULL 时按 0 处理。

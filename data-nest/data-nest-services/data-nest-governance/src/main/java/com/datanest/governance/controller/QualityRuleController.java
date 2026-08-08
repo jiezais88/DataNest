@@ -9,6 +9,10 @@ import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
 import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
+import com.datanest.governance.dto.QualityPythonScriptTestRequest;
+import com.datanest.governance.dto.QualityPythonScriptTestResponse;
+import com.datanest.governance.dto.QualitySqlPreviewExecuteRequest;
+import com.datanest.governance.dto.QualitySqlPreviewExecuteResponse;
 import com.datanest.governance.service.QualityRuleService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -119,5 +123,23 @@ public class QualityRuleController {
     @GetMapping("/{id}/preview-sql")
     public Result<String> previewSql(@PathVariable Long id) {
         return Result.ok(ruleService.previewSql(id));
+    }
+
+    /**
+     * 试跑 PYTHON 规则脚本（Sprint 7 DG-10，保存前验证脚本并查看返回 dict）。
+     */
+    @PostMapping("/test-script")
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    public Result<QualityPythonScriptTestResponse> testScript(@Valid @RequestBody QualityPythonScriptTestRequest request) {
+        return Result.ok(ruleService.testPythonScript(request));
+    }
+
+    /**
+     * CUSTOM_SQL 规则执行预览（Sprint 7 DG-10）：真实执行返回列清单 + 样例行，供多指标选择 resultMetric。
+     */
+    @PostMapping("/preview-execute")
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    public Result<QualitySqlPreviewExecuteResponse> previewExecute(@Valid @RequestBody QualitySqlPreviewExecuteRequest request) {
+        return Result.ok(ruleService.previewExecuteSql(request));
     }
 }

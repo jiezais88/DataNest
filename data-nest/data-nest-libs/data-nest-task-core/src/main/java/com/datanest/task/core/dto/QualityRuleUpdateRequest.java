@@ -23,7 +23,7 @@ public class QualityRuleUpdateRequest {
     private String name;
 
     @NotBlank(message = "规则类型不能为空")
-    @Pattern(regexp = "^(COMPLETENESS|UNIQUENESS|RANGE|CUSTOM_SQL)$", message = "规则类型非法")
+    @Pattern(regexp = "^(COMPLETENESS|UNIQUENESS|RANGE|CUSTOM_SQL|PYTHON)$", message = "规则类型非法")
     private String type;
 
     /** 来源模板（模板类规则必填；CUSTOM_SQL 可不填，用用户 SQL） */
@@ -38,6 +38,9 @@ public class QualityRuleUpdateRequest {
     private Integer checkField = 0;
 
     private String sqlExpression;
+
+    /** Python 脚本（def check(df) 返回 dict；PYTHON 必填，Sprint 7 DG-10） */
+    private String pythonScript;
 
     private BigDecimal warningThreshold;
 
@@ -71,6 +74,15 @@ public class QualityRuleUpdateRequest {
     @AssertTrue(message = "自定义 SQL 规则必须填写 SQL 表达式")
     public boolean isCustomSqlValid() {
         return !"CUSTOM_SQL".equals(type) || (sqlExpression != null && !sqlExpression.isBlank());
+    }
+
+    @AssertTrue(message = "Python 规则必须填写脚本（def check(df) 返回 dict）并指定结果指标 resultMetric")
+    public boolean isPythonValid() {
+        if (!"PYTHON".equals(type)) {
+            return true;
+        }
+        return pythonScript != null && !pythonScript.isBlank()
+                && resultMetric != null && !resultMetric.isBlank();
     }
 
     @AssertTrue(message = "值域范围检查必须填写值域边界 rangeMin/rangeMax，且 rangeMin ≤ rangeMax")

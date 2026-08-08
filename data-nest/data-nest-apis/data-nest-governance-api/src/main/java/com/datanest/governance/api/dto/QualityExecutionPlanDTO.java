@@ -61,10 +61,19 @@ public class QualityExecutionPlanDTO {
         /** 阈值比较符（规则实体暂无该字段，预留透出，当前恒为 null） */
         private String comparator;
 
-        /** 规则类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL */
+        /** 规则类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL / PYTHON（Sprint 7 DG-10 加 PYTHON） */
         private String ruleType;
 
         /** 结果值提取列名（worker 按该列名从查询结果取值，取不到降级首行首列） */
         private String resultMetric;
+
+        /** Python 脚本（def check(df) 返回 dict；PYTHON 类型规则有值，Sprint 7 DG-10） */
+        private String pythonScript;
+
+        /** 目标表归属数据库名（经 metadata_table 回填；PYTHON 连接注入/read_table 定位用，Sprint 7 DG-10） */
+        private String databaseName;
+
+        /** 目标表归属 Schema 名（经 metadata_table 回填；有 schema 的类型（PG/Oracle）定位用，Sprint 7 DG-10） */
+        private String schemaName;
     }
 }

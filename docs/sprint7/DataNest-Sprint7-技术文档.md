@@ -177,7 +177,9 @@ public static class ParamMapping {
 - 存储：`dag_node.config` 仍为 TEXT JSON，扩展后形如 `{"type":"SUB_DAG","subDagId":123,"subDagName":"xxx","syncExecution":true,"paramMappings":[{"mainParam":"${biz_date}","subParam":"${sub_date}"}]}`。
 - **无需迁移脚本**（config 为 TEXT JSON，后端解析兼容新增字段；旧数据 `paramMappings` 为 null 视为不传参）。
 
-### 3.4 `V3.8.2__sprint7_quality_python.sql`：质量 Python 规则（DG-10）
+### 3.4 质量 Python 规则（DG-10）：`V1.3.0__sprint7_quality_python.sql`
+
+> **落点修订（2026-08-08 实现口径）**：按微服务化拆库约定，脚本落 **governance 库** `data-nest-governance/src/main/resources/db/migration/V1.3.0__sprint7_quality_python.sql`（原稿编号 V3.8.2 为拆库前 system 库口径，作废）。
 
 **`quality_rule_template.type` CHECK 约束追加 `PYTHON`**（drop 重建）：
 
@@ -266,14 +268,16 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 `QualityCheckService` 执行 PYTHON 类型规则（数据拉取采用**方案 B 通用连接注入**，用户确认）：
 
 1. 加载规则 `python_script`（`def check(df)`）与目标表 `datasource_id`。
-2. **组装通用连接注入**：用 `DataSourceConnection` 构造目标表数据源连接信息（type/host/port/user/password/database，密码经 `EncryptionConfig` 解密）→ 注入沙箱 `conn.json`（非 Doris 专用 `doris.json`）。
-3. **复用 `PythonExecutor` 沙箱**（临时目录 + `ulimit -v` + 超时中断 + 安全沙箱）执行脚本；沙箱内 `read_table(table, where=None, limit=None)` 按数据源 type 选驱动拉取 DataFrame 给 `check(df)`。
-4. 解析返回 dict，按规则 `result_metric` 取指标值。
-5. 沿用 `determineLevel` 分级判定（`value < warning`→PASS 等），落 `quality_check_detail`；失败 → `UNAVAILABLE`（不告警、不参与评分）。
+2. **组装通用连接注入**：`PythonConnectionResolver`（task-core 共享，worker/governance 共用）按目标表数据源构造 `{type,host,port,user,password,database,schema}`（内置 Doris 取 `DorisDataSourceConfig` 静态配置；注册数据源经 Feign 读取 + `EncryptionConfig` 解密；目标表 databaseName/schemaName 覆盖连接默认值）→ 注入沙箱 `conn.json`（非 Doris 专用 `doris.json`，后者保留兼容）。
+3. **复用 `PythonExecutor` 沙箱**（临时目录 + `ulimit -v` + 超时中断 + 安全沙箱）执行脚本；沙箱内 `read_table(table, where=None, limit=None)` 按数据源 type 选驱动（pymysql/psycopg2/oracledb）拉取 DataFrame；收尾自动 `check(read_table(目标表))`，返回 dict 写 `output.json.check_result`。**质量模式放开 socket 禁令**（pymysql 建连必需；脚本由治理员/超管配置），DAG 节点保持禁令。
+4. 解析返回 dict，按规则 `result_metric` 取指标值（缺失报错；空则取首键兜底）。
+5. 沿用 `determineLevel` 分级判定（`value < warning`→PASS 等），落 `quality_check_detail`；失败 → `UNAVAILABLE`（不告警、不参与评分）。超时 `datanest.quality.python.timeout-seconds`（默认 300s，shared-quality.yaml）。
 
-> **数据拉取约定**：Python 脚本内通过 `read_table` 自由控制采样（`where`/`limit`），不受 `GenericSqlExecutor` 的 5s 超时/200 行截断限制；脚本返回 dict 仅作统计值，不产出新表（区别于 DAG Python 节点的 `write_doris_table`）。
+> **数据拉取约定**：Python 脚本内通过 `read_table` 自由控制采样（`where`/`limit`），不受 `GenericSqlExecutor` 的 5s 超时/200 行截断限制；脚本返回 dict 仅作统计值，不产出新表（区别于 DAG Python 节点的 `write_doris_table`）。默认全表拉取传入 `check(df)`，大表风险由沙箱内存/超时兜底。
 
-**强化自定义 SQL**（CUSTOM_SQL）：复用 `RuleSqlGenerator` 占位符（`{table}/{column}/{min}/{max}`）模板化、参数化；多指标返回由脚本返回多列/多值，用户选 `result_metric` 指定；保留 `preview-sql` 预览增强多指标预览。
+**强化自定义 SQL**（CUSTOM_SQL）：复用 `RuleSqlGenerator` 占位符（`{table}/{column}/{min}/{max}`）模板化、参数化（现状已支持）；多指标返回由 SQL 返回多列，用户选 `result_metric` 指定（执行链路现状已支持按列名提取）；新增**执行预览端点** `POST /quality/rules/preview-execute`（2026-08-08 用户确认）：展开占位符后真实执行（仅 SELECT/WITH 只读），返回列清单 + 截断样例行，供多指标场景选择 resultMetric。
+
+**测试脚本端点**（2026-08-08 用户确认，原型「测试脚本」按钮）：`POST /quality/rules/test-script`——保存前在 governance 本地沙箱试跑 PYTHON 脚本（同执行链路连接注入），返回 `success/result(dict)/error/durationMs`，不写执行记录。
 
 ---
 
@@ -309,11 +313,13 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
 | GET | `/quality/templates` | 模板列表（类型扩展 PYTHON） | 治理员/超管/工程师（查看） |
-| POST | `/quality/templates` | 新增模板（含 PYTHON 模板） | 治理员/超管 |
+| POST | `/quality/templates` | 新增模板（含 PYTHON 模板，pythonTemplate） | 治理员/超管 |
 | PUT | `/quality/templates/{id}` | 编辑模板 | 治理员/超管 |
-| POST | `/quality/rules` | 新增规则（含 PYTHON 类型，python_script） | 治理员/超管 |
+| POST | `/quality/rules` | 新增规则（含 PYTHON 类型，pythonScript + resultMetric 必填） | 治理员/超管 |
 | PUT | `/quality/rules/{id}` | 编辑规则 | 治理员/超管 |
 | POST | `/quality/rules/{id}/execute` | 单条执行（PYTHON 复用沙箱） | 治理员/超管 |
+| POST | `/quality/rules/test-script` | 试跑 PYTHON 脚本（保存前验证，2026-08-08 新增） | 治理员/超管 |
+| POST | `/quality/rules/preview-execute` | CUSTOM_SQL 执行预览（多指标列选择，仅 SELECT/WITH，2026-08-08 新增） | 治理员/超管 |
 
 ### 5.4 子 DAG 参数下发（沿用 `SubDagTriggerController`/`DagService`，2026-08-08 修订为双链路）
 

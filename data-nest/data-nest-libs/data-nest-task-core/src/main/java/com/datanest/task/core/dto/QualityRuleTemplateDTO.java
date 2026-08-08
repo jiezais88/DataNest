@@ -15,7 +15,7 @@ public class QualityRuleTemplateDTO {
     /** 模板名称（唯一） */
     private String name;
 
-    /** 模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL */
+    /** 模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL / PYTHON */
     private String type;
 
     /** 模板说明 */
@@ -23,6 +23,9 @@ public class QualityRuleTemplateDTO {
 
     /** 校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等 */
     private String sqlTemplate;
+
+    /** Python 模板脚本（def check(df) 形式；PYTHON 类型模板有值，Sprint 7 DG-10） */
+    private String pythonTemplate;
 
     /** 结果指标名 */
     private String resultMetric;

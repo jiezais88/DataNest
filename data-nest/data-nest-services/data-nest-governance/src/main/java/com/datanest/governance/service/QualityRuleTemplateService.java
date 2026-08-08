@@ -45,7 +45,7 @@ public class QualityRuleTemplateService {
 
     /** 合法模板类型 */
     private static final Set<String> SUPPORTED_TYPES = Set.of(
-            "COMPLETENESS", "UNIQUENESS", "RANGE", "CUSTOM_SQL"
+            "COMPLETENESS", "UNIQUENESS", "RANGE", "CUSTOM_SQL", "PYTHON"
     );
 
     private static final Logger logger = LoggerFactory.getLogger(QualityRuleTemplateService.class);
@@ -127,7 +127,7 @@ public class QualityRuleTemplateService {
 
         QualityRuleTemplate entity = new QualityRuleTemplate();
         applyFields(entity, name, request.getType(), request.getDescription(),
-                request.getSqlTemplate(), request.getResultMetric(),
+                request.getSqlTemplate(), request.getPythonTemplate(), request.getResultMetric(),
                 request.getEnabled() == null ? 1 : request.getEnabled());
         entity.setBuiltin(0); // 新增模板一律为自定义
         entity.setCreatedBy(currentUserId());
@@ -149,7 +149,7 @@ public class QualityRuleTemplateService {
         }
 
         applyFields(entity, name, request.getType(), request.getDescription(),
-                request.getSqlTemplate(), request.getResultMetric(),
+                request.getSqlTemplate(), request.getPythonTemplate(), request.getResultMetric(),
                 request.getEnabled() == null ? entity.getEnabled() : request.getEnabled());
         entity.setUpdatedBy(currentUserId());
         entity.setUpdatedAt(LocalDateTime.now());
@@ -208,11 +208,13 @@ public class QualityRuleTemplateService {
     }
 
     private void applyFields(QualityRuleTemplate entity, String name, String type, String description,
-                             String sqlTemplate, String resultMetric, Integer enabled) {
+                             String sqlTemplate, String pythonTemplate, String resultMetric, Integer enabled) {
         entity.setName(name == null ? null : name.trim());
         entity.setType(type.trim().toUpperCase());
         entity.setDescription(description);
         entity.setSqlTemplate(sqlTemplate);
+        // PYTHON 模板脚本（其余类型恒为 null，Sprint 7 DG-10）
+        entity.setPythonTemplate("PYTHON".equalsIgnoreCase(type) ? pythonTemplate : null);
         entity.setResultMetric(resultMetric);
         entity.setEnabled(enabled);
     }
@@ -242,6 +244,7 @@ public class QualityRuleTemplateService {
         dto.setType(entity.getType());
         dto.setDescription(entity.getDescription());
         dto.setSqlTemplate(entity.getSqlTemplate());
+        dto.setPythonTemplate(entity.getPythonTemplate());
         dto.setResultMetric(entity.getResultMetric());
         dto.setBuiltin(entity.getBuiltin());
         dto.setEnabled(entity.getEnabled());

@@ -51,6 +51,37 @@ public class PythonExecutor {
      */
     public PythonExecuteResult execute(String userScript, PythonContext context,
                                        Integer timeoutSeconds, Integer memoryLimitMb) {
+        return doExecute(userScript, context, timeoutSeconds, memoryLimitMb, null, null);
+    }
+
+    /**
+     * 执行质量检查 Python 脚本（Sprint 7 DG-10，方案 B 通用连接注入）。
+     * 与 DAG Python 节点的差异：
+     * <ul>
+     *   <li>除 doris.json 外注入通用连接 conn.json（{@link PythonConnectionResolver} 解析），
+     *       沙箱内 read_table(table, where=None, limit=None) 按数据源 type 选驱动拉取 DataFrame</li>
+     *   <li>用户脚本只需定义 {@code def check(df)}；收尾自动以目标表 DataFrame 调用 check，
+     *       返回 dict 写入 output.json 的 check_result（脚本内也可自行 read_table 采样后忽略入参 df）</li>
+     * </ul>
+     *
+     * @param conn        通用连接信息（type/host/port/user/password/database/schema）
+     * @param targetTable 目标表全名（db.table / schema.table，由调用方拼接）
+     */
+    public PythonExecuteResult executeQualityCheck(String userScript, Map<String, Object> conn,
+                                                   String targetTable, PythonContext context,
+                                                   Integer timeoutSeconds, Integer memoryLimitMb) {
+        if (conn == null || conn.isEmpty()) {
+            return PythonExecuteResult.failure("", "", "质量检查缺少目标数据源连接信息", 0L);
+        }
+        if (!StringUtils.hasText(targetTable)) {
+            return PythonExecuteResult.failure("", "", "质量检查缺少目标表", 0L);
+        }
+        return doExecute(userScript, context, timeoutSeconds, memoryLimitMb, conn, targetTable);
+    }
+
+    private PythonExecuteResult doExecute(String userScript, PythonContext context,
+                                          Integer timeoutSeconds, Integer memoryLimitMb,
+                                          Map<String, Object> conn, String targetTable) {
         int timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? DEFAULT_TIMEOUT_SECONDS : timeoutSeconds;
         int memory = memoryLimitMb == null || memoryLimitMb <= 0 ? DEFAULT_MEMORY_LIMIT_MB : memoryLimitMb;
         LocalDateTime startTime = LocalDateTime.now();
@@ -59,7 +90,10 @@ public class PythonExecutor {
             workDir = createWorkDir();
             DorisConfig doris = resolveDorisConfig();
             writeDorisConfig(workDir, doris);
-            writeTaskScript(workDir, userScript, context);
+            if (conn != null) {
+                Files.writeString(workDir.resolve("conn.json"), JSON.toJSONString(conn), StandardCharsets.UTF_8);
+            }
+            writeTaskScript(workDir, userScript, context, conn != null, targetTable);
             return runPython(workDir, timeout, memory, context, startTime);
         } catch (Exception e) {
             logger.error("Python 执行器异常", e);
@@ -96,12 +130,17 @@ public class PythonExecutor {
     }
 
     private DorisConfig resolveDorisConfig() {
-        // 优先读 DorisDataSourceConfig 静态配置；连接池未初始化时降级 system property / 环境变量
-        String host = System.getProperty("datanest.doris.fe-host", "localhost");
-        String portStr = System.getProperty("datanest.doris.fe-query-port", "9030");
-        String user = System.getProperty("datanest.doris.user", "root");
-        String password = System.getProperty("datanest.doris.password", "");
-        String database = System.getProperty("datanest.engineering.addax.target-database", "datanest");
+        // 取 DorisDataSourceConfig 静态配置（@Value 注入值）；连接池未初始化时仅 host/port/database 从 URL 细化
+        String host = DorisDataSourceConfig.currentHost() != null ? DorisDataSourceConfig.currentHost()
+                : System.getProperty("datanest.doris.fe-host", "localhost");
+        String portStr = DorisDataSourceConfig.currentPort() > 0 ? String.valueOf(DorisDataSourceConfig.currentPort())
+                : System.getProperty("datanest.doris.fe-query-port", "9030");
+        String user = DorisDataSourceConfig.currentUser() != null ? DorisDataSourceConfig.currentUser()
+                : System.getProperty("datanest.doris.user", "root");
+        String password = DorisDataSourceConfig.currentPassword() != null ? DorisDataSourceConfig.currentPassword()
+                : System.getProperty("datanest.doris.password", "");
+        String database = DorisDataSourceConfig.currentDatabase() != null ? DorisDataSourceConfig.currentDatabase()
+                : System.getProperty("datanest.engineering.addax.target-database", "datanest");
 
         DataSource ds = DorisDataSourceConfig.getDataSource();
         if (ds != null) {
@@ -163,7 +202,8 @@ public class PythonExecutor {
         Files.writeString(workDir.resolve("doris.json"), JSON.toJSONString(map), StandardCharsets.UTF_8);
     }
 
-    private void writeTaskScript(Path workDir, String userScript, PythonContext context) throws IOException {
+    private void writeTaskScript(Path workDir, String userScript, PythonContext context,
+                                 boolean qualityMode, String targetTable) throws IOException {
         StringBuilder sb = new StringBuilder();
 
         // 安全沙箱：允许 import os（pandas/numpy 依赖），但禁掉 os 中所有危险方法
@@ -173,7 +213,15 @@ public class PythonExecutor {
                 import importlib
                 import builtins
                 
-                _FORBIDDEN_MODULES = {'socket', 'urllib2', 'http', 'ftplib', 'telnetlib', 'ssl', 'smtplib', 'poplib', 'imaplib', 'nntplib'}
+                """);
+        // 质量检查模式（Sprint 7 DG-10）：read_table 需要 DB 驱动建连，pymysql/psycopg2 依赖 socket，
+        // 故质量模式放开 socket（脚本由治理员/超管配置，连库是本职）；DAG 节点保持禁 socket 原状
+        if (qualityMode) {
+            sb.append("_FORBIDDEN_MODULES = {'urllib2', 'http', 'ftplib', 'telnetlib', 'ssl', 'smtplib', 'poplib', 'imaplib', 'nntplib'}\n");
+        } else {
+            sb.append("_FORBIDDEN_MODULES = {'socket', 'urllib2', 'http', 'ftplib', 'telnetlib', 'ssl', 'smtplib', 'poplib', 'imaplib', 'nntplib'}\n");
+        }
+        sb.append("""
                 # urllib.parse 被 pathlib 等标准库安全使用，只允许 parse 子模块
                 _FORBIDDEN_SUBMODULES = {'urllib.request', 'urllib.error', 'urllib.robotparser'}
                 _ORIGINAL_IMPORT = builtins.__import__
@@ -327,6 +375,95 @@ public class PythonExecutor {
                 
                 """);
 
+        // Sprint 7 DG-10：质量检查模式的通用连接读取 helper（conn.json，方案 B）
+        if (qualityMode) {
+            sb.append("""
+                    import re as _re
+                    
+                    def _read_conn_config():
+                        with open('conn.json', 'r', encoding='utf-8') as f:
+                            return json.load(f)
+                    
+                    def _quote_ident(name, quote):
+                        if not _re.fullmatch(r'[A-Za-z0-9_]+', name or ''):
+                            raise ValueError(f'非法表名标识: {name}')
+                        return f'{quote}{name}{quote}' if quote else name
+                    
+                    def _connect_any(cfg):
+                        t = (cfg.get('type') or '').lower()
+                        if t in ('mysql', 'doris'):
+                            try:
+                                import pymysql
+                            except ImportError:
+                                raise ImportError('未安装 pymysql，请在镜像中安装：pip install pymysql')
+                            return pymysql.connect(
+                                host=cfg['host'], port=int(cfg['port']), user=cfg['user'],
+                                password=cfg['password'], database=cfg.get('database') or None,
+                                charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor), '`'
+                        if t in ('postgresql', 'postgres', 'pg'):
+                            try:
+                                import psycopg2
+                                import psycopg2.extras
+                            except ImportError:
+                                raise ImportError('未安装 psycopg2，请在镜像中安装：pip install psycopg2-binary')
+                            return psycopg2.connect(
+                                host=cfg['host'], port=int(cfg['port']), user=cfg['user'],
+                                password=cfg['password'], dbname=cfg.get('database') or None,
+                                cursor_factory=psycopg2.extras.RealDictCursor), '"'
+                        if t == 'oracle':
+                            try:
+                                import oracledb
+                            except ImportError:
+                                raise ImportError('未安装 oracledb，请在镜像中安装：pip install oracledb')
+                            # thin 模式无需 Oracle client；database 字段按 service_name 连接
+                            return oracledb.connect(
+                                user=cfg['user'], password=cfg['password'],
+                                host=cfg['host'], port=int(cfg['port']),
+                                service_name=cfg.get('database')), None
+                        raise ValueError(f'read_table 暂不支持的数据源类型: {t}')
+                    
+                    def read_table(table, where=None, limit=None):
+                        \"\"\"按 conn.json 连接信息拉取表数据为 DataFrame。
+                        table 支持 'db.table'（MySQL/Doris）/ 'schema.table'（PG/Oracle）两级限定；
+                        where/limit 自由控制采样（质量脚本不受 SQL 预览的行数/超时限制）。\"\"\"
+                        import pandas as pd
+                        cfg = _read_conn_config()
+                        t = (cfg.get('type') or '').lower()
+                        conn, quote = _connect_any(cfg)
+                        try:
+                            parts = table.split('.')
+                            if len(parts) == 2:
+                                ns, tbl = parts
+                            else:
+                                ns = cfg.get('schema') if t in ('postgresql', 'postgres', 'pg', 'oracle') else cfg.get('database')
+                                tbl = parts[0]
+                            full = f'{_quote_ident(ns, quote)}.{_quote_ident(tbl, quote)}' if ns else _quote_ident(tbl, quote)
+                            sql = f'SELECT * FROM {full}'
+                            if where:
+                                sql += f' WHERE {where}'
+                            if limit is not None:
+                                if t == 'oracle':
+                                    sql += f' FETCH FIRST {int(limit)} ROWS ONLY'
+                                else:
+                                    sql += f' LIMIT {int(limit)}'
+                            cur = conn.cursor()
+                            try:
+                                cur.execute(sql)
+                                rows = cur.fetchall()
+                                cols = [d[0] for d in cur.description] if cur.description else []
+                            finally:
+                                cur.close()
+                            if not rows:
+                                return pd.DataFrame()
+                            if isinstance(rows[0], dict):
+                                return pd.DataFrame(rows)
+                            return pd.DataFrame(rows, columns=cols)
+                        finally:
+                            conn.close()
+                    
+                    """);
+        }
+
         // 注入用户脚本
         sb.append("\n# ===== USER SCRIPT =====\n");
         sb.append(userScript);
@@ -342,6 +479,16 @@ public class PythonExecutor {
                     _output['output_tables'] = _OUTPUT_TABLES
                 except Exception as e:
                     _output['output_tables_error'] = str(e)
+                """);
+        // 质量检查模式收尾：以目标表 DataFrame 调 check(df)，返回 dict 写 output.json
+        if (qualityMode) {
+            sb.append("_quality_target = ").append(JSON.toJSONString(targetTable)).append("\n");
+            sb.append("""
+                    _check_df = read_table(_quality_target)
+                    _output['check_result'] = check(_check_df)
+                    """);
+        }
+        sb.append("""
                 with open('output.json', 'w', encoding='utf-8') as f:
                     json.dump(_output, f, ensure_ascii=False, default=str)
                 """);

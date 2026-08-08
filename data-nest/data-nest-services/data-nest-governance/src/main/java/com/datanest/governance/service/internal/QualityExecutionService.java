@@ -137,10 +137,15 @@ public class QualityExecutionService {
         if (table != null) {
             item.setTableName(table.getTableName());
             item.setDatasourceId(table.getDatasourceId());
+            // Sprint 7 DG-10：PYTHON 连接注入/read_table 定位需要库名与 schema
+            item.setDatabaseName(table.getDatabaseName());
+            item.setSchemaName(table.getSchemaName());
         }
+        // Sprint 7 DG-10：PYTHON 规则透出脚本（执行链路与 SQL 类互斥）
+        item.setPythonScript(rule.getPythonScript());
         // SQL 生成失败不阻断整个计划：executedSql 置空，由 worker 按源 executeSingleRule 的失败路径
-        // 落 UNAVAILABLE 明细（对齐源 generateSqlSafe 兜底语义）
-        item.setExecutedSql(generateSqlSafe(rule));
+        // 落 UNAVAILABLE 明细（对齐源 generateSqlSafe 兜底语义）；PYTHON 规则无 SQL（Sprint 7 DG-10）
+        item.setExecutedSql("PYTHON".equalsIgnoreCase(rule.getType()) ? null : generateSqlSafe(rule));
         return item;
     }
 
@@ -413,7 +418,8 @@ public class QualityExecutionService {
             "COMPLETENESS", "完整性",
             "UNIQUENESS", "唯一性",
             "RANGE", "值域范围",
-            "CUSTOM_SQL", "自定义 SQL"
+            "CUSTOM_SQL", "自定义 SQL",
+            "PYTHON", "Python"
     );
 
     /** 判定等级 → 中文展示（与前端 QUALITY_CHECK_LEVEL_LABEL 对齐） */

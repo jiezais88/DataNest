@@ -59,6 +59,30 @@ public class DorisDataSourceConfig {
     }
 
     /**
+     * 当前 Doris 连接信息（Sprint 7 DG-10：PythonExecutor conn 注入统一从这里取，
+     * 原 system property 读取拿不到 @Value 注入值，user/password 会错成默认值）。
+     */
+    public static String currentHost() {
+        return host;
+    }
+
+    public static int currentPort() {
+        return port;
+    }
+
+    public static String currentUser() {
+        return user;
+    }
+
+    public static String currentPassword() {
+        return password;
+    }
+
+    public static String currentDatabase() {
+        return database;
+    }
+
+    /**
      * 按需拿连接池（懒加载）。
      * @return DataSource；doris 不可达时返回 null，调用方降级到 DriverManager
      */

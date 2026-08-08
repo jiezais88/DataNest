@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ F3 ✅ 全部闭环（E2E 全量 48 用例绿）；F4 未启动
+> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ F3 ✅ 全部闭环（E2E 全量 48 用例绿）；F4 后端 ✅（Review+自测全绿，待前端/测试）
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -20,7 +20,7 @@
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
 | **F2 任务模板库**（DD-09）               | ✅ 完成     | 类型范围 SYNC + COLLECT；后端+前端+E2E 全部闭环（2026-08-08，12 用例全绿，见 §6.2） |
 | **F3 子 DAG 参数下发**（NG5）            | ✅ 完成    | 后端+前端+E2E 全部闭环（2026-08-08，UI 4 用例 + 执行链路 4 用例共 8 用例全绿 ×2 轮，见 §6.3） |
-| **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
+| **F4 Python 质量规则**（DG-10）          | 🔄 后端 ✅ | 后端+Review 完成（2026-08-08，PYTHON 类型+通用连接注入+双新端点，curl 自测全绿，见 §6.4）；待前端/测试 |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
 | Sprint 7 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
 
@@ -56,6 +56,8 @@
 | **F2 后端 Review（2026-08-08）** | 按 AGENTS.md §7 三点审查通过；修复 3 项（usernames 判空对齐项目惯例/PUT 编辑缺省保留原配置/停用模板错误码 7301→7307），已重建 engineering + 回归冒烟 |
 | **F3 后端实现（2026-08-08，本段为开发阶段新增）** | 见下方「F3 后端变更明细」 |
 | **F3 后端 Review（2026-08-08）** | 按 AGENTS.md §7 三点审查通过；修复 1 项（worker 2 参 ensureExecutionByWfInstance 重载无调用方死代码，删除），已重建 worker + 冒烟 |
+| **F4 后端实现（2026-08-08，本段为开发阶段新增）** | 见下方「F4 后端变更明细」 |
+| **F4 后端 Review（2026-08-08）** | 按 AGENTS.md §7 三点审查通过；修复 3 项（`@Value` 全限定名改 import/preview-execute 占位符检查对齐执行层成对语义/DTO 类型注释补 PYTHON）；开发期实证修复 2 个真 bug（沙箱禁 socket 与 pymysql 冲突、Doris 凭据取值源错误） |
 | **PowerJob worker 配置优化（2026-08-08，用户确认三项全做）** | 对照 5.1.2 starter 源码 `PowerJobProperties` 全量键审查 `shared-powerjob.yaml`：① `protocol: AKKA→HTTP`（官方推荐方向）；② `store-strategy: disk→memory`（项目全部 STANDALONE+BUILT_IN 无 MapReduce，本地 H2 属死重）；③ 新增 `max-result-length: 32768`。yaml+Nacos 已同步，restart job/worker 后验证：server 日志两 App 心跳均为 HTTP、app-job 秒级任务执行+上报成功、worker 侧 `jdbc:h2:mem:` 生效。AGENTS.md §1 已同步 |
 | **全量配置审计与优化（2026-08-08，用户确认全做）** | 审计 8 个 shared-configs + 7 个服务 application.yml + Nacos config_info 实况。应用 3 项：① `shared-datasource.yaml` 的 `PG_DATABASE` 去默认值 fail-fast（原默认指向已冻结旧库 `datanest`，本地 IDE 无 env 会静默误连；docker 由 compose 注入不受影响）；② `shared-common.yaml` 日志 `com.datanest: debug→${DATANEST_LOG_LEVEL:info}`（消除 mapper DEBUG 刷屏，Nacos 推送后 LoggingRebinder 热生效无需重启，已实证 job/worker 40s 内 0 行 DEBUG）；③ 4 处消费方注释勘误（datasource/common/security/doris）。核查无需动：config_info 无陈旧 dataId、InternalFeignRetryer 存在、openfeign 命名空间正确、worker/job DataSource 排除正确、gateway 路由一致。AGENTS.md §6 已同步 |
 | `docs/sprint7/DataNest-Sprint7-PRD.md`（新增）                        | Sprint 7 数据资产目录产品文档 v1.0（12 章，对齐 Sprint6 PRD 范本；复用 vs 新增边界经代码核验）        |
@@ -106,6 +108,24 @@
 - 遗留观察项（不改）：① 同步路径 `resolveParentParams` 在 ensure 锁内可能 Feign 自调用 listParameters——仅 cron 父 + 有映射 + resolvedParams 为空时触发，短调用低频可接受；② triggerType 语义保持既有（异步子=MANUAL、同步子=SCHEDULED）未动；③ `paramMappings` 配成非数组类型会被外层 catch 归为「config JSON 解析失败」（SQL_PARSE_FAILED），语义可接受；④ 前端 `types.ts` 的 `SubDagNodeConfig` 加 `paramMappings` 类型留待 F3 前端阶段。
 
 **坑（本次实证）**：① docker exec 不加 `-i` 时 heredoc SQL 不会执行（stdin 关闭，psql 立即 EOF）——管道/heredoc 传 SQL 必须 `docker exec -i`；② `DagExecutionService.triggerSubDag` 调同类 `this.trigger()`（self-invocation 代理失效），必须自身加 `@Transactional` 否则 trigger 内 `registerSynchronization` 抛 `Transaction synchronization is not active`。
+
+**F4 后端变更明细（2026-08-08，curl 自测全过、残留已清理）**
+- **口径确认（用户 2026-08-08）**：① CUSTOM_SQL 强化新增**执行预览端点**（非零新增）；② 新增 `test-script` 端点（原型「测试脚本」按钮）；③ Python 驱动装 `psycopg2-binary` + `oracledb`（thin 模式；Oracle 测试库在 compose 注释中，本期不可验证）。
+- Flyway `data-nest-governance/.../db/migration/V1.3.0__sprint7_quality_python.sql`（**governance 库**，非技术文档原写的 V3.8.2/system）：`quality_rule_template_type_check` drop 重建加 `PYTHON` + `python_template`/`python_script` 列。已应用（flyway_schema_history 1.3.0 success）。
+- `data-nest-task-core`：`PythonExecutor` 新增 `executeQualityCheck`（`doExecute` 收敛原 `execute`，DAG 节点路径零变化）——质量模式写 `conn.json` + 注入 `read_table(table, where=None, limit=None)` helper（按 type 选 pymysql/psycopg2/oracledb；库/schema/表名标识符 `^[A-Za-z0-9_]+$` 白名单 + 引号包裹防注入；oracle 用 FETCH FIRST）+ 收尾 `check(read_table(目标表))` → dict 写 `output.json.check_result`；新增 `PythonConnectionResolver`（共享：datasourceId 空/-1 → Doris 静态配置，否则 Feign 读数据源 + 解密；目标表 databaseName/schemaName 覆盖连接默认库）；`QualityCheckService` PYTHON 分支（`executePythonRule` + `extractPythonMetric`：dict 按 resultMetric 取键，缺失/脚本失败 → UNAVAILABLE）；`DorisDataSourceConfig` 加静态凭据 getter；DTO/契约：`QualityRuleDTO.pythonScript`、Create/Update 请求加 `pythonScript` + `@Pattern` 加 PYTHON + `@AssertTrue isPythonValid`（脚本+resultMetric 必填）、模板三 DTO 加 `pythonTemplate`。
+- `data-nest-governance-api`：`QualityExecutionPlanDTO.RulePlanItem` 加 `pythonScript/databaseName/schemaName`。
+- `data-nest-governance`：实体 `QualityRule.pythonScript`/`QualityRuleTemplate.pythonTemplate`；`QualityRuleService`/`QualityRuleTemplateService` 白名单 + PYTHON（create/update 模板必填排除 PYTHON、批量应用脚本从模板带出且模板无脚本拒绝、`preview-sql` 对 PYTHON 返回脚本、toDTO 透出）；`QualityExecutionService.toPlanItem` 透新字段 + PYTHON 跳过 SQL 生成 + 告警中文标签加「Python」；新端点 `POST /quality/rules/test-script`（governance 本地沙箱试跑，返回 `success/result(dict)/error/durationMs`）+ `POST /quality/rules/preview-execute`（CUSTOM_SQL 占位符展开后真实执行，仅 SELECT/WITH + 占位符残留拦截，Doris 走 DorisSqlExecutor 截 50 行、注册数据源走 GenericSqlExecutor；返回 `columns+rows+truncated` 供多指标选 resultMetric）。新 DTO×4（governance dto 包）。
+- `data-nest/shared-configs/shared-quality.yaml`：`datanest.quality.python.timeout-seconds: 300`（已发布 Nacos）。
+- 镜像：worker + governance 均 `pip install pandas pymysql psycopg2-binary oracledb`（governance 新增 Python 环境供 test-script）。
+- **开发期实证修复 2 个真 bug**：① 沙箱 `_FORBIDDEN_MODULES` 禁 `socket`，纯 Python 的 pymysql 建连必 `ImportError`（psycopg2/oracledb 是 C 扩展不受影响）——质量模式放开 socket（脚本为治理员/超管配置，连库是本职），DAG 节点保持禁令；② Doris 凭据原从 system property 读（`System.getProperty` 拿不到 `@Value` 注入值），密码恒为空串认证必败——`DorisDataSourceConfig` 加静态凭据 getter，`PythonExecutor.resolveDorisConfig` 与 `PythonConnectionResolver` 统一改从静态配置取。**注意：①② 意味着 DAG Python 节点的 `read_doris_table` 存量同样不可用（socket 禁令 + 密码空），本次只修质量链路，DAG 节点侧是否放开留待用户决策。**
+- 部署：全量 `mvn clean package` + 重建 5 个 task-core 消费方镜像（engineering/worker/governance/job/system），healthy，镜像时间戳已核验。
+- curl 自测全过：模板 PYTHON 创建/非法类型 4203、规则缺脚本/缺指标 400、test-script 三驱动（Doris null_rate=0.0 / MySQL 0.667 / PG 0.25）+ `read_table(limit=2)` 采样 + 失败脚本 traceback 透传、单规则执行三档（PASS/WARNING/UNAVAILABLE 落 detail）、批量应用 PYTHON 模板（脚本落库 + 绑定任务）、update 编辑脚本保留、preview-sql 对 PYTHON 返回脚本、preview-execute 多指标列（`total/nulls`）+ DML/占位符拦截（7015）、无 token 1004。自测残留（4 规则 + 1 模板 + 3 批次/明细 + 2 临时 metadata 行 + PG 表）已清理。
+- **存量观察（非 F4 引入，不改）**：共享单规则质量 job（id=45）`maxInstanceNum=1`，快速连续触发多个单规则执行会被 server 丢弃（"too much instance is running"）且实例直接 FAILED——前端批量连续点「执行」会静默丢失，建议后续把该 job 的 maxInstanceNum 调大或排队。
+
+**F4 后端 Review（2026-08-08，按 AGENTS.md §7 三点审查 + 修复回归）**
+- 结论：架构融洽 ✅（方案 B 通用连接注入落 task-core 共享、契约加可选字段向后兼容、worker 无库原则未破、conn.json 临时目录执行后即清）、业务正确 ✅（三驱动三档自测实证）、实现高效 ✅（无 N+1，连接解析共享复用）。
+- 修复 3 项：① `QualityCheckService` 的 `@Value` 全限定名改 import（风格一致）；② `preview-execute` 占位符检查从 `contains("{")` 对齐执行层 `assertNoUnresolvedPlaceholder` 成对语义（避免 SQL 内合法单 `{` 误伤）；③ DTO 类型注释补 PYTHON（3 处）。
+- 遗留观察项（不改，前端/后续注意）：① `read_table` 默认全表拉取（大表风险由沙箱 2GB 内存 + 300s 超时兜底，脚本内可 `where/limit` 采样）；② `oracledb` thin 模式代码路径未实测（无 Oracle 环境）；③ `test-script` 在 governance 容器跑沙箱，超大结果集可能占 governance 内存（与执行侧同限 2GB）；④ e2e 种子数据源 `e2e_s7_mysql_ds` 密码为空会触发解密异常（种子数据问题，自测改用了真实数据源）。
 
 **原型对齐要点（2026-08-05-06，对照真实前端源码 + 自动化截图逐项修正）**
 - **自动化截图对比**：曾用临时 Playwright Python 脚本（已删）截真实前端 3 页（`/governance/metadata` 展开树、`/governance/data-quality`、`/governance/quality-templates`）+ 截原型 5 视图（assets/classification/task-template/subdag/python-rule）逐屏对比。脚本核心要点已固化到 `docs/agent/prototype-guide.md §7`（UI 登录、press Enter 提交、flex 滚动诊断等）。
@@ -281,25 +301,27 @@
 
 ---
 
-### 6.4 F4 Python 质量规则（DG-10）⏳ 未开始
+### 6.4 F4 Python 质量规则（DG-10）🔄 后端完成（2026-08-08）
 
-**范围**：新增 PYTHON 规则类型 + 强化自定义 SQL。**最复杂，放最后**。
-**块内依赖**：Flyway → task-core PythonExecutor 改造（方案 B）→ worker 镜像 → governance 质量增强 → 前端表单 → 联调。
+**范围**：新增 PYTHON 规则类型 + 强化自定义 SQL。
+**口径确认（2026-08-08 用户确认）**：① CUSTOM_SQL 强化后端新增**执行预览端点**（多指标列选择）；② 新增**测试脚本端点**（原型「测试脚本」按钮，技术文档 §5.3 未列）；③ worker 装 `psycopg2-binary` + `oracledb`（thin 模式无需 Oracle client；Oracle 测试库在 compose 注释中，本期不可验证）。
 
-**后端**
-- [ ] Flyway `V3.8.2`：`quality_rule_template.type` CHECK drop 重建加 `PYTHON`（对齐 V3.6.6）+ `python_template`/`python_script` 字段
-- [ ] task-core `PythonExecutor` 改造（方案 B）：连接注入层从 Doris 写死抽象为通用 `conn.json` + 沙箱 helper 增 `read_table(table, where, limit)`（保留 `read_doris_table`/`write_doris_table` 向后兼容）
-- [ ] worker 镜像：预装 Python 数据源驱动（pymysql/psycopg2/cx_Oracle，按需）
-- [ ] governance 质量增强：`QualityTemplateController`/`QualityRuleController` 支持 PYTHON；`QualityCheckService` PYTHON 执行链路（§4.6，脚本返回 dict 取 `result_metric`，复用 `determineLevel`，失败落 `UNAVAILABLE`）；强化 CUSTOM_SQL（`RuleSqlGenerator` 模板化 + 多指标 + preview-sql 增强）
-- [ ] 重建 governance + worker + job + system
+**后端**（✅ 全部完成，curl 自测通过，明细见 §4「F4 后端变更明细」）
+- [x] Flyway `V1.3.0`（**governance 库**，按域拆库落点，非技术文档原写的 V3.8.2/system）：`quality_rule_template.type` CHECK drop 重建加 `PYTHON` + `python_template`/`python_script` 字段（已应用 success）
+- [x] task-core `PythonExecutor` 改造（方案 B）：`executeQualityCheck` 新模式——通用 `conn.json` 注入 + 沙箱 `read_table(table, where, limit)`（按 type 选驱动 pymysql/psycopg2/oracledb，标识符白名单校验防注入）+ 收尾自动 `check(read_table(目标表))` 返回 dict 写 `check_result`；`read_doris_table`/`write_doris_table` 保留向后兼容；新增共享 `PythonConnectionResolver`（Doris 静态配置/注册数据源解密 → conn map，worker 与 governance 共用）
+- [x] worker + governance 镜像：`psycopg2-binary` + `oracledb`（governance 加 Python 环境供 test-script 本地沙箱）
+- [x] governance 配置层：模板/规则白名单加 PYTHON（服务层 + DTO `@Pattern` + `@AssertTrue` 脚本/指标必填）、`pythonTemplate/pythonScript` 全链路落库透出、批量应用 PYTHON 模板（脚本从模板带出）、`preview-sql` 对 PYTHON 返回脚本、执行计划透 `pythonScript/databaseName/schemaName`
+- [x] worker `QualityCheckService` PYTHON 执行链路：脚本沙箱执行 → dict 按 `resultMetric` 取值（缺失报错）→ 复用 `determineLevel` 分级；脚本失败/无 dict → `UNAVAILABLE`（不告警）；超时 `datanest.quality.python.timeout-seconds:300`（shared-quality.yaml 已发布 Nacos）
+- [x] 新端点：`POST /quality/rules/test-script`（保存前试跑，返回 dict/错误/耗时）+ `POST /quality/rules/preview-execute`（CUSTOM_SQL 真实执行预览，仅 SELECT/WITH，返回列清单+截断样例行供选 resultMetric）；均治理员/超管
+- [x] 重建 engineering + worker + governance + job + system（task-core 消费方全量），全部 healthy，Flyway 1.3.0 ✅
 
 **前端**
 - [ ] `types/quality.ts` 扩展 `QualityTemplateType`/`QUALITY_TYPE_LABEL`/`QUALITY_TYPE_OPTIONS` 加 PYTHON
-- [ ] 质量规则表单扩展 PYTHON 类型（Python 脚本编辑区，对齐原型 `python-rule` 视图）
-- [ ] 质量模板库支持 PYTHON 模板
+- [ ] 质量规则表单扩展 PYTHON 类型（Python 脚本编辑区 + 测试脚本按钮，对齐原型 `python-rule` 视图）；CUSTOM_SQL 表单接 preview-execute 多指标预览
+- [ ] 质量模板库支持 PYTHON 模板（pythonTemplate 编辑）
 
 **测试**
-- [ ] 后端 Postman/curl 自测：PYTHON 规则新建 + 执行（Doris/MySQL 驱动拉数 + 沙箱执行）+ CUSTOM_SQL 强化
+- [x] 后端 Postman/curl 自测：模板/规则 CRUD 校验（4203/400）、test-script 三驱动（Doris/MySQL/PG）+ 采样（read_table limit）+ 失败 traceback、执行链路三档（PASS 0.0 / WARNING 0.25 / UNAVAILABLE 坏脚本）、批量应用 PYTHON 模板、update 保留脚本、preview-execute 多指标列 + DML/占位符拦截、无 token 1004；残留已清（见 §4「F4 后端变更明细」）
 - [ ] 新建 `e2e/sprint7/e2e/quality-python.spec.ts`
 - [ ] 更新 §2 看板：F4 置 ✅
 

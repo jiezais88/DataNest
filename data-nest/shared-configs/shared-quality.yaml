@@ -10,3 +10,6 @@ datanest:
       warning-deduct: 10
       severe-deduct: 30
       bad-threshold: 60
+    # Python 质量规则执行/试跑超时（秒，Sprint 7 DG-10；PRD NAC-3 超时可中断）
+    python:
+      timeout-seconds: 300

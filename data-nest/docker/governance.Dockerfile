@@ -14,7 +14,9 @@ RUN java -Djarmode=layertools -jar app.jar extract
 FROM eclipse-temurin:21-jre-alpine
 
 # netcat 供健康检查 / 等待依赖使用
-RUN apk add --no-cache netcat-openbsd
+# python3 + 数据源驱动：PYTHON 质量规则「测试脚本」端点在 governance 本地沙箱试跑（Sprint 7 DG-10）
+RUN apk add --no-cache netcat-openbsd python3 py3-pip && \
+    pip3 install --no-cache-dir pandas pymysql psycopg2-binary oracledb --break-system-packages
 
 WORKDIR /app
 

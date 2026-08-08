@@ -15,9 +15,11 @@ import com.datanest.governance.api.dto.QualityDetailCreateRequest;
 import com.datanest.governance.api.dto.QualityExecutionPlanDTO;
 import com.datanest.governance.api.dto.QualityExecutionPlanRequest;
 import com.datanest.governance.api.dto.QualityRulePlanRequest;
+import com.datanest.task.core.dto.PythonExecuteResult;
 import com.datanest.common.constant.AlertConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -70,15 +72,25 @@ public class QualityCheckService {
     private final DorisSqlExecutor dorisSqlExecutor;
     private final GenericSqlExecutor genericSqlExecutor;
     private final AlertApi alertApi;
+    private final PythonExecutor pythonExecutor;
+    private final PythonConnectionResolver pythonConnectionResolver;
+
+    /** Python 质量规则超时（秒），可经 datanest.quality.python.timeout-seconds 覆盖（PRD NAC-3 可中断） */
+    @Value("${datanest.quality.python.timeout-seconds:300}")
+    private int pythonTimeoutSeconds;
 
     public QualityCheckService(QualityExecutionApi qualityExecutionApi,
                                DorisSqlExecutor dorisSqlExecutor,
                                GenericSqlExecutor genericSqlExecutor,
-                               AlertApi alertApi) {
+                               AlertApi alertApi,
+                               PythonExecutor pythonExecutor,
+                               PythonConnectionResolver pythonConnectionResolver) {
         this.qualityExecutionApi = qualityExecutionApi;
         this.dorisSqlExecutor = dorisSqlExecutor;
         this.genericSqlExecutor = genericSqlExecutor;
         this.alertApi = alertApi;
+        this.pythonExecutor = pythonExecutor;
+        this.pythonConnectionResolver = pythonConnectionResolver;
     }
 
     /**
@@ -213,6 +225,12 @@ public class QualityCheckService {
         detail.setRuleName(rule.getRuleName());
         detail.setTableId(rule.getTableId());
         detail.setTableName(rule.getTableName());
+
+        // Sprint 7 DG-10：PYTHON 规则走沙箱脚本执行链路（无 SQL）
+        if (isPython(rule)) {
+            detail.setExecutedSql(rule.getPythonScript());
+            return executePythonRule(rule, batchId, detail);
+        }
 
         String sql = rule.getExecutedSql();
         detail.setExecutedSql(sql);
@@ -423,6 +441,90 @@ public class QualityCheckService {
 
     private boolean isRange(QualityExecutionPlanDTO.RulePlanItem rule) {
         return "RANGE".equalsIgnoreCase(rule.getRuleType());
+    }
+
+    private boolean isPython(QualityExecutionPlanDTO.RulePlanItem rule) {
+        return "PYTHON".equalsIgnoreCase(rule.getRuleType());
+    }
+
+    /**
+     * 执行 PYTHON 质量规则（Sprint 7 DG-10）：通用连接注入沙箱 → 目标表 DataFrame 调 check(df)
+     * → 返回 dict 按 resultMetric 取指标值 → 复用 determineLevel 分级。
+     * 脚本失败/未返回 dict/缺指标 → 明细 UNAVAILABLE（不告警、不参与评分，R2 防误报）。
+     */
+    private boolean executePythonRule(QualityExecutionPlanDTO.RulePlanItem rule, Long batchId,
+                                      QualityDetailCreateRequest detail) {
+        try {
+            if (rule.getTableName() == null) {
+                throw new BusinessException(ErrorCode.QUALITY_TABLE_NOT_FOUND, "目标表不存在: " + rule.getTableId());
+            }
+            String script = rule.getPythonScript();
+            if (script == null || script.isBlank()) {
+                throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
+                        "Python 规则脚本为空: " + rule.getRuleName());
+            }
+            Map<String, Object> conn = pythonConnectionResolver.resolve(
+                    rule.getDatasourceId(), rule.getDatabaseName(), rule.getSchemaName());
+            String targetTable = pythonConnectionResolver.buildFullTableName(
+                    conn, rule.getDatabaseName(), rule.getSchemaName(), rule.getTableName());
+            PythonExecuteResult result = pythonExecutor.executeQualityCheck(
+                    script, conn, targetTable,
+                    new PythonExecutor.PythonContext(Map.of(), null),
+                    pythonTimeoutSeconds, null);
+            BigDecimal value = extractPythonMetric(result, rule);
+            detail.setResultValue(value);
+            detail.setResultLevel(determineLevel(rule, value));
+            detail.setSuccess(1);
+            saveDetailDegraded(batchId, detail);
+            return true;
+        } catch (Exception e) {
+            logger.warn("Python 质量规则执行失败: ruleId={}, ruleName={}, error={}",
+                    rule.getRuleId(), rule.getRuleName(), e.getMessage());
+            detail.setSuccess(0);
+            detail.setResultLevel(AlertConstants.QUALITY_LEVEL_UNAVAILABLE);
+            detail.setErrorMessage(e.getMessage());
+            saveDetailDegraded(batchId, detail);
+            return false;
+        }
+    }
+
+    /**
+     * 从 Python 执行结果提取指标值：output.check_result 为 check(df) 返回的 dict，
+     * 按 resultMetric 取键（resultMetric 为空兜底第一个键）。
+     */
+    private BigDecimal extractPythonMetric(PythonExecuteResult result, QualityExecutionPlanDTO.RulePlanItem rule) {
+        if (result == null || !result.isSuccess()) {
+            String err = result == null ? "执行器无返回"
+                    : (result.getStderr() == null || result.getStderr().isBlank()
+                            ? String.valueOf(result.getOutput()) : result.getStderr().trim());
+            throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
+                    "Python 脚本执行失败: " + abbreviate(err, 500));
+        }
+        com.alibaba.fastjson2.JSONObject checkResult = result.getOutput() instanceof com.alibaba.fastjson2.JSONObject out
+                ? out.getJSONObject("check_result") : null;
+        if (checkResult == null || checkResult.isEmpty()) {
+            throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
+                    "Python 脚本未通过 check(df) 返回结果 dict");
+        }
+        String metric = rule.getResultMetric();
+        Object metricVal;
+        if (metric != null && !metric.isBlank()) {
+            metricVal = checkResult.get(metric.trim());
+            if (metricVal == null) {
+                throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
+                        "Python 返回 dict 缺少结果指标: " + metric + "（实际键: " + checkResult.keySet() + "）");
+            }
+        } else {
+            metricVal = checkResult.values().iterator().next();
+        }
+        return toBigDecimal(metricVal);
+    }
+
+    private static String abbreviate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
     }
 
     private BigDecimal ratio(BigDecimal out, BigDecimal total) {

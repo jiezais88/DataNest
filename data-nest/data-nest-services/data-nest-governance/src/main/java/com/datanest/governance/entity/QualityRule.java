@@ -31,7 +31,7 @@ public class QualityRule {
     /** 规则名称 */
     private String name;
 
-    /** 规则类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL */
+    /** 规则类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL / PYTHON（Sprint 7 DG-10 加 PYTHON） */
     private String type;
 
     /** 目标表 metadata_table.id */
@@ -45,6 +45,9 @@ public class QualityRule {
 
     /** 实际校验 SQL（执行时动态生成，本次不落库；自定义 SQL 除外） */
     private String sqlExpression;
+
+    /** Python 脚本（def check(df) 返回 dict；PYTHON 类型专用，Sprint 7 DG-10） */
+    private String pythonScript;
 
     /** 警告阈值（执行结果 ≥ 此值 → 警告） */
     private BigDecimal warningThreshold;

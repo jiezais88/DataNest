@@ -24,7 +24,7 @@ public class QualityRuleTemplate {
     /** 模板名称（唯一） */
     private String name;
 
-    /** 模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL */
+    /** 模板类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL / PYTHON（Sprint 7 DG-10 加 PYTHON） */
     private String type;
 
     /** 模板说明 */
@@ -32,6 +32,9 @@ public class QualityRuleTemplate {
 
     /** 校验 SQL 模板，占位符 {table}/{column}/{min}/{max} 等；自定义 SQL 可为空（由用户填写） */
     private String sqlTemplate;
+
+    /** Python 模板脚本（def check(df) 形式；PYTHON 类型模板用，Sprint 7 DG-10） */
+    private String pythonTemplate;
 
     /** 结果指标名，如 null_rate / duplicate_count / out_of_range_rate */
     private String resultMetric;

@@ -13,7 +13,8 @@ import java.math.BigDecimal;
 /**
  * 质量规则新增请求（Sprint 7 规则独立化）。
  * <p>
- * 规则 = 来源模板 + 表 + 字段 + 阈值 + 权重。CUSTOM_SQL 由用户自带 sqlExpression。
+ * 规则 = 来源模板 + 表 + 字段 + 阈值 + 权重。CUSTOM_SQL 由用户自带 sqlExpression；
+ * PYTHON 由用户自带 pythonScript（def check(df) 返回 dict，必填 resultMetric，Sprint 7 DG-10）。
  * jobId 可选：规则可独立创建（不绑定任务），任务通过 quality_job_rule 关联表引用规则。
  * 校验：tableId 必填；RANGE 必填 columnName + min/max（经 min/max 占位符合成阈值区间，存 warning/severe 阈值）；
  * UNIQUENESS 必填 columnName；COMPLETENESS 可不填字段（整表）。
@@ -32,7 +33,7 @@ public class QualityRuleCreateRequest {
     private String name;
 
     @NotBlank(message = "规则类型不能为空")
-    @Pattern(regexp = "^(COMPLETENESS|UNIQUENESS|RANGE|CUSTOM_SQL)$", message = "规则类型非法")
+    @Pattern(regexp = "^(COMPLETENESS|UNIQUENESS|RANGE|CUSTOM_SQL|PYTHON)$", message = "规则类型非法")
     private String type;
 
     @NotNull(message = "目标表不能为空")
@@ -47,6 +48,9 @@ public class QualityRuleCreateRequest {
 
     /** 实际校验 SQL（CUSTOM_SQL 必填；模板类执行时动态生成，无需传） */
     private String sqlExpression;
+
+    /** Python 脚本（def check(df) 返回 dict；PYTHON 必填，Sprint 7 DG-10） */
+    private String pythonScript;
 
     /** 警告阈值（执行结果 ≥ 此值 → 警告） */
     private BigDecimal warningThreshold;
@@ -86,6 +90,15 @@ public class QualityRuleCreateRequest {
     @AssertTrue(message = "自定义 SQL 规则必须填写 SQL 表达式")
     public boolean isCustomSqlValid() {
         return !"CUSTOM_SQL".equals(type) || (sqlExpression != null && !sqlExpression.isBlank());
+    }
+
+    @AssertTrue(message = "Python 规则必须填写脚本（def check(df) 返回 dict）并指定结果指标 resultMetric")
+    public boolean isPythonValid() {
+        if (!"PYTHON".equals(type)) {
+            return true;
+        }
+        return pythonScript != null && !pythonScript.isBlank()
+                && resultMetric != null && !resultMetric.isBlank();
     }
 
     @AssertTrue(message = "值域范围检查必须填写值域边界 rangeMin/rangeMax，且 rangeMin ≤ rangeMax")

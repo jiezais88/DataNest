@@ -1,6 +1,7 @@
 package com.datanest.governance.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -19,6 +20,10 @@ import com.datanest.task.core.dto.QualityRuleCreateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
 import com.datanest.task.core.dto.QualityRuleQueryRequest;
 import com.datanest.task.core.dto.QualityRuleUpdateRequest;
+import com.datanest.governance.dto.QualityPythonScriptTestRequest;
+import com.datanest.governance.dto.QualityPythonScriptTestResponse;
+import com.datanest.governance.dto.QualitySqlPreviewExecuteRequest;
+import com.datanest.governance.dto.QualitySqlPreviewExecuteResponse;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.entity.QualityJob;
 import com.datanest.governance.entity.QualityJobRule;
@@ -32,8 +37,14 @@ import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityRuleTemplateMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
 import com.datanest.governance.service.internal.RuleSqlGenerator;
+import com.datanest.task.core.dto.PythonExecuteResult;
+import com.datanest.task.core.service.DorisSqlExecutor;
+import com.datanest.task.core.service.GenericSqlExecutor;
+import com.datanest.task.core.service.PythonConnectionResolver;
+import com.datanest.task.core.service.PythonExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +73,7 @@ public class QualityRuleService {
     private static final Logger log = LoggerFactory.getLogger(QualityRuleService.class);
 
     private static final Set<String> SUPPORTED_TYPES = Set.of(
-            "COMPLETENESS", "UNIQUENESS", "RANGE", "CUSTOM_SQL"
+            "COMPLETENESS", "UNIQUENESS", "RANGE", "CUSTOM_SQL", "PYTHON"
     );
 
     private final QualityRuleMapper ruleMapper;
@@ -74,6 +85,20 @@ public class QualityRuleService {
     private final SystemUserApi systemUserApi;
     private final QualityCheckTriggerService triggerService;
     private final QualityScoreMapper qualityScoreMapper;
+    private final PythonExecutor pythonExecutor;
+    private final PythonConnectionResolver pythonConnectionResolver;
+    private final DorisSqlExecutor dorisSqlExecutor;
+    private final GenericSqlExecutor genericSqlExecutor;
+
+    /** Python 规则试跑超时（秒），与 worker 执行口径一致（Sprint 7 DG-10） */
+    @Value("${datanest.quality.python.timeout-seconds:300}")
+    private int pythonTimeoutSeconds;
+
+    /** 内置 Doris 数据源 ID 标记（metadata_table.datasource_id = -1） */
+    private static final long DORIS_DATASOURCE_ID = -1L;
+
+    /** CUSTOM_SQL 执行预览最大返回行数 */
+    private static final int PREVIEW_MAX_ROWS = 50;
 
     public QualityRuleService(QualityRuleMapper ruleMapper,
                               QualityJobMapper jobMapper,
@@ -83,7 +108,11 @@ public class QualityRuleService {
                               EngineeringDatasourceApi datasourceApi,
                               SystemUserApi systemUserApi,
                               QualityCheckTriggerService triggerService,
-                              QualityScoreMapper qualityScoreMapper) {
+                              QualityScoreMapper qualityScoreMapper,
+                              PythonExecutor pythonExecutor,
+                              PythonConnectionResolver pythonConnectionResolver,
+                              DorisSqlExecutor dorisSqlExecutor,
+                              GenericSqlExecutor genericSqlExecutor) {
         this.ruleMapper = ruleMapper;
         this.jobMapper = jobMapper;
         this.jobRuleMapper = jobRuleMapper;
@@ -93,6 +122,10 @@ public class QualityRuleService {
         this.systemUserApi = systemUserApi;
         this.triggerService = triggerService;
         this.qualityScoreMapper = qualityScoreMapper;
+        this.pythonExecutor = pythonExecutor;
+        this.pythonConnectionResolver = pythonConnectionResolver;
+        this.dorisSqlExecutor = dorisSqlExecutor;
+        this.genericSqlExecutor = genericSqlExecutor;
     }
 
     // ==================== 查询 ====================
@@ -166,8 +199,9 @@ public class QualityRuleService {
         MetadataTable table = requireTable(request.getTableId());
         QualityRuleTemplate template = request.getTemplateId() == null
                 ? null : templateMapper.selectById(request.getTemplateId());
-        // 模板类规则（完整性/唯一性/值域）必须关联模板，否则执行时无 SQL 可生成（CUSTOM_SQL 用用户 SQL）
-        if (!"CUSTOM_SQL".equals(request.getType()) && template == null) {
+        // 模板类规则（完整性/唯一性/值域）必须关联模板，否则执行时无 SQL 可生成
+        // （CUSTOM_SQL 用用户 SQL；PYTHON 模板可空——脚本用户直填或从模板预填，Sprint 7 DG-10）
+        if (!"CUSTOM_SQL".equals(request.getType()) && !"PYTHON".equals(request.getType()) && template == null) {
             throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_NOT_FOUND,
                     "规则类型 " + request.getType() + " 必须选择对应规则模板");
         }
@@ -187,6 +221,8 @@ public class QualityRuleService {
         entity.setCheckField(request.getCheckField() == null ? 0 : request.getCheckField());
         // 模板类规则执行时动态生成 SQL，落库不存；CUSTOM_SQL 直接存用户 SQL
         entity.setSqlExpression("CUSTOM_SQL".equals(request.getType()) ? request.getSqlExpression() : null);
+        // PYTHON：脚本落库（DTO 已校验必填；模板预填由前端选择模板时带入，Sprint 7 DG-10）
+        entity.setPythonScript("PYTHON".equals(request.getType()) ? request.getPythonScript() : null);
         entity.setWarningThreshold(request.getWarningThreshold());
         entity.setSevereThreshold(request.getSevereThreshold());
         // 值域边界：仅 RANGE 类型落库（DTO 已校验必填），其余类型为 null
@@ -262,6 +298,8 @@ public class QualityRuleService {
             entity.setColumnName(item.getColumnName());
             entity.setCheckField(item.getCheckField() == null ? 0 : item.getCheckField());
             entity.setSqlExpression(RuleSqlGenerator.isCustomSql(template) ? item.getSqlExpression() : null);
+            // PYTHON 模板：脚本从模板带出（批量项无脚本字段，逐规则可再编辑，Sprint 7 DG-10）
+            entity.setPythonScript("PYTHON".equals(template.getType()) ? template.getPythonTemplate() : null);
             entity.setWarningThreshold(item.getWarningThreshold());
             entity.setSevereThreshold(item.getSevereThreshold());
             // 值域边界：仅 RANGE 模板落库（validateItemForTemplate 已校验必填）
@@ -309,8 +347,9 @@ public class QualityRuleService {
         if (request.getTableId() != null) {
             requireTable(request.getTableId());
         }
-        // 模板类规则（完整性/唯一性/值域）必须关联模板，否则执行时无 SQL 可生成（CUSTOM_SQL 用用户 SQL）
-        if (!"CUSTOM_SQL".equals(request.getType())) {
+        // 模板类规则（完整性/唯一性/值域）必须关联模板，否则执行时无 SQL 可生成
+        // （CUSTOM_SQL 用用户 SQL；PYTHON 模板可空，Sprint 7 DG-10）
+        if (!"CUSTOM_SQL".equals(request.getType()) && !"PYTHON".equals(request.getType())) {
             if (request.getTemplateId() == null) {
                 throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_NOT_FOUND,
                         "规则类型 " + request.getType() + " 必须选择对应规则模板");
@@ -329,6 +368,7 @@ public class QualityRuleService {
         entity.setColumnName(request.getColumnName());
         entity.setCheckField(request.getCheckField() == null ? 0 : request.getCheckField());
         entity.setSqlExpression("CUSTOM_SQL".equals(request.getType()) ? request.getSqlExpression() : null);
+        entity.setPythonScript("PYTHON".equals(request.getType()) ? request.getPythonScript() : null);
         entity.setWarningThreshold(request.getWarningThreshold());
         entity.setSevereThreshold(request.getSevereThreshold());
         // 值域边界：RANGE 落库（DTO 已校验必填），非 RANGE 清空
@@ -409,12 +449,15 @@ public class QualityRuleService {
     }
 
     /**
-     * 预览规则执行 SQL（供前端编辑时查看模板展开结果）。
+     * 预览规则执行 SQL（模板占位展开结果）。PYTHON 规则无 SQL，返回脚本原文（Sprint 7 DG-10）。
      */
     public String previewSql(Long ruleId) {
         QualityRule entity = ruleMapper.selectById(ruleId);
         if (entity == null) {
             throw new BusinessException(ErrorCode.QUALITY_RULE_NOT_FOUND, "质量规则不存在: " + ruleId);
+        }
+        if ("PYTHON".equalsIgnoreCase(entity.getType())) {
+            return entity.getPythonScript();
         }
         QualityRuleTemplate template = entity.getTemplateId() == null
                 ? null : templateMapper.selectById(entity.getTemplateId());
@@ -422,6 +465,108 @@ public class QualityRuleService {
         // {min}/{max} 占位符来自 RANGE 值域边界 range_min/range_max（与分级阈值无关）
         return RuleSqlGenerator.generate(template, table, entity.getColumnName(),
                 entity.getRangeMin(), entity.getRangeMax(), entity.getSqlExpression());
+    }
+
+    /**
+     * 试跑 PYTHON 规则脚本（Sprint 7 DG-10，规则表单「测试脚本」）。
+     * governance 本地沙箱执行：按目标表数据源注入 conn.json，以目标表 DataFrame 调 check(df)，
+     * 返回结果 dict / 错误。不写任何执行记录。
+     */
+    public QualityPythonScriptTestResponse testPythonScript(QualityPythonScriptTestRequest request) {
+        MetadataTable table = requireTable(request.getTableId());
+        Map<String, Object> conn = pythonConnectionResolver.resolve(
+                table.getDatasourceId(), table.getDatabaseName(), table.getSchemaName());
+        String targetTable = pythonConnectionResolver.buildFullTableName(
+                conn, table.getDatabaseName(), table.getSchemaName(), table.getTableName());
+        PythonExecuteResult result = pythonExecutor.executeQualityCheck(
+                request.getPythonScript(), conn, targetTable,
+                new PythonExecutor.PythonContext(Map.of(), null), pythonTimeoutSeconds, null);
+        QualityPythonScriptTestResponse resp = new QualityPythonScriptTestResponse();
+        resp.setSuccess(result.isSuccess());
+        resp.setDurationMs(result.getDurationMs());
+        if (result.isSuccess()) {
+            if (result.getOutput() instanceof JSONObject out) {
+                resp.setResult(out.getJSONObject("check_result"));
+            }
+            if (resp.getResult() == null) {
+                resp.setSuccess(false);
+                resp.setError("脚本未通过 check(df) 返回结果 dict");
+            }
+        } else {
+            String err = result.getStderr() == null || result.getStderr().isBlank()
+                    ? String.valueOf(result.getOutput()) : result.getStderr().trim();
+            resp.setError(abbreviate(err, 1000));
+        }
+        return resp;
+    }
+
+    /**
+     * CUSTOM_SQL 规则执行预览（Sprint 7 DG-10 强化自定义 SQL）。
+     * 展开占位符后真实执行（仅 SELECT/WITH 只读），返回列清单 + 截断样例行，
+     * 供多指标场景选择 resultMetric。内置 Doris 走 DorisSqlExecutor，注册数据源走 GenericSqlExecutor。
+     */
+    public QualitySqlPreviewExecuteResponse previewExecuteSql(QualitySqlPreviewExecuteRequest request) {
+        MetadataTable table = requireTable(request.getTableId());
+        String sql = RuleSqlGenerator.generate(null, table, request.getColumnName(),
+                request.getRangeMin(), request.getRangeMax(), request.getSqlExpression());
+        if (sql == null || sql.isBlank()) {
+            throw new BusinessException(ErrorCode.SQL_PREVIEW_FAILED, "SQL 表达式不能为空");
+        }
+        String trimmed = sql.stripLeading();
+        if (!trimmed.regionMatches(true, 0, "SELECT", 0, 6) && !trimmed.regionMatches(true, 0, "WITH", 0, 4)) {
+            throw new BusinessException(ErrorCode.SQL_PREVIEW_FAILED, "执行预览仅支持 SELECT/WITH 只读查询");
+        }
+        // 占位符残留检查对齐执行层 assertNoUnresolvedPlaceholder 语义（成对花括号才拦截）
+        int braceStart = trimmed.indexOf('{');
+        if (braceStart >= 0 && trimmed.indexOf('}', braceStart) > braceStart) {
+            throw new BusinessException(ErrorCode.SQL_PREVIEW_FAILED,
+                    "SQL 存在未展开的占位符（如 {column}），请先补全对应字段");
+        }
+        long datasourceId = table.getDatasourceId() == null ? DORIS_DATASOURCE_ID : table.getDatasourceId();
+        if (datasourceId == DORIS_DATASOURCE_ID) {
+            DorisSqlExecutor.QueryResult qr = dorisSqlExecutor.query(sql);
+            QualitySqlPreviewExecuteResponse resp = new QualitySqlPreviewExecuteResponse();
+            resp.setSuccess(true);
+            resp.setColumns(qr.columns());
+            List<List<Object>> rows = new ArrayList<>();
+            List<Map<String, Object>> rawRows = qr.rows() == null ? List.of() : qr.rows();
+            for (Map<String, Object> row : rawRows) {
+                if (rows.size() >= PREVIEW_MAX_ROWS) {
+                    break;
+                }
+                List<Object> r = new ArrayList<>(qr.columns().size());
+                for (String col : qr.columns()) {
+                    r.add(row.get(col));
+                }
+                rows.add(r);
+            }
+            resp.setRows(rows);
+            resp.setTruncated(qr.truncated() || rawRows.size() > PREVIEW_MAX_ROWS);
+            resp.setMessage("查询返回 " + rawRows.size() + " 行" + (resp.isTruncated() ? "（预览截断）" : ""));
+            return resp;
+        }
+        DataSourceInfo ds;
+        try {
+            ds = genericSqlExecutor.getDatasource(datasourceId);
+        } catch (BusinessException e) {
+            throw new BusinessException(ErrorCode.SQL_PREVIEW_FAILED, "数据源不存在: " + datasourceId);
+        }
+        GenericSqlExecutor.PreviewResult pr = genericSqlExecutor.execute(ds, sql);
+        QualitySqlPreviewExecuteResponse resp = new QualitySqlPreviewExecuteResponse();
+        resp.setSuccess(pr.success);
+        resp.setColumns(pr.columns);
+        resp.setRows(pr.rows);
+        resp.setTruncated(pr.truncated);
+        resp.setMessage(pr.message);
+        resp.setError(pr.error);
+        return resp;
+    }
+
+    private static String abbreviate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
     }
 
     // ==================== 任务<->规则 关联（Sprint 7 多对多） ====================
@@ -566,6 +711,12 @@ public class QualityRuleService {
         if (!SUPPORTED_TYPES.contains(template.getType())) {
             throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_TYPE_INVALID, "模板类型非法: " + template.getType());
         }
+        // PYTHON 模板批量生成时脚本从模板带出，模板未配置脚本则规则必然不可执行（Sprint 7 DG-10）
+        if ("PYTHON".equals(template.getType())
+                && (template.getPythonTemplate() == null || template.getPythonTemplate().isBlank())) {
+            throw new BusinessException(ErrorCode.QUALITY_TEMPLATE_TYPE_INVALID,
+                    "PYTHON 模板未配置 python_template，不可用于批量生成: " + template.getName());
+        }
     }
 
     private void validateItemForTemplate(QualityRuleTemplate template, QualityRuleBatchCreateRequest.RuleItem item) {
@@ -688,6 +839,7 @@ public class QualityRuleService {
         dto.setColumnName(entity.getColumnName());
         dto.setCheckField(entity.getCheckField());
         dto.setSqlExpression(entity.getSqlExpression());
+        dto.setPythonScript(entity.getPythonScript());
         dto.setWarningThreshold(entity.getWarningThreshold());
         dto.setSevereThreshold(entity.getSevereThreshold());
         dto.setRangeMin(entity.getRangeMin());

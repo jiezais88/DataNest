@@ -50,6 +50,9 @@ public class QualityRuleDTO {
 
     private String sqlExpression;
 
+    /** Python 脚本（def check(df) 返回 dict；PYTHON 类型规则有值，Sprint 7 DG-10） */
+    private String pythonScript;
+
     private BigDecimal warningThreshold;
 
     private BigDecimal severeThreshold;
