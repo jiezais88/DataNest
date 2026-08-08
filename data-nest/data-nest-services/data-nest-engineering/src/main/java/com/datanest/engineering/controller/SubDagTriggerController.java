@@ -43,9 +43,11 @@ public class SubDagTriggerController {
             throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND, "子 DAG 触发缺少 subDagId");
         }
         Long parentDagId = longOf(body.get("dagId"));
+        String parentNodeId = body.get("nodeId") == null ? null : body.get("nodeId").toString();
         logger.info("子 DAG 异步触发: subDagId={}, parentDagId={}, parentNodeId={}",
-                subDagId, parentDagId, body.get("nodeId"));
-        dagExecutionService.trigger(subDagId);
+                subDagId, parentDagId, parentNodeId);
+        // Sprint 7 NG5：按父节点 paramMappings 解析主→子参数下发（无映射时等价原 trigger(subDagId)）
+        dagExecutionService.triggerSubDag(parentDagId, parentNodeId, subDagId);
         return Result.ok(Map.of("triggered", true, "subDagId", subDagId));
     }
 

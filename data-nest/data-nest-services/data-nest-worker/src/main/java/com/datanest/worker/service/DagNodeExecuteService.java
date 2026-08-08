@@ -725,16 +725,19 @@ public class DagNodeExecuteService {
      * ensure-execution 端点补齐 dag_execution + 全量 WAITING node_execution（服务端按
      * powerjob_wf_instance_id 列幂等，按 wfInstanceId 双检加锁），返回执行记录 id。
      * fail-fast：端点不可达/降级返回空直接抛错，节点执行可见失败。
+     * Sprint 7 NG5：嵌套工作流（同步子 DAG）场景透传父执行 ID（parentDagExecutionId），
+     * engineering 据此把父节点 paramMappings 映射进子执行记录 resolvedParams；cron 触发传 null。
      *
      * @return execution id；wfInstanceId 为空时返回 null
      */
-    public Long ensureExecutionByWfInstance(Long dagId, Long wfInstanceId) {
+    public Long ensureExecutionByWfInstance(Long dagId, Long wfInstanceId, Long parentDagExecutionId) {
         if (wfInstanceId == null) {
             return null;
         }
         EnsureDagExecutionRequest request = new EnsureDagExecutionRequest();
         request.setDagId(dagId);
         request.setWfInstanceId(wfInstanceId);
+        request.setParentDagExecutionId(parentDagExecutionId);
         Long executionId;
         try {
             Result<Long> result = dagExecutionApi.ensureExecution(request);

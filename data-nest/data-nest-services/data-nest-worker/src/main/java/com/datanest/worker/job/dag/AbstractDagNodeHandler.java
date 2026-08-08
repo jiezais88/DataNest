@@ -128,13 +128,17 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
                     ctxMap == null ? null : ctxMap.get(WorkflowContextConstant.CONTEXT_INIT_PARAMS_KEY));
         }
         // 嵌套子 DAG（NESTED_WORKFLOW）：子工作流继承父工作流 initParams，dagExecutionId 属于父 DAG，
-        // 归属校验不通过时按本工作流实例补齐子 DAG 自己的执行记录
-        if (dagExecutionId != null
-                && dagNodeExecuteService.executionBelongsToDag(dagExecutionId, dagId)) {
-            return dagExecutionId;
+        // 归属校验不通过时按本工作流实例补齐子 DAG 自己的执行记录；
+        // Sprint 7 NG5：归属不匹配即嵌套场景，把父执行 ID 透传给 ensure-execution 用于主→子参数下发
+        Long parentDagExecutionId = null;
+        if (dagExecutionId != null) {
+            if (dagNodeExecuteService.executionBelongsToDag(dagExecutionId, dagId)) {
+                return dagExecutionId;
+            }
+            parentDagExecutionId = dagExecutionId;
         }
         Long wfInstanceId = wfContext.getWfInstanceId();
-        dagExecutionId = dagNodeExecuteService.ensureExecutionByWfInstance(dagId, wfInstanceId);
+        dagExecutionId = dagNodeExecuteService.ensureExecutionByWfInstance(dagId, wfInstanceId, parentDagExecutionId);
         if (dagExecutionId == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                     getName() + " dag_execution 补齐失败: dagId=" + dagId + ", wfInstanceId=" + wfInstanceId);

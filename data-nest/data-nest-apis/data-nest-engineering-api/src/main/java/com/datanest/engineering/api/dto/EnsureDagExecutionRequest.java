@@ -14,4 +14,10 @@ public class EnsureDagExecutionRequest {
 
     /** PowerJob 工作流实例 ID */
     private Long wfInstanceId;
+
+    /**
+     * Sprint 7 NG5：嵌套工作流（同步子 DAG）场景下，子工作流继承父工作流 initParams 中的
+     * 父 DAG 执行 ID，worker 识别归属不匹配后透传，用于主→子参数下发；cron 触发为 null。
+     */
+    private Long parentDagExecutionId;
 }

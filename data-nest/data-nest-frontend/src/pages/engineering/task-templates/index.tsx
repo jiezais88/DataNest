@@ -1,8 +1,8 @@
 // Sprint 7 F2：任务模板库页（DD-09）
 // 布局对齐原型 task-template 视图：segmented 类型分组 + 内置/自定义徽章 + 一键创建。
 // 仅超管/工程师可见（侧边栏 ENGINEERING_WRITE_ROLES + 后端全端点鉴权）。
-// 单栏列表页按 §8 约定整页滚动；列表全量返回（量小），类型过滤前端做。
-import {useCallback, useEffect, useMemo, useState} from 'react';
+// 单栏列表页按 §8 约定整页滚动；列表走 POST /page 分页，segmented 切换即服务端过滤。
+import {useMemo, useState} from 'react';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {
@@ -13,13 +13,15 @@ import {
     HiOutlinePlay,
     HiOutlineTrash,
 } from 'react-icons/hi2';
-import {deleteTaskTemplate, listTaskTemplates} from '../../../api/taskTemplate';
+import {deleteTaskTemplate, queryTaskTemplates} from '../../../api/taskTemplate';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
 import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
+import Pagination from '../../../components/Pagination';
 import {COL} from '../../../constants/table';
+import usePagedList from '../../../hooks/usePagedList';
 import {formatDateTime} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
 import type {TaskTemplate, TaskTemplateType} from '../../../types/taskTemplate';
@@ -37,8 +39,6 @@ function TypeMonoBadge({type}: { type: TaskTemplateType }) {
 }
 
 export default function TaskTemplatesPage() {
-    const [templates, setTemplates] = useState<TaskTemplate[]>([]);
-    const [loading, setLoading] = useState(false);
     const [typeFilter, setTypeFilter] = useState<'' | TaskTemplateType>('');
 
     const [createTarget, setCreateTarget] = useState<TaskTemplate | null>(null);
@@ -48,24 +48,26 @@ export default function TaskTemplatesPage() {
     const [deleting, setDeleting] = useState<TaskTemplate | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
-    const load = useCallback(() => {
-        setLoading(true);
-        listTaskTemplates()
-            .then(list => setTemplates(list ?? []))
-            .catch(() => setTemplates([]))
-            .finally(() => setLoading(false));
-    }, []);
+    const {
+        list: templates,
+        total,
+        page,
+        pageSize,
+        loading,
+        applyQuery,
+        reload,
+        setPage,
+        setPageSize,
+    } = usePagedList({
+        fetcher: (q) => queryTaskTemplates(q).then(r => ({list: r?.records ?? [], total: Number(r?.total ?? 0)})),
+        initialQuery: {} as { type?: string },
+    });
 
-    useEffect(() => {
-        load();
-    }, [load]);
-
-    const filtered = useMemo(
-        () => (typeFilter ? templates.filter(t => t.type === typeFilter) : templates),
-        [templates, typeFilter],
-    );
-    const builtinCount = templates.filter(t => t.category === 'BUILTIN').length;
-    const customCount = templates.length - builtinCount;
+    /** segmented 切换 → 服务端过滤 */
+    const handleTypeFilter = (type: '' | TaskTemplateType) => {
+        setTypeFilter(type);
+        applyQuery({type: type || undefined});
+    };
 
     const openForm = (mode: TemplateFormMode, template?: TaskTemplate) => {
         setFormMode(mode);
@@ -79,7 +81,7 @@ export default function TaskTemplatesPage() {
         try {
             await deleteTaskTemplate(deleting.id);
             notify.success(`已删除模板「${deleting.name}」`);
-            load();
+            reload();
         } catch {
             // 7301/7304 由拦截器统一提示
         } finally {
@@ -233,13 +235,13 @@ export default function TaskTemplatesPage() {
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                 <div className="flex items-center p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
-                    {/* segmented 类型分组（原型 seg-item） */}
+                    {/* segmented 类型分组（原型 seg-item；切换即服务端过滤） */}
                     <div className="inline-flex items-center bg-ds-bg-root rounded-ds-sm p-0.5">
                         {segments.map(seg => (
                             <button
                                 key={seg.value}
                                 type="button"
-                                onClick={() => setTypeFilter(seg.value)}
+                                onClick={() => handleTypeFilter(seg.value)}
                                 className={`px-ds-3 py-1.5 text-ds-small rounded-ds-xs transition-colors ${
                                     typeFilter === seg.value
                                         ? 'bg-white text-ds-accent font-semibold shadow-ds-xs'
@@ -250,16 +252,13 @@ export default function TaskTemplatesPage() {
                             </button>
                         ))}
                     </div>
-                    <span className="ml-auto text-ds-small text-ds-text-muted">
-                        内置 {builtinCount} · 自定义 {customCount}
-                    </span>
                 </div>
 
                 <div className="overflow-x-auto">
                     <Table
                         rowKey={(r) => r.id}
                         columns={columns}
-                        dataSource={filtered}
+                        dataSource={templates}
                         loading={loading}
                         pagination={false}
                         scroll={{x: 1240}}
@@ -276,6 +275,17 @@ export default function TaskTemplatesPage() {
                         }}
                     />
                 </div>
+                {total > 0 && (
+                    <Pagination
+                        page={page}
+                        pageSize={pageSize}
+                        total={total}
+                        onChange={(p, s) => {
+                            setPage(p);
+                            if (s !== pageSize) setPageSize(s);
+                        }}
+                    />
+                )}
             </div>
 
             {/* 说明条（原型 info notice 浅紫底） */}
@@ -298,7 +308,7 @@ export default function TaskTemplatesPage() {
                 mode={formMode}
                 template={formTemplate}
                 onClose={() => setFormOpen(false)}
-                onSaved={load}
+                onSaved={reload}
             />
 
             {/* 删除确认 */}

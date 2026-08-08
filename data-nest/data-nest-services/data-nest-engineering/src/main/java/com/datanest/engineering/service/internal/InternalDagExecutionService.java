@@ -1,5 +1,6 @@
 package com.datanest.engineering.service.internal;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -30,6 +31,8 @@ import com.datanest.engineering.mapper.DagMapper;
 import com.datanest.engineering.mapper.DagNodeMapper;
 import com.datanest.engineering.mapper.NodeExecutionLogMapper;
 import com.datanest.engineering.mapper.NodeExecutionMapper;
+import com.datanest.engineering.service.DagParameterService;
+import com.datanest.engineering.service.SubDagParamMappingResolver;
 import com.datanest.task.core.service.DagEdgeSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +74,8 @@ public class InternalDagExecutionService {
     private final DagNodeMapper dagNodeMapper;
     private final DagEdgeMapper dagEdgeMapper;
     private final AlertApi alertApi;
+    private final DagParameterService dagParameterService;
+    private final SubDagParamMappingResolver subDagParamMappingResolver;
 
     /** ensureExecutionByWfInstance 的进程内并发锁（按 wfInstanceId 双检，对齐原 worker 侧 EXECUTION_LOCKS 语义） */
     private final Map<Long, Object> ensureExecutionLocks = new ConcurrentHashMap<>();
@@ -81,7 +86,9 @@ public class InternalDagExecutionService {
                                        DagMapper dagMapper,
                                        DagNodeMapper dagNodeMapper,
                                        DagEdgeMapper dagEdgeMapper,
-                                       AlertApi alertApi) {
+                                       AlertApi alertApi,
+                                       DagParameterService dagParameterService,
+                                       SubDagParamMappingResolver subDagParamMappingResolver) {
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
         this.nodeExecutionLogMapper = nodeExecutionLogMapper;
@@ -89,6 +96,8 @@ public class InternalDagExecutionService {
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
         this.alertApi = alertApi;
+        this.dagParameterService = dagParameterService;
+        this.subDagParamMappingResolver = subDagParamMappingResolver;
     }
 
     // ==================== 执行实例 ====================
@@ -145,6 +154,13 @@ public class InternalDagExecutionService {
             execution.setStatus("RUNNING");
             execution.setStartTime(now);
             execution.setCreatedAt(now);
+            // Sprint 7 NG5：嵌套工作流（同步子 DAG）主→子参数下发——按父节点 paramMappings
+            // 把父执行上下文参数映射为子 DAG 覆盖集，解析后落 resolvedParams（节点执行时优先级最高）。
+            // 无映射/父执行缺失时保持 null（原语义，节点执行按默认值+系统变量现算）
+            Map<String, Object> subDagOverrides = resolveSubDagOverrides(request.getParentDagExecutionId(), dagId);
+            if (!subDagOverrides.isEmpty()) {
+                execution.setResolvedParams(JSON.toJSONString(dagParameterService.resolveParams(dagId, subDagOverrides)));
+            }
             // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
             execution.setEdgeSnapshot(DagEdgeSnapshot.capture(
                     dagEdgeMapper.selectByDagId(dagId).stream().map(InternalDagExecutionService::toEdgeInfo).toList()));
@@ -183,6 +199,22 @@ public class InternalDagExecutionService {
         info.setSourceNodeId(edge.getSourceNodeId());
         info.setTargetNodeId(edge.getTargetNodeId());
         return info;
+    }
+
+    /**
+     * Sprint 7 NG5：嵌套工作流场景按父执行 ID 解析子 DAG 参数覆盖集。
+     * 父执行缺失/不属于其他 DAG/无映射时返回空 Map（不下发，容错不阻断执行记录补齐）。
+     */
+    private Map<String, Object> resolveSubDagOverrides(Long parentDagExecutionId, Long subDagId) {
+        if (parentDagExecutionId == null) {
+            return Map.of();
+        }
+        DagExecution parentExecution = dagExecutionMapper.selectById(parentDagExecutionId);
+        if (parentExecution == null || parentExecution.getDagId() == null
+                || parentExecution.getDagId().equals(subDagId)) {
+            return Map.of();
+        }
+        return subDagParamMappingResolver.resolveForNested(parentExecution.getDagId(), subDagId, parentExecution);
     }
 
     /**

@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ 全部闭环（E2E 全量 44 用例绿）→ 待启动 F3
+> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ 全部闭环（E2E 全量 44 用例绿）；F3 后端 ✅（双链路+Review，待前端/测试）；F4 未启动
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -19,7 +19,7 @@
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
 | **F2 任务模板库**（DD-09）               | ✅ 完成     | 类型范围 SYNC + COLLECT；后端+前端+E2E 全部闭环（2026-08-08，12 用例全绿，见 §6.2） |
-| **F3 子 DAG 参数下发**（NG5）            | ⏳ 未开始 | 前后端+测试闭环（见 §6.3）                                                                     |
+| **F3 子 DAG 参数下发**（NG5）            | 🔄 后端 ✅ | 后端+Review 完成（2026-08-08，同步/异步双链路，curl 自测全绿，见 §6.3）；待前端/测试 |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
 | Sprint 7 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
@@ -54,6 +54,8 @@
 | **F1 前端实现（2026-08-07，含当日修订轮）**                              | 见 §6.1「前端」+「F1 修订轮」：合并单页（方案 A）；后端补 4 接口（树计数/healthLevel/批量分配/用户选项）+ Doris 回显 + 2 处 `MetadataService` 补丁 |
 | **F2 后端实现（2026-08-08，本段为开发阶段新增）**                        | 见下方「F2 后端变更明细」                                                                             |
 | **F2 后端 Review（2026-08-08）** | 按 AGENTS.md §7 三点审查通过；修复 3 项（usernames 判空对齐项目惯例/PUT 编辑缺省保留原配置/停用模板错误码 7301→7307），已重建 engineering + 回归冒烟 |
+| **F3 后端实现（2026-08-08，本段为开发阶段新增）** | 见下方「F3 后端变更明细」 |
+| **F3 后端 Review（2026-08-08）** | 按 AGENTS.md §7 三点审查通过；修复 1 项（worker 2 参 ensureExecutionByWfInstance 重载无调用方死代码，删除），已重建 worker + 冒烟 |
 | **PowerJob worker 配置优化（2026-08-08，用户确认三项全做）** | 对照 5.1.2 starter 源码 `PowerJobProperties` 全量键审查 `shared-powerjob.yaml`：① `protocol: AKKA→HTTP`（官方推荐方向）；② `store-strategy: disk→memory`（项目全部 STANDALONE+BUILT_IN 无 MapReduce，本地 H2 属死重）；③ 新增 `max-result-length: 32768`。yaml+Nacos 已同步，restart job/worker 后验证：server 日志两 App 心跳均为 HTTP、app-job 秒级任务执行+上报成功、worker 侧 `jdbc:h2:mem:` 生效。AGENTS.md §1 已同步 |
 | **全量配置审计与优化（2026-08-08，用户确认全做）** | 审计 8 个 shared-configs + 7 个服务 application.yml + Nacos config_info 实况。应用 3 项：① `shared-datasource.yaml` 的 `PG_DATABASE` 去默认值 fail-fast（原默认指向已冻结旧库 `datanest`，本地 IDE 无 env 会静默误连；docker 由 compose 注入不受影响）；② `shared-common.yaml` 日志 `com.datanest: debug→${DATANEST_LOG_LEVEL:info}`（消除 mapper DEBUG 刷屏，Nacos 推送后 LoggingRebinder 热生效无需重启，已实证 job/worker 40s 内 0 行 DEBUG）；③ 4 处消费方注释勘误（datasource/common/security/doris）。核查无需动：config_info 无陈旧 dataId、InternalFeignRetryer 存在、openfeign 命名空间正确、worker/job DataSource 排除正确、gateway 路由一致。AGENTS.md §6 已同步 |
 | `docs/sprint7/DataNest-Sprint7-PRD.md`（新增）                        | Sprint 7 数据资产目录产品文档 v1.0（12 章，对齐 Sprint6 PRD 范本；复用 vs 新增边界经代码核验）        |
@@ -88,6 +90,22 @@
 - 结论：架构融洽 ✅（Feign 契约/内部端点/拆库落点/容错三件套均合约定）、业务正确 ✅（修复后）、实现高效 ✅（无 N+1，usernames 批量回填）。
 - 修复 3 项（已重建 engineering + 回归冒烟通过）：① `list()` 的 `systemUserApi.usernames(...).data()` 未按项目惯例判空（Result 非 200 返回 null data 时 usernameMap=null → NPE 9999），已对齐 AssetCatalogService 的判空写法；② PUT 编辑原先必须重传完整 configTemplate（只改名称/说明会 7306），改为两者缺省保留原配置；③ 模板停用一键创建的错误码从 7301（语义不符）改 7307 +「模板已停用，无法创建任务」。
 - 遗留观察项（不改，前端开发时注意）：① 占位符约定必须位于 JSON 带引号字符串值内（播种模板均如此，列注释已说明）；② create/update 为 @Transactional 且另存为 COLLECT 时在事务内做只读 Feign getTask（短调用低风险）；③ 无启用/停用端点（原型亦无开关 UI，enabled 当前只读）。
+
+**F3 后端变更明细（2026-08-08，curl 自测全过、残留已清理）**
+- **范围扩展（用户确认 2026-08-08）**：技术文档 §4.4/§5.4 只写了 SubDagTriggerController（异步链路），但同步执行（`syncExecution=true`，默认方式，走 PowerJob NESTED_WORKFLOW 嵌套节点）也必须覆盖，否则默认配置下功能是坏的——**同步+异步双链路都实现**，技术文档已同步回落。
+- `data-nest-task-core`：`SubDagNodeConfig` 加 `paramMappings: List<ParamMapping>`（`{mainParam, subParam}`，契约 DTO；config TEXT JSON 持久化，无迁移，旧数据 null 视为不传参）。
+- `data-nest-common`：`ErrorCode` 新增 7106 `SUB_DAG_PARAM_INVALID`。
+- `data-nest-engineering`：新增 `SubDagParamMappingResolver`（双链路共用：按父节点 config 的 paramMappings，从父执行上下文 resolvedParams〔为空时按默认值+系统变量现算〕映射出子 DAG 覆盖集；`${name}`/裸名归一化；主参数无值 warn 跳过不阻断，对齐 DagParameterResolver 容错语义）；`DagService.validateSubDagParamMappings`（保存校验 PRD R5：mainParam/subParam 必填、subParam 归一化后映射内唯一、mainParam 必须在主 DAG 已声明参数或系统变量 biz_date/current_time/dag_id 中，新建 DAG 无 id 跳过存在性校验）；`DagExecutionService.triggerSubDag`（**异步链路**：查父 DAG 当前 RUNNING 执行 → 解析覆盖集 → `trigger(subDagId, overrides)`，无映射等价原 `trigger(subDagId)`；注意必须 `@Transactional`，self-invocation 下 trigger 的 registerSynchronization 依赖外层事务）；`SubDagTriggerController` 改调 triggerSubDag（body 契约 `{dagId,nodeId,subDagId}` 不变，worker 侧零改动）。
+- **同步链路**：engineering-api `EnsureDagExecutionRequest` 加 `parentDagExecutionId`（可选，向后兼容）→ worker `AbstractDagNodeHandler.resolveDagExecutionId` 归属不匹配（即嵌套场景）时透传父执行 ID → `DagNodeExecuteService.ensureExecutionByWfInstance` 3 参 → engineering `InternalDagExecutionService.ensureExecutionByWfInstance` 创建子执行记录时按父节点 paramMappings 解析覆盖集，非空则落 `resolved_params`（`resolveParams(子dagId, overrides)` 全量解析值，节点执行时优先级最高；空保持 null 原语义）。
+- 部署：全量 `mvn clean package` + 重建 app-engineering/app-worker 并 up，healthy（镜像时间戳已核验）。
+- curl 自测全过（复用 P4 夹具：父异步 DAG 2085695316252241921 / 父同步 DAG 2085695302939521026 / 子夹具 2085694953528832001）：保存校验 dup subParam 7106、未声明 mainParam 7106；**异步链路**触发父（biz_date=2026-08-01 手动覆盖 + env=prod 默认值）→ 子执行 resolved_params 含 `sub_date=2026-08-01, sub_env=prod`，SUCCESS；**同步链路**（NESTED_WORKFLOW，trigger_type=SCHEDULED 补齐记录）→ 子执行含 `sub_date=2026-08-02, sub_env=prod`，SUCCESS；**边界**：主参数声明但无值（empty_p 无默认值未覆盖）→ warn 跳过、其余正常下发、不阻断（日志实证）；**回归**：还原映射后触发 → 子执行无 sub_*（旧语义不变）。自测残留（3 参数 + 8 执行 + 12 节点执行 + 8 日志）已清理，节点 config 已还原。
+
+**F3 后端 Review（2026-08-08，按 AGENTS.md §7 三点审查 + 修复回归）**
+- 结论：架构融洽 ✅（契约向后兼容/映射计算全落持库方 engineering/worker 无库原则未破/无 N+1）、业务正确 ✅（双链路自测实证 + 边界 + 回归）、实现高效 ✅（修复后）。
+- 修复 1 项：`DagNodeExecuteService.ensureExecutionByWfInstance(dagId, wfInstanceId)` 2 参重载在唯一调用点改 3 参后成死代码，已删除 + 重建 worker + 冒烟。
+- 遗留观察项（不改）：① 同步路径 `resolveParentParams` 在 ensure 锁内可能 Feign 自调用 listParameters——仅 cron 父 + 有映射 + resolvedParams 为空时触发，短调用低频可接受；② triggerType 语义保持既有（异步子=MANUAL、同步子=SCHEDULED）未动；③ `paramMappings` 配成非数组类型会被外层 catch 归为「config JSON 解析失败」（SQL_PARSE_FAILED），语义可接受；④ 前端 `types.ts` 的 `SubDagNodeConfig` 加 `paramMappings` 类型留待 F3 前端阶段。
+
+**坑（本次实证）**：① docker exec 不加 `-i` 时 heredoc SQL 不会执行（stdin 关闭，psql 立即 EOF）——管道/heredoc 传 SQL 必须 `docker exec -i`；② `DagExecutionService.triggerSubDag` 调同类 `this.trigger()`（self-invocation 代理失效），必须自身加 `@Transactional` 否则 trigger 内 `registerSynchronization` 抛 `Transaction synchronization is not active`。
 
 **原型对齐要点（2026-08-05-06，对照真实前端源码 + 自动化截图逐项修正）**
 - **自动化截图对比**：曾用临时 Playwright Python 脚本（已删）截真实前端 3 页（`/governance/metadata` 展开树、`/governance/data-quality`、`/governance/quality-templates`）+ 截原型 5 视图（assets/classification/task-template/subdag/python-rule）逐屏对比。脚本核心要点已固化到 `docs/agent/prototype-guide.md §7`（UI 登录、press Enter 提交、flex 滚动诊断等）。
@@ -215,6 +233,7 @@
 - 实现高效 ✅：列表全量一次拉取前端过滤；数据源下拉仅在含 DATASOURCE 占位符时拉取；另存候选按类型懒拉一次；无 N+1/轮询
 - 说明：一键创建成功仅 toast 不跳页（对齐原型「生成任务」语义）；`parseTemplatePlaceholders` 从组件文件导出有一条 react-refresh warning（项目已有同类，可接受）
 - 追加修订（2026-08-08 用户反馈）：模板新增/编辑/复制表单由居中 DsModal 改**右侧 Drawer**（`TemplateFormDrawer`，640px）——平台惯例：实体主表单全部走右侧 Drawer（数据源/同步/采集/质量任务等 8 处同类）；存量例外**用户管理 `UserModal` 一并改为 `UserDrawer`**。「弹窗 vs 抽屉分工」规则已写入 `docs/agent/conventions-frontend.md` §7。
+- 追加修订 2（2026-08-08 用户确认）：列表由全量 GET 改 **`POST /task-templates/page` 分页**（对齐 AGENTS §9 列表页约定；service `listPage` + `attachCreatedByName` 抽公共回填，GET list 保留），前端切 `usePagedList` + `Pagination`，segmented 改服务端过滤，「内置 X · 自定义 Y」计数文案移除（由分页器「共 N 条」承担）。E2E 断言同步适配，全量 44 用例回归全绿。
 
 **测试**
 - [x] 后端 Postman/curl 自测：模板 CRUD、7301~7306 校验、一键创建后 sync_job/collect_task 落库（残留已清理）
@@ -230,22 +249,24 @@
 
 ---
 
-### 6.3 F3 子 DAG 参数下发（NG5）⏳ 未开始
+### 6.3 F3 子 DAG 参数下发（NG5）🔄 后端完成（2026-08-08）
 
-**范围**：主 DAG → 子 DAG 参数单向透传（`paramMappings`）。
+**范围**：主 DAG → 子 DAG 参数单向透传（`paramMappings`）。**同步+异步双链路**（用户确认 2026-08-08，技术文档原只写异步链路，已回落）。
 **无需迁移**（`dag_node.config` 为 TEXT JSON，向后兼容；旧数据 paramMappings=null 视为不传参）。
 
-**后端**
-- [ ] task-core-entity：`SubDagNodeConfig` 加 `paramMappings: List<ParamMapping>`（DTO 字段，config JSON 持久化，无新 Controller）
-- [ ] engineering `DagService`/`SubDagTriggerController`：触发子 DAG 时在主 DAG 执行上下文扩展参数下发链路（§4.4）
-- [ ] 重建 engineering + worker
+**后端**（✅ 全部完成，curl 自测通过，明细见 §4「F3 后端变更明细」）
+- [x] task-core：`SubDagNodeConfig` 加 `paramMappings: List<ParamMapping>`（契约 DTO，无新 Controller）
+- [x] common：`ErrorCode` 7106 `SUB_DAG_PARAM_INVALID`
+- [x] engineering：`SubDagParamMappingResolver`（双链路共用）+ `DagService` 保存校验（R5）+ `DagExecutionService.triggerSubDag`（异步链路）+ `InternalDagExecutionService` ensure-execution 参数注入（同步链路）
+- [x] engineering-api/worker：`EnsureDagExecutionRequest.parentDagExecutionId` + `AbstractDagNodeHandler`/`DagNodeExecuteService` 透传
+- [x] 重建 engineering + worker（healthy）；curl 自测：7106 校验 ×2、异步/同步双链路下发、主参数无值跳过边界、无映射回归——全绿，残留已清
 
 **前端**
-- [ ] 子 DAG 节点配置面板：编辑 `paramMappings`（主参数 → 子参数映射，原型 `subdag` 视图）
-- [ ] 对齐 DAG 编辑页现有节点配置 UI 风格
+- [ ] 子 DAG 节点配置面板：编辑 `paramMappings`（主参数 → 子参数映射，原型 `subdag` 视图）；`types.ts` `SubDagNodeConfig` 加 `paramMappings`
+- [ ] 对齐 DAG 编辑页现有节点配置 UI 风格；移除 SubDagNodeModal「本期不支持子 DAG 参数透传」提示
 
 **测试**
-- [ ] 后端 Postman/curl 自测：主 DAG 配 paramMappings → 触发 → 子 DAG 执行上下文收到透传参数
+- [x] 后端 Postman/curl 自测：主 DAG 配 paramMappings → 触发 → 子 DAG 执行上下文收到透传参数（同步/异步双链路）
 - [ ] 新建 `e2e/sprint7/e2e/subdag-param.spec.ts`（或并入 control-flow）
 - [ ] 更新 §2 看板：F3 置 ✅
 

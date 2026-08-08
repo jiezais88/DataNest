@@ -6,13 +6,16 @@ import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONException;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.CreateTaskResultDTO;
 import com.datanest.engineering.dto.SyncJobCreateRequest;
 import com.datanest.engineering.dto.TaskTemplateDTO;
+import com.datanest.engineering.dto.TaskTemplateQueryRequest;
 import com.datanest.engineering.dto.TaskTemplateSaveRequest;
 import com.datanest.engineering.dto.TemplateCreateTaskRequest;
 import com.datanest.engineering.entity.SyncJob;
@@ -86,7 +89,27 @@ public class TaskTemplateService {
                 .orderByAsc(TaskTemplate::getCategory)
                 .orderByDesc(TaskTemplate::getCreatedAt);
         List<TaskTemplate> templates = taskTemplateMapper.selectList(wrapper);
+        return attachCreatedByName(templates);
+    }
 
+    /** 模板分页（对齐平台列表页 POST /page 约定；排序与 list 一致：内置在前 + 创建时间倒序）。 */
+    public PageResult<TaskTemplateDTO> listPage(TaskTemplateQueryRequest request) {
+        int page = request.getPage() == null || request.getPage() < 1 ? 1 : request.getPage();
+        int pageSize = request.getPageSize() == null || request.getPageSize() < 1 ? 10 : request.getPageSize();
+        LambdaQueryWrapper<TaskTemplate> wrapper = new LambdaQueryWrapper<TaskTemplate>()
+                .eq(request.getType() != null && !request.getType().isBlank(),
+                        TaskTemplate::getType, request.getType())
+                .eq(request.getCategory() != null && !request.getCategory().isBlank(),
+                        TaskTemplate::getCategory, request.getCategory())
+                .orderByAsc(TaskTemplate::getCategory)
+                .orderByDesc(TaskTemplate::getCreatedAt);
+        Page<TaskTemplate> mpPage = taskTemplateMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        List<TaskTemplateDTO> items = attachCreatedByName(mpPage.getRecords());
+        return new PageResult<>(items, mpPage.getTotal(), mpPage.getCurrent(), mpPage.getSize());
+    }
+
+    /** createdByName 批量回填（经 system-api，降级空 Map）；内置模板 createdBy 为 null，前端展示「系统」。 */
+    private List<TaskTemplateDTO> attachCreatedByName(List<TaskTemplate> templates) {
         List<Long> userIds = templates.stream().map(TaskTemplate::getCreatedBy)
                 .filter(java.util.Objects::nonNull).distinct().collect(Collectors.toList());
         // RemoteCalls 统一降级：兜住熔断 fallback 之外的异常；Result 非 200 返回 null data 时也按空 Map 处理

@@ -15,7 +15,7 @@ import {
 /**
  * Sprint 7 F2 任务模板库 E2E 测试（业务流程全覆盖，API/DB 辅助诊断）。
  *
- * 覆盖：列表展示（内置 3 条/列完整/计数文案）、segmented 类型过滤、权限隔离
+ * 覆盖：列表展示（内置 3 条/列完整/分页器）、segmented 类型过滤、权限隔离
  * （ENGINEERING_WRITE_ROLES，分析师不可见不可调）、一键创建（SYNC 占位符表单/前端必填校验/
  * 默认值预填/COLLECT 跨服务落库）、模板 CRUD（手动 JSON 新增/重名 7302/另存为占位化/
  * 编辑类型锁定/复制内置为自定义/删除/内置只读按钮集）。
@@ -87,8 +87,8 @@ test.describe('列表展示与过滤', () => {
         await expect(fullSync.getByText('系统', {exact: true})).toBeVisible();
         await expect(tplRow(page, TPL_COLLECT_NAME).getByText('COLLECT', {exact: true})).toBeVisible();
 
-        // 计数文案（本测试运行时尚无自定义模板）
-        await expect(page.getByText(/内置 3 · 自定义 \d+/)).toBeVisible();
+        // 分页器（计数由分页器「共 N 条」承担）
+        await expect(page.getByText('共 3 条')).toBeVisible();
 
         // 底部说明条
         await expect(page.getByText(/模板被删除不影响已创建任务/)).toBeVisible();

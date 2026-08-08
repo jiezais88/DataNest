@@ -2,6 +2,7 @@ package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -65,6 +66,7 @@ public class DagService {
     private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
     private final GovernanceDatasourceApi governanceDatasourceApi;
+    private final DagParameterMapper dagParameterMapper;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
@@ -72,7 +74,8 @@ public class DagService {
                       DagPowerJobConverter dagPowerJobConverter, DagProjectService dagProjectService,
                       DagVersionService dagVersionService, SystemUserApi systemUserApi,
                       AlertApi alertApi,
-                      GovernanceDatasourceApi governanceDatasourceApi) {
+                      GovernanceDatasourceApi governanceDatasourceApi,
+                      DagParameterMapper dagParameterMapper) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -86,6 +89,7 @@ public class DagService {
         this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
         this.governanceDatasourceApi = governanceDatasourceApi;
+        this.dagParameterMapper = dagParameterMapper;
     }
 
     @Transactional
@@ -608,6 +612,8 @@ public class DagService {
                         throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND,
                                 "子 DAG 节点缺少 subDagId (nodeId=" + node.getNodeId() + ")");
                     }
+                    // Sprint 7 NG5：主→子参数映射校验（PRD R5）
+                    validateSubDagParamMappings(cfg, node, payload.getId());
                 }
             } catch (BusinessException e) {
                 throw e;
@@ -638,6 +644,44 @@ public class DagService {
             if (!nodeIds.contains(branch.getNextNodeId())) {
                 throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
                         "条件分支指向的节点不存在: " + branch.getNextNodeId() + " (nodeId=" + node.getNodeId() + ")");
+            }
+        }
+    }
+
+    /**
+     * Sprint 7 NG5：校验子 DAG 参数映射（PRD R5）。
+     * 规则：mainParam/subParam 必填（"${name}" 或裸名均可，归一化后判重）；
+     * subParam 在映射内唯一；mainParam 必须在主 DAG 已声明参数或系统变量中——
+     * 新建 DAG（payload.id 为空，参数尚未落库）跳过存在性校验。
+     */
+    private void validateSubDagParamMappings(JSONObject cfg, DagNodePayload node, Long dagId) {
+        JSONArray mappings = cfg.getJSONArray("paramMappings");
+        if (mappings == null || mappings.isEmpty()) {
+            return;
+        }
+        Set<String> declaredParams = new HashSet<>(Set.of("biz_date", "current_time", "dag_id"));
+        if (dagId != null) {
+            dagParameterMapper.selectByDagId(dagId).forEach(p -> declaredParams.add(p.getParamName()));
+        }
+        Set<String> seenSubParams = new HashSet<>();
+        for (int i = 0; i < mappings.size(); i++) {
+            JSONObject mapping = mappings.getJSONObject(i);
+            String mainKey = mapping == null ? null
+                    : SubDagParamMappingResolver.normalizeParamName(mapping.getString("mainParam"));
+            String subKey = mapping == null ? null
+                    : SubDagParamMappingResolver.normalizeParamName(mapping.getString("subParam"));
+            if (mainKey == null || subKey == null) {
+                throw new BusinessException(ErrorCode.SUB_DAG_PARAM_INVALID,
+                        "参数映射的主参数/子参数不能为空 (nodeId=" + node.getNodeId() + ")");
+            }
+            if (!seenSubParams.add(subKey)) {
+                throw new BusinessException(ErrorCode.SUB_DAG_PARAM_INVALID,
+                        "子 DAG 参数名在映射内重复: " + subKey + " (nodeId=" + node.getNodeId() + ")");
+            }
+            if (dagId != null && !declaredParams.contains(mainKey)) {
+                throw new BusinessException(ErrorCode.SUB_DAG_PARAM_INVALID,
+                        "主 DAG 参数不存在: " + mainKey + "（需先在主 DAG 参数中声明，或使用系统变量 biz_date/current_time）"
+                                + " (nodeId=" + node.getNodeId() + ")");
             }
         }
     }

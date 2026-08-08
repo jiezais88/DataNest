@@ -2,9 +2,11 @@ package com.datanest.engineering.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.CreateTaskResultDTO;
 import com.datanest.engineering.dto.TaskTemplateDTO;
+import com.datanest.engineering.dto.TaskTemplateQueryRequest;
 import com.datanest.engineering.dto.TaskTemplateSaveRequest;
 import com.datanest.engineering.dto.TemplateCreateTaskRequest;
 import com.datanest.engineering.service.TaskTemplateService;
@@ -39,6 +41,13 @@ public class TaskTemplateController {
     public Result<List<TaskTemplateDTO>> list(@RequestParam(required = false) String type,
                                               @RequestParam(required = false) String category) {
         return Result.ok(taskTemplateService.list(type, category));
+    }
+
+    /** 分页列表（对齐平台列表页 POST /page 约定）。 */
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @PostMapping("/page")
+    public Result<PageResult<TaskTemplateDTO>> page(@RequestBody TaskTemplateQueryRequest request) {
+        return Result.ok(taskTemplateService.listPage(request));
     }
 
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)

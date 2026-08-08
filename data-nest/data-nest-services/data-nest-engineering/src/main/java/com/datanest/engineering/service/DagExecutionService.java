@@ -63,6 +63,7 @@ public class DagExecutionService {
     private final SyncJobService syncJobService;
     private final DagService dagService;
     private final DagParameterService dagParameterService;
+    private final SubDagParamMappingResolver subDagParamMappingResolver;
 
     public DagExecutionService(DagMapper dagMapper, DagNodeMapper dagNodeMapper,
                                DagEdgeMapper dagEdgeMapper,
@@ -71,7 +72,8 @@ public class DagExecutionService {
                                PowerJobWorkflowClient powerJobWorkflowClient,
                                SyncJobService syncJobService,
                                DagService dagService,
-                               DagParameterService dagParameterService) {
+                               DagParameterService dagParameterService,
+                               SubDagParamMappingResolver subDagParamMappingResolver) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -82,6 +84,7 @@ public class DagExecutionService {
         this.syncJobService = syncJobService;
         this.dagService = dagService;
         this.dagParameterService = dagParameterService;
+        this.subDagParamMappingResolver = subDagParamMappingResolver;
     }
 
     /**
@@ -98,6 +101,27 @@ public class DagExecutionService {
     @Transactional
     public DagExecutionDTO trigger(Long dagId) {
         return trigger(dagId, null);
+    }
+
+    /**
+     * 子 DAG 异步触发（Sprint 7 NG5）：按父节点 paramMappings 从父 DAG 当前 RUNNING 执行
+     * 上下文解析主→子参数下发（无映射/取不到值时按原语义不带参数触发），再走普通触发链路。
+     */
+    @Transactional
+    public DagExecutionDTO triggerSubDag(Long parentDagId, String parentNodeId, Long subDagId) {
+        Map<String, Object> overrides = null;
+        if (parentDagId != null) {
+            // uk_dag_execution_running 保证同 DAG 至多一条 RUNNING；LIMIT 1 兜底防脏数据
+            DagExecution parentExecution = dagExecutionMapper.selectOne(new QueryWrapper<DagExecution>()
+                    .eq("dag_id", parentDagId).eq("status", "RUNNING")
+                    .orderByDesc("id").last("LIMIT 1"));
+            Map<String, Object> resolved = subDagParamMappingResolver.resolveForAsyncTrigger(
+                    parentDagId, parentNodeId, parentExecution);
+            if (!resolved.isEmpty()) {
+                overrides = resolved;
+            }
+        }
+        return trigger(subDagId, overrides);
     }
 
     /** dag_edge 实体 → 边快照 DTO（DagEdgeSnapshot 3.3 起只接收 DTO） */

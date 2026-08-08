@@ -84,6 +84,7 @@ public enum ErrorCode {
     SUB_DAG_DISABLED(7103, "引用的子 DAG 未启用"),
     CONDITION_CONFIG_INVALID(7104, "条件分支节点配置非法"),
     SUB_DAG_PROJECT_MISMATCH(7105, "子 DAG 必须与父 DAG 属于同一项目"),
+    SUB_DAG_PARAM_INVALID(7106, "子 DAG 参数映射配置非法"),
 
     // Alert errors — Sprint 5 告警中心
     ALERT_RULE_NOT_FOUND(7201, "告警规则不存在"),

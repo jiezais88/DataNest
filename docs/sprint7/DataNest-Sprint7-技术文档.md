@@ -240,12 +240,15 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 
 ### 4.4 子 DAG 参数下发（NG5）
 
-`SubDagTriggerController` 触发子 DAG 时，在主 DAG 执行上下文扩展参数下发链路：
+子 DAG 触发时在主 DAG 执行上下文扩展参数下发链路（**2026-08-08 修订：同步+异步双链路，用户确认**——原稿只写异步触发链路，但同步执行是默认方式，不覆盖则默认配置下功能缺失）：
 
 1. 主 DAG 执行节点到 SUB_DAG 节点，读取 `SubDagNodeConfig.paramMappings`。
-2. 用主 DAG 已 `resolveParams` 出的参数 Map，按映射把 `mainParam` 的实际值注入子 DAG 触发入参 `manualOverrides[subParam]`。
-3. 子 DAG 内部沿用 `DagParameterResolver.resolveParams(subDagId, manualOverrides)` 解析（系统变量/默认值/手动覆盖三级）。
-4. **校验**：配置时校验 `mainParam` 在主 DAG 已声明参数中存在（或为系统变量 `biz_date` 等）、`subParam` 名在映射内唯一（PRD R5）。
+2. 用主 DAG 已 `resolveParams` 出的参数 Map（执行记录 `resolved_params`；为空时按默认值+系统变量现算），按映射把 `mainParam` 的实际值注入子 DAG 触发入参 `manualOverrides[subParam]`（`${name}`/裸名归一化；主参数无值 warn 跳过不阻断）。
+3. 子 DAG 内部沿用 `DagParameterResolver.resolveParams(subDagId, manualOverrides)` 解析（手动覆盖 > 默认值 > 系统变量），子执行记录落 `resolved_params`，节点执行时优先级最高。
+4. **校验**：配置时校验 `mainParam` 在主 DAG 已声明参数中存在（或为系统变量 `biz_date`/`current_time`/`dag_id`）、`subParam` 名归一化后在映射内唯一（PRD R5，错误码 7106；新建 DAG 无 id 跳过存在性校验）。
+5. **双链路落点**（2026-08-08 实现口径）：
+   - **异步**（`syncExecution=false`）：`SubDagTriggerController` → `DagExecutionService.triggerSubDag`（查父 DAG 当前 RUNNING 执行 → `SubDagParamMappingResolver` 解析覆盖集 → `trigger(subDagId, overrides)`），worker 侧 `DagSubDagAsyncHandler` 零改动（body 契约不变）。
+   - **同步**（`syncExecution=true`，NESTED_WORKFLOW 嵌套工作流）：子工作流继承父 initParams 中的父执行 ID，worker `AbstractDagNodeHandler` 归属识别后透传 `parentDagExecutionId` 经 `ensure-execution`；engineering 补齐子执行记录时按 `SubDagParamMappingResolver` 解析覆盖集落 `resolved_params`（空则保持 null 原语义）。
 
 > **仅主→子单向下发**（用户确认）：不做子 DAG 结果回传主 DAG（NG1 延后）。
 
@@ -312,11 +315,11 @@ ALTER TABLE quality_rule_template ADD CONSTRAINT quality_rule_template_type_chec
 | PUT | `/quality/rules/{id}` | 编辑规则 | 治理员/超管 |
 | POST | `/quality/rules/{id}/execute` | 单条执行（PYTHON 复用沙箱） | 治理员/超管 |
 
-### 5.4 子 DAG 参数下发（沿用 `SubDagTriggerController`/`DagService`）
+### 5.4 子 DAG 参数下发（沿用 `SubDagTriggerController`/`DagService`，2026-08-08 修订为双链路）
 
 - `SubDagNodeConfig` 扩展 `paramMappings`（DTO 字段，config JSON 持久化，无新 Controller）。
-- 校验：主参数存在性、子参数名唯一（`DagService` 或 `SubDagNodeModal` 保存时）。
-- 触发：`SubDagTriggerController` 触发时注入子 DAG manualOverrides（§4.4）。
+- 校验：主参数存在性、子参数名唯一（`DagService.validateSubDagParamMappings` 保存时，错误码 7106）。
+- 触发（双链路，§4.4）：异步经 `SubDagTriggerController` → `DagExecutionService.triggerSubDag` 注入 manualOverrides；同步（NESTED_WORKFLOW）经 `ensure-execution` 透传 `parentDagExecutionId`（`EnsureDagExecutionRequest` 扩展），`InternalDagExecutionService` 补齐子执行记录时落 `resolved_params`；映射解析统一由 engineering `SubDagParamMappingResolver` 完成。
 
 ---
 
