@@ -43,6 +43,14 @@ export interface UpstreamNodeInfo {
     nodeType: NodeType;
 }
 
+/** 子 DAG 参数映射（Sprint 7 F3 NG5）：主 DAG 参数 → 子 DAG 参数 单向下发 */
+export interface ParamMapping {
+    /** 主 DAG 参数名（或系统变量 biz_date/current_time/dag_id），`${name}` 与裸名均可，后端归一化 */
+    mainParam: string;
+    /** 子 DAG 参数名，映射内唯一 */
+    subParam: string;
+}
+
 /** 子 DAG 节点配置：{"type":"SUB_DAG","subDagId":123,"subDagName":"xxx","syncExecution":true} */
 export interface SubDagNodeConfig {
     type: 'SUB_DAG';
@@ -50,6 +58,8 @@ export interface SubDagNodeConfig {
     subDagName?: string;
     /** true=同步执行（等待子 DAG 完成后继续）；false=异步执行（触发后继续） */
     syncExecution: boolean;
+    /** Sprint 7 F3：参数下发映射（可选；空/null = 不传参，向后兼容） */
+    paramMappings?: ParamMapping[];
 }
 
 export interface DagNode {

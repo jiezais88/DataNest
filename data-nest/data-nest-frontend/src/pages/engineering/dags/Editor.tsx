@@ -67,6 +67,7 @@ import type {
     DagParameter,
     NodeExecution,
     NodeType,
+    ParamMapping,
     UpstreamNodeInfo
 } from './types';
 import type {AlertRuleDTO} from '../../../types/alert';
@@ -106,6 +107,8 @@ type RFNodeData = {
     subDagId?: number | string;
     subDagName?: string;
     syncExecution?: boolean;
+    /** SUB_DAG 参数下发映射（Sprint 7 F3） */
+    paramMappings?: ParamMapping[];
     status?: NodeStatus;
     /** 执行视图：节点运行信息 */
     durationMs?: number;
@@ -1050,6 +1053,11 @@ function DagEditorInner() {
     // 不转 Number()：19 位 Snowflake id 会被截断精度，reactflow 拿不到 nodes
     const loadDag = useCallback(() => {
         if (isNew || !id) return Promise.resolve();
+        // 顺带加载 DAG 声明参数（子 DAG 参数映射/条件节点配置的主参数候选；
+        // 此前仅触发时才加载，导致编辑器内主参数下拉只剩系统变量）
+        listDagParameters(id)
+            .then(params => setDagParams(params ?? []))
+            .catch(() => setDagParams([]));
         return getDag(id).then(d => {
             setDag(d);
             const rfnodes: Node<RFNodeData>[] = (d.nodes || []).map(n => {
@@ -1071,6 +1079,7 @@ function DagEditorInner() {
                         subDagId: cfg.subDagId,
                         subDagName: cfg.subDagName,
                         syncExecution: cfg.syncExecution,
+                        paramMappings: cfg.paramMappings,
                         lastTestStatus: cfg.lastTestStatus,
                         onEditRequest: handleEditRequest,
                     },
@@ -1361,11 +1370,12 @@ function DagEditorInner() {
         subDagId: string | number,
         subDagName: string,
         syncExecution: boolean,
+        paramMappings: ParamMapping[],
     ) => {
         if (!selectedNodeId) return;
         setRfNodes(ns => ns.map(n => n.id === selectedNodeId ? {
             ...n,
-            data: {...n.data, nodeName, subDagId, subDagName, syncExecution},
+            data: {...n.data, nodeName, subDagId, subDagName, syncExecution, paramMappings},
         } : n));
         setSubDagModalOpen(false);
         setIsDirty(true);
@@ -2142,13 +2152,15 @@ function DagEditorInner() {
                 onSave={handleConditionNodeSave}
             />
 
-            {/* Sprint 5：子 DAG 节点配置 */}
+            {/* Sprint 5：子 DAG 节点配置（Sprint 7 F3：参数下发映射编辑） */}
             <SubDagNodeModal
                 open={subDagModalOpen}
                 initialNodeName={selectedNode?.data.nodeName}
                 initialSubDagId={selectedNode?.data.subDagId}
                 initialSyncExecution={selectedNode?.data.syncExecution}
+                initialParamMappings={selectedNode?.data.paramMappings}
                 candidateDags={candidateDags}
+                mainParamNames={(isNew ? draftParams : dagParams).map(p => p.paramName)}
                 readOnly={!canEdit}
                 onClose={() => setSubDagModalOpen(false)}
                 onSave={handleSubDagNodeSave}
@@ -2268,6 +2280,7 @@ function parseConfig(config?: string): {
     subDagId?: number | string;
     subDagName?: string;
     syncExecution?: boolean;
+    paramMappings?: ParamMapping[];
 } {
     if (!config) return {};
     try {
@@ -2328,6 +2341,8 @@ function serializeConfig(data: RFNodeData): string {
             subDagId: data.subDagId,
             subDagName: data.subDagName,
             syncExecution: data.syncExecution ?? true,
+            // Sprint 7 F3：参数下发映射（空数组不写入，保持旧数据兼容）
+            ...(data.paramMappings && data.paramMappings.length > 0 ? {paramMappings: data.paramMappings} : {}),
         });
     }
     return JSON.stringify({type: 'SYNC', syncJobId: data.syncJobId, syncJobName: data.syncJobName});

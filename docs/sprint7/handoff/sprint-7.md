@@ -1,6 +1,6 @@
 # Sprint 7 Handoff
 
-> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ 全部闭环（E2E 全量 44 用例绿）；F3 后端 ✅（双链路+Review，待前端/测试）；F4 未启动
+> **更新时间**：2026-08-08 | **阶段**：F1 ✅ F2 ✅ F3 ✅ 全部闭环（E2E 全量 48 用例绿）；F4 未启动
 > **Sprint 主题**：数据资产目录（+ 三项轻量增强）
 
 ## 1. Sprint 目标
@@ -19,7 +19,7 @@
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
 | **F2 任务模板库**（DD-09）               | ✅ 完成     | 类型范围 SYNC + COLLECT；后端+前端+E2E 全部闭环（2026-08-08，12 用例全绿，见 §6.2） |
-| **F3 子 DAG 参数下发**（NG5）            | 🔄 后端 ✅ | 后端+Review 完成（2026-08-08，同步/异步双链路，curl 自测全绿，见 §6.3）；待前端/测试 |
+| **F3 子 DAG 参数下发**（NG5）            | ✅ 完成    | 后端+前端+E2E 全部闭环（2026-08-08，UI 级 4 用例全绿，见 §6.3） |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
 | Sprint 7 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
@@ -249,7 +249,7 @@
 
 ---
 
-### 6.3 F3 子 DAG 参数下发（NG5）🔄 后端完成（2026-08-08）
+### 6.3 F3 子 DAG 参数下发（NG5）✅ 全部完成（2026-08-08）
 
 **范围**：主 DAG → 子 DAG 参数单向透传（`paramMappings`）。**同步+异步双链路**（用户确认 2026-08-08，技术文档原只写异步链路，已回落）。
 **无需迁移**（`dag_node.config` 为 TEXT JSON，向后兼容；旧数据 paramMappings=null 视为不传参）。
@@ -261,14 +261,22 @@
 - [x] engineering-api/worker：`EnsureDagExecutionRequest.parentDagExecutionId` + `AbstractDagNodeHandler`/`DagNodeExecuteService` 透传
 - [x] 重建 engineering + worker（healthy）；curl 自测：7106 校验 ×2、异步/同步双链路下发、主参数无值跳过边界、无映射回归——全绿，残留已清
 
-**前端**
-- [ ] 子 DAG 节点配置面板：编辑 `paramMappings`（主参数 → 子参数映射，原型 `subdag` 视图）；`types.ts` `SubDagNodeConfig` 加 `paramMappings`
-- [ ] 对齐 DAG 编辑页现有节点配置 UI 风格；移除 SubDagNodeModal「本期不支持子 DAG 参数透传」提示
+**前端**（✅ 全部完成，2026-08-08 联调冒烟全绿）
+- [x] `types.ts`：`ParamMapping` + `SubDagNodeConfig.paramMappings`；Editor `RFNodeData`/`parseConfig`/config 序列化三处接线（空映射不写入，旧数据兼容）
+- [x] `SubDagNodeModal` 参数下发编辑器（对齐原型 subdag 视图，640px）：映射行 = 主参数 Select（主 DAG 声明参数 + 系统变量 biz_date/current_time/dag_id，与后端校验白名单一致）→ 子参数 AutoComplete（选中子 DAG 后懒拉其声明参数，可手输）+ 删除；添加映射按钮；前端校验（必填/子参数唯一）+ 后端 7106 兜底；「本期不支持」提示已移除
+- [x] 联调冒烟（临时脚本，用后删除）：P4 夹具 DAG 双击子节点 → 添加映射（biz_date→sub_date）→ 保存 → API 验证 `dag_node.config` 含 paramMappings → 重开回显 → 删除映射保存 → config 还原——全过无控制台错误
+
+**前端 Review（2026-08-08，按 AGENTS.md §7 三点）**
+- 架构融洽 ✅：复用现有 SubDagNodeModal（节点轻量配置 = 居中弹窗，符合 §7 弹窗/抽屉分工）；config TEXT JSON 扩展无迁移、向后兼容；无新 API（复用 `listDagParameters`）无新依赖
+- 业务正确 ✅：主参数候选与后端 R5 校验白名单一致；必填/唯一性前端先拦、7106 兜底；空数组不落库（旧语义不变）；回显/删除/持久化全链路实证
+- 实现高效 ✅：子 DAG 参数列表仅选中后懒拉一次；主参数复用 Editor 既有 `dagParams/draftParams` 状态，无额外请求
 
 **测试**
 - [x] 后端 Postman/curl 自测：主 DAG 配 paramMappings → 触发 → 子 DAG 执行上下文收到透传参数（同步/异步双链路）
-- [ ] 新建 `e2e/sprint7/e2e/subdag-param.spec.ts`（或并入 control-flow）
-- [ ] 更新 §2 看板：F3 置 ✅
+- [x] 新建 `e2e/sprint7/e2e/subdag-param.spec.ts`（4 用例 serial，**UI 级，用户确认 2026-08-08**——执行链路已由后端 curl 双链路实证，E2E 不重复）：参数下发区/主参数候选（声明+系统变量）、前端校验（必填/唯一）、保存持久化（config 断言）/回显/删除还原、7106 后端校验（API 辅助）。夹具经 API 创建（项目+父子 DAG+参数），afterAll 删除
+- [x] **E2E 轮附带修复 1 个存量 bug**：`Editor.loadDag` 此前不加载 DAG 声明参数（仅触发时才 `listDagParameters`），导致子 DAG/条件节点配置的主参数下拉只剩系统变量——已改为 loadDag 时顺带加载
+- [x] 更新 §2 看板：F3 置 ✅（2026-08-08，全量套件 48 用例全绿）
+- E2E 调试经验（复用价值）：① 弹窗内别用 Escape 关下拉（useModalA11y 会连带关弹窗）；② antd 关闭的 dropdown 残留 DOM 隐藏态，选项点击必须限定 `:not(.ant-select-dropdown-hidden)` 可见实例
 
 ---
 
