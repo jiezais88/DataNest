@@ -19,7 +19,7 @@
 | Sprint 7 UI 原型                         | ✅ 对齐   | 已对照真实前端 token/组件逐项修正（见 §4 变更清单），可参考 Sprint6 原型约定                      |
 | **F1 资产目录**（P0：搜索/详情/血缘/质量/分类） | ✅ 完成 | 后端 ✅ + 前端 ✅ + **E2E ✅（2026-08-07，`e2e/sprint7/e2e/asset-catalog.spec.ts` 32 用例全绿）**；E2E 发现并修复 1 个前端 bug（搜索态配置负责人不刷新），见 §6.1「测试」 |
 | **F2 任务模板库**（DD-09）               | ✅ 完成     | 类型范围 SYNC + COLLECT；后端+前端+E2E 全部闭环（2026-08-08，12 用例全绿，见 §6.2） |
-| **F3 子 DAG 参数下发**（NG5）            | ✅ 完成    | 后端+前端+E2E 全部闭环（2026-08-08，UI 级 4 用例全绿，见 §6.3） |
+| **F3 子 DAG 参数下发**（NG5）            | ✅ 完成    | 后端+前端+E2E 全部闭环（2026-08-08，UI 4 用例 + 执行链路 4 用例共 8 用例全绿 ×2 轮，见 §6.3） |
 | **F4 Python 质量规则**（DG-10）          | ⏳ 未开始 | 前后端+测试闭环（见 §6.4，最复杂放最后）                                                       |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                              |
 | Sprint 7 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
@@ -203,7 +203,7 @@
 - [x] F1 全块闭环，§2 看板置 ✅
 
 **E2E 设施说明（sprint7 新增，后续 F2/F3/F4 复用）**
-- `e2e/sprint7/helpers/db.ts`：拆库版 psql（`psqlGov/psqlEng/psqlSys`）。**sprint5/6 helpers 仍写旧 datanest 库（拆库后已冻结，播种对线上服务无效），新测试一律用 sprint7 的 db 模块**；s5/s6 helpers 的拆库适配是遗留任务（本次用户确认不动）。
+- `e2e/sprint7/helpers/db.ts`：拆库版 psql（`psqlGov/psqlEng/psqlSys`）。注：sprint5/6 的 `helpers/db.ts` 已于 2026-08-08 完成拆库适配（按表自动路由域库，跨库语句抛错），各 sprint db 模块均可使用；新增业务表需补 sprint5 `TABLE_DB` 映射。
 - `e2e/sprint7/helpers/seed.ts`：幂等播种（e2e_s7 前缀 + 固定 ID 900007*）——3 测试用户（s7_govadmin/engineer/analyst）、e2e_s7_mysql_ds 数据源、5 张元数据表（含 1 张 BUILTIN_DORIS）、分类体系（交易域[订单/退款]+用户域）、4 档质量评分、T1 的 3 规则+1 批次 3 明细、2 条血缘。spec beforeAll 自带播种，支持 `SKIP_SETUP=1` 独立运行；global-setup/teardown 已注册 sprint7。
 - F1 开发自测残留（交易域/用户域分类 + orders/order_items 分类/负责人）已经用户确认在 seed 中清理（`cleanupResidue`）。
 - 跑法：`cd data-nest/data-nest-frontend && SKIP_SETUP=1 npx playwright test e2e/sprint7/e2e/asset-catalog.spec.ts`
@@ -273,9 +273,10 @@
 
 **测试**
 - [x] 后端 Postman/curl 自测：主 DAG 配 paramMappings → 触发 → 子 DAG 执行上下文收到透传参数（同步/异步双链路）
-- [x] 新建 `e2e/sprint7/e2e/subdag-param.spec.ts`（4 用例 serial，**UI 级，用户确认 2026-08-08**——执行链路已由后端 curl 双链路实证，E2E 不重复）：参数下发区/主参数候选（声明+系统变量）、前端校验（必填/唯一）、保存持久化（config 断言）/回显/删除还原、7106 后端校验（API 辅助）。夹具经 API 创建（项目+父子 DAG+参数），afterAll 删除
+- [x] 新建 `e2e/sprint7/e2e/subdag-param.spec.ts`（初版 4 用例 UI 级）：参数下发区/主参数候选（声明+系统变量）、前端校验（必填/唯一）、保存持久化（config 断言）/回显/删除还原、7106 后端校验（API 辅助）。夹具经 API 创建（项目+父子 DAG+参数），afterAll 删除
+- [x] **执行链路 E2E 扩充（2026-08-08，用户确认纳入，8 用例全绿 ×2 轮）**：同 spec 新增「执行链路」describe 4 用例——① 异步链路：真实触发父 DAG → 子执行 `resolved_params` 断言 `sub_env=prod_async`、`sub_date=父执行 biz_date`（与父 resolved_params 对比杜绝时区歧义）、子 `trigger_type=MANUAL`；② 同步链路：同断言 + `trigger_type=SCHEDULED`；③ 边界：主参数无值（声明无默认、触发未传）warn 跳过不阻断，`sub_env` 落子 DAG 自身默认值；④ 回归：无 paramMappings 时子执行无任何透传值。执行夹具（exec_sub + 异步父/同步父/无值父）beforeAll API 创建 + `waitDagDsSynced` 等调度注册，afterAll 删除
 - [x] **E2E 轮附带修复 1 个存量 bug**：`Editor.loadDag` 此前不加载 DAG 声明参数（仅触发时才 `listDagParameters`），导致子 DAG/条件节点配置的主参数下拉只剩系统变量——已改为 loadDag 时顺带加载
-- [x] 更新 §2 看板：F3 置 ✅（2026-08-08，全量套件 48 用例全绿）
+- [x] 更新 §2 看板：F3 置 ✅（2026-08-08，全量套件 48 用例全绿；执行链路扩充后 F3 spec 8 用例全绿）
 - E2E 调试经验（复用价值）：① 弹窗内别用 Escape 关下拉（useModalA11y 会连带关弹窗）；② antd 关闭的 dropdown 残留 DOM 隐藏态，选项点击必须限定 `:not(.ant-select-dropdown-hidden)` 可见实例
 
 ---

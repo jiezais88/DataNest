@@ -93,7 +93,7 @@
 
 ### 资产目录 E2E（sprint7/asset-catalog.spec.ts，2026-08-07，32 用例全绿）
 
-- **拆库后 E2E 必须用 sprint7 的 db 模块**：`e2e/sprint7/helpers/db.ts`（`psqlGov/psqlEng/psqlSys`）按域连新库；**sprint5/6 的 `helpers/db.ts` 仍写旧 datanest 库（已冻结），播种/断言对新架构无效**，s5/s6 适配是遗留任务。
+- **E2E db 模块已统一拆库适配（2026-08-07/08）**：sprint5/sprint6 的 `helpers/db.ts` 已改为**按 SQL 中引用的业务表自动路由域库**（`TABLE_DB` 映射 + `resolveDb`，跨库语句直接抛错），并提供 `psqlGov/psqlEng/psqlSys/psqlAlert` 显式指定；sprint7 的 `helpers/db.ts` 是同类显式版。新增业务表时记得补 `TABLE_DB` 映射，否则路由报「未识别的业务表」。
 - **资产树计数徽章定位**：全部/未分类是 `button.group`、域/主题是 `div.group`，选中态还有 activeBar 也是 `span.rounded-full`——徽章按纯数字文本过滤（hasText `/^\d+$/`）。
 - **血缘图谱节点标题是全名 `库.表`**（非短表名）；详情页指标卡文本与侧边栏菜单/基础信息 kv 撞名（质量评分/字段数），断言限定 `getByRole('main')` + `.first()`。
 - **分类树计数接口的 tableCount/totalCount/uncategorizedCount 是 Long → JSON 字符串**，API 断言先 `Number()`。
