@@ -192,7 +192,13 @@ test.describe('Sprint 6 规则模板库 E2E', () => {
         await drawer.getByRole('button', {name: '保存'}).click();
         await expect(rowBy(page, newName)).toBeVisible({timeout: 15000});
         await expect(rowBy(page, oldName)).toHaveCount(0);
-        psql(`DELETE FROM quality_rule_template WHERE name = '${newName}'`);
+        // 改回种子名，保持 seed 状态（本 spec 筛选用例与 SKIP_SETUP 重跑都依赖 e2e_s6_完整性 行）
+        await rowBy(page, newName).getByLabel('编辑').click();
+        const drawer2 = page.getByRole('dialog', {name: '编辑模板'});
+        await drawer2.waitFor({state: 'visible', timeout: 10000});
+        await drawer2.locator('input').nth(0).fill(oldName);
+        await drawer2.getByRole('button', {name: '保存'}).click();
+        await expect(rowBy(page, oldName)).toBeVisible({timeout: 15000});
     });
 
     test('启停模板：停用后状态变为停用，可恢复', async ({page}) => {

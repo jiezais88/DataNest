@@ -8,7 +8,7 @@ services:
   # volume 命名保留旧名(nacos-mysql-data/pgdata/...)以兼容历史数据
 
   # ============================================
-  # MySQL 8.0 — 统一数据库（Nacos + XXL-JOB + DS schema + 测试库都复用）
+  # MySQL 8.0 — 统一数据库（Nacos + PowerJob + 测试库都复用）
   # ============================================
   middleware-mysql:
     image: mysql:8.0
@@ -25,9 +25,7 @@ services:
     volumes:
       - nacos-mysql-data:/var/lib/mysql
       - ./scripts/nacos-mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-mysql-schema.sql:ro
-      - ./scripts/init-scheduler-db.sql:/docker-entrypoint-initdb.d/02-init-scheduler-db.sql:ro
-      - ./scripts/init-xxl-job-tables.sql:/docker-entrypoint-initdb.d/03-init-xxl-job-tables.sql:ro
-      - ./scripts/init-dolphinscheduler-db.sql:/docker-entrypoint-initdb.d/04-init-ds-db.sql:ro
+      - ./scripts/init-powerjob-db.sql:/docker-entrypoint-initdb.d/02-init-powerjob-db.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin -u root -proot123 ping | grep 'mysqld is alive'" ]
       interval: 10s
@@ -83,34 +81,7 @@ services:
       - datanest-net
 
   # ============================================
-  # XXL-JOB 3.4.2 — 统一调度中心（Sprint 1-2 同步/采集任务调度）
-  # 复用 middleware-mysql 的 datanest_scheduler 库
-  # 端口: 8088 (Admin Web)
-  # ============================================
-  middleware-xxljob:
-    image: xuxueli/xxl-job-admin:3.4.2
-    container_name: datanest-middleware-xxljob
-    environment:
-      - TZ=Asia/Shanghai
-      - PARAMS=--spring.datasource.url=jdbc:mysql://middleware-mysql:3306/datanest_scheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true --spring.datasource.username=nacos --spring.datasource.password=nacos123 --xxl.job.accessToken=default_token
-    ports:
-      - "8088:8080"
-    volumes:
-      - xxl-job-admin-data:/data/applogs
-    depends_on:
-      middleware-mysql:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -s -L http://localhost:8080/ | grep -q 'XXL-JOB'" ]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-    networks:
-      - datanest-net
-
-  # ============================================
-  # PowerJob 5.1.2 — 新一代统一调度中心（替换 XXL-JOB + DolphinScheduler）
+  # PowerJob 5.1.2 — 统一调度中心（已替换 XXL-JOB + DolphinScheduler）
   # 复用 middleware-mysql 的 powerjob 库（14 张表，官方 powerjob-mysql.sql 初始化）
   # 注意：PowerJob 数据源配置前缀是 spring.datasource.core.*（非标准 spring.datasource.*）
   # 端口: 7700 (控制台+OpenAPI) / 10010 (HTTP transporter) / 10086 (AKKA transporter)
@@ -237,62 +208,6 @@ services:
       start_period: 30s
     networks:
       - datanest-net
-
-  # ============================================
-  # Zookeeper 3.8 — DolphinScheduler 3.4.2 注册中心
-  # DS 3.x 必须配外部注册中心（zookeeper/etcd/nacos），standalone 模式已废弃
-  # 端口: 2181 (client) / 2888 (follower) / 3888 (election)
-  # 持久化: /data (内存数据快照) + /datalog (事务日志)
-  # ============================================
-  middleware-zookeeper:
-    image: zookeeper:3.8
-    container_name: datanest-middleware-zookeeper
-    environment:
-      - TZ=Asia/Shanghai
-    ports:
-      - "2181:2181"
-    volumes:
-      - datanest-zk-data:/data
-      - datanest-zk-datalog:/datalog
-    healthcheck:
-      test: [ "CMD-SHELL", "nc -z localhost 2181 || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - datanest-net
-
-  # ============================================
-  # DS Schema Init — 一次性 DolphinScheduler 元数据初始化（64 张表）
-  # profiles: ["init"] 默认不启动，需要时: docker compose --profile init up middleware-ds-schema-init
-  # DS 镜像默认不带 MySQL driver（GPLv2 vs Apache 2.0 协议冲突），
-  # 需要手动挂载 mysql-connector-j jar 到 /opt/dolphinscheduler/tools/libs/
-  # ============================================
-  middleware-ds-schema-init:
-    image: apache/dolphinscheduler-tools:3.4.2
-    container_name: datanest-middleware-ds-schema-init
-    environment:
-      - TZ=Asia/Shanghai
-      - DATABASE=mysql
-      - SPRING_PROFILES_ACTIVE=mysql
-      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=nacos
-      - SPRING_DATASOURCE_PASSWORD=nacos123
-      - REGISTRY_TYPE=zookeeper
-      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
-    volumes:
-      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/tools/libs/mysql-connector-j-8.0.33.jar:ro
-    # 直接调用升级脚本（DS 镜像内 sh 不可用，但脚本本身可执行）
-    command: [ "tools/bin/upgrade-schema.sh" ]
-    depends_on:
-      middleware-mysql:
-        condition: service_healthy
-      middleware-zookeeper:
-        condition: service_healthy
-    networks:
-      - datanest-net
-    restart: "no"
 
   # ============================================
   # Nacos 配置初始化（一次性 Job：把 shared-configs/*.yaml 推到 Nacos 配置中心）
@@ -514,124 +429,6 @@ services:
       - datanest-net
 
   # ============================================
-  # DolphinScheduler 3.4.2 — DAG 调度与执行引擎
-  # Master + Worker + API + Alert 分离架构
-  # 注册中心：Zookeeper（必须）
-  # 端口: 12345 (API Web UI)
-  # 数据库复用 middleware-mysql（dolphinscheduler 库 64 张表）
-  # DS 镜像不带 MySQL JDBC（GPLv2 vs Apache 2.0 协议冲突，官方禁止内置），
-  # 3.4.2 classpath 是 $DOLPHINSCHEDULER_HOME/<server>-server/libs/*，
-  # 挂 jar 到每个 server 自己的 libs 子目录
-  # 持久化: /opt/dolphinscheduler/logs (4 服务共享), /opt/soft (master/worker 共享)
-  # ============================================
-  middleware-ds-api:
-    image: apache/dolphinscheduler-api:3.4.2
-    container_name: datanest-middleware-ds-api
-    environment:
-      - TZ=Asia/Shanghai
-      - SPRING_PROFILES_ACTIVE=mysql
-      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=nacos
-      - SPRING_DATASOURCE_PASSWORD=nacos123
-      - REGISTRY_TYPE=zookeeper
-      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
-    ports:
-      - "12345:12345"
-    volumes:
-      - datanest-ds-logs:/opt/dolphinscheduler/logs
-      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/api-server/libs/mysql-connector-j-8.0.33.jar:ro
-    depends_on:
-      middleware-mysql:
-        condition: service_healthy
-      middleware-zookeeper:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -s http://localhost:12345/dolphinscheduler/actuator/health | grep -q 'UP'" ]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
-    networks:
-      - datanest-net
-
-  middleware-ds-master:
-    image: apache/dolphinscheduler-master:3.4.2
-    container_name: datanest-middleware-ds-master
-    environment:
-      - TZ=Asia/Shanghai
-      - SPRING_PROFILES_ACTIVE=mysql
-      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=nacos
-      - SPRING_DATASOURCE_PASSWORD=nacos123
-      - REGISTRY_TYPE=zookeeper
-      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
-      # DS master 过载保护：当前容器内存不足，先关闭以避免 "cannot consumes commands"
-      - MASTER_SERVER_LOAD_PROTECTION_ENABLED=false
-    volumes:
-      - datanest-ds-logs:/opt/dolphinscheduler/logs
-      - datanest-ds-shared:/opt/soft
-      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/master-server/libs/mysql-connector-j-8.0.33.jar:ro
-    depends_on:
-      middleware-mysql:
-        condition: service_healthy
-      middleware-zookeeper:
-        condition: service_healthy
-      middleware-ds-api:
-        condition: service_started
-    networks:
-      - datanest-net
-
-  middleware-ds-worker:
-    image: apache/dolphinscheduler-worker:3.4.2
-    container_name: datanest-middleware-ds-worker
-    environment:
-      - TZ=Asia/Shanghai
-      - SPRING_PROFILES_ACTIVE=mysql
-      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=nacos
-      - SPRING_DATASOURCE_PASSWORD=nacos123
-      - REGISTRY_TYPE=zookeeper
-      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
-      - ALERT_SERVER_HOST=middleware-ds-alert
-      # DS worker 过载保护：当前容器资源紧张，先关闭以避免 worker 被标记为 BUSY 不接收任务
-      - WORKER_SERVER_LOAD_PROTECTION_ENABLED=false
-    volumes:
-      - datanest-ds-logs:/opt/dolphinscheduler/logs
-      - datanest-ds-shared:/opt/soft
-      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/worker-server/libs/mysql-connector-j-8.0.33.jar:ro
-    depends_on:
-      middleware-mysql:
-        condition: service_healthy
-      middleware-zookeeper:
-        condition: service_healthy
-      middleware-ds-api:
-        condition: service_started
-    networks:
-      - datanest-net
-
-  middleware-ds-alert:
-    image: apache/dolphinscheduler-alert-server:3.4.2
-    container_name: datanest-middleware-ds-alert
-    environment:
-      - TZ=Asia/Shanghai
-      - SPRING_PROFILES_ACTIVE=mysql
-      - SPRING_DATASOURCE_URL=jdbc:mysql://middleware-mysql:3306/dolphinscheduler?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=nacos
-      - SPRING_DATASOURCE_PASSWORD=nacos123
-      - REGISTRY_TYPE=zookeeper
-      - REGISTRY_ZOOKEEPER_CONNECT_STRING=middleware-zookeeper:2181
-    volumes:
-      - datanest-ds-logs:/opt/dolphinscheduler/logs
-      - ./shared-configs/libs/mysql-connector-j-8.0.33.jar:/opt/dolphinscheduler/alert-server/libs/mysql-connector-j-8.0.33.jar:ro
-    depends_on:
-      middleware-mysql:
-        condition: service_healthy
-      middleware-zookeeper:
-        condition: service_healthy
-    networks:
-      - datanest-net
-
-  # ============================================
   # Engineering — 数据工程服务（同步任务 + Sprint 3 DAG API）
   # ============================================
   app-engineering:
@@ -653,8 +450,6 @@ services:
       - PG_DATABASE=datanest_engineering
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=middleware-xxljob
-      - XXL_JOB_PORT=8080
     # ADR-S3-012：回调走 gateway（app-gateway:8080/api/worker/dev/internal/**），
     # 不再直连 engineering 8082。Docker 内网 gateway 与 app-worker 在同 datanest-net。
     depends_on:
@@ -667,8 +462,6 @@ services:
       middleware-postgres:
         condition: service_healthy
       middleware-redis:
-        condition: service_healthy
-      middleware-xxljob:
         condition: service_healthy
       middleware-test-mysql:
         condition: service_healthy
@@ -705,8 +498,6 @@ services:
       - PG_DATABASE=datanest_governance
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=middleware-xxljob
-      - XXL_JOB_PORT=8080
     depends_on:
       middleware-nacos:
         condition: service_healthy
@@ -715,8 +506,6 @@ services:
       middleware-postgres:
         condition: service_healthy
       middleware-redis:
-        condition: service_healthy
-      middleware-xxljob:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8084" ]
@@ -744,8 +533,6 @@ services:
       - NACOS_PASSWORD=nacos
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=middleware-xxljob
-      - XXL_JOB_PORT=8080
     depends_on:
       mailhog:
         condition: service_started
@@ -756,8 +543,6 @@ services:
       middleware-postgres:
         condition: service_healthy
       middleware-redis:
-        condition: service_healthy
-      middleware-xxljob:
         condition: service_healthy
       middleware-test-mysql:
         condition: service_healthy
@@ -791,8 +576,6 @@ services:
       - NACOS_PASSWORD=nacos
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
-      - XXL_JOB_HOST=middleware-xxljob
-      - XXL_JOB_PORT=8080
     depends_on:
       mailhog:
         condition: service_started
@@ -803,8 +586,6 @@ services:
       middleware-postgres:
         condition: service_healthy
       middleware-redis:
-        condition: service_healthy
-      middleware-xxljob:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8086" ]
@@ -856,7 +637,7 @@ services:
 
 # ============================================
 # Volumes — 持久化数据卷
-# 中间件数据卷保留旧名以兼容历史数据；新增 DS+ZK 持久化卷
+# 中间件数据卷保留旧名以兼容历史数据
 # ============================================
 volumes:
   # 兼容历史（保留旧名避免数据丢失）
@@ -868,15 +649,8 @@ volumes:
   test-mysql-data:
   test-postgres-data:
   # test-oracle-data:  # Sprint 5 临时注释：Oracle 服务已停用
-  xxl-job-admin-data:
-  # 新增 — PowerJob server 持久化（日志/H2 本地库等）
+  # PowerJob server 持久化（日志/H2 本地库等）
   powerjob-server-data:
-  # 新增 — DS 日志+资源（4 个 DS 服务共享 /opt/dolphinscheduler/logs；master/worker 共享 /opt/soft）
-  datanest-ds-logs:
-  datanest-ds-shared:
-  # 新增 — ZK 持久化（/data 内存快照 + /datalog 事务日志）
-  datanest-zk-data:
-  datanest-zk-datalog:
 
 # ============================================
 # Networks — 统一网络

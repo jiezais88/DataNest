@@ -1,7 +1,7 @@
 # PowerJob 迁移 Handoff（XXL-JOB + DolphinScheduler → PowerJob 5.1.2）
 
-> **更新时间**：2026-08-07 | **阶段**：P0 ✅ / P1 ✅ / P2 XXL-JOB 替换 ✅ / **P3 DS 替换 ✅（DAG 链路已上线验证）** → 仅剩 P4 切流清理
-> **决策（用户已确认）**：① server 用官方镜像；② SchedulerClient 保持接口不变换实现（调用方零改动）；③ 与微服务重构串行（重构已全部完成，库已拆分为 datanest_system/alert/engineering/governance）。
+> **更新时间**：2026-08-07 | **阶段**：✅ **全部完成（P0~P4 + 缺口测试）**——XXL-JOB/DS/ZK 已彻底下线，调度统一走 PowerJob
+> **决策（用户已确认）**：① server 用官方镜像；② SchedulerClient 保持接口不变换实现；③ 开发环境不兼容旧数据，直接删干净。
 
 ## 0. 目标与范围
 
@@ -110,14 +110,57 @@
 - ⑤ retryWfInstance 要求 workflow ENABLE（停调度的 DAG 不能重跑失败节点）；stopWfInstance 对已结束实例报 already stopped。
 - ⑥ `deleteJob`/`deleteWorkflow` 均为软删（status=99）；workflow_node_info 无 OpenAPI 删除接口，游离节点由 saveWorkflow 时 server 自动清理。
 
-### P4 切流清理（待做）
-- 停 middleware-ds-*/zookeeper 容器、compose 清理（含 XXL env/depends_on 残留、ds-* 服务与卷、mysql-connector jar 挂载、init-dolphinscheduler-db.sql/init-xxl-job 脚本挂载）
-- 删除 DS 侧死代码：DolphinSchedulerClient/DagDsConverter/DolphinSchedulerConfig/DagNodeCallbackController + worker 的 ensureDagExecution/resolveNodeExecution/getByDsInstance DS 链路 + EngineeringSubDagInternalApi 临时 Feign（需先在 engineering-api 落正式契约）
-- shared-dolphinscheduler.yaml / shared-xxljob.yaml 下线（Nacos 删 config_info 行 + 本地文件删除 + 各 application.yml 摘 import）
-- 旧列清理脚本：dag.ds_*/dag_node.ds_task_code/dag_execution.ds_process_instance_id/node_execution.ds_task_instance_id/dag_project.ds_project_code + 三表 xxl_job_id
-- ErrorCode.DS_API_ERROR 更名或保留（当前 PowerJob 错误也用它）
-- 文档全量更新：AGENTS.md（调度/容器/环境速查/已知坑大量 DS/XXL 描述）、docs/agent/architecture.md、README
-- E2E：`helpers/xxl.ts` 重写为 PowerJob client；补子 DAG 测试夹具验证 NESTED_WORKFLOW/dagSubDagAsyncHandler
+### P4 切流清理（✅ 2026-08-07 完成）+ 缺口测试（✅ 全部通过）
+
+**清理清单（全部落地）**：
+- 容器：middleware-ds-api/master/worker/alert/schema-init + zookeeper + xxljob 共 7 个容器已停并删除；compose 中 6 个 middleware 服务定义、4 个卷、4 个应用容器的 XXL env/depends_on、mysql 的 3 个 DS/XXL init 脚本挂载全部移除；`scripts/init-{dolphinscheduler-db,scheduler-db,xxl-job-tables}.sql` 已删。
+- 死代码：DolphinSchedulerClient/DagDsConverter/DolphinSchedulerConfig/Ds*.DTO×5/DagNodeCallbackController 删除；worker 的 ensureDagExecution/resolveNodeExecution/getByDsInstance DS 链路删除；createExecution Feign 死链路（契约+fallback+端点+服务方法+DTO）摘除；worker 临时 EngineeringSubDagInternalApi 换正式契约 `engineering-api/EngineeringSubDagApi`。
+- 配置：shared-dolphinscheduler.yaml/shared-xxljob.yaml 本地删除 + Nacos 两个 dataId 经鉴权 API 删除（双 tenant 行已清）；5 处 application.yml import 摘除。
+- 旧列：engineering V1.3.0（dag/dag_node/dag_execution/node_execution/dag_project 的 ds_* + sync_job.xxl_job_id + 5 个索引）+ governance V1.2.0（collect_task/quality_job.xxl_job_id），已应用；实体/DTO/Mapper 字段同步删除。
+- ErrorCode：`DS_API_ERROR(7013)` → `SCHEDULER_API_ERROR`。
+- E2E：`helpers/xxl.ts` → `helpers/powerjob.ts`（PowerJobClient，含 instanceId 大数精度修复）；compliance/quality-checks spec 已改造（sprint6 种子写旧库导致全套 spec 跑不通是预存问题，与本次无关）。
+- 文档：AGENTS.md/architecture.md/gotchas.md/README.md 已全量更新为 PowerJob 终态。
+
+**缺口测试（2026-08-07，全部通过）**：
+- **子 DAG 同步**（NESTED_WORKFLOW）：父 SUCCESS、子执行记录自动补齐（triggerType=SCHEDULED）
+- **子 DAG 异步**（dagSubDagAsyncHandler→Feign→SubDagTriggerController）：父 SUCCESS、子独立执行
+- **cron 触发 DAG**：每分钟 cron 自动触发，ensureExecution 补齐路径建 SCHEDULED 执行并 SUCCESS；schedule/stop 后停发
+- **运行中停止**：stopWfInstance → 执行 TERMINATED、节点 SKIPPED
+- 测试夹具（P4-子DAG-夹具/P4-父DAG-同步子DAG/P4-父DAG-异步子DAG/P4-stop测试，在「告警测试」项目下）保留可复用
+
+**缺口测试期修复的 2 个真 bug**：
+- ⑦ **嵌套子工作流继承父 initParams**：NESTED_WORKFLOW 子实例的 wfContext 带的是父 DAG 的 dagExecutionId，子节点按父执行记录查节点必然 not found。修复：worker `AbstractDagNodeHandler.resolveDagExecutionId` 增加执行记录归属校验（`DagNodeExecuteService.executionBelongsToDag` 经 Feign getById 比对 dagId），不属于本 DAG 时改走 ensureExecutionByWfInstance 用子 wfInstanceId 补齐自己的执行记录。
+- ⑧ **Feign path 缺 context-path**：新建的 EngineeringSubDagApi `path="/dev/internal"` 少了 engineering 的 context-path `/engineering` 前缀导致 404，已修为 `/engineering/dev/internal`。
+
+**残余观察项（不阻塞）**：
+- ~~XXL 的 SERIAL_EXECUTION 语义未映射~~ 已补齐（2026-08-07）：`maxInstanceNum=1`（job 级，SchedulerClient 统一带）+ `maxWfInstanceNum=1`（workflow 级）；`concurrency`（单机线程并发数）仅对 Map/MapReduce 有效，STANDALONE 任务无需配置。
+- PowerJob server 软删记录（status=99）会累积，无碍功能。
+- middleware-mysql 里的 `datanest_scheduler`/`dolphinscheduler`/`xxl_job` 旧库已 DROP（2026-08-08）。
+- ~~sprint6 E2E 种子写旧库~~ 已修复（2026-08-08）：种子按表路由四库 + 幂等；全套 sprint6 83/83 连续两次通过。同时固化了 `e2e/powerjob/dag-workflow.spec.ts`（5 用例：单节点/条件分支/子 DAG 同步/异步/重跑失败）。
+- PYTHON 节点超时未丢失（2026-08-08 实证）：`timeoutMinutes` 在节点 config 级生效（handlePythonNode 传给 PythonExecutor），与调度层 instanceTimeLimit 无关；实测 1 分钟超时精确生效。
+
+## 6. 新环境工程化（2026-08-08）
+
+全新环境 `docker compose up -d` 一键就绪的三个支柱：
+1. **建库**：`scripts/init-powerjob-db.sql`（CREATE DATABASE powerjob + 授权 + 官方 14 表）已挂入 middleware-mysql 的 initdb（02 序）。注意 initdb 只在数据卷首次创建时执行；已有环境缺表需手动执行该文件。
+2. **App 注册**：common `PowerJobAppBootstrap.ensureApp(appName)`——worker/job 的 PowerJob 配置类在建 PowerJobSpringWorker 前调用：先 `/openApi/assert` 探测，App 不存在则管理员登录（`/auth/thirdPartyLoginDirect`，PWJB 账号 ADMIN/powerjob_admin，配置键 `datanest.powerjob.admin-username/admin-password`）→ `/appInfo/save`（header `PowerJwt`，带 namespaceId=2 默认命名空间）→ 复验。失败仅 warn 不阻塞启动。
+3. **内置 job**：worker 启动 `DagBuiltinJobRegistrar` 幂等 ensure 5 个（§5）。
+
+**控制台 API 备忘**（实测）：删除 App 是 `POST /appInfo/delete`（header `AppId: <id>`，不是 body）；控制台登录态 header 名是 `PowerJwt`。
+
+## 5. DAG 节点「内置共享 job」重构（2026-08-07，用户决策）
+**动机**：每节点一个 job 会让控制台随 DAG 数量膨胀。改为 5 个内置共享 job（按节点类型），节点身份移到 workflow 节点 nodeParams。
+
+**终态形态**：
+- worker 启动时 `DagBuiltinJobRegistrar` 幂等 ensure 5 个内置 job（`内置-DAG-SQL节点`→dagSqlNodeHandler 等，WORKFLOW 类型、**maxInstanceNum=0 不限并发**——多工作流复用同一个 job）。
+- `DagService.syncToScheduler` 注册流：`findJobIdByName` 解析内置 jobId（缓存）→ 每节点 `saveWorkflowNode`（JOB 节点 jobId=内置 id、**nodeParams=节点身份 JSON {dagId,nodeId,nodeType}**；同步子 DAG 维持 NESTED_WORKFLOW + 子 workflowId）→ saveWorkflow。不再逐节点建/删 job；`dag_node.powerjob_job_id` 列已删（V1.4.0）。
+- worker `AbstractDagNodeHandler.parseNodeTask`：先 jobParams 后 instanceParams 兜底解析节点身份。
+
+**本次新踩坑（已修，供后续参考）**：
+- ⑨ **工作流节点的参数位**：server `JobNodeHandler` 调 `InstanceService.create(jobId, appId, node.nodeParams, wfContext, ...)`——**节点 nodeParams 落在实例的 jobParams 位，instanceParams 位是 wfContext（initParams）**。processor 读节点身份要用 `getJobParams()` 不是 `getInstanceParams()`（第一版按直觉用 instanceParams 优先，全部节点解析失败）。
+- ⑩ **工作流终态但节点从未运行**：快照里这些节点 status=1（WAITING_DISPATCH）且 instanceId=null，不能映射为 RUNNING（否则执行永远不收敛）；sync 侧已加「无 instanceId 且 status≤3 视为未运行跳过」+「工作流终态时本地所有非终态节点一律 SKIPPED」（不只 WAITING）。
+- ⑪ **嵌套子工作流 dispatch 期失败会挂起父流程**：子工作流因「can't find some job」（节点 job 被删未重同步）在 dispatch 阶段失败时，父工作流的嵌套节点停在 RUNNING、父流程永不终态（PowerJob server 侧未覆盖此场景）。兜底：stopWfInstance 手动停父实例，平台 sync 会收敛为 FAILED/TERMINATED。避免方式：节点 job 变更后先重同步受影响 DAG。
+- ⑫ Docker Desktop 重启后应用容器若在 Nacos ready 前启动，全部 optional Nacos 配置为空会导致 PowerJob worker `serverAddress can't be empty` 崩溃——`docker compose up -d` 整体重启即可自愈（重启后 Nacos 已就绪）。
 
 ## 4. 与微服务重构的协调（重构已全部完成）
 

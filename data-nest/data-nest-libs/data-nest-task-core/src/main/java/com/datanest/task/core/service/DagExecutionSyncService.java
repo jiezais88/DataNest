@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
  * - fetcher SPI 由 DS task-instances 查询换成 PowerJob fetchWfInstanceInfo 快照查询；
  * - 节点匹配废弃「节点名 / 节点名_节点ID后8位」，改为 nodeId == dag_node.powerjob_node_id 精确匹配
  *   （PEWorkflowDAG 的 nodeId 是服务端 workflow_node_info.id，非 dag_node.id）；
- * - 存量 DS 执行（dsProcessInstanceId 非空且 powerjobWfInstanceId 为空）一次性兜底标 FAILED。
+ * - P4 切流清理：ds_* 旧列已删（V1.3.0），wfInstanceId 为空的执行视为回写窗口本轮跳过。
  *
  * Sprint 3 修复：
  * - P1-2：SYNC 节点在 RUNNING 时反查 sync_job_history 收尾
@@ -170,12 +170,6 @@ public class DagExecutionSyncService {
 
         Long wfInstanceId = execution.getPowerjobWfInstanceId();
         if (wfInstanceId == null) {
-            if (execution.getDsProcessInstanceId() != null) {
-                // 迁移切流兜底（一次性）：部署窗口确保无 RUNNING 中 DAG；仍存在的存量 DS 执行
-                // 在 PowerJob 侧没有对应实例，直接标 FAILED，避免永久 RUNNING 卡死
-                markLegacyExecutionFailed(execution);
-                return true;
-            }
             // PowerJob 工作流实例 ID 尚未回写（trigger 后异步回写窗口），本轮跳过
             return false;
         }
@@ -199,6 +193,11 @@ public class DagExecutionSyncService {
         for (WfNodeStatus node : snapshot.nodes()) {
             NodeExecutionInfo ne = nodeByPowerjobNodeId.get(node.nodeId());
             if (ne == null) continue;
+            // 从未真正运行的节点（快照无 instanceId 且状态为 1/2/3 等待/运行中）不写本地状态：
+            // 这类节点只是 DAG 初始拷贝的占位，误标 RUNNING 会让执行永远无法收尾
+            // （SYNC 节点也会被误判去反查 history）
+            boolean neverRan = node.instanceId() == null && node.status() != null && node.status() <= 3;
+            if (neverRan) continue;
             boolean nodeChanged = false;
             // 回写 PowerJob 任务实例 ID（替代原 ds_task_instance_id 回填）
             if (node.instanceId() != null && !node.instanceId().equals(ne.getPowerjobInstanceId())) {
@@ -307,18 +306,19 @@ public class DagExecutionSyncService {
             }
         }
 
-        // 3.5 实例节点数错乱修复：PowerJob 工作流实例到达终态后，本地仍 WAITING 的节点（因上游失败
-        // 等原因从未运行）标记为 SKIPPED。只在工作流终态分支做，运行中实例绝不误标。
-        boolean hasWaiting = false;
+        // 3.5 实例节点数错乱修复：PowerJob 工作流实例到达终态后，本地仍未终态的节点（因上游失败
+        // 从未运行、或被跳过、或快照无实例的占位节点）一律标记为 SKIPPED——工作流已终结，这些节点
+        // 不可能再运行。只在工作流终态分支做，运行中实例绝不误标；终态不可逆保护照常生效。
+        boolean hasNonTerminal = false;
         for (NodeExecutionInfo ne : nodeList) {
-            if ("WAITING".equalsIgnoreCase(ne.getStatus())) {
-                hasWaiting = true;
+            if (!isTerminalStatus(ne.getStatus())) {
+                hasNonTerminal = true;
                 break;
             }
         }
-        if (hasWaiting && isPowerJobWfTerminal(snapshot.wfStatus())) {
+        if (hasNonTerminal && isPowerJobWfTerminal(snapshot.wfStatus())) {
             for (NodeExecutionInfo ne : nodeList) {
-                if ("WAITING".equalsIgnoreCase(ne.getStatus())) {
+                if (!isTerminalStatus(ne.getStatus())) {
                     ne.setStatus("SKIPPED");
                     ne.setEndTime(LocalDateTime.now());
                     updatedNodes.add(ne);
@@ -350,28 +350,6 @@ public class DagExecutionSyncService {
             changed = true;
         }
         return changed;
-    }
-
-    /**
-     * 迁移切流兜底（一次性分支）：存量 DS 执行（dsProcessInstanceId 非空、powerjobWfInstanceId 为空）
-     * 在 PowerJob 侧没有可同步的实例，直接标 FAILED 并在 error_message 注明原因。
-     */
-    private void markLegacyExecutionFailed(DagExecutionInfo execution) {
-        logger.warn("存量 DS 执行在迁移切流后直接标记 FAILED: executionId={}, dsProcessInstanceId={}",
-                execution.getId(), execution.getDsProcessInstanceId());
-        LocalDateTime endTime = LocalDateTime.now();
-        DagExecutionFinalizeRequest request = new DagExecutionFinalizeRequest();
-        request.setStatus("FAILED");
-        request.setEndTime(endTime);
-        if (execution.getStartTime() != null) {
-            request.setDurationMs(Duration.between(execution.getStartTime(), endTime).toMillis());
-        }
-        request.setErrorMessage("调度引擎迁移切流（DolphinScheduler → PowerJob），存量 RUNNING 执行一次性标记失败");
-        RemoteCalls.execute("engineering.dag-execution.finalize",
-                () -> dagExecutionApi.finalizeExecution(execution.getId(), request));
-        execution.setStatus("FAILED");
-        execution.setEndTime(endTime);
-        execution.setDurationMs(request.getDurationMs());
     }
 
     /**
@@ -500,7 +478,6 @@ public class DagExecutionSyncService {
         // 乐观锁：更新时期望的当前 version 为读取时的快照值
         item.setVersion(ne.getVersion());
         item.setStatus(ne.getStatus());
-        item.setDsTaskInstanceId(ne.getDsTaskInstanceId());
         item.setPowerjobInstanceId(ne.getPowerjobInstanceId());
         item.setStartTime(ne.getStartTime());
         item.setEndTime(ne.getEndTime());

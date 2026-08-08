@@ -232,6 +232,8 @@ public class SchedulerClient {
         body.put("instanceTimeLimit", timeout <= 0 ? 0L : timeout * 1000L);
         body.put("instanceRetryNum", Math.max(0, failRetryCount));
         body.put("taskRetryNum", 0);
+        // 同一任务同时只允许一个运行中实例，对齐 XXL 的 SERIAL_EXECUTION 语义（超出并发的触发被 server 丢弃）
+        body.put("maxInstanceNum", 1);
         body.put("enable", !isCron || scheduleEnabled);
         return body;
     }

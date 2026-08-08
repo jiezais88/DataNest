@@ -13,9 +13,6 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
     @Select("SELECT * FROM node_execution WHERE execution_id = #{executionId} ORDER BY id ASC")
     List<NodeExecution> selectByExecutionId(@Param("executionId") Long executionId);
 
-    @Select("SELECT * FROM node_execution WHERE ds_task_instance_id = #{dsTaskInstanceId} LIMIT 1")
-    NodeExecution selectByDsTaskInstanceId(@Param("dsTaskInstanceId") Long dsTaskInstanceId);
-
     /**
      * Sprint 4：查询 RUNNING 且开始时间早于阈值的节点，用于超时告警扫描。
      */
@@ -59,9 +56,9 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
      * Sprint 3 性能优化：真正的批量插入
      */
     @Insert("<script>" +
-            "INSERT INTO node_execution (id, execution_id, node_id, node_name, node_type, status, ds_task_instance_id, sync_job_id, start_time, end_time, duration_ms, error_message, output_info) VALUES " +
+            "INSERT INTO node_execution (id, execution_id, node_id, node_name, node_type, status, sync_job_id, start_time, end_time, duration_ms, error_message, output_info) VALUES " +
             "<foreach collection='list' item='item' separator=','>" +
-            "(#{item.id}, #{item.executionId}, #{item.nodeId}, #{item.nodeName}, #{item.nodeType}, #{item.status}, #{item.dsTaskInstanceId}, #{item.syncJobId}, #{item.startTime}, #{item.endTime}, #{item.durationMs}, #{item.errorMessage}, #{item.outputInfo})" +
+            "(#{item.id}, #{item.executionId}, #{item.nodeId}, #{item.nodeName}, #{item.nodeType}, #{item.status}, #{item.syncJobId}, #{item.startTime}, #{item.endTime}, #{item.durationMs}, #{item.errorMessage}, #{item.outputInfo})" +
             "</foreach>" +
             "</script>")
     int insertBatch(@Param("list") List<NodeExecution> list);
@@ -88,9 +85,6 @@ public interface NodeExecutionMapper extends BaseMapper<NodeExecution> {
             "status = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.status,jdbcType=VARCHAR}</foreach> " +
             "END, " +
-            "ds_task_instance_id = CASE id " +
-            "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.dsTaskInstanceId,jdbcType=BIGINT}</foreach> " +
-            "END::bigint, " +
             "powerjob_instance_id = CASE id " +
             "<foreach collection='list' item='item'>WHEN #{item.id} THEN #{item.powerjobInstanceId,jdbcType=BIGINT}</foreach> " +
             "END::bigint, " +

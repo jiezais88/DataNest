@@ -9,20 +9,20 @@ import {
     COMPLIANCE_TABLE,
     COMPLIANCE_TABLE_ID,
     COMPLIANCE_NS_COL_NAME,
-    XXL_HANDLER_COMPLIANCE,
+    POWERJOB_HANDLER_COMPLIANCE,
 } from '../helpers/data';
 import {psql, rows, scalar} from '../helpers/db';
 import {waitFor} from '../helpers/poll';
 import {gotoAs} from '../helpers/e2e';
 import {ensureTestUsers, seedCompliance} from '../helpers/seed';
-import {XxlClient} from '../helpers/xxl';
+import {PowerJobClient} from '../helpers/powerjob';
 
 /**
  * Sprint 6 标准合规检查 E2E 测试（业务视角）。
  *
  * 业务链路：治理员配置「命名规范（表前缀/字段前缀）+ 字段类型标准」→ 手动扫描合规数据源
  * → 元数据中不符合规范的表/字段落「不合规项」→ 分页/筛选/忽略/取消忽略/导出管理 → 统计三格变化
- * → 工程师可查看/忽略但不可扫描 → 分析师不可查看 → 定时 handler（XXL-JOB）全量扫描。
+ * → 工程师可查看/忽略但不可扫描 → 分析师不可查看 → 定时 handler（PowerJob）全量扫描。
  *
  * 播种（seedCompliance，固定 ID 段 900006...）：
  * - 合规专属数据源 e2e_s6_compliance_ds + 1 张表 e2e_s6_compliance_orders（列 id/order_no/amount）
@@ -333,17 +333,17 @@ test.describe('Sprint 6 标准合规检查（判定 + UI + 忽略 + 权限 + 定
         await analyst.dispose();
     });
 
-    // ==================== G. 定时 handler（XXL-JOB 全量扫描） ====================
+    // ==================== G. 定时 handler（PowerJob 全量扫描） ====================
 
-    test('G1 定时 handler：XXL-JOB 触发标准合规定时扫描 → 合规专属表结果被重建', async () => {
+    test('G1 定时 handler：PowerJob 触发标准合规定时扫描 → 合规专属表结果被重建', async () => {
         // 先删合规专属表的结果，制造「仅靠定时扫描才能恢复」的干净基线（不动真实数据源结果）
         psql(`DELETE FROM compliance_check_result WHERE table_id=${COMPLIANCE_TABLE_ID}`);
         expect(scalar(`SELECT count(*) FROM compliance_check_result WHERE table_id=${COMPLIANCE_TABLE_ID}`)).toBe('0');
-        // 通过 XXL-JOB admin 触发 standardComplianceCheckHandler（等价于定时触发，全量扫描在线数据源）
-        const xxl = await XxlClient.create();
-        const jobId = await xxl.findJobIdByHandler(XXL_HANDLER_COMPLIANCE);
-        await xxl.trigger(jobId);
-        await xxl.dispose();
+        // 通过 PowerJob OpenAPI 触发 standardComplianceCheckHandler（等价于定时触发，全量扫描在线数据源）
+        const pj = await PowerJobClient.create();
+        const jobId = await pj.findJobIdByProcessor(POWERJOB_HANDLER_COMPLIANCE);
+        await pj.runJob(jobId);
+        await pj.dispose();
         // 轮询：合规专属表结果被定时扫描重建为 4 条（证明 handler 执行了 check 全量路径）
         await waitFor(
             async () => {

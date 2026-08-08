@@ -25,7 +25,8 @@ import java.util.Map;
  * <p>
  * 上下文契约（engineering 侧 DagPowerJobConverter 注册节点任务时写入）：
  * <ul>
- *   <li>jobParams = JSON {@code {"dagId","nodeId","nodeType"}}</li>
+ *   <li>节点身份 = JSON {@code {"dagId","nodeId","nodeType"}}：内置共享 job 形态下写 workflow 节点
+ *       nodeParams，经 instanceParams 下发；instanceParams 为空时回退 jobParams（存量节点 job 兼容）</li>
  *   <li>手动触发：engineering 建 dag_execution 后 runWorkflow(initParams={"dagExecutionId":N})，
  *       initParams 经 workflowContext 透传（key = {@link WorkflowContextConstant#CONTEXT_INIT_PARAMS_KEY}，
  *       实证：powerjob-server WorkflowInstanceManager 把 initParams 放入 wfContext，
@@ -69,24 +70,41 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
         doExecute(body);
     }
 
-    /** 解析 jobParams（JSON {"dagId","nodeId","nodeType"}，注册节点任务时写入） */
+    /**
+     * 解析节点身份（JSON {"dagId","nodeId","nodeType"}）。
+     * 优先级：先读 jobParams——PowerJob 5.1.2 工作流节点执行时，server 把节点 nodeParams
+     * 塞进实例的 jobParams 位（JobNodeHandler：create(jobId, appId, node.nodeParams, wfContext, ...)），
+     * 而 instanceParams 位是 wfContext（工作流 initParams，如 {"dagExecutionId":N}，不含节点身份）。
+     * jobParams 解析不出 dagId 时回退 instanceParams（兜底兼容）。
+     */
     protected DagNodeTask parseNodeTask(TaskContext context) {
-        String jobParams = context.getJobParams();
-        if (!StringUtils.hasText(jobParams)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, getName() + " 缺少 jobParams");
+        DagNodeTask task = tryParseNodeTask(context.getJobParams());
+        if (task == null) {
+            task = tryParseNodeTask(context.getInstanceParams());
+        }
+        if (task == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    getName() + " 节点身份参数缺失（jobParams/instanceParams 均不含 dagId/nodeId）: jobParams="
+                            + context.getJobParams() + ", instanceParams=" + context.getInstanceParams());
+        }
+        return task;
+    }
+
+    /** 尝试按节点身份 JSON 解析，缺少 dagId/nodeId 或解析失败返回 null */
+    private DagNodeTask tryParseNodeTask(String nodeParams) {
+        if (!StringUtils.hasText(nodeParams)) {
+            return null;
         }
         JSONObject params;
         try {
-            params = JSON.parseObject(jobParams);
+            params = JSON.parseObject(nodeParams);
         } catch (Exception e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    getName() + " jobParams JSON 解析失败: " + jobParams, e);
+            return null;
         }
         Long dagId = params.getLong("dagId");
         String nodeId = params.getString("nodeId");
         if (dagId == null || !StringUtils.hasText(nodeId)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    getName() + " jobParams 缺少 dagId / nodeId: " + jobParams);
+            return null;
         }
         return new DagNodeTask(dagId, nodeId, params.getString("nodeType"));
     }
@@ -109,7 +127,10 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
             dagExecutionId = parseDagExecutionId(
                     ctxMap == null ? null : ctxMap.get(WorkflowContextConstant.CONTEXT_INIT_PARAMS_KEY));
         }
-        if (dagExecutionId != null) {
+        // 嵌套子 DAG（NESTED_WORKFLOW）：子工作流继承父工作流 initParams，dagExecutionId 属于父 DAG，
+        // 归属校验不通过时按本工作流实例补齐子 DAG 自己的执行记录
+        if (dagExecutionId != null
+                && dagNodeExecuteService.executionBelongsToDag(dagExecutionId, dagId)) {
             return dagExecutionId;
         }
         Long wfInstanceId = wfContext.getWfInstanceId();
@@ -184,7 +205,7 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
     /** 调 {@link DagNodeExecuteService} 对应 handle* 方法 */
     protected abstract void doExecute(Map<String, Object> body);
 
-    /** 节点任务坐标（来自 jobParams） */
+    /** 节点任务坐标（来自 instanceParams，空则回退 jobParams） */
     protected record DagNodeTask(Long dagId, String nodeId, String nodeType) {
     }
 }

@@ -6,7 +6,7 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDagApi;
 import com.datanest.engineering.api.dto.DagNodeInfo;
-import com.datanest.worker.feign.EngineeringSubDagInternalApi;
+import com.datanest.engineering.api.EngineeringSubDagApi;
 import com.datanest.worker.service.DagNodeExecuteService;
 import org.springframework.stereotype.Component;
 import tech.powerjob.worker.core.processor.TaskContext;
@@ -25,13 +25,13 @@ import java.util.Map;
 @Component
 public class DagSubDagAsyncHandler extends AbstractDagNodeHandler {
 
-    private final EngineeringSubDagInternalApi subDagInternalApi;
+    private final EngineeringSubDagApi subDagApi;
 
     public DagSubDagAsyncHandler(DagNodeExecuteService dagNodeExecuteService,
                                  EngineeringDagApi dagApi,
-                                 EngineeringSubDagInternalApi subDagInternalApi) {
+                                 EngineeringSubDagApi subDagApi) {
         super(dagNodeExecuteService, dagApi);
-        this.subDagInternalApi = subDagInternalApi;
+        this.subDagApi = subDagApi;
     }
 
     @Override
@@ -57,7 +57,7 @@ public class DagSubDagAsyncHandler extends AbstractDagNodeHandler {
 
         logger.info("子 DAG 异步触发: subDagId={}, parentDagId={}, parentNodeId={}",
                 subDagId, task.dagId(), task.nodeId());
-        Result<Map<String, Object>> result = subDagInternalApi.triggerSubDag(body);
+        Result<Map<String, Object>> result = subDagApi.triggerSubDag(body);
         // 无 fallback 的 Feign 调用失败会直接抛异常（节点标失败）；兜底校验业务码
         if (result == null || result.code() != 200) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,

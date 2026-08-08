@@ -1,11 +1,11 @@
 import {expect, type Page, test} from '@playwright/test';
 import {Api} from '../helpers/api';
-import {ADMIN, TEST_USERS, EXEC_PREFIX, EXEC_TABLE, EXEC_BAD_TABLE} from '../helpers/data';
+import {ADMIN, TEST_USERS, EXEC_PREFIX, EXEC_TABLE, EXEC_BAD_TABLE, POWERJOB_APP_WORKER} from '../helpers/data';
 import {psql, scalar} from '../helpers/db';
 import {mysqlScalar, pgScalar, doris, quiet} from '../helpers/exec-db';
 import {waitFor} from '../helpers/poll';
 import {gotoAs} from '../helpers/e2e';
-import {XxlClient} from '../helpers/xxl';
+import {PowerJobClient} from '../helpers/powerjob';
 
 // sprint5 helpers：复用 DAG 创建 / 执行（真实执行已由 sprint5 验证可行）
 import {getProjectId, waitDagDsSynced, runDag} from '../../sprint5/helpers/dag';
@@ -25,7 +25,7 @@ import {createDag} from '../../sprint5/helpers/seed';
  *   - DAG 节点成功触发绑定质量任务
  *   - 播种 AUTO_TRIGGER 批次记录 + 历史页筛选展示
  *
- * 执行是异步的（经 XXL-JOB 投递到 app-worker），测试用轮询 quality_check_batch 至终态断言。
+ * 执行是异步的（经 PowerJob 投递到 app-worker），测试用轮询 quality_check_batch 至终态断言。
  * 测试数据前缀 e2e_s6_exec，seed 由 seedExecTables/seedExecMetadata 提供执行数据源与目标表。
  */
 
@@ -49,19 +49,30 @@ function rowBy(page: Page, name: string) {
     });
 }
 
+/**
+ * 雪花 ID 上界（~2e18 < 9e18）。
+ * sprint7 种子会向 quality_check_batch 写入固定 ID 批次（900007* 号段，job_id 为 NULL，
+ * 比雪花 ID 大），不过滤会：1) MAX(id) 打点被它顶住，id > marker 永远不匹配新批次；
+ * 2) ORDER BY id DESC LIMIT 1 永远先捞到它。查询与打点都必须排除 9e18 号段。
+ */
+const SNOWFLAKE_ID_MAX = '9000000000000000000';
+
 /** 轮询批次表：等待指定任务（job_id）+ 触发方式（trigger_type，可为 null）的批次进入终态，返回批次行 */
 async function waitBatch(
     jobId: string | null,
     triggerType: string | null,
-    opts: { timeoutMs?: number } = {},
+    opts: { timeoutMs?: number; minId?: string } = {},
 ): Promise<{id: string; status: string; jobName: string}> {
-    const {timeoutMs = 120_000} = opts;
+    const {timeoutMs = 120_000, minId} = opts;
     const jobCond = jobId ? `job_id=${jobId}` : 'job_id IS NULL';
     const triggerCond = triggerType ? `AND trigger_type='${triggerType}'` : '';
+    // minId：只接受触发后新产生的批次，避免捡到历史残留的同条件批次（如其它 spec 的单规则批次）
+    const minCond = minId ? `AND id > ${minId}` : '';
     return waitFor(
         async () => {
             const id = scalar(`SELECT id FROM quality_check_batch
-                                WHERE ${jobCond} ${triggerCond} ORDER BY id DESC LIMIT 1`);
+                                WHERE ${jobCond} ${triggerCond} ${minCond} AND id < ${SNOWFLAKE_ID_MAX}
+                                ORDER BY id DESC LIMIT 1`);
             if (!id) return null;
             return {
                 id,
@@ -72,6 +83,11 @@ async function waitBatch(
         (b) => b != null && b.status !== 'RUNNING',
         {timeoutMs, label: `batch(job=${jobId}, trigger=${triggerType}) 进入终态`},
     ) as unknown as {id: string; status: string; jobName: string};
+}
+
+/** 当前批次表最大雪花 id（触发前打点，配合 waitBatch 的 minId 使用；排除 9e18 固定 ID 号段，原因见上） */
+function batchMarker(): string {
+    return scalar(`SELECT COALESCE(MAX(id),0) FROM quality_check_batch WHERE id < ${SNOWFLAKE_ID_MAX}`) ?? '0';
 }
 
 /** 轮询：等待某 job 出现指定触发方式的 AUTO_TRIGGER 批次并进入终态（自动触发为异步回调） */
@@ -135,7 +151,8 @@ test.describe('Sprint 8 质量检查执行结果记录', () => {
         // 清理历史执行数据
         psql(`DELETE FROM quality_check_detail WHERE batch_id IN (SELECT id FROM quality_check_batch WHERE job_name LIKE '${EXEC_PREFIX}%' OR job_name = '单规则执行')`);
         psql(`DELETE FROM quality_check_batch WHERE job_name LIKE '${EXEC_PREFIX}%'`);
-        psql(`DELETE FROM quality_rule WHERE job_id IN (SELECT id FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%')`);
+        // 单规则（job_id 为 NULL，按名称清）：被中断的运行会漏掉 afterAll，残留会导致本次建规则报「已存在同名规则」
+        psql(`DELETE FROM quality_rule WHERE job_id IN (SELECT id FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%') OR name LIKE '${EXEC_PREFIX}_single%'`);
         psql(`DELETE FROM quality_job WHERE name LIKE '${EXEC_PREFIX}%'`);
 
         // MYSQL 任务：成功规则（count orders）+ 失败规则（count 不存在表）
@@ -253,10 +270,11 @@ test.describe('Sprint 8 质量检查执行结果记录', () => {
     });
 
     test('单规则执行成功 → SUCCESS，result_value 记录', async () => {
+        const since = batchMarker();
         await admin.post(`/governance/quality/rules/${mysqlRuleOkId}/execute`);
-        const batch = await waitBatch(null, null);
-        // 单规则批次：job_id 为空，jobName=单规则执行
-        expect(batch.jobName).toBe('单规则执行');
+        const batch = await waitBatch(null, null, {minId: since});
+        // 单规则批次：job_id 为空，jobName=「规则名（表名）」（executeRule 落库后按规则名+表名更新）
+        expect(batch.jobName).toBe(`${EXEC_PREFIX}_single_ok（${EXEC_TABLE}）`);
         expect(batch.status).toBe('SUCCESS');
         const detail = psql(`SELECT success, result_value FROM quality_check_detail WHERE batch_id=${batch.id}`);
         // 断言行：1|4.000000
@@ -265,8 +283,9 @@ test.describe('Sprint 8 质量检查执行结果记录', () => {
     });
 
     test('单规则执行失败 → FAILED，errorMessage 记录', async () => {
+        const since = batchMarker();
         await admin.post(`/governance/quality/rules/${mysqlRuleBadId}/execute`);
-        const batch = await waitBatch(null, null);
+        const batch = await waitBatch(null, null, {minId: since});
         expect(batch.status).toBe('FAILED');
         const success = scalar(`SELECT success FROM quality_check_detail WHERE batch_id=${batch.id}`);
         const err = scalar(`SELECT error_message FROM quality_check_detail WHERE batch_id=${batch.id}`);
@@ -422,8 +441,8 @@ test.describe('Sprint 8 质量检查自动触发', () => {
 // ==================== C. 定时触发（SCHEDULED） ====================
 
 test.describe('Sprint 8 质量检查定时触发', () => {
-    // 质量任务注册到 data-nest-worker 执行器组，handler=qualityCheckExecuteHandler，executorParam=纯 jobId
-    const WORKER_APPNAME = 'data-nest-worker';
+    // 质量任务注册到 data-nest-worker App（appId=2），processorInfo=qualityCheckExecuteHandler，jobParams=纯 jobId
+    const WORKER_APP_ID = POWERJOB_APP_WORKER;
     const HANDLER = 'qualityCheckExecuteHandler';
 
     test.beforeAll(async () => {
@@ -443,8 +462,8 @@ test.describe('Sprint 8 质量检查定时触发', () => {
         await admin.dispose();
     });
 
-    test('定时任务：创建即注册 XXL-JOB，trigger 后落 SCHEDULED 批次', async () => {
-        // 建定时质量任务（cron=每天 0 点，避免立即到点；创建时自动注册 XXL-JOB）
+    test('定时任务：创建即注册 PowerJob，runJob 后落 SCHEDULED 批次', async () => {
+        // 建定时质量任务（cron=每天 0 点，避免立即到点；创建时自动注册 PowerJob）
         const job = await admin.post('/governance/quality/jobs', {
             name: `${EXEC_PREFIX}_scheduled_job`, description: 's8 scheduled',
             datasourceId: EXEC_DS_MYSQL_ID, enabled: 1, scheduledEnabled: 1, cron: '0 0 0 * * ?',
@@ -454,22 +473,22 @@ test.describe('Sprint 8 质量检查定时触发', () => {
         await createCustomRule(admin, jobId, `${EXEC_PREFIX}_scheduled_rule`,
             EXEC_TABLE_MYSQL_OK_ID, `SELECT COUNT(*) AS total FROM ${EXEC_TABLE}`, 'total');
 
-        // 校验 XXL-JOB 已注册：按 handler + executorParam(纯 jobId) 精确定位
-        const xxl = await XxlClient.create();
-        let xxlJobId = 0;
+        // 校验 PowerJob 已注册：按 processorInfo + jobParams(纯 jobId) 精确定位
+        const pj = await PowerJobClient.create();
+        let powerJobId = 0;
         try {
-            xxlJobId = await xxl.findJobIdByHandlerAndParam(WORKER_APPNAME, HANDLER, jobId);
+            powerJobId = await pj.findJobIdByProcessorAndParam(WORKER_APP_ID, HANDLER, jobId);
         } finally {
-            await xxl.dispose();
+            await pj.dispose();
         }
-        expect(xxlJobId).toBeGreaterThan(0);
+        expect(powerJobId).toBeGreaterThan(0);
 
-        // 手动触发一次（executorParam=纯 jobId，等价定时触发；handler 对无冒号 param 按 SCHEDULED）
-        const xxl2 = await XxlClient.create();
+        // 手动触发一次（instanceParams=纯 jobId，等价定时触发；handler 对无冒号 param 按 SCHEDULED）
+        const pj2 = await PowerJobClient.create();
         try {
-            await xxl2.trigger(xxlJobId, jobId);
+            await pj2.runJob(powerJobId, jobId);
         } finally {
-            await xxl2.dispose();
+            await pj2.dispose();
         }
 
         // 轮询 SCHEDULED 批次进入终态，断言触发方式=定时
@@ -491,7 +510,7 @@ test.describe('Sprint 8 质量检查定时触发', () => {
         expect(batch.trigger).toBe('SCHEDULED');
         expect(batch.status).toBe('SUCCESS');
 
-        // 关闭调度（stopSchedule：停止 XXL-JOB，避免残留定时任务）
+        // 关闭调度（stopSchedule：停止 PowerJob，避免残留定时任务）
         await admin.post(`/governance/quality/jobs/${jobId}/schedule/stop`);
     });
 });

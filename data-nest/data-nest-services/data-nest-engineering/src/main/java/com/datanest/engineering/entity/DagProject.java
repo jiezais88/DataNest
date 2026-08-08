@@ -22,9 +22,6 @@ public class DagProject {
 
     private String description;
 
-    /** DS 项目 code（关联 DolphinScheduler t_ds_project.code）— Sprint 3 P0-3 */
-    private Long dsProjectCode;
-
     private Long createdBy;
 
     private Long updatedBy;

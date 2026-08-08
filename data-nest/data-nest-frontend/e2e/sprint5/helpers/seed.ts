@@ -1,5 +1,5 @@
 import {Api} from './api';
-import {doris, psql} from './db';
+import {doris, psql, psqlAlert, psqlEng} from './db';
 import {
     ADMIN,
     COLLECT_BAD_DATABASE,
@@ -46,13 +46,22 @@ export async function ensureUser(api: Api, u: {
         }
         return existing;
     }
-    const user = await api.post('/system/users', {
-        username: u.username,
-        password: u.password,
-        roles: u.roles,
-        email: u.email,
-    });
-    return String(user.id);
+    try {
+        const user = await api.post('/system/users', {
+            username: u.username,
+            password: u.password,
+            roles: u.roles,
+            email: u.email,
+        });
+        return String(user.id);
+    } catch (e) {
+        // 幂等兜底：用户名已存在（如历史残留/并发播种）则复用已有用户
+        const again = psql(`SELECT id
+                            FROM sys_user
+                            WHERE username = '${u.username}'`);
+        if (again) return again;
+        throw e;
+    }
 }
 
 export async function ensureTestUsers(): Promise<Record<string, string>> {
@@ -68,15 +77,20 @@ export async function ensureTestUsers(): Promise<Record<string, string>> {
 
 export async function deleteTestUsers(): Promise<void> {
     for (const u of Object.values(TEST_USERS)) {
+        // 拆库后 sys_user 在 datanest_system、alert_rule_user 在 datanest_alert，不能跨库子查询，先取 id 再分别删
+        const userId = psql(`SELECT id
+                             FROM sys_user
+                             WHERE username = '${u.username}'`);
+        if (!userId) continue;
         psql(`DELETE
               FROM sys_user_role
-              WHERE user_id IN (SELECT id FROM sys_user WHERE username = '${u.username}')`);
-        psql(`DELETE
-              FROM alert_rule_user
-              WHERE user_id IN (SELECT id FROM sys_user WHERE username = '${u.username}')`);
+              WHERE user_id = ${userId}`);
+        psqlAlert(`DELETE
+                   FROM alert_rule_user
+                   WHERE user_id = ${userId}`);
         psql(`DELETE
               FROM sys_user
-              WHERE username = '${u.username}'`);
+              WHERE id = ${userId}`);
     }
 }
 
@@ -393,8 +407,18 @@ export async function cleanupAll(): Promise<void> {
         const api = await Api.create();
         await api.login(ADMIN.username, ADMIN.password);
         // 先清理 e2e_s5 DAG 的告警历史（含兼容回退 alert_rule_id=NULL 的记录，删 DAG 后无法按对象关联）
-        psql(`DELETE FROM alert_history WHERE object_type='DAG' AND object_id IN (SELECT id FROM dag WHERE name LIKE 'e2e_s5%')`);
-        psql(`DELETE FROM dag_alert_history WHERE execution_id IN (SELECT id FROM dag_execution WHERE dag_id IN (SELECT id FROM dag WHERE name LIKE 'e2e_s5%'))`);
+        // 拆库后 dag/dag_execution 在 datanest_engineering、alert_history/dag_alert_history 在 datanest_alert，
+        // 不能跨库子查询，先从工程库取 id 再删告警库
+        const e2eDagIds = psqlEng(`SELECT id FROM dag WHERE name LIKE 'e2e_s5%'`)
+            .split('\n').filter(Boolean);
+        if (e2eDagIds.length > 0) {
+            psqlAlert(`DELETE FROM alert_history WHERE object_type='DAG' AND object_id IN (${e2eDagIds.join(',')})`);
+            const e2eExecIds = psqlEng(`SELECT id FROM dag_execution WHERE dag_id IN (${e2eDagIds.join(',')})`)
+                .split('\n').filter(Boolean);
+            if (e2eExecIds.length > 0) {
+                psqlAlert(`DELETE FROM dag_alert_history WHERE execution_id IN (${e2eExecIds.join(',')})`);
+            }
+        }
         // 删除测试 DAG（级联删 node/edge/execution/alert_rule）
         const projects = psql(`SELECT id, name
                                FROM dag_project

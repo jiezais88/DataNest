@@ -137,7 +137,6 @@ public class DagVersionService {
             for (DagNode node : snap.nodes) {
                 node.setId(null);
                 node.setDagId(dagId);
-                node.setDsTaskCode(null); // 回滚后重新同步 DS 会复用/分配 code
                 node.setCreatedBy(operatorId);
                 node.setUpdatedBy(operatorId);
                 node.setCreatedAt(now);

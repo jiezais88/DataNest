@@ -36,7 +36,7 @@ import {Mailhog, decodeMimeEncoded} from '../../sprint5/helpers/mailhog';
  * - PASS 任务 ALERT_JOB_PASS_ID：阈值 value4<5 → PASS（不告警）
  *
  * 告警规则在「告警中心」创建（UI 走完整流程），接收用户为 govAdmin（已配邮箱）。
- * 执行是异步的（经 XXL-JOB 投递 app-worker），测试用 waitFor 轮询 quality_check_batch 至终态。
+ * 执行是异步的（经 PowerJob 投递 app-worker），测试用 waitFor 轮询 quality_check_batch 至终态。
  */
 test.describe.configure({mode: 'serial'});
 
@@ -54,16 +54,17 @@ function rowBy(page: Page, name: string) {
     });
 }
 
-/** 轮询批次表：等待指定任务（job_id）的 MANUAL 批次进入终态，返回批次行 */
+/** 轮询批次表：等待指定任务（job_id）的 MANUAL 批次进入终态，返回批次行；minId 只接受触发后新产生的批次 */
 async function waitBatch(
     jobId: string,
-    opts: { timeoutMs?: number } = {},
+    opts: { timeoutMs?: number; minId?: string } = {},
 ): Promise<{id: string; status: string}> {
-    const {timeoutMs = 120_000} = opts;
+    const {timeoutMs = 120_000, minId} = opts;
+    const minCond = minId ? `AND id > ${minId}` : '';
     return waitFor(
         async () => {
             const id = scalar(`SELECT id FROM quality_check_batch
-                                WHERE job_id=${jobId} AND trigger_type='MANUAL' ORDER BY id DESC LIMIT 1`);
+                                WHERE job_id=${jobId} AND trigger_type='MANUAL' ${minCond} ORDER BY id DESC LIMIT 1`);
             if (!id) return null;
             return {
                 id,
@@ -75,11 +76,22 @@ async function waitBatch(
     ) as unknown as {id: string; status: string};
 }
 
-/** 查询指定任务的 QUALITY 告警历史明细（rule_name + send_status） */
-function alertHistories(jobId: string): Array<{ruleName: string; sendStatus: string}> {
-    return rows(`SELECT rule_name, send_status FROM alert_history
+/** 查询指定任务的 QUALITY 告警历史明细（rule_name + send_status + summary 聚合明细） */
+function alertHistories(jobId: string): Array<{ruleName: string; sendStatus: string; summary: string}> {
+    // summary 是多行 TEXT（每行一条命中规则），psql -A 按行输出会把一条记录拆成多行，
+    // 这里把换行替换成空格，保证 rows() 一行一条记录；toContain 断言不受影响。
+    return rows(`SELECT rule_name, send_status, replace(COALESCE(summary,''), chr(10), ' ') FROM alert_history
                  WHERE object_type='QUALITY' AND object_id=${jobId} AND alert_type='FAILURE'
-                 ORDER BY id`).map(([ruleName, sendStatus]) => ({ruleName, sendStatus}));
+                 ORDER BY id`).map(([ruleName, sendStatus, summary]) => ({ruleName, sendStatus, summary}));
+}
+
+/** 查询指定批次的 QUALITY 告警历史明细（按 quality_batch_id 精确归因，排除环境中残留/并发产生的同任务历史） */
+function alertHistoriesOfBatch(jobId: string, batchId: string): Array<{ruleName: string; sendStatus: string; summary: string}> {
+    // summary 换行处理同上
+    return rows(`SELECT rule_name, send_status, replace(COALESCE(summary,''), chr(10), ' ') FROM alert_history
+                 WHERE object_type='QUALITY' AND object_id=${jobId} AND alert_type='FAILURE'
+                   AND quality_batch_id=${batchId}
+                 ORDER BY id`).map(([ruleName, sendStatus, summary]) => ({ruleName, sendStatus, summary}));
 }
 
 /** 查询指定任务的最新批次 alert_sent 标记 */
@@ -88,9 +100,15 @@ function alertSent(jobId: string): string {
                    WHERE job_id=${jobId} ORDER BY id DESC LIMIT 1`) ?? '0';
 }
 
-/** 解码 quoted-printable（正文传输编码），移除软换行（=\r\n）后还原字节 */
-function decodeBody(msg: {Content?: {Body?: string}}): string {
+/** 解码邮件正文：按 Content-Transfer-Encoding 头分派 base64 / quoted-printable（缺省按 QP 处理） */
+function decodeBody(msg: {Content?: {Body?: string; Headers?: Record<string, string[]>}}): string {
     const raw = msg.Content?.Body ?? '';
+    const cte = (msg.Content?.Headers?.['Content-Transfer-Encoding']?.[0] ?? '').toLowerCase();
+    if (cte.includes('base64')) {
+        // MIME base64 正文按 76 列折行，去空白后整体解码
+        return Buffer.from(raw.replace(/\s+/g, ''), 'base64').toString('utf8');
+    }
+    // quoted-printable：移除软换行（=\r\n）后还原字节
     const softRemoved = raw.replace(/=\r?\n/g, '');
     const bytes: number[] = [];
     let i = 0;
@@ -242,10 +260,14 @@ test.describe('Sprint 6 分级邮件告警', () => {
         // 批次 alert_sent 已置 1
         expect(alertSent(ALERT_JOB_ID)).toBe('1');
 
-        // alert_history：SEVERE + WARNING 两条达标明细 → 写 2 条历史（rule_name 统一为告警规则名）
-        const histories = alertHistories(ALERT_JOB_ID);
-        expect(histories.length).toBe(2);
+        // alert_history：一个批次只落一条聚合记录（Sprint 6 UX：fireBatchAlert 单条 + summary 聚合命中规则），
+        // SEVERE + WARNING 两条达标明细聚合进 summary（每行一条「[等级] 规则名: 详情」）。
+        // 按 quality_batch_id 精确归因到本批次，避免环境中残留/并发执行产生的同任务历史干扰计数。
+        const histories = alertHistoriesOfBatch(ALERT_JOB_ID, batch.id);
+        expect(histories.length).toBe(1);
         expect(histories.every(h => h.sendStatus === 'SUCCESS')).toBe(true);
+        expect(histories[0].summary).toContain(ALERT_RULE_SEVERE_NAME);
+        expect(histories[0].summary).toContain(ALERT_RULE_WARNING_NAME);
 
         // 邮件：合并一封，主题含「质量任务『name』执行失败（2 项）」，正文含 [严重]/[警告]
         const mail = await waitMail(ALERT_JOB_NAME_MAIN);
@@ -256,14 +278,15 @@ test.describe('Sprint 6 分级邮件告警', () => {
         expect(body).toContain('共 2 项');
     });
 
-    test('幂等：再次执行主链路任务不重复发告警（alert_history 条数不增）', async () => {
-        // 紧接主链路执行，60s 防重窗口内再次触发；countRecent + alert_sent 双保险，不新增 alert_history
+    test('幂等：再次执行主链路任务不重复发告警（新批次不落 alert_history）', async () => {
+        // 紧接主链路执行，60s 防重窗口内再次触发；countRecent + alert_sent 双保险。
+        // 断言第二次执行的批次（按 quality_batch_id 归因）没有产生告警历史。
         const before = alertHistories(ALERT_JOB_ID).length;
         expect(before).toBeGreaterThan(0);
+        const since = scalar(`SELECT COALESCE(MAX(id),0) FROM quality_check_batch WHERE job_id=${ALERT_JOB_ID}`) ?? '0';
         await admin.post(`/governance/quality/jobs/${ALERT_JOB_ID}/execute`);
-        await waitBatch(ALERT_JOB_ID);
-        const after = alertHistories(ALERT_JOB_ID).length;
-        expect(after).toBe(before);
+        const batch = await waitBatch(ALERT_JOB_ID, {minId: since});
+        expect(alertHistoriesOfBatch(ALERT_JOB_ID, batch.id).length).toBe(0);
     });
 
     test('UI 质量检查历史详情：SEVERE/WARNING 分级徽章', async ({page}) => {
@@ -295,9 +318,9 @@ test.describe('Sprint 6 分级邮件告警', () => {
         await expect(page.getByLabel('按对象类型筛选')).toBeVisible();
         await page.getByLabel('按对象类型筛选').selectOption('QUALITY');
         await page.getByRole('button', {name: /查询/}).click();
-        // 主链路任务产生 2 条 QUALITY 告警历史，对象类型徽章=质量任务，发送成功
+        // 主链路任务产生 1 条 QUALITY 聚合告警历史，对象类型徽章=质量任务，发送成功
         const historyRow = page.locator('.ant-table-row').filter({hasText: ALERT_JOB_NAME_MAIN});
-        await expect(historyRow).toHaveCount(2, {timeout: 15000});
+        await expect(historyRow).toHaveCount(1, {timeout: 15000});
         // 断言表格行内的徽章（避免命中筛选下拉里的 option 文本）
         await expect(historyRow.first().getByText('质量任务', {exact: true})).toBeVisible();
         await expect(historyRow.first().getByText('发送成功', {exact: true})).toBeVisible();

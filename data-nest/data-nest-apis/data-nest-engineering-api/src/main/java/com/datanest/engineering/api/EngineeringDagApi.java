@@ -28,7 +28,7 @@ public interface EngineeringDagApi {
     @GetMapping("/dags/{id}")
     Result<DagInfo> getById(@PathVariable("id") Long id);
 
-    /** 按 id 列表批量查询 DAG（ds_project_code 批量取） */
+    /** 按 id 列表批量查询 DAG */
     @PostMapping("/dags/batch")
     Result<Map<Long, DagInfo>> batchGet(@RequestBody IdsRequest request);
 

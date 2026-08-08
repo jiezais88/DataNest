@@ -21,6 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,7 @@ public class PowerJobWorkflowClient {
     private static final String PATH_ASSERT = "/openApi/assert";
     private static final String PATH_SAVE_JOB = "/openApi/saveJob";
     private static final String PATH_DELETE_JOB = "/openApi/deleteJob";
+    private static final String PATH_FETCH_ALL_JOB = "/openApi/fetchAllJob";
     private static final String PATH_SAVE_WORKFLOW = "/openApi/saveWorkflow";
     private static final String PATH_SAVE_WORKFLOW_NODE = "/openApi/addWorkflowNode";
     private static final String PATH_RUN_WORKFLOW = "/openApi/runWorkflow";
@@ -66,6 +68,9 @@ public class PowerJobWorkflowClient {
     private static final String TIME_EXPRESSION_API = "API";
     /** PowerJob 时间表达式类型：工作流节点任务（由 workflow 驱动，不独立调度） */
     private static final String TIME_EXPRESSION_WORKFLOW = "WORKFLOW";
+
+    /** PowerJob 任务状态：已删除（server 端软删，fetchAllJob 仍返回） */
+    private static final int JOB_STATUS_DELETED = 99;
 
     @Value("${datanest.powerjob.server-address:http://middleware-powerjob:7700}")
     private String serverAddress;
@@ -126,6 +131,59 @@ public class PowerJobWorkflowClient {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "注册工作流节点任务失败: PowerJob 返回的任务 ID 无效");
         }
         logger.info("Saved PowerJob workflow node job: name={}, appId={}, jobId={}, handler={}", jobName, appId, id, handler);
+        return id;
+    }
+
+    /**
+     * 按 appName + jobName 查找已存在的任务，排除软删（status=99），命中返回任务 ID，未命中返回 null。
+     */
+    public Long findJobIdByName(String appName, String jobName) {
+        for (JsonNode job : fetchAllJobs(appName)) {
+            if (job.path("status").asInt(0) == JOB_STATUS_DELETED) {
+                continue;
+            }
+            if (jobName.equals(job.path("jobName").asText())) {
+                return job.path("id").asLong();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 确保内置共享节点 job 存在：按 jobName 查找，存在直接返回，不存在则新建。
+     * 新建参数：WORKFLOW 时间类型、STANDALONE 单机执行、BUILT_IN 处理器（processorInfo=handler）、
+     * jobParams 为空（节点身份由 workflow 节点 nodeParams 承载，经 instanceParams 下发）。
+     * 注意 maxInstanceNum=0 表示不限并发——多个工作流/实例并发复用同一个内置 job，
+     * 这是与 SchedulerClient 中 maxInstanceNum=1（单实例串行）的关键差异。
+     */
+    public Long ensureBuiltinNodeJob(String appName, String handler, String jobName) {
+        Long existingId = findJobIdByName(appName, jobName);
+        if (existingId != null) {
+            return existingId;
+        }
+        Long appId = resolveAppId(appName);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("jobName", jobName);
+        body.put("jobDescription", jobName);
+        body.put("appId", appId);
+        body.put("jobParams", "");
+        body.put("timeExpressionType", TIME_EXPRESSION_WORKFLOW);
+        body.put("timeExpression", "");
+        body.put("executeType", EXECUTE_TYPE_STANDALONE);
+        body.put("processorType", PROCESSOR_TYPE_BUILT_IN);
+        body.put("processorInfo", handler);
+        body.put("instanceTimeLimit", 0L);
+        body.put("instanceRetryNum", 0);
+        body.put("taskRetryNum", 0);
+        // 0 = 不限并发：内置 job 被所有 DAG 共享，多工作流并发复用，区别于 SchedulerClient 的 maxInstanceNum=1
+        body.put("maxInstanceNum", 0);
+        body.put("enable", true);
+        JsonNode response = postWithJson(PATH_SAVE_JOB, body, "注册内置节点任务失败");
+        long id = response.path("data").asLong(-1);
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "注册内置节点任务失败: PowerJob 返回的任务 ID 无效");
+        }
+        logger.info("Ensured PowerJob builtin node job: name={}, appId={}, jobId={}, handler={}", jobName, appId, id, handler);
         return id;
     }
 
@@ -255,6 +313,22 @@ public class PowerJobWorkflowClient {
         Long appId = resolveAppId(appName);
         postWithQuery(PATH_DELETE_WORKFLOW, queryOf("workflowId", workflowId, "appId", appId), "删除工作流失败");
         logger.info("Deleted PowerJob workflow: workflowId={}", workflowId);
+    }
+
+    /**
+     * 拉取指定 App 下全部任务（OpenAPI fetchAllJob，含软删记录，调用方按 status 自行过滤）。
+     */
+    private List<JsonNode> fetchAllJobs(String appName) {
+        Long appId = resolveAppId(appName);
+        JsonNode response = postWithQuery(PATH_FETCH_ALL_JOB, queryOf("appId", appId), "查询任务列表失败");
+        JsonNode data = response.path("data");
+        List<JsonNode> jobs = new ArrayList<>();
+        if (data.isArray()) {
+            for (JsonNode job : data) {
+                jobs.add(job);
+            }
+        }
+        return jobs;
     }
 
     /**

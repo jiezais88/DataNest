@@ -3,7 +3,6 @@ package com.datanest.engineering.api;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.dto.CleanupRequest;
-import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
@@ -36,17 +35,9 @@ public interface EngineeringDagExecutionApi {
     Result<PageResult<DagExecutionInfo>> listRunning(@RequestParam("page") Integer page,
                                                      @RequestParam("pageSize") Integer pageSize);
 
-    /** 按 id 查执行实例（含 resolved_params/edges_snapshot/ds_process_instance_id） */
+    /** 按 id 查执行实例（含 resolved_params/edges_snapshot/powerjob_wf_instance_id） */
     @GetMapping("/dag-executions/{id}")
     Result<DagExecutionInfo> getById(@PathVariable("id") Long id);
-
-    /** 按 DS 流程实例 id 查执行实例（可空） */
-    @GetMapping("/dag-executions/by-ds-instance/{dsProcessInstanceId}")
-    Result<DagExecutionInfo> getByDsInstance(@PathVariable("dsProcessInstanceId") Long dsProcessInstanceId);
-
-    /** ensureDagExecution：插执行 + 批量插节点，一个事务，返回 execution id */
-    @PostMapping("/dag-executions")
-    Result<Long> createExecution(@RequestBody DagExecutionCreateRequest request);
 
     /**
      * P3：按 PowerJob 工作流实例补齐执行记录（worker 处理 cron 触发实例时调用）。

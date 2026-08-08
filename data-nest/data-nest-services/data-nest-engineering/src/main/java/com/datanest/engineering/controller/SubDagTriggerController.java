@@ -14,8 +14,8 @@ import java.util.Map;
 
 /**
  * 子 DAG 异步触发内部端点（Sprint 5）。
- * P3：由 worker 的 dagSubDagAsyncHandler 调用（原 DS HTTP 任务回调已随 DS 下线废弃；
- * DagDsConverter 不再使用，文件保留至 P4 统一清理）。
+ * P3：由 worker 的 dagSubDagAsyncHandler 调用（原 DS HTTP 任务回调已随 DS 下线废弃，
+ * 相关死代码已随 P4 清理删除）。
  * 决策 ADR-S3-008：内部接口不鉴权，依赖 Docker 网络隔离 + gateway 白名单。
  * 触发后父节点状态由 DagExecutionSyncService 轮询 PowerJob 工作流实例同步（节点 job 成功 → SUCCESS），
  * 因此本端点无需回写 node_execution。

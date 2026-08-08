@@ -57,10 +57,7 @@ public class QualityJob {
     /** 最近一次触发时间 */
     private LocalDateTime lastTriggerAt;
 
-    /** 旧 XXL-JOB 任务 ID（已废弃，仅保留旧列映射至 P4 切流清理，代码不再读写） */
-    private Integer xxlJobId;
-
-    /** PowerJob jobId（调度统一走此字段，旧 xxlJobId 列保留至切流清理） */
+    /** PowerJob jobId（调度统一走此字段，旧 xxl_job_id 列已随 V1.2.0 删除） */
     private Long schedulerJobId;
 
     private Long createdBy;

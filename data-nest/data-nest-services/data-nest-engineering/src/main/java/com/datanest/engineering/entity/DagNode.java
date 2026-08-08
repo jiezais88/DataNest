@@ -39,14 +39,6 @@ public class DagNode {
      */
     private String config;
 
-    /**
-     * DolphinScheduler 任务定义 code，持久化避免节点重命名后 code 变化。
-     */
-    private Long dsTaskCode;
-
-    /** PowerJob 节点任务 jobId（替代 dsTaskCode，切流后生效，旧列保留至切流清理） */
-    private Long powerjobJobId;
-
     /** PowerJob workflow_node_info 节点 ID（saveWorkflow 的 PJDag Node.nodeId 用它） */
     private Long powerjobNodeId;
 

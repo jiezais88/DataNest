@@ -28,12 +28,15 @@ public class PowerJobWorkerConfiguration {
 
     @Bean
     public PowerJobSpringWorker powerJobSpringWorker(PowerJobProperties properties,
-                                                     TechPowerJobRouterFactory routerFactory) {
+                                                     TechPowerJobRouterFactory routerFactory,
+                                                     com.datanest.common.scheduler.PowerJobAppBootstrap appBootstrap) {
         PowerJobProperties.Worker worker = properties.getWorker();
 
         // 以下属性映射与 PowerJobAutoConfiguration#initPowerJob 保持一致
         CommonUtils.requireNonNull(worker.getServerAddress(), "serverAddress can't be empty! " +
                 "if you don't want to enable powerjob, please config program arguments: powerjob.worker.enabled=false");
+        // 新环境自举：确保 App 已在 server 注册（不存在则经管理员 API 创建，失败仅告警）
+        appBootstrap.ensureApp(worker.getAppName());
         List<String> serverAddress = Arrays.asList(worker.getServerAddress().split(","));
 
         PowerJobWorkerConfig config = new PowerJobWorkerConfig();

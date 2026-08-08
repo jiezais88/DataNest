@@ -42,7 +42,7 @@ data-nest/
 | `data-nest-engineering` | app-engineering | 8082 | `/engineering` | 数据工程：数据源、同步任务、DAG 定义与执行实例 | datanest_engineering（13 表） |
 | `data-nest-governance` | app-governance | 8084 | `/governance` | 数据治理：元数据、采集、质量（规则/任务/批次/评分）、标准、合规、血缘 | datanest_governance（19 表） |
 | `data-nest-worker` | app-worker | 8085 | `/worker` | Addax 同步/DAG 节点/质量/采集的实际执行方，纯执行节点，回写全部走 Feign | 无库 |
-| `data-nest-job` | app-job | 8086 | `/job` | XXL-JOB executor，平台定时任务（清理/对账/合规扫描/超时告警等） | 无库 |
+| `data-nest-job` | app-job | 8086 | `/job` | PowerJob worker（App `data-nest-job`），平台定时任务（清理/对账/合规扫描/超时告警等，13 个 CRON 任务） | 无库 |
 
 **库表归属**（4 库均在 middleware-postgres 同一实例，各服务独立 Flyway 管理，基线 V1.0.0）：
 
@@ -72,7 +72,7 @@ data-nest/
 ## 4. 内部调用机制（/internal/** + X-Internal-Token）
 
 - 服务间端点统一放在各服务 `/internal/**` 路径下（context-path 之内，如 `/engineering/internal/sync-jobs/{id}/trigger`）。
-- **鉴权**：`X-Internal-Token` 头。common 的 `InternalTokenFilter`（服务端校验，仅拦截 servlet path 以 `/internal/` 开头的请求，token 未配置时放行）+ `InternalTokenFeignInterceptor`（Feign 客户端自动带头）。token 经 Nacos `shared-rpc.yaml` 下发。DS 回调 `/dev/internal/**` 不受拦截（gateway 路由直达）。
+- **鉴权**：`X-Internal-Token` 头。common 的 `InternalTokenFilter`（服务端校验，仅拦截 servlet path 以 `/internal/` 开头的请求，token 未配置时放行）+ `InternalTokenFeignInterceptor`（Feign 客户端自动带头）。token 经 Nacos `shared-rpc.yaml` 下发。
 - **容错体系**（common `internal` 包 + shared-rpc.yaml）：
   - `shared-rpc.yaml`：Feign 全局 connect 2s/read 5s、重试、`feign.circuitbreaker.enabled=true` + Resilience4j default（10 次滑动窗口/50% 失败率熔断/30s 半开）。
   - `InternalFeignErrorDecoder`：远端 Result 信封 message 提取；503 → RetryableException 触发重试。
@@ -85,9 +85,13 @@ data-nest/
 
 ## 5. 调度链路
 
-- **XXL-JOB 派发链路不变**：middleware-xxljob Admin → executor（app-job 承载定时 handler，app-worker 承载执行 handler）。`SchedulerClient` 在 common，仅引入 shared-xxljob 的服务可用（启动类 scanBasePackages 只追加 `com.datanest.common.internal`，勿扫整个 common）。
-- **DS（DolphinScheduler）回调链路不变**：DAG 节点回调经 gateway → engineering `/dev/internal/**`（独立于 X-Internal-Token 体系）。
-- 质量任务定时 = 每任务独立注册 XXL-JOB；同步任务触发走 `POST /internal/sync-jobs/{id}/trigger`（SyncJobTriggerService 在 engineering）。
+**唯一调度中间件：PowerJob 5.1.2**（2026-08-07 起，原 XXL-JOB + DolphinScheduler 已全部下线）。server 容器 `middleware-powerjob`（控制台/OpenAPI :7700，DB 在 middleware-mysql 的 `powerjob` 库）。
+
+- **client 在 common**：`SchedulerClient`（job 级：saveJob/enable/disable/runJob/deleteJob）+ `PowerJobWorkflowClient`（workflow 级：saveNodeJob/saveWorkflowNode/saveWorkflow/runWorkflow/fetchWfInstanceInfo/stopWfInstance/retryWfInstance 等），均为纯 HTTP 直连 OpenAPI（不引 powerjob-client）。配置键 `datanest.powerjob.server-address/app-password` 均带默认值。仅需要调度的服务才装配（启动类 scanBasePackages 只追加 `com.datanest.common.internal`，勿扫整个 common）。
+- **两个 App**：`data-nest-job`（id=1，app-job 承载 13 个平台定时 handler，启动时 `scheduler/JobRegistrar` 按 handler 名 ensure 注册 CRON 任务）/ `data-nest-worker`（id=2，app-worker 承载 sync/collect/quality 3 个业务执行 handler + `job/dag/` 包 5 个 DAG 节点 handler：dagSql/dagSync/dagPython/dagCondition/dagSubDagAsync）。
+- **处理器路由（两服务同构）**：16 个 handler 统一实现 `PlatformJobHandler`（getName/execute）；各服务自定义 `ProcessorFactory` 把 PowerJob 的 processorInfo 直接解释为 handler 名路由到同名 Spring Bean，未命中交内建 factory。
+- **DAG（原 DS 链路）**：`DagService.syncToScheduler` 四步注册（saveNodeJob 回写 `dag_node.powerjob_job_id` → saveWorkflowNode 回写 `powerjob_node_id` → saveWorkflow → 回写 `dag.powerjob_workflow_id`）；触发 `runWorkflow(initParams={"dagExecutionId":N})`；状态同步由 task-core `DagExecutionSyncService` 走 `fetchWfInstanceInfo` 快照（节点经 `dag_node.powerjob_node_id` 桥接匹配）；重跑失败节点 `retryWfInstance` 就地续跑。原 DS HTTP 回调（`/dev/internal/**` + DagNodeCallbackController）已废弃。
+- 质量任务定时 = 每任务独立注册 PowerJob；同步任务触发走 `POST /internal/sync-jobs/{id}/trigger`（SyncJobTriggerService 在 engineering）。
 
 ## 6. 后端包结构
 
@@ -118,7 +122,7 @@ com.datanest.common
 ├── jackson/JacksonConfig.java           # Long 转 String 序列化
 ├── model/                               # Result、PageResult、LoginRequest
 ├── satoken/                             # Sa-Token 公共自动配置
-├── scheduler/                           # SchedulerClient（XXL-JOB）
+├── scheduler/                           # SchedulerClient + PowerJobWorkflowClient（PowerJob OpenAPI 直连）
 └── util/                                # 公共工具类
 ```
 
@@ -130,10 +134,10 @@ com.datanest.common
 |------|------|
 | `app-gateway` / `app-system` / `app-alert` / `app-engineering` / `app-governance` / `app-worker` / `app-job` | 7 个后端服务（对应 §2） |
 | `app-frontend` | 前端 |
-| `middleware-mysql` | MySQL：Nacos、XXL-JOB、DolphinScheduler 元数据 |
+| `middleware-mysql` | MySQL：Nacos、PowerJob 元数据 |
 | `middleware-postgres` | PostgreSQL：4 个业务库（datanest_system/alert/engineering/governance） |
 | `middleware-nacos` | Nacos（配置 + 服务发现） |
-| `middleware-xxljob` | XXL-JOB Admin |
+| `middleware-powerjob` | PowerJob server 5.1.2（唯一调度中间件，控制台/OpenAPI :7700） |
 | `middleware-redis` | Redis（Sa-Token 集中式会话） |
 | `middleware-mailhog` | 本地邮件捕获（仅 app-alert 发信） |
 

@@ -20,9 +20,7 @@ public class DagExecution {
 
     private Long dagId;
 
-    private Long dsProcessInstanceId;    // DS 流程实例 ID
-
-    /** PowerJob 工作流实例 ID（替代 dsProcessInstanceId，切流后生效，旧列保留至切流清理） */
+    /** PowerJob 工作流实例 ID（P4 起唯一调度标识，旧 ds_process_instance_id 列已随 V1.3.0 删除） */
     private Long powerjobWfInstanceId;
 
     private String triggerType;          // MANUAL / CRON
@@ -41,7 +39,7 @@ public class DagExecution {
 
     private String edgeSnapshot;         // 创建执行实例时的 dag_edge JSON 快照（历史视图渲染边用）
 
-    private String errorMessage;         // 执行失败原因（如 DS 触发失败、工作流未上线等）
+    private String errorMessage;         // 执行失败原因（如调度触发失败、工作流未上线等）
 
     /**
      * Sprint 4 Phase 1：本次执行解析后的参数键值对 JSON 字符串。

@@ -10,7 +10,6 @@ public class DagExecutionDTO {
     private Long id;
     private Long dagId;
     private String dagName;
-    private Long dsProcessInstanceId;
     private String triggerType;
     private String status;
     private LocalDateTime startTime;

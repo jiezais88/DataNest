@@ -10,7 +10,6 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.PageResult;
-import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.DagEdgeInfo;
@@ -106,44 +105,6 @@ public class InternalDagExecutionService {
 
     public DagExecutionInfo getById(Long id) {
         return toExecutionInfo(dagExecutionMapper.selectById(id));
-    }
-
-    public DagExecutionInfo getByDsInstance(Long dsProcessInstanceId) {
-        return toExecutionInfo(dagExecutionMapper.selectByDsProcessInstanceId(dsProcessInstanceId));
-    }
-
-    /**
-     * ensureDagExecution：插执行 + 批量插节点，一个事务，返回 execution id。
-     */
-    @Transactional
-    public Long createExecution(DagExecutionCreateRequest request) {
-        LocalDateTime now = LocalDateTime.now();
-        DagExecution execution = new DagExecution();
-        execution.setDagId(request.getDagId());
-        execution.setDsProcessInstanceId(request.getDsProcessInstanceId());
-        execution.setTriggerType(request.getTriggerType() == null ? "MANUAL" : request.getTriggerType());
-        execution.setStatus(request.getStatus() == null ? "RUNNING" : request.getStatus());
-        execution.setStartTime(request.getStartTime() == null ? now : request.getStartTime());
-        execution.setCreatedAt(now);
-        execution.setResolvedParams(request.getResolvedParams());
-        execution.setEdgeSnapshot(request.getEdgesSnapshot());
-        dagExecutionMapper.insert(execution);
-
-        if (request.getNodes() != null && !request.getNodes().isEmpty()) {
-            List<NodeExecution> nodes = new ArrayList<>(request.getNodes().size());
-            for (DagExecutionCreateRequest.NodeSeed seed : request.getNodes()) {
-                NodeExecution node = new NodeExecution();
-                node.setId(IdWorker.getId());
-                node.setExecutionId(execution.getId());
-                node.setNodeId(seed.getNodeId());
-                node.setNodeName(seed.getNodeName());
-                node.setNodeType(seed.getNodeType());
-                node.setStatus(seed.getStatus() == null ? "WAITING" : seed.getStatus());
-                nodes.add(node);
-            }
-            nodeExecutionMapper.insertBatch(nodes);
-        }
-        return execution.getId();
     }
 
     /**
@@ -368,7 +329,6 @@ public class InternalDagExecutionService {
             entity.setId(item.getId());
             entity.setVersion(item.getVersion());
             entity.setStatus(item.getStatus());
-            entity.setDsTaskInstanceId(item.getDsTaskInstanceId());
             entity.setPowerjobInstanceId(item.getPowerjobInstanceId());
             entity.setStartTime(item.getStartTime());
             entity.setEndTime(item.getEndTime());
@@ -534,7 +494,6 @@ public class InternalDagExecutionService {
         DagExecutionInfo info = new DagExecutionInfo();
         info.setId(entity.getId());
         info.setDagId(entity.getDagId());
-        info.setDsProcessInstanceId(entity.getDsProcessInstanceId());
         info.setPowerjobWfInstanceId(entity.getPowerjobWfInstanceId());
         info.setTriggerType(entity.getTriggerType());
         info.setStatus(entity.getStatus());
@@ -561,7 +520,6 @@ public class InternalDagExecutionService {
         info.setNodeName(entity.getNodeName());
         info.setNodeType(entity.getNodeType());
         info.setStatus(entity.getStatus());
-        info.setDsTaskInstanceId(entity.getDsTaskInstanceId());
         info.setPowerjobInstanceId(entity.getPowerjobInstanceId());
         info.setSyncJobId(entity.getSyncJobId());
         info.setSyncJobHistoryId(entity.getSyncJobHistoryId());

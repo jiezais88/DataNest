@@ -69,7 +69,7 @@ public enum ErrorCode {
     PROJECT_NAME_EXISTS(7010, "项目名称已存在"),
     SQL_EXECUTE_FAILED(7011, "SQL 执行失败"),
     SQL_PARSE_FAILED(7012, "SQL 解析失败"),
-    DS_API_ERROR(7013, "DolphinScheduler API 调用失败"),
+    SCHEDULER_API_ERROR(7013, "调度引擎 API 调用失败"),
     METADATA_REGISTRATION_FAILED(7014, "元数据注册失败"),
     SQL_PREVIEW_FAILED(7015, "SQL 预览执行失败"),
     DAG_EXECUTION_NOT_FOUND(7016, "DAG 执行实例不存在"),

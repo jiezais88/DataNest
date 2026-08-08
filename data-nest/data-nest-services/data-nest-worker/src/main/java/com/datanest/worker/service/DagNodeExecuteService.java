@@ -10,7 +10,6 @@ import com.datanest.engineering.api.EngineeringDagApi;
 import com.datanest.engineering.api.EngineeringDagExecutionApi;
 import com.datanest.engineering.api.EngineeringSyncJobApi;
 import com.datanest.engineering.api.dto.DagEdgeInfo;
-import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.DagInfo;
 import com.datanest.engineering.api.dto.DagNodeInfo;
@@ -34,7 +33,6 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -53,9 +51,6 @@ public class DagNodeExecuteService {
 
     /** 条件分支表达式变量占位符：${a.b} */
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{([^}]+)\\}");
-
-    /** 按 DS processInstanceId 加锁，防止同一实例的并发回调重复创建 dag_execution */
-    private static final ConcurrentHashMap<Long, Object> EXECUTION_LOCKS = new ConcurrentHashMap<>();
 
     private static final int SQL_OUTPUT_PREVIEW_MAX_ROWS = 50;
 
@@ -99,20 +94,17 @@ public class DagNodeExecuteService {
     public Result<Map<String, Integer>> handleSqlNode(Map<String, Object> body) {
         String nodeId = stringOf(body.get("nodeId"));
         String rawSqlContent = stringOf(body.get("sqlContent"));
-        Long dsProcessInstanceId = longOf(body.get("executionId"));
         Long dagId = longOf(body.get("dagId"));
-        // PowerJob 流程：handler 直传 dagExecutionId（initParams 或按 wfInstanceId 补齐），优先于 DS 反查
+        // PowerJob 流程：handler 直传 dagExecutionId（initParams 或按 wfInstanceId 补齐）
         Long dagExecutionId = longOf(body.get("dagExecutionId"));
         if (nodeId == null || rawSqlContent == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / sqlContent");
         }
-        NodeExecutionLookup lookup = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId);
+        NodeExecutionLookup lookup = resolveLookup(nodeId, dagExecutionId);
         if (lookup.nodeExecution == null) {
-            logger.warn("找不到对应 node_execution: nodeId={}, dagExecutionId={}, dsProcessInstanceId={}",
-                    nodeId, dagExecutionId, dsProcessInstanceId);
+            logger.warn("找不到对应 node_execution: nodeId={}, dagExecutionId={}", nodeId, dagExecutionId);
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    "node execution not found: nodeId=" + nodeId + ", dagExecutionId=" + dagExecutionId
-                            + ", dsProcessInstanceId=" + dsProcessInstanceId);
+                    "node execution not found: nodeId=" + nodeId + ", dagExecutionId=" + dagExecutionId);
         }
         NodeExecutionInfo ne = lookup.nodeExecution;
         // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行
@@ -283,7 +275,6 @@ public class DagNodeExecuteService {
      */
     public Result<Map<String, Integer>> handleSyncNode(Map<String, Object> body) {
         String nodeId = stringOf(body.get("nodeId"));
-        Long dsProcessInstanceId = longOf(body.get("executionId"));
         Long dagId = longOf(body.get("dagId"));
         Object syncJobObj = body.get("syncJob");
         if (nodeId == null || syncJobObj == null) {
@@ -296,16 +287,14 @@ public class DagNodeExecuteService {
 
         String lockToken = syncNodeMutexService.tryLock(syncJobId);
         try {
-            // PowerJob 流程：handler 直传 dagExecutionId，优先于 DS processInstanceId 反查
+            // PowerJob 流程：handler 直传 dagExecutionId
             Long dagExecutionId = longOf(body.get("dagExecutionId"));
-            NodeExecutionLookup lookup = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId);
+            NodeExecutionLookup lookup = resolveLookup(nodeId, dagExecutionId);
             if (lookup.nodeExecution == null) {
-                logger.warn("找不到对应 node_execution: nodeId={}, dagExecutionId={}, dsProcessInstanceId={}",
-                        nodeId, dagExecutionId, dsProcessInstanceId);
+                logger.warn("找不到对应 node_execution: nodeId={}, dagExecutionId={}", nodeId, dagExecutionId);
                 syncNodeMutexService.unlock(syncJobId, lockToken);
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                        "node execution not found: nodeId=" + nodeId + ", dagExecutionId=" + dagExecutionId
-                                + ", dsProcessInstanceId=" + dsProcessInstanceId);
+                        "node execution not found: nodeId=" + nodeId + ", dagExecutionId=" + dagExecutionId);
             }
             NodeExecutionInfo ne = lookup.nodeExecution;
             // Sprint 5：条件分支 gate —— 非命中分支的节点标记 SKIPPED，不真正执行（需释放锁）
@@ -349,12 +338,11 @@ public class DagNodeExecuteService {
      */
     public Result<Map<String, Object>> handlePythonNode(Map<String, Object> body) {
         Long dagId = longOf(body.get("dagId"));
-        Long dsProcessInstanceId = longOf(body.get("executionId"));
         String nodeId = stringOf(body.get("nodeId"));
-        // PowerJob 流程：dagExecutionId 直传（initParams / wfInstanceId 补齐），与 executionId 二选一
+        // PowerJob 流程：dagExecutionId 直传（initParams / wfInstanceId 补齐）
         Long dagExecutionId = longOf(body.get("dagExecutionId"));
-        if (dagId == null || nodeId == null || (dsProcessInstanceId == null && dagExecutionId == null)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 dagId / nodeId / executionId(或 dagExecutionId)");
+        if (dagId == null || nodeId == null || dagExecutionId == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 dagId / nodeId / dagExecutionId");
         }
 
         DagNodeInfo node = getDagNode(dagId, nodeId);
@@ -367,7 +355,7 @@ public class DagNodeExecuteService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Python 脚本为空: " + nodeId);
         }
 
-        NodeExecutionInfo ne = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId).nodeExecution;
+        NodeExecutionInfo ne = resolveLookup(nodeId, dagExecutionId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
         }
@@ -466,14 +454,13 @@ public class DagNodeExecuteService {
     public Result<Map<String, Object>> handleConditionNode(Map<String, Object> body) {
         String nodeId = stringOf(body.get("nodeId"));
         Long dagId = longOf(body.get("dagId"));
-        Long dsProcessInstanceId = longOf(body.get("executionId"));
-        // PowerJob 流程：dagExecutionId 直传（initParams / wfInstanceId 补齐），与 executionId 二选一
+        // PowerJob 流程：dagExecutionId 直传（initParams / wfInstanceId 补齐）
         Long dagExecutionId = longOf(body.get("dagExecutionId"));
-        if (nodeId == null || dagId == null || (dsProcessInstanceId == null && dagExecutionId == null)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / dagId / executionId(或 dagExecutionId)");
+        if (nodeId == null || dagId == null || dagExecutionId == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "缺少 nodeId / dagId / dagExecutionId");
         }
 
-        NodeExecutionInfo ne = resolveLookup(nodeId, dagId, dsProcessInstanceId, dagExecutionId).nodeExecution;
+        NodeExecutionInfo ne = resolveLookup(nodeId, dagExecutionId).nodeExecution;
         if (ne == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "node_execution 不存在: " + nodeId);
         }
@@ -720,12 +707,12 @@ public class DagNodeExecuteService {
 
 
     /**
-     * 节点执行记录定位：dagExecutionId 非空（PowerJob 流程，initParams 直给或按 wfInstanceId 补齐后直传）
-     * 时按执行记录直查节点；为空时回退 DS processInstanceId 反查/自动补齐（旧 HTTP 回调链路，P4 随 DS 清理）。
+     * 节点执行记录定位（PowerJob 流程）：dagExecutionId 由 handler 直传（initParams 直给或按
+     * wfInstanceId 补齐后直传），按执行记录直查节点；为空时无法定位，返回空。
      */
-    private NodeExecutionLookup resolveLookup(String nodeId, Long dagId, Long dsProcessInstanceId, Long dagExecutionId) {
+    private NodeExecutionLookup resolveLookup(String nodeId, Long dagExecutionId) {
         if (dagExecutionId == null) {
-            return resolveNodeExecution(nodeId, dagId, dsProcessInstanceId);
+            return new NodeExecutionLookup(null);
         }
         NodeExecutionInfo ne = listExecutionNodes(dagExecutionId).stream()
                 .filter(n -> nodeId.equals(n.getNodeId()))
@@ -737,7 +724,7 @@ public class DagNodeExecuteService {
      * PowerJob cron 触发场景：initParams 无 dagExecutionId 时，按 wfInstanceId 调 engineering
      * ensure-execution 端点补齐 dag_execution + 全量 WAITING node_execution（服务端按
      * powerjob_wf_instance_id 列幂等，按 wfInstanceId 双检加锁），返回执行记录 id。
-     * fail-fast：端点不可达/降级返回空直接抛错，节点执行可见失败（对齐 ensureDagExecution 语义）。
+     * fail-fast：端点不可达/降级返回空直接抛错，节点执行可见失败。
      *
      * @return execution id；wfInstanceId 为空时返回 null
      */
@@ -768,92 +755,23 @@ public class DagNodeExecuteService {
     }
 
     /**
-     * 通过 DS processInstanceId 反查 dag_execution，再按 nodeId 查 node_execution。
-     * 若 DS 是定时调度直接触发（DataNest 未显式 trigger），则自动补齐 dag_execution 与 node_execution。
+     * 判断执行记录是否属于指定 DAG。
+     * 嵌套子 DAG（NESTED_WORKFLOW）场景：子工作流实例继承父工作流的 initParams，
+     * 其中的 dagExecutionId 属于父 DAG——子 DAG 节点 handler 必须用本校验识别后改走
+     * ensureExecutionByWfInstance 补齐子 DAG 自己的执行记录。
      */
-    private NodeExecutionLookup resolveNodeExecution(String nodeId, Long dagId, Long dsProcessInstanceId) {
-        if (dsProcessInstanceId == null) {
-            return new NodeExecutionLookup(null);
+    public boolean executionBelongsToDag(Long dagExecutionId, Long dagId) {
+        if (dagExecutionId == null || dagId == null) {
+            return false;
         }
-        DagExecutionInfo dagExecution = getExecutionByDsInstance(dsProcessInstanceId);
-        Long executionId = dagExecution == null ? null : dagExecution.getId();
-        if (executionId == null && dagId != null) {
-            executionId = ensureDagExecution(dagId, dsProcessInstanceId);
-        }
-        if (executionId == null) {
-            return new NodeExecutionLookup(null);
-        }
-        NodeExecutionInfo ne = listExecutionNodes(executionId).stream()
-                .filter(n -> nodeId.equals(n.getNodeId()))
-                .findFirst().orElse(null);
-        return new NodeExecutionLookup(ne);
-    }
-
-    /**
-     * 旧 DS 回调链路：DS 定时直接触发时自动补齐 dag_execution + 全量 WAITING node_execution。
-     * 创建经 POST /dag-executions（engineering 端一个事务插执行 + 批量插节点），
-     * fail-fast：创建失败（含熔断降级、并发唯一索引冲突）直接抛错，节点执行可见失败。
-     * <p>
-     * 仅服务 DS 链路（processInstanceId 承载在 dag_execution.ds_process_instance_id 列）；
-     * PowerJob 链路已改走 ensure-execution 端点（见 {@link #ensureExecutionByWfInstance}），
-     * 本方法随 DS 清理（P4）一并下线。
-     *
-     * @return execution id；DAG 不存在时返回 null（沿用原语义，节点执行报 node execution not found）
-     */
-    private Long ensureDagExecution(Long dagId, Long dsProcessInstanceId) {
-        DagExecutionInfo existing = getExecutionByDsInstance(dsProcessInstanceId);
-        if (existing != null) return existing.getId();
-        if (dagId == null) return null;
-
-        Object lock = EXECUTION_LOCKS.computeIfAbsent(dsProcessInstanceId, k -> new Object());
-        synchronized (lock) {
-            existing = getExecutionByDsInstance(dsProcessInstanceId);
-            if (existing != null) return existing.getId();
-
-            DagInfo dag = getDag(dagId);
-            if (dag == null) {
-                logger.warn("自动创建执行记录失败：DAG 不存在 dagId={}", dagId);
-                return null;
-            }
-
-            // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
-            String edgeSnapshot = DagEdgeSnapshot.capture(listDagEdges(dagId));
-
-            DagExecutionCreateRequest request = new DagExecutionCreateRequest();
-            request.setDagId(dagId);
-            request.setDsProcessInstanceId(dsProcessInstanceId);
-            request.setTriggerType("CRON");
-            request.setStatus("RUNNING");
-            request.setStartTime(LocalDateTime.now());
-            request.setEdgesSnapshot(edgeSnapshot);
-            List<DagNodeInfo> nodes = listDagNodes(dagId);
-            request.setNodes(nodes.stream().map(node -> {
-                DagExecutionCreateRequest.NodeSeed seed = new DagExecutionCreateRequest.NodeSeed();
-                seed.setNodeId(node.getNodeId());
-                seed.setNodeName(node.getNodeName());
-                seed.setNodeType(node.getNodeType());
-                seed.setStatus("WAITING");
-                return seed;
-            }).toList());
-
-            Long executionId;
-            try {
-                Result<Long> result = dagExecutionApi.createExecution(request);
-                executionId = result == null ? null : result.data();
-            } catch (Exception e) {
-                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                        "自动创建执行记录失败（engineering 不可达）: dagId=" + dagId
-                                + ", dsProcessInstanceId=" + dsProcessInstanceId + ": " + e.getMessage(), e);
-            }
-            if (executionId == null) {
-                // 熔断降级返回空或服务端唯一索引冲突（uk_dag_execution_running：同 DAG 已有 RUNNING）
-                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                        "自动创建执行记录失败: dagId=" + dagId + ", dsProcessInstanceId=" + dsProcessInstanceId);
-            }
-
-            logger.info("为 DS 定时实例自动创建执行记录: dagId={}, dsProcessInstanceId={}, executionId={}",
-                    dagId, dsProcessInstanceId, executionId);
-            return executionId;
+        try {
+            Result<DagExecutionInfo> result = dagExecutionApi.getById(dagExecutionId);
+            DagExecutionInfo info = result == null ? null : result.data();
+            return info != null && dagId.equals(info.getDagId());
+        } catch (Exception e) {
+            logger.warn("执行记录归属校验失败（按不属于处理）: dagExecutionId={}, dagId={}: {}",
+                    dagExecutionId, dagId, e.getMessage());
+            return false;
         }
     }
 
@@ -871,13 +789,6 @@ public class DagNodeExecuteService {
         if (executionId == null) return null;
         return RemoteCalls.execute("engineering.dag-execution.get", () -> {
             Result<DagExecutionInfo> result = dagExecutionApi.getById(executionId);
-            return result == null ? null : result.data();
-        }, null);
-    }
-
-    private DagExecutionInfo getExecutionByDsInstance(Long dsProcessInstanceId) {
-        return RemoteCalls.execute("engineering.dag-execution.by-ds-instance", () -> {
-            Result<DagExecutionInfo> result = dagExecutionApi.getByDsInstance(dsProcessInstanceId);
             return result == null ? null : result.data();
         }, null);
     }

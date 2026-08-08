@@ -33,7 +33,7 @@ import java.util.Objects;
 /**
  * DAG 项目服务
  * P3：PowerJob 无项目概念（工作流统一挂 data-nest-worker App），不再同步 DS 项目；
- * dag_project.ds_project_code 列保留至 P4 切流清理，仅作历史数据展示。
+ * P4：dag_project.ds_project_code 旧列已随 V1.3.0 删除。
  */
 @Service
 public class DagProjectService {
@@ -238,7 +238,6 @@ public class DagProjectService {
         dto.setId(entity.getId());
         dto.setName(entity.getName());
         dto.setDescription(entity.getDescription());
-        dto.setDsProjectCode(entity.getDsProjectCode());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         dto.setCreatedBy(entity.getCreatedBy());

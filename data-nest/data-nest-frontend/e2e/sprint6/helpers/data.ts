@@ -173,10 +173,11 @@ export const COMPLIANCE_NS_COL_ID = '9000060000000000102';
 /** 合规命名规范名 */
 export const COMPLIANCE_NS_TABLE_NAME = `${COMPLIANCE_PREFIX}_table`;
 export const COMPLIANCE_NS_COL_NAME = `${COMPLIANCE_PREFIX}_col`;
-/** XXL-JOB admin 地址（宿主机映射端口，context path 为根，登录 /auth/doLogin）与登录账号 */
-export const XXL_ADMIN_BASE = process.env.XXL_ADMIN_BASE ?? 'http://localhost:8088';
-export const XXL_ADMIN_USER = process.env.XXL_ADMIN_USER ?? 'admin';
-export const XXL_ADMIN_PASS = process.env.XXL_ADMIN_PASS ?? '123456';
-/** 标准合规定时 handler 注册名（JobRegistrar 平台任务） */
-export const XXL_HANDLER_COMPLIANCE = 'standardComplianceCheckHandler';
+/** PowerJob OpenAPI 地址（宿主机映射端口，无需鉴权，全部 POST /openApi/*） */
+export const POWERJOB_BASE = process.env.POWERJOB_BASE ?? 'http://localhost:7700';
+/** 预置 App：平台任务 data-nest-job=1；worker 执行任务 data-nest-worker=2 */
+export const POWERJOB_APP_PLATFORM = 1;
+export const POWERJOB_APP_WORKER = 2;
+/** 标准合规定时 handler 注册名（processorInfo，JobRegistrar 平台任务） */
+export const POWERJOB_HANDLER_COMPLIANCE = 'standardComplianceCheckHandler';
 

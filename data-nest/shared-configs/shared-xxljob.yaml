@@ -1,8 +1,0 @@
-xxl:
-  job:
-    accessToken: ${XXL_JOB_ACCESS_TOKEN:default_token}
-    admin:
-      addresses: http://${XXL_JOB_HOST:localhost}:${XXL_JOB_PORT:8088}
-      username: ${XXL_JOB_USERNAME:admin}
-      password: ${XXL_JOB_PASSWORD:123456}
-    # executor 配置由各服务自行定义，避免 appname/port 冲突

@@ -18,7 +18,7 @@ import {ensureTestUsers, seedExecTables, seedExecMetadata, seedQualityScores} fr
  * - B 严重表 e2e_s6_score_severe（COUNT=4）：1 严重(w1) + 1 通过(w1) → 严重强制 BAD，min(50-30,59.99)=20.00 BAD（pass=1/severe=1）
  * - U 不可用表 e2e_s6_score_unavail：规则查不存在表 → UNAVAILABLE 不参与 → 无有效规则 → 不落评分行
  *
- * 执行方式：POST /governance/quality/scores/table/{tableId}/execute 逐条 MANUAL 投递 worker，
+ * 执行方式：逐条 POST /governance/quality/rules/{ruleId}/execute（MANUAL 投递 worker，串行触发），
  * 异步执行。测试用 waitFor 轮询 quality_score 落行 / quality_check_detail 分级至终态断言。
  * 测试数据前缀 e2e_s6_score，seed 由 seedQualityScores 提供 4 张评分物理表 + 7 条规则。
  */
@@ -96,18 +96,47 @@ test.describe('Sprint 6 表级质量评分（多档 + UI + 负向 + 配置）', 
         seedExecTables();
         seedExecMetadata();
         seedQualityScores();
-        // 清理历史评分/明细/批次
+        // 清理历史评分/明细/批次（先按明细反查删批次，再删明细，避免孤儿批次残留）
         psql(`DELETE FROM quality_score WHERE table_id IN (
             ${TABLE_PASS_ID}, ${TABLE_WARN_ID}, ${TABLE_SEVERE_ID}, ${TABLE_UNAVAIL_ID})`);
-        psql(`DELETE FROM quality_check_detail WHERE rule_id IN (SELECT id FROM quality_rule WHERE name LIKE '${SCORE_PREFIX}%')`);
         psql(`DELETE FROM quality_check_batch WHERE id IN (
             SELECT DISTINCT batch_id FROM quality_check_detail WHERE rule_id IN (SELECT id FROM quality_rule WHERE name LIKE '${SCORE_PREFIX}%'))`);
+        psql(`DELETE FROM quality_check_detail WHERE rule_id IN (SELECT id FROM quality_rule WHERE name LIKE '${SCORE_PREFIX}%')`);
 
-        // 触发四张表全部启用规则执行（异步投递 worker）
-        await admin.post(`/governance/quality/scores/table/${TABLE_PASS_ID}/execute`);
-        await admin.post(`/governance/quality/scores/table/${TABLE_WARN_ID}/execute`);
-        await admin.post(`/governance/quality/scores/table/${TABLE_SEVERE_ID}/execute`);
-        await admin.post(`/governance/quality/scores/table/${TABLE_UNAVAIL_ID}/execute`);
+        // 触发四张表全部启用规则执行（异步投递 worker）。
+        // 注意：PowerJob 质量执行 handler（qualityCheckExecuteHandler）注册时 max_instance_num=1，
+        // scores/table/{id}/execute 会并发投递同 handler 的多条规则实例，并发实例会被 PowerJob
+        // 拒绝（too many instances(1>1)，实例直接 FAILED 不执行）。因此这里逐条顺序触发：
+        // 每次触发后等该规则新批次进入终态再触发下一条，绕开并发限制。
+        const SCORE_RULE_IDS = [
+            '9000050000000000101', '9000050000000000102', // pass 表 r1/r2
+            '9000050000000000103', '9000050000000000104', // warn 表 r1/r2
+            '9000050000000000105', '9000050000000000106', // severe 表 r1/r2
+            '9000050000000000107',                        // unavail 表 r1
+        ];
+        for (const ruleId of SCORE_RULE_IDS) {
+            // 打点排除 9e18 固定 ID 号段（sprint7 种子批次 900007* / 本套件 AUTO_TRIGGER 种子批次 900003*，
+            // 均比雪花 ID ~2e18 大），否则 MAX(id) 被顶住，b.id > since 永远匹配不到新批次
+            const since = scalar(`SELECT COALESCE(MAX(id),0) FROM quality_check_batch WHERE id < 9000000000000000000`) ?? '0';
+            await admin.post(`/governance/quality/rules/${ruleId}/execute`);
+            // 按 rule_id 经明细关联定位本规则的批次（不用全局最新批次，避免其它来源的 RUNNING 批次遮蔽断言）
+            const waitBatchDone = (timeoutMs: number) => waitFor(
+                async () => scalar(`SELECT b.status FROM quality_check_batch b
+                                    JOIN quality_check_detail d ON d.batch_id = b.id
+                                    WHERE b.id > ${since} AND d.rule_id = ${ruleId}
+                                    ORDER BY b.id DESC LIMIT 1`),
+                (s) => s != null && s !== 'RUNNING',
+                {timeoutMs, label: `规则 ${ruleId} 批次进入终态`},
+            );
+            try {
+                await waitBatchDone(20_000);
+            } catch {
+                // 短窗内无新批次：投递很可能被单实例槽拒绝（实例直接 FAILED 不落批次），重投一次。
+                // 若原实例只是排队较慢，重投会被拒绝，但原批次仍满足 id > since，等待可正常收敛。
+                await admin.post(`/governance/quality/rules/${ruleId}/execute`);
+                await waitBatchDone(90_000);
+            }
+        }
 
         // 等待落行表评分收敛；等待 U 表规则到 UNAVAILABLE
         await waitScore(TABLE_PASS_ID, {pass: 2, warning: 0, severe: 0});
@@ -187,6 +216,8 @@ test.describe('Sprint 6 表级质量评分（多档 + UI + 负向 + 配置）', 
 
     test('B2 表名关键词筛选', async ({page}) => {
         await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-scores');
+        // 先等初始（未筛选）列表加载完成：初始响应若晚于筛选响应返回会覆盖表格（竞态），导致漏筛误判
+        await expect(scoreRow(page, TABLE_PASS)).toBeVisible({timeout: 15000});
         await page.getByLabel('搜索表名').fill('score_severe');
         await page.getByRole('button', {name: /查询/}).click();
         await expect(scoreRow(page, TABLE_SEVERE)).toBeVisible({timeout: 15000});
@@ -195,6 +226,8 @@ test.describe('Sprint 6 表级质量评分（多档 + UI + 负向 + 配置）', 
 
     test('B3 健康度筛选：按「差」只显示严重表', async ({page}) => {
         await gotoAs(page, TEST_USERS.govAdmin.username, TEST_USERS.govAdmin.password, '/governance/quality-scores');
+        // 同 B2：先等初始列表加载完成再筛选，规避响应竞态
+        await expect(scoreRow(page, TABLE_PASS)).toBeVisible({timeout: 15000});
         await page.getByLabel('按健康度筛选').selectOption('BAD');
         await page.getByRole('button', {name: /查询/}).click();
         await expect(scoreRow(page, TABLE_SEVERE)).toBeVisible({timeout: 15000});

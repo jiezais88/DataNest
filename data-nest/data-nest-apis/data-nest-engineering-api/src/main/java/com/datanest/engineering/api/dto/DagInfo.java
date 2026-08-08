@@ -26,14 +26,6 @@ public class DagInfo {
 
     private String status;
 
-    private Long dsProjectCode;
-
-    private Long dsProcessDefinitionId;
-
-    private Long dsProcessDefinitionCode;
-
-    private Long dsScheduleId;
-
     private String releaseState;
 
     private Long createdBy;

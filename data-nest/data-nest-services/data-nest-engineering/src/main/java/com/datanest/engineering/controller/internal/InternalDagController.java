@@ -108,10 +108,6 @@ public class InternalDagController {
         info.setScheduleEnabled(entity.getScheduleEnabled());
         info.setMaxParallelism(entity.getMaxParallelism());
         info.setStatus(entity.getStatus());
-        info.setDsProjectCode(entity.getDsProjectCode());
-        info.setDsProcessDefinitionId(entity.getDsProcessDefinitionId());
-        info.setDsProcessDefinitionCode(entity.getDsProcessDefinitionCode());
-        info.setDsScheduleId(entity.getDsScheduleId());
         info.setReleaseState(entity.getReleaseState());
         info.setCreatedBy(entity.getCreatedBy());
         info.setUpdatedBy(entity.getUpdatedBy());
@@ -133,7 +129,6 @@ public class InternalDagController {
         info.setPositionX(entity.getPositionX());
         info.setPositionY(entity.getPositionY());
         info.setConfig(entity.getConfig());
-        info.setDsTaskCode(entity.getDsTaskCode());
         info.setPowerjobNodeId(entity.getPowerjobNodeId());
         info.setCreatedBy(entity.getCreatedBy());
         info.setUpdatedBy(entity.getUpdatedBy());

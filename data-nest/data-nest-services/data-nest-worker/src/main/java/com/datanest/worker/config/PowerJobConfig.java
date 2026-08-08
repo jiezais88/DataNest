@@ -27,12 +27,15 @@ public class PowerJobConfig {
     @Bean
     @ConditionalOnProperty(prefix = "powerjob.worker", name = "enabled", havingValue = "true", matchIfMissing = true)
     public PowerJobSpringWorker powerJobSpringWorker(PowerJobProperties properties,
-                                                     PlatformJobProcessorFactory platformJobProcessorFactory) {
+                                                     PlatformJobProcessorFactory platformJobProcessorFactory,
+                                                     com.datanest.common.scheduler.PowerJobAppBootstrap appBootstrap) {
         PowerJobProperties.Worker worker = properties.getWorker();
 
         // server 地址，多个用英文逗号分隔，不要带 http:// 前缀
         CommonUtils.requireNonNull(worker.getServerAddress(), "serverAddress can't be empty! " +
                 "if you don't want to enable powerjob, please config program arguments: powerjob.worker.enabled=false");
+        // 新环境自举：确保 App 已在 server 注册（不存在则经管理员 API 创建，失败仅告警）
+        appBootstrap.ensureApp(worker.getAppName());
         List<String> serverAddress = Arrays.asList(worker.getServerAddress().split(","));
 
         PowerJobWorkerConfig config = new PowerJobWorkerConfig();

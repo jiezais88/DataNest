@@ -33,9 +33,7 @@ public class NodeExecution {
 
     private String status;               // WAITING / RUNNING / SUCCESS / FAILED / SKIPPED
 
-    private Long dsTaskInstanceId;
-
-    /** PowerJob 任务实例 ID（替代 dsTaskInstanceId，切流后生效，旧列保留至切流清理） */
+    /** PowerJob 任务实例 ID（P4 起唯一调度标识，旧 ds_task_instance_id 列已随 V1.3.0 删除） */
     private Long powerjobInstanceId;
 
     /** Sprint 3 P1-2：SYNC 节点关联的 sync_job_id，用于 DagExecutionSyncService 反查 sync_job_history 同步终态 */

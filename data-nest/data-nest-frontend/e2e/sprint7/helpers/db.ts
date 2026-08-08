@@ -8,7 +8,8 @@ import {execSync} from 'child_process';
  * - datanest_governance：asset_classification / metadata_* / quality_* / lineage_record
  * - datanest_engineering：datasource_connection / sync_job / dag_*
  * - datanest_system：sys_user
- * 注意：sprint5/6 helpers/db.ts 仍指向旧 datanest 库（已冻结），Sprint 7 一律用本模块。
+ * 注意：sprint5/6 helpers/db.ts 已改为按表自动路由到这 4 个域库（2026-08-07 适配），
+ * 本模块保留显式 psqlDb 风格，语义一致。
  */
 export type BizDb = 'datanest_governance' | 'datanest_engineering' | 'datanest_system' | 'datanest_alert';
 

@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * DAG 创建/更新请求 payload（含 nodes + edges）
- * 也作为查询返回 DTO（带 ds 同步状态）
+ * 也作为查询返回 DTO（带调度同步状态）
  * 决策 ADR-S3-FJ：使用 fastjson2 序列化
  */
 @Data
@@ -22,11 +22,7 @@ public class DagPayload {
     private Integer maxParallelism;      // 默认 3
     private String status;               // ENABLED / DISABLED
 
-    private Long dsProjectCode;
-    private Long dsProcessDefinitionId;
-    private Long dsProcessDefinitionCode;
-    private Long dsScheduleId;
-    private String releaseState;         // OFFLINE / ONLINE
+    private String releaseState;         // OFFLINE / ONLINE（ONLINE = 已同步 PowerJob）
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

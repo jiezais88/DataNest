@@ -21,7 +21,7 @@ DataNest 是一个数据平台，技术栈如下：
 - **前端**：独立容器 `app-frontend`（源码目录 `data-nest/data-nest-frontend`），通过 `app-gateway:8080` 统一入口
 - **部署**：Docker Compose，所有服务在同一 `datanest-net` 网络
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
-- **调度**：XXL-JOB（官方镜像），数据库为 `datanest_scheduler`（不是 `xxl_job`）
+- **调度**：PowerJob 5.1.2（官方镜像，容器 `middleware-powerjob`，控制台/OpenAPI http://localhost:7700），数据库为 middleware-mysql 的 `powerjob` 库。两个 App：`data-nest-job`（id=1，13 个平台定时任务）/ `data-nest-worker`（id=2，业务任务与 DAG 节点执行）。原 XXL-JOB（8088）/ DolphinScheduler（12345）/ Zookeeper 已随 PowerJob 迁移（2026-08-07）全部下线
 - **目标数仓**：内置 Doris（当前在 `192.168.119.135:9030`）
 - **业务库（2026-08-07 起按域拆 4 库）**：`datanest_system`（sys_*，app-system）、`datanest_alert`（alert_*+dag_alert_*，app-alert）、`datanest_engineering`（sync/dag/datasource 13 表，app-engineering）、`datanest_governance`（metadata/collect/quality 等 19 表，app-governance）；均在 middleware-postgres 同实例。**worker/job 无库**（纯执行/调度节点，application.yml 已排除 DataSource 自动配置）。旧 `datanest` 库保留只读观察后下线。各服务 Flyway 独立管理本库（`db/migration/V1.0.0__baseline.sql` 起，代码驱动见 §6）
 
@@ -33,7 +33,7 @@ DataNest 是一个数据平台，技术栈如下：
 
 | 模块 | 说明 |
 |------|------|
-| `data-nest-common` | 公共组件（SchedulerClient、InternalTokenFilter/Feign 拦截器等），最底层底座 |
+| `data-nest-common` | 公共组件（SchedulerClient/PowerJobWorkflowClient（PowerJob OpenAPI 直连）、InternalTokenFilter/Feign 拦截器等），最底层底座 |
 | `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等 + 共享 dto 包；全部 DB 访问经 Feign） |
 | `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
 | `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（内部端点 + DTO + fallbackFactory） |
@@ -41,7 +41,7 @@ DataNest 是一个数据平台，技术栈如下：
 | `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API；13 表本地持有） |
 | `data-nest-worker` | Addax 实际执行方（**无任何业务库**，全部经 Feign 回写） |
 | `data-nest-governance` | 数据治理服务（元数据、数据标准、质量编排/评分；19 表本地持有） |
-| `data-nest-job` | XXL-JOB executor，平台定时任务（**无任何业务库**，handler 全部端点化） |
+| `data-nest-job` | PowerJob worker（App `data-nest-job`），平台定时任务（**无任何业务库**，handler 全部端点化） |
 | `data-nest-system` | 认证、用户、权限（SysUser 体系本地持有） |
 | `data-nest-gateway` | 网关入口 |
 
@@ -56,9 +56,9 @@ DataNest 是一个数据平台，技术栈如下：
 |------|------|
 | `app-engineering` / `app-worker` / `app-governance` / `app-job` / `app-system` / `app-gateway` | 对应六个后端服务 |
 | `app-alert` | 独立告警服务（容器端口 8088，**不暴露宿主机端口**：对外走 gateway `/api/alert/**`，容器间 Feign 走 datanest-net） |
-| `middleware-mysql` | MySQL：Nacos、XXL-JOB、DolphinScheduler、业务库 |
+| `middleware-mysql` | MySQL：Nacos、PowerJob |
 | `middleware-postgres` | PostgreSQL：业务主库 |
-| `middleware-nacos` / `middleware-xxljob` / `middleware-redis` | Nacos / XXL-JOB Admin / Redis |
+| `middleware-nacos` / `middleware-powerjob` / `middleware-redis` | Nacos / PowerJob server（调度，含 DAG 工作流）/ Redis |
 
 ## 2. 会话约定
 
@@ -93,9 +93,9 @@ DataNest 是一个数据平台，技术栈如下：
 
 ### 关键原则
 
-- **task-core 拆分为 3 个共享模块**（entity/task-core-governance/task-core），是 engineering、governance、worker、job、system 的 **共享底座**（原第 4 个模块 alert 已独立为 app-alert 服务）。
-- 消费方只显式依赖 `data-nest-task-core`（经其传递获得 entity/governance 模块）；告警调用另依赖 `data-nest-alert-api`（Feign 契约）。
-- **构建顺序**：Maven 按 `<modules>` 声明顺序构建，顺序为 `common → *-api → task-core-entity → task-core-governance → task-core → 各服务`（已在根 pom 配置）。
+- **task-core 是共享执行内核**（原拆分模块 entity/task-core-governance 已删除），是 engineering、governance、worker、job、system 的 **共享底座**（原第 4 个模块 alert 已独立为 app-alert 服务）。
+- 消费方只显式依赖 `data-nest-task-core`；告警调用另依赖 `data-nest-alert-api`（Feign 契约）。
+- **构建顺序**：Maven 按 `<modules>` 声明顺序构建，顺序为 `common → *-api → task-core → 各服务`（已在根 pom 配置）。
 - **只要改到 `data-nest-task-core`（含任一拆分模块），必须同时重新编译并部署所有消费方**（至少 engineering 和 worker；若涉及治理/质量还需 governance/job/system），否则执行节点还是旧代码。命令见下。
 
 ### 常用命令
@@ -110,7 +110,7 @@ docker compose build app-engineering app-worker
 docker compose up -d --no-deps app-engineering app-worker
 ```
 
-> `-am`（also make）会自动把 `task-core` 依赖的 `task-core-entity/task-core-governance` 及各 api 模块一并构建。
+> `-am`（also make）会自动把 `task-core` 依赖的 common 及各 api 模块一并构建。
 
 ### 注意
 
@@ -164,10 +164,8 @@ docker compose up -d --no-deps app-engineering app-worker
 | MySQL root | 管理 MySQL 所有库 | `docker exec -it datanest-middleware-mysql mysql -u root -proot123` | root / root123 |
 | MySQL nacos | 查 Nacos 配置、业务库 | `docker exec -it datanest-middleware-mysql mysql -u nacos -pnacos123` | nacos / nacos123 |
 | Nacos 配置库 | 存储所有 shared-configs | `nacos.config_info` 表（在 middleware-mysql） | - |
-| XXL-JOB Admin | 调度任务管理 | http://localhost:8088 | admin / 123456（3.x API：`POST /auth/doLogin` 拿 cookie → `/jobinfo/trigger`，context-path 为 `/`） |
-| XXL-JOB DB | XXL-JOB 任务信息 | `datanest_scheduler.xxl_job_info` | - |
+| PowerJob 控制台/OpenAPI | 调度任务管理（含 DAG 工作流） | http://localhost:7700 | App 密码 `powerjob123`（App：`data-nest-job` id=1 / `data-nest-worker` id=2；DB 为 MySQL `powerjob` 库） |
 | Doris 内置 | 目标数仓 | `192.168.119.135:9030` | root / password |
-| DolphinScheduler | 工作流调度（当前保留） | http://localhost:12345 | admin / dolphinscheduler123 |
 
 ## 6. 已知坑（精简版）
 
@@ -178,7 +176,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **worker 已补上 caffeine 依赖**；不要回退，否则 `DagExecutionSyncService` 初始化会 `ClassNotFoundException`。
 - **Addax writer 配置路径已对齐**：代码读的是 `datanest.addax.writer.*`，不是 `datanest.doris.writer.*`。
 - **`writer.database` 兜底已删除**：目标库名由同步任务 `target_database` 决定；为空时直接抛异常。
-- **XXL-JOB 任务 ID 可能失效**：`sync_job.xxl_job_id` 若指向已删除/清理的任务，触发时报"任务ID非法"。处理：置空该字段，下次执行自动重新注册。
+- **`scheduler_job_id` 失效会惰性重注册**：`sync_job`/`quality_job` 等表的 `scheduler_job_id` 若指向 PowerJob 上已删除的任务（`deleteJob` 是软删 status=99），触发链路按未注册处理自动重新注册；存量 `xxl_job_id` 老值同理，无须手工清理。
 - **Nacos API 可能 401**：直接查 `middleware-mysql` 的 `nacos.config_info` 表更可靠。
 - **Doris 是外部主机**：不在 docker-compose 里，部署/清理时不要以为重启容器会影响 Doris。
 - **Addax 执行日志**：worker 容器内 `/opt/addax/log/sync_{sync_job_id}.log` 和 `/opt/addax/job/job_sync_{sync_job_id}.json` 是排查同步失败的第一现场。
@@ -191,9 +189,9 @@ docker compose up -d --no-deps app-engineering app-worker
 - **告警域全部在 app-alert**（`data-nest-alert-service`，com.datanest.alert.*）：规则 CRUD、触发（fire/fireBatch）、DAG 告警、邮件、dag_alert_config/history。前端路径 `/api/alert/**`（规则/历史/by-object/dag-alert-config），旧的 `/api/system/alert-rules`、`/api/engineering/*/alert-rule` 等已下线。
 - **邮件只需 app-alert 配**：`MAIL_*` 环境变量和 `shared-alert.yaml` 已从 engineering/worker/job 撤掉（本地 MailHog 仍需非空 `MAIL_USERNAME`/`MAIL_PASSWORD`）。其它服务不再有 MailService。
 - **触发链路全部经 Feign**（契约 `data-nest-alert-api`，端点 `/alert/internal/**`）：同步/采集/质量 fire → worker 内 task-core 执行器调 AlertApi；DAG SUCCESS/FAILURE → task-core `RemoteDagFinishedListener` → `/alert/internal/dag-finished`（端点内部同时完成质量自动触发：engineering 解析 dag_node.id → governance auto-trigger）；TIMEOUT → job `DagNodeTimeoutAlertHandler`（阈值经 `/alert/internal/dag-alert-config/resolve` 获取）。排查告警问题**先看 app-alert 日志**，再看调用方容器日志的 Feign 异常。
-- **内部调用鉴权**：`/internal/**` 端点由 common 的 `InternalTokenFilter` 校验 `X-Internal-Token`（配置 `datanest.internal.token`，Nacos `shared-internal.yaml`；为空则放行）。Feign 侧由 `InternalTokenFeignInterceptor` 自动加头。注意只拦截以 `/internal/` 开头的路径，DS 回调 `/dev/internal/**` 不受影响。
+- **内部调用鉴权**：`/internal/**` 端点由 common 的 `InternalTokenFilter` 校验 `X-Internal-Token`（配置 `datanest.internal.token`，Nacos `shared-internal.yaml`；为空则放行）。Feign 侧由 `InternalTokenFeignInterceptor` 自动加头。注意只拦截以 `/internal/` 开头的路径。
 - **Feign lb:// 必须有 `spring-cloud-starter-loadbalancer`**：否则启动报 `No Feign Client for loadBalancing defined`（engineering/worker/job 已补）。**新服务必须显式声明 `spring-boot-starter-validation`**（common 中是 provided，GlobalExceptionHandler 需要，否则 `NoClassDefFoundError: jakarta/validation/ConstraintViolationException`）。
-- **启动类 scanBasePackages 只追加 `com.datanest.common.internal`**：扫整个 `com.datanest.common` 会误装配 `SchedulerClient`（`@Value("${xxl.job.admin.addresses}")` 无默认值，未引 shared-xxljob 的服务启动失败）。
+- **启动类 scanBasePackages 只追加 `com.datanest.common.internal`**：不要扫整个 `com.datanest.common`（避免误装配 common 里的调度/MVC 专属 bean；SchedulerClient 的配置键 `datanest.powerjob.*` 已带默认值，不再像 XXL 时代那样直接启动失败，但误装配语义仍要避免）。
 - **`alert_rule.object_type` 有数据库 CHECK 约束**：含 `DAG/SYNC_JOB/COLLECT_TASK/QUALITY`（V3.6.6 已重建）。新增对象类型需同步改约束 + app-alert 的 `AlertRuleService.validate()` 白名单。
 - **告警跨域数据经 Feign 反查**：对象名/下拉（engineering、governance 的 `/internal/objects/names`、`/internal/alert-objects/options`）、收件人邮箱/用户名（system 的 `/internal/users/emails|usernames`）。远端失败均降级（warn + 空值），不阻断告警发送。
 - **遗留**：app-alert 的 `selectHistoryPage` 仍有跨表 LEFT JOIN（dag/sync_job/collect_task/quality_job），同库期间正常，**拆库（阶段 5）前必须改为 Feign 反查**。
@@ -204,7 +202,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **SimpleEvaluationContext 不含 MapAccessor**：条件分支 SpEL 里 `#upstream.row_count` 属性语法必然抛 "Property cannot be found"。需用索引语法 `#a['b']`（见 `DagNodeExecuteService.evaluateBranches`）。
 - **条件节点 upstream 是嵌套结构**：`buildConditionContext` 以「前驱节点名」为 key 构造嵌套 map（支持 `${upstream['节点名'].row_count}`），顶层同时保留最后遍历前驱的 `row_count/status` 兼容 `${upstream.row_count}`。排查"多前驱条件分支取错值"先确认用的是按节点名写法。
 - **条件表达式不再暴露 dag_id**：`buildConditionContext` 已 `vars.remove("dag_id")`；但 `DagParameterResolver` 的 `dag_id` 仍保留（供 SQL 占位符 `${dag_id}`）。改动条件表达式变量时别动参数解析层的 `dag_id`。
-- **DagExecutionSyncService 匹配 DS 任务实例**：DS 任务名 = `节点名_节点ID后8位`（nodeId 可能含 `_`），应按相同规则构建「DS 任务名→node」反向映射，不能简单按 nodeName 或 strip 末尾 `_` 段匹配。SUB_DAG 等匹配失败会落 WAITING→SKIPPED。
+- **DagExecutionSyncService 走 PowerJob `fetchWfInstanceInfo` 快照**：节点匹配链 = 快照 nodeId（workflow_node_info.id）→ `dag_node.powerjob_node_id` → node_execution（前端 UUID 的 nodeId 经该列桥接，精确匹配）；状态映射 5→SUCCESS / 4→FAILED / 9,10→TERMINATED / 其余 RUNNING；wf 终态（3/4/10）后未运行节点 WAITING→SKIPPED。
 
 ### Flyway / 迁移脚本
 
@@ -216,9 +214,9 @@ docker compose up -d --no-deps app-engineering app-worker
 
 ### 质量
 
-- **质量执行在 app-worker（Sprint 8 执行层）**：`qualityCheckExecuteHandler` 注册在 `data-nest-worker` 组，`QualityCheckService` 在 worker 容器内执行。手动/定时/自动三种触发统一投递到该 handler。改 task-core 的质量执行代码后必须重建 **app-worker**（不只是 governance）。
-- **质量任务定时 = 每任务独立注册 XXL-JOB（不再全局扫描）**：`startSchedule` 按需 `registerJob`/`startJob`，`stopSchedule` 仅 `stopJob`（保留 `xxl_job_id`），`delete` 注销，`update` 里 cron 变更会 `updateJob` 同步。已废弃 `QualityCheckHandler` 全局扫描（残留可手动删）。
-- **质量执行 executorParam 带触发类型**：手动/自动显式传 `jobId:MANUAL` / `jobId:AUTO_TRIGGER`（带冒号）；**定时触发用注册时保存的纯 `jobId`（无冒号）**，handler 对无冒号 param 默认按 `SCHEDULED`。排查"定时触发落库成 MANUAL"先看 handler 的 param 解析。
+- **质量执行在 app-worker（Sprint 8 执行层）**：`qualityCheckExecuteHandler` 注册在 PowerJob App `data-nest-worker`，`QualityCheckService` 在 worker 容器内执行。手动/定时/自动三种触发统一投递到该 handler。改 task-core 的质量执行代码后必须重建 **app-worker**（不只是 governance）。
+- **质量任务定时 = 每任务独立注册 PowerJob（不再全局扫描）**：`startSchedule` 按需 `registerJob`/`startJob`（SchedulerClient → saveJob/enableJob），`stopSchedule` 仅 `stopJob`（disableJob，保留 `scheduler_job_id`），`delete` 注销，`update` 里 cron 变更会 `updateJob` 同步。`quality_job` 使用 `scheduler_job_id` 字段。已废弃 `QualityCheckHandler` 全局扫描。
+- **质量执行调度参数带触发类型**：手动/自动显式传 `jobId:MANUAL` / `jobId:AUTO_TRIGGER`（带冒号，经 PowerJob instanceParams 传递）；**定时触发用注册时保存的纯 `jobId`（无冒号）**，handler 对无冒号 param 默认按 `SCHEDULED`。排查"定时触发落库成 MANUAL"先看 handler 的 param 解析。
 - **质量结果值提取坑（RANGE）**：Doris/MySQL 对空表 `SUM(...)` 返回 **NULL**（非 0），且 JDBC 列名可能大小写变化。`computeRangeRatio` 已对列名大小写不敏感匹配，`total=0` 或 `out` 为 NULL 时按 0 处理。
 - **质量接口经 gateway 前缀是 `/api/governance/quality/**`**，不是 `/api/quality/**`（直接调会 404）。路径形如 `/api/governance/quality/jobs/page`。
 - **质量执行结果表**：`quality_check_batch`（批次）+ `quality_check_detail`（规则明细）。明细含 `result_value` + `result_level`（`PASS/WARNING/SEVERE/UNAVAILABLE`），不评分。批次状态 `RUNNING/SUCCESS/PARTIAL_FAILED/FAILED`（无规则视为 SUCCESS）。

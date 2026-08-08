@@ -11,7 +11,4 @@ public interface DagMapper extends BaseMapper<Dag> {
 
     @Select("SELECT COUNT(*) FROM dag WHERE project_id = #{projectId} AND name = #{name}")
     long countByProjectIdAndName(@Param("projectId") Long projectId, @Param("name") String name);
-
-    @Select("SELECT * FROM dag WHERE ds_process_definition_code = #{code} LIMIT 1")
-    Dag selectByDsProcessDefinitionCode(@Param("code") Long code);
 }

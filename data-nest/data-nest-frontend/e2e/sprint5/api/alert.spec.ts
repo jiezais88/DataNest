@@ -1,7 +1,7 @@
 import {expect, test} from '@playwright/test';
 import {Api} from '../helpers/api';
 import {ADMIN} from '../helpers/data';
-import {psql, scalar} from '../helpers/db';
+import {psql, psqlAlert, psqlEng, scalar} from '../helpers/db';
 import {Mailhog} from '../helpers/mailhog';
 import {getProjectId, runDag, waitCollectHistory, waitDagDsSynced, waitSyncJobHistory} from '../helpers/dag';
 import {createDag, ensureFailingCollectTask, ensureFailingSyncJob} from '../helpers/seed';
@@ -30,10 +30,31 @@ function clearAlertHistory(objectType: string, objectId: string): void {
             AND object_id = ${objectId}`);
 }
 
+/** dag_execution 在工程库、dag_alert_history 在告警库，拆库后需两步操作 */
+function dagExecutionIds(dagId: string): string[] {
+    return psqlEng(`SELECT id FROM dag_execution WHERE dag_id = ${dagId}`)
+        .split('\n').filter(Boolean);
+}
+
 function clearDagAlertHistory(dagId: string): void {
-    psql(`DELETE
-          FROM dag_alert_history
-          WHERE execution_id IN (SELECT id FROM dag_execution WHERE dag_id = ${dagId})`);
+    const execIds = dagExecutionIds(dagId);
+    if (execIds.length === 0) return;
+    psqlAlert(`DELETE
+               FROM dag_alert_history
+               WHERE execution_id IN (${execIds.join(',')})`);
+}
+
+/** 统计指定 DAG 某告警类型的 dag_alert_history 条数（跨库两步） */
+function countDagAlertHistory(dagId: string, alertType: string): number {
+    const execIds = dagExecutionIds(dagId);
+    if (execIds.length === 0) return 0;
+    const r = psqlAlert(
+        `SELECT count(*)
+         FROM dag_alert_history
+         WHERE execution_id IN (${execIds.join(',')})
+           AND alert_type = '${alertType}'`,
+    );
+    return Number(r || '0');
 }
 
 function countAlertHistory(objectType: string, objectId: string, alertType: string): number {
@@ -530,13 +551,8 @@ test.describe('告警中心 API', () => {
 
         // dag_alert_history 出现回退记录
         await waitFor(
-            async () => scalar(
-                `SELECT count(*)
-                 FROM dag_alert_history
-                 WHERE execution_id IN (SELECT id FROM dag_execution WHERE dag_id = ${dag.id})
-                   AND alert_type = 'FAILURE'`,
-            ),
-            (n) => Number(n) >= 1,
+            async () => countDagAlertHistory(String(dag.id), 'FAILURE'),
+            (n) => n >= 1,
             {timeoutMs: 30_000, label: 'dag_alert_config 回退历史'},
         );
 

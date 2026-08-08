@@ -3,7 +3,6 @@ package com.datanest.engineering.controller.internal;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.dto.CleanupRequest;
-import com.datanest.engineering.api.dto.DagExecutionCreateRequest;
 import com.datanest.engineering.api.dto.DagExecutionFinalizeRequest;
 import com.datanest.engineering.api.dto.DagExecutionInfo;
 import com.datanest.engineering.api.dto.EnsureDagExecutionRequest;
@@ -52,16 +51,6 @@ public class InternalExecutionController {
     @GetMapping("/dag-executions/{id}")
     public Result<DagExecutionInfo> getById(@PathVariable Long id) {
         return Result.ok(executionService.getById(id));
-    }
-
-    @GetMapping("/dag-executions/by-ds-instance/{dsProcessInstanceId}")
-    public Result<DagExecutionInfo> getByDsInstance(@PathVariable Long dsProcessInstanceId) {
-        return Result.ok(executionService.getByDsInstance(dsProcessInstanceId));
-    }
-
-    @PostMapping("/dag-executions")
-    public Result<Long> createExecution(@RequestBody DagExecutionCreateRequest request) {
-        return Result.ok(executionService.createExecution(request));
     }
 
     /** P3：按 PowerJob 工作流实例补齐执行记录（worker 处理 cron 触发实例时经 Feign 调用） */

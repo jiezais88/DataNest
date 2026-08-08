@@ -6,7 +6,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * DAG 定义（一个 DAG 同步为 DS 一个 ProcessDefinition）
+ * DAG 定义（一个 DAG 同步为 PowerJob 一个 Workflow）
  * 对应表 dag
  */
 @Data
@@ -30,16 +30,7 @@ public class Dag {
 
     private String status;               // ENABLED / DISABLED
 
-    private Long dsProjectCode;
-
-    private Long dsProcessDefinitionId;
-
-    private Long dsProcessDefinitionCode;
-
-    @TableField(updateStrategy = FieldStrategy.ALWAYS)
-    private Long dsScheduleId;
-
-    /** PowerJob 工作流 ID（替代 dsProcessDefinitionCode，切流后生效，旧列保留至切流清理） */
+    /** PowerJob 工作流 ID（P4 起唯一调度标识，旧 ds_* 列已随 V1.3.0 删除） */
     private Long powerjobWorkflowId;
 
     private String releaseState;         // OFFLINE / ONLINE

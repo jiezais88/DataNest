@@ -22,7 +22,6 @@ spring:
       - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-addax.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-xxljob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-powerjob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true

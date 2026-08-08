@@ -130,7 +130,7 @@ public class DagExecutionService {
             }
         }
         if (dag.getPowerjobWorkflowId() == null) {
-            throw new BusinessException(ErrorCode.DS_API_ERROR, "DAG 未同步到 PowerJob");
+            throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR, "DAG 未同步到 PowerJob");
         }
 
         // 1. 先入库 dag_execution RUNNING 占位行（P1-3：靠 DB 唯一索引 uk_dag_execution_running 保证并发安全）
@@ -212,7 +212,7 @@ public class DagExecutionService {
                     } catch (Exception ex) {
                         logger.error("补偿标记 FAILED/SKIPPED 失败，需人工处理悬挂执行记录: executionId={}", executionId, ex);
                     }
-                    throw new BusinessException(ErrorCode.DS_API_ERROR, reason);
+                    throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR, reason);
                 }
                 // 回写 PowerJob 工作流实例 ID，供 DagExecutionSyncService 轮询收尾
                 DagExecution fresh = dagExecutionMapper.selectById(executionId);
@@ -350,7 +350,7 @@ public class DagExecutionService {
         }
         if (oldExecution.getPowerjobWfInstanceId() == null) {
             // DS 存量的执行记录没有 PowerJob 工作流实例，无法就地重试
-            throw new BusinessException(ErrorCode.DS_API_ERROR,
+            throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR,
                     "该执行记录无 PowerJob 工作流实例（迁移前存量），无法重跑，请重新触发");
         }
 
@@ -420,7 +420,7 @@ public class DagExecutionService {
                     } catch (Exception ex) {
                         logger.error("重跑失败补偿标记失败: executionId={}", executionId, ex);
                     }
-                    throw new BusinessException(ErrorCode.DS_API_ERROR, reason);
+                    throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR, reason);
                 }
             }
         });
@@ -654,7 +654,6 @@ public class DagExecutionService {
         dto.setId(ex.getId());
         dto.setDagId(ex.getDagId());
         dto.setDagName(dag == null ? null : dag.getName());
-        dto.setDsProcessInstanceId(ex.getDsProcessInstanceId());
         dto.setTriggerType(ex.getTriggerType());
         dto.setStatus(ex.getStatus());
         dto.setStartTime(ex.getStartTime());
@@ -688,7 +687,6 @@ public class DagExecutionService {
         dto.setNodeName(ne.getNodeName());
         dto.setNodeType(ne.getNodeType());
         dto.setStatus(ne.getStatus());
-        dto.setDsTaskInstanceId(ne.getDsTaskInstanceId());
         dto.setSyncJobId(ne.getSyncJobId());
         dto.setSyncJobHistoryId(ne.getSyncJobHistoryId());
         dto.setStartTime(ne.getStartTime());

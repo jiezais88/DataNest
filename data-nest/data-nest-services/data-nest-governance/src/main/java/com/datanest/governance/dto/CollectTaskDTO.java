@@ -32,7 +32,7 @@ public class CollectTaskDTO {
 
     private String description;
 
-    /** PowerJob 调度任务 ID（旧 xxl_job_id 列保留至切流清理，不再读写） */
+    /** PowerJob 调度任务 ID（旧 xxl_job_id 列已随 V1.2.0 删除） */
     private Long schedulerJobId;
 
     private Integer scheduleEnabled;

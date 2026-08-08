@@ -7,13 +7,18 @@ export function getProjectId(name: string): string | null {
     return scalar(`SELECT id FROM dag_project WHERE name='${name}'`);
 }
 
-/** 等待 DAG 完成 DS 同步（获得 dsProcessDefinitionCode） */
+/**
+ * 等待 DAG 完成调度同步。
+ * PowerJob 迁移前：等 DTO 的 dsProcessDefinitionCode 非空；
+ * 迁移后（2026-08-07）：dag 表改为 powerjob_workflow_id 列，且 DTO 不再下发该字段，
+ * 只能直接查 DB（psql 按表路由到 datanest_engineering）。
+ */
 export async function waitDagDsSynced(api: Api, dagId: string, opts: { timeoutMs?: number } = {}): Promise<any> {
     const {timeoutMs = 60_000} = opts;
     return waitFor(
-        async () => api.get(`/engineering/dev/dags/${dagId}`),
-        (d) => d.dsProcessDefinitionCode != null,
-        {timeoutMs, label: `dag ${dagId} DS 同步`},
+        async () => scalar(`SELECT powerjob_workflow_id FROM dag WHERE id=${dagId}`),
+        (v) => v != null,
+        {timeoutMs, label: `dag ${dagId} 调度同步`},
     );
 }
 

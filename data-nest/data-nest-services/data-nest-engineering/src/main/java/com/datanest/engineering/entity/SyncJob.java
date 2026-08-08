@@ -77,7 +77,7 @@ public class SyncJob {
     /** Sprint 3 Phase 8：限流总开关 0/1 */
     private Integer rateLimitEnabled;
 
-    /** PowerJob jobId（调度任务 ID，已替代原 xxl_job_id，旧列保留至切流清理） */
+    /** PowerJob jobId（调度任务 ID，旧 xxl_job_id 列已随 V1.3.0 删除） */
     private Long schedulerJobId;
 
     private String description;

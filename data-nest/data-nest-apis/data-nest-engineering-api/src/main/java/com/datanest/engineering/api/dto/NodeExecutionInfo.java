@@ -25,9 +25,7 @@ public class NodeExecutionInfo {
 
     private String status;
 
-    private Long dsTaskInstanceId;
-
-    /** PowerJob 任务实例 ID（替代 dsTaskInstanceId，切流后生效） */
+    /** PowerJob 任务实例 ID（旧 dsTaskInstanceId 已随 P4 切流清理删除） */
     private Long powerjobInstanceId;
 
     private Long syncJobId;

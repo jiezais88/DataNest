@@ -52,7 +52,7 @@ export interface SyncJob {
     executionStatus: SyncExecutionStatus;
     scheduleEnabled: boolean;
     nextExecutionTime?: string;
-    xxlJobId?: number;
+    schedulerJobId?: string;
     description?: string;
     lastExecuteTime?: string;
     lastHistoryId?: string;

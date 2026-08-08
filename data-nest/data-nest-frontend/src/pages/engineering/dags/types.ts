@@ -79,8 +79,6 @@ export interface Dag {
     scheduleEnabled: boolean;
     maxParallelism: number;
     status: 'ENABLED' | 'DISABLED';
-    dsProjectCode?: number;
-    dsProcessDefinitionCode?: number;
     releaseState?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -113,7 +111,6 @@ export interface DagExecution {
     id?: string | number;
     dagId?: string | number;
     dagName?: string;
-    dsProcessInstanceId?: number;
     triggerType?: string;
     status: string;
     startTime?: string;

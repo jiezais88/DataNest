@@ -10,7 +10,7 @@ import {gotoAs} from '../helpers/e2e';
  * - 页面加载：统计卡片 + Tab 切换
  * - 新增质量任务（Drawer：名称 / 数据源范围 / 启用）
  * - 定时调度：勾选不填 Cron → 校验错误；填 Cron 成功
- * - 自动触发完整绑定：勾选 + 选 SYNC_JOB + 选同步任务 → 成功，列表展示「同步任务」
+ * - 自动触发完整绑定：勾选 + 选 SYNC_JOB + 选同步任务 → 成功，列表展示「同步任务（对象名）」
  * - 详情查看（只读）
  * - 编辑任务
  * - 启停任务
@@ -151,8 +151,8 @@ test.describe('Sprint 6 质量任务 E2E', () => {
         await drawer.getByRole('button', {name: '保存'}).click();
         const row = rowBy(page, name);
         await expect(row).toBeVisible({timeout: 15000});
-        // 自动触发列展示「同步任务」
-        await expect(row.getByText('同步任务', {exact: true})).toBeVisible();
+        // 自动触发列展示「同步任务（绑定对象名）」（对象名由后端 autoTriggerObjectName 回填）
+        await expect(row.getByText(`同步任务（${QUALITY_SYNC_JOB}）`, {exact: true})).toBeVisible();
     });
 
     test('详情查看：只读展示任务信息', async ({page}) => {

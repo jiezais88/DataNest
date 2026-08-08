@@ -31,6 +31,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -45,8 +46,11 @@ public class DagService {
 
     private static final Logger logger = LoggerFactory.getLogger(DagService.class);
 
-    /** DAG 相关节点 job 与工作流统一挂在 data-nest-worker App（appId=2） */
+    /** DAG 工作流统一挂在 data-nest-worker App（appId=2）；节点不再单独建 job，共享 worker 注册的 5 个内置节点 job */
     private static final String WORKER_APP_NAME = "data-nest-worker";
+
+    /** 内置共享节点 jobId 缓存（节点类型 → jobId；worker 启动时注册，解析成功后基本不变；缺失不缓存，下次同步重试） */
+    private final Map<String, Long> builtinNodeJobIdCache = new ConcurrentHashMap<>();
 
     private final DagMapper dagMapper;
     private final DagNodeMapper dagNodeMapper;
@@ -164,16 +168,11 @@ public class DagService {
         dagMapper.updateById(existing);
 
         // 清空旧 nodes/edges 再插。
-        // 先抓旧节点：保留节点的 powerjob_job_id / powerjob_node_id 按 nodeId 平移到新行（server 侧资源按 id 幂等更新），
-        // 被移除节点的 PowerJob 资源在事务提交后清理
+        // 先抓旧节点：保留节点的 powerjob_node_id 按 nodeId 平移到新行（server 侧 workflow_node_info 按 id 幂等更新）；
+        // 被移除节点无需单独清理——节点不再建独立 job（共享内置 job），游离 workflow_node_info 由 saveWorkflow 服务端物理删除
         List<DagNode> oldNodes = dagNodeMapper.selectByDagId(id);
         Map<String, DagNode> oldNodeByNodeId = oldNodes.stream()
                 .collect(Collectors.toMap(DagNode::getNodeId, n -> n, (a, b) -> a));
-        Set<String> newNodeIds = payload.getNodes() == null ? Set.of()
-                : payload.getNodes().stream().map(DagNodePayload::getNodeId).collect(Collectors.toSet());
-        List<DagNode> removedNodes = oldNodes.stream()
-                .filter(n -> !newNodeIds.contains(n.getNodeId()))
-                .toList();
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
         saveNodesAndEdges(id, payload, oldNodeByNodeId);
@@ -190,19 +189,6 @@ public class DagService {
                     syncToScheduler(id);
                 } catch (Exception e) {
                     logger.error("DAG 更新后同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}", id, e);
-                }
-                // 被移除节点的 PowerJob 节点 job 清理（工作流节点记录由 saveWorkflow 服务端自动物理删除；
-                // 同步失败时残留的 workflow_node_info 由下次成功同步兜底，job 清理失败仅记 warn 留待人工处理）
-                for (DagNode removed : removedNodes) {
-                    if (removed.getPowerjobJobId() == null) {
-                        continue;
-                    }
-                    try {
-                        powerJobWorkflowClient.deleteNodeJob(WORKER_APP_NAME, removed.getPowerjobJobId());
-                    } catch (Exception e) {
-                        logger.warn("清理被移除节点的 PowerJob job 失败（留待人工清理）: dagId={}, nodeId={}, jobId={}",
-                                id, removed.getNodeId(), removed.getPowerjobJobId(), e);
-                    }
                 }
             }
         });
@@ -228,12 +214,9 @@ public class DagService {
             throw new BusinessException(ErrorCode.DAG_REFERENCED,
                     "该 DAG 被子 DAG 节点引用，无法删除", referencingNames);
         }
-        // 先抓取 PowerJob 侧信息（工作流 ID + 各节点 jobId），DB 提交后再做清理（HTTP 调用不能放在 DB 事务里）
+        // 先抓取 PowerJob 侧工作流 ID，DB 提交后再做清理（HTTP 调用不能放在 DB 事务里）；
+        // 节点不再建独立 job（共享内置 job），无需逐个删节点 job
         Long powerjobWorkflowId = dag.getPowerjobWorkflowId();
-        List<Long> nodeJobIds = dagNodeMapper.selectByDagId(id).stream()
-                .map(DagNode::getPowerjobJobId)
-                .filter(Objects::nonNull)
-                .toList();
 
         // 1. DB 清理：级联删除 execution 及 node_execution
         List<DagExecution> executions = dagExecutionMapper.selectByDagId(id);
@@ -263,7 +246,7 @@ public class DagService {
 
         // 2. PowerJob 清理：事务提交后删除工作流（cron 随工作流一并删除，无 DS 独立 schedule 概念）
         //    补偿：DB 已提交不能回滚，清理失败时记 error 日志并抛业务异常提示用户人工清理残留
-        //    节点 job 是 server 侧独立资源，随工作流删除后逐个 deleteNodeJob（尽力而为，失败仅记 warn）
+        //    节点共享内置 job，随工作流删除只剩 deleteWorkflow；游离 workflow_node_info 由 server 自动清
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -273,15 +256,8 @@ public class DagService {
                     } catch (Exception e) {
                         logger.error("PowerJob 工作流清理失败（DB 已删除，需人工清理 PowerJob 残留）: dagId={}, workflowId={}",
                                 id, powerjobWorkflowId, e);
-                        throw new BusinessException(ErrorCode.DS_API_ERROR,
+                        throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR,
                                 "DAG 已删除，但 PowerJob 侧残留清理失败，请联系管理员人工清理");
-                    }
-                }
-                for (Long nodeJobId : nodeJobIds) {
-                    try {
-                        powerJobWorkflowClient.deleteNodeJob(WORKER_APP_NAME, nodeJobId);
-                    } catch (Exception e) {
-                        logger.warn("PowerJob 节点 job 清理失败（留待人工清理）: dagId={}, jobId={}", id, nodeJobId, e);
                     }
                 }
             }
@@ -357,9 +333,11 @@ public class DagService {
 
     /**
      * 同步 DataNest DAG 到 PowerJob Workflow（P3：替换 DS ProcessDefinition 同步）
-     * 1) 逐节点 saveNodeJob 注册/更新 WORKFLOW 类型的节点 job（dag_node.powerjob_job_id 有值带 id 更新，无则新建），回写
+     * 1) 解析 5 个内置共享节点 jobId（固定名称经 findJobIdByName 一次性解析并缓存，
+     *    任一缺失报 BusinessException「内置 DAG 节点任务未注册，请确认 worker 已启动」）
      * 2) 逐节点 saveWorkflowNode 注册/更新 server 侧工作流节点记录（dag_node.powerjob_node_id 有值带 id 更新，无则新建），回写
-     *    同步子 DAG 节点为 NESTED_WORKFLOW 类型（nodeType=3），无独立 job，jobId 填子 DAG 的 powerjobWorkflowId
+     *    JOB 类型节点（nodeType=1）jobId 按节点类型取内置共享 job、nodeParams 写节点身份 JSON {"dagId","nodeId","nodeType"}；
+     *    同步子 DAG 节点为 NESTED_WORKFLOW 类型（nodeType=3），jobId 填子 DAG 的 powerjobWorkflowId
      * 3) 装配 PJDag（Node.nodeId=powerjob_node_id，Edge from/to 同理）后 saveWorkflow
      *    （已有 powerjob_workflow_id 则带 id 全量覆盖；CRON 配置随工作流一并下发；
      *    server 端会物理删除本工作流下游离的 workflow_node_info，被移除节点的工作流节点记录随之清理）
@@ -384,53 +362,33 @@ public class DagService {
 
         Long newWorkflowId;
         try {
+            // ① 解析内置共享节点 jobId（5 个固定名，一次性解析并缓存；任一缺失说明 worker 未启动注册）
+            Map<String, Long> builtinJobIdByType = resolveBuiltinNodeJobIds();
             List<DagPowerJobConverter.NodeJobDef> defs = dagPowerJobConverter.toNodeJobDefs(dagId, nodes);
             Map<Long, DagNode> nodeByPk = nodes.stream()
                     .collect(Collectors.toMap(DagNode::getId, n -> n, (a, b) -> a));
             for (DagPowerJobConverter.NodeJobDef def : defs) {
-                Long jobId;
-                if (def.nestedWorkflow()) {
-                    // 同步子 DAG：NESTED_WORKFLOW 节点无独立 job，jobId = 子 DAG 的 powerjobWorkflowId
-                    jobId = def.resolvedJobId();
-                } else {
-                    // ① 节点 job 注册/更新（powerjob_job_id 有值则带 id 更新，无则新建）
-                    jobId = powerJobWorkflowClient.saveNodeJob(WORKER_APP_NAME,
-                            def.powerjobJobId(), def.handler(), def.jobName(), def.jobParams());
-                }
                 // ② 工作流节点记录注册/更新（powerjob_node_id 有值则带 id 更新，无则新建）
+                //    JOB 节点 jobId=内置共享 job、nodeParams=节点身份 JSON；嵌套节点 jobId=子 DAG 工作流 ID
+                Long jobId = def.nestedWorkflow() ? def.resolvedJobId()
+                        : builtinJobIdByType.get(def.nodeType());
                 Long pjNodeId = powerJobWorkflowClient.saveWorkflowNode(WORKER_APP_NAME, def.powerjobNodeId(),
                         def.nestedWorkflow() ? DagPowerJobConverter.PJ_NODE_TYPE_NESTED_WORKFLOW
                                 : DagPowerJobConverter.PJ_NODE_TYPE_JOB,
-                        jobId, def.nodeName(), null, false);
-                // 节点类型由普通 job 改为同步子 DAG 时，清理遗留的旧节点 job 并清空 powerjob_job_id
-                Long writebackJobId = jobId;
-                if (def.nestedWorkflow()) {
-                    writebackJobId = null;
-                    if (def.powerjobJobId() != null) {
-                        try {
-                            powerJobWorkflowClient.deleteNodeJob(WORKER_APP_NAME, def.powerjobJobId());
-                        } catch (Exception e) {
-                            logger.warn("清理节点类型变更遗留的 PowerJob job 失败（留待人工清理）: dagId={}, nodeId={}, jobId={}",
-                                    dagId, def.nodeUuid(), def.powerjobJobId(), e);
-                        }
-                    }
-                }
-                // 回写 dag_node.powerjob_job_id / powerjob_node_id（显式 set 按主键定点更新，
-                // 既不覆盖 afterCommit 外的并发写，也支持嵌套节点把 powerjob_job_id 清空）
+                        jobId, def.nodeName(), def.nodeParams(), false);
+                // 回写 dag_node.powerjob_node_id（显式 set 按主键定点更新，不覆盖 afterCommit 外的并发写）
                 dagNodeMapper.update(null, new UpdateWrapper<DagNode>()
                         .eq("id", def.dagNodeId())
-                        .set("powerjob_job_id", writebackJobId)
                         .set("powerjob_node_id", pjNodeId));
                 // 同步到内存实体，供 buildWorkflowDag 装配 PJDag
                 DagNode node = nodeByPk.get(def.dagNodeId());
                 if (node != null) {
-                    node.setPowerjobJobId(writebackJobId);
                     node.setPowerjobNodeId(pjNodeId);
                 }
             }
             // ③ 装配 PJDag 并保存工作流（带 id 即全量覆盖更新；
             //    server 端 validateAndConvert2String 会物理删除本工作流下游离的工作流节点记录）
-            PJDag pjDag = dagPowerJobConverter.buildWorkflowDag(nodes, edges, defs);
+            PJDag pjDag = dagPowerJobConverter.buildWorkflowDag(nodes, edges, defs, builtinJobIdByType);
             boolean isCron = "CRON".equalsIgnoreCase(dag.getTriggerType())
                     && StringUtils.hasText(dag.getCronExpression());
             // enable 语义对齐 P2 的 SchedulerClient：CRON 任务注册即带 cron，启停由 enable 控制；
@@ -452,6 +410,37 @@ public class DagService {
         dag.setReleaseState("ONLINE");
         dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.updateById(dag);
+    }
+
+    /**
+     * 解析 5 个内置共享节点 job 的 jobId（节点类型 → jobId）。
+     * 固定名称经 findJobIdByName 一次性解析并缓存（命中才缓存，缺失不缓存以便 worker 注册后重试）；
+     * 任一缺失说明 worker 未启动完成注册，抛 BusinessException 由调用方按"同步失败"容错语义处理
+     * （release_state=OFFLINE，触发时重试兜底）。
+     */
+    private Map<String, Long> resolveBuiltinNodeJobIds() {
+        Map<String, Long> jobIdByType = new HashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (Map.Entry<String, String> entry : DagPowerJobConverter.BUILTIN_JOB_NAME_BY_TYPE.entrySet()) {
+            String type = entry.getKey();
+            Long jobId = builtinNodeJobIdCache.get(type);
+            if (jobId == null) {
+                jobId = powerJobWorkflowClient.findJobIdByName(WORKER_APP_NAME, entry.getValue());
+                if (jobId != null) {
+                    builtinNodeJobIdCache.put(type, jobId);
+                }
+            }
+            if (jobId == null) {
+                missing.add(entry.getValue());
+            } else {
+                jobIdByType.put(type, jobId);
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR,
+                    "内置 DAG 节点任务未注册，请确认 worker 已启动（缺失: " + String.join("、", missing) + "）");
+        }
+        return jobIdByType;
     }
 
     /**
@@ -518,8 +507,8 @@ public class DagService {
     /**
      * 保存节点和边（真正的批量插入，避免 N 次 round-trip）。
      *
-     * @param oldNodeByNodeId 更新前的旧节点（nodeId → 旧行），用于把 powerjob_job_id / powerjob_node_id
-     *                        平移到新行（server 侧资源按 id 幂等更新）；新建 DAG 传 null
+     * @param oldNodeByNodeId 更新前的旧节点（nodeId → 旧行），用于把 powerjob_node_id
+     *                        平移到新行（server 侧 workflow_node_info 按 id 幂等更新）；新建 DAG 传 null
      */
     private void saveNodesAndEdges(Long dagId, DagPayload payload, Map<String, DagNode> oldNodeByNodeId) {
         // Sprint 3 性能2：真正的批量插入，避免 N 次 round-trip
@@ -537,10 +526,9 @@ public class DagService {
                 node.setPositionX(np.getPositionX());
                 node.setPositionY(np.getPositionY());
                 node.setConfig(np.getConfig());
-                // 保留节点的 PowerJob 注册信息按 nodeId 平移（节点主键每次更新都会重建，注册 ID 不能丢）
+                // 保留节点的 workflow_node_info 节点 ID 按 nodeId 平移（节点主键每次更新都会重建，注册 ID 不能丢）
                 DagNode old = oldNodeByNodeId == null ? null : oldNodeByNodeId.get(np.getNodeId());
                 if (old != null) {
-                    node.setPowerjobJobId(old.getPowerjobJobId());
                     node.setPowerjobNodeId(old.getPowerjobNodeId());
                 }
                 node.setCreatedBy(uid);
@@ -604,7 +592,7 @@ public class DagService {
         for (DagNodePayload node : payload.getNodes()) {
             String nodeType = node.getNodeType() == null ? "" : node.getNodeType().toUpperCase();
             if (!validTypes.contains(nodeType)) {
-                throw new BusinessException(ErrorCode.DS_API_ERROR,
+                throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR,
                         "非法节点类型: " + node.getNodeType() + " (nodeId=" + node.getNodeId() + ")");
             }
             if (!StringUtils.hasText(node.getConfig())) {
@@ -797,10 +785,6 @@ public class DagService {
         dto.setScheduleEnabled(dag.getScheduleEnabled() != null && dag.getScheduleEnabled() == 1);
         dto.setMaxParallelism(dag.getMaxParallelism());
         dto.setStatus(dag.getStatus());
-        dto.setDsProjectCode(dag.getDsProjectCode());
-        dto.setDsProcessDefinitionId(dag.getDsProcessDefinitionId());
-        dto.setDsProcessDefinitionCode(dag.getDsProcessDefinitionCode());
-        dto.setDsScheduleId(dag.getDsScheduleId());
         dto.setReleaseState(dag.getReleaseState());
         dto.setCreatedAt(dag.getCreatedAt());
         dto.setUpdatedAt(dag.getUpdatedAt());

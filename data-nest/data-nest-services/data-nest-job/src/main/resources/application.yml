@@ -21,7 +21,6 @@ spring:
       - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-powerjob.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
-      - optional:nacos:shared-dolphinscheduler.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:

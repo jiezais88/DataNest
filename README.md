@@ -33,7 +33,7 @@
 - 采集模式：全量采集、全量+增量
 - 执行历史与执行日志
 - 元数据管理：数据源 → 库/Schema → 表 → 字段 的树形浏览，表/字段注释可编辑
-- 集成 XXL-JOB 作为统一调度中心
+- 集成 XXL-JOB 作为统一调度中心（2026-08 已迁移至 PowerJob）
 
 ### Sprint 2：批量数据同步与数据标准
 
@@ -44,7 +44,7 @@
 
 ### Sprint 3：DAG 编排与 SQL 任务编辑器
 
-- 引入 **DolphinScheduler 3.4.2** 作为 DAG 调度与执行引擎（Master / Worker / API / Alert 分离架构）
+- 引入 **DolphinScheduler 3.4.2** 作为 DAG 调度与执行引擎（Master / Worker / API / Alert 分离架构；2026-08 已迁移至 PowerJob Workflow）
 - DAG 项目管理：项目维度隔离 DAG 流水线
 - DAG 编辑器：ReactFlow 画布拖拽编排 + Monaco SQL 编辑器，支持 SQL 节点定义与执行
 - SQL 预览、执行历史与节点执行日志
@@ -81,8 +81,8 @@
 | 网关与鉴权    | Spring Cloud Gateway、Sa-Token、JWT                                               |
 | ORM 与迁移    | MyBatis-Plus、Flyway                                                              |
 | 注册/配置中心 | Nacos 3.1.1                                                                       |
-| 任务调度      | XXL-JOB 3.4.2（平台定时任务）、DolphinScheduler 3.4.2（DAG 编排执行）             |
-| 数据库        | PostgreSQL 16（业务元数据）、MySQL 8.0（Nacos + XXL-JOB + DolphinScheduler）      |
+| 任务调度      | PowerJob 5.1.2（平台定时任务 + DAG 编排执行；原 XXL-JOB / DolphinScheduler 已于 2026-08 迁移下线） |
+| 数据库        | PostgreSQL 16（业务元数据）、MySQL 8.0（Nacos + PowerJob）                       |
 | 数仓/目标库   | Apache Doris（外部部署，同步任务目标端）                                          |
 | 缓存/会话     | Redis 7                                                                           |
 | 前端          | React 18、TypeScript、Vite 5、Tailwind CSS、ReactFlow 11、Monaco Editor           |
@@ -118,7 +118,7 @@ Data Platform/
     ├── data-nest-task-core/       # 共享核心：DAG 模型、节点执行、血缘、告警服务
     ├── data-nest-governance/      # 元数据采集 + 元数据管理 + 数据标准 + 血缘查询
     ├── data-nest-worker/          # 任务执行器（SQL/Python/同步节点、DAG 回调）
-    ├── data-nest-job/             # 平台定时任务执行器（XXL-JOB）
+    ├── data-nest-job/             # 平台定时任务执行器（PowerJob App data-nest-job）
     │
     └── data-nest-frontend/        # React 前端
 ```
@@ -156,16 +156,15 @@ cd data-nest
 docker-compose up -d
 ```
 
-> 说明：DolphinScheduler（API / Master / Worker / Alert + Zookeeper）、Nacos、XXL-JOB、MailHog 等中间件均随
+> 说明：PowerJob、Nacos、MailHog 等中间件均随
 > `docker-compose.yml` 一键拉起；首次启动会执行数据库初始化脚本，等待所有容器进入 `healthy` 状态即可。
 
 ### 4. 访问系统
 
 - 前端：`http://localhost:3000`
 - 默认管理员账号：`admin / admin123`
-- XXL-JOB 控制台：`http://localhost:8088`（默认 admin / 123456）
+- PowerJob 控制台：`http://localhost:7700`（App 密码 `powerjob123`；App：`data-nest-job` / `data-nest-worker`）
 - Nacos 控制台：`http://localhost:8848`（默认 nacos / nacos）
-- DolphinScheduler 控制台：`http://localhost:12345`（默认 admin / dolphinscheduler123）
 - MailHog 邮件测试：`http://localhost:8025`（SMTP 端口 1025）
 
 ---
@@ -191,12 +190,10 @@ docker-compose up -d
 | 服务             | 容器名                          | 端口        | 说明                         |
 |------------------|---------------------------------|-------------|------------------------------|
 | Nacos            | `datanest-middleware-nacos`     | 8848 / 9848 | 注册/配置中心                |
-| XXL-JOB Admin    | `datanest-middleware-xxljob`    | 8088        | 平台定时任务调度中心         |
+| PowerJob         | `datanest-middleware-powerjob`  | 7700        | 统一调度中心（定时任务 + DAG 工作流） |
 | PostgreSQL       | `datanest-middleware-postgres`  | 5432        | 业务数据库                   |
-| MySQL            | `datanest-middleware-mysql`     | 3306        | Nacos + XXL-JOB + DS 数据库  |
+| MySQL            | `datanest-middleware-mysql`     | 3306        | Nacos + PowerJob 数据库      |
 | Redis            | `datanest-middleware-redis`     | 6379        | 会话/缓存                    |
-| DolphinScheduler | `datanest-middleware-ds-api` 等 | 12345       | DAG 编排执行引擎（API 入口） |
-| Zookeeper        | `datanest-middleware-zookeeper` | 2181        | DolphinScheduler 依赖        |
 | MailHog          | `datanest-mailhog`              | 1025 / 8025 | 本地 SMTP（发送）/ Web UI    |
 
 ### 测试目标库
@@ -225,13 +222,13 @@ docker-compose up -d
 | Password | `datanest123`                               |
 | JDBC URL | `jdbc:postgresql://localhost:5432/datanest` |
 
-#### Nacos + XXL-JOB + DolphinScheduler MySQL
+#### Nacos + PowerJob MySQL
 
 | 项       | 值                                                  |
 |----------|-----------------------------------------------------|
 | Host     | `localhost`                                         |
 | Port     | `3306`                                              |
-| Database | `nacos` / `datanest_scheduler` / `dolphinscheduler` |
+| Database | `nacos` / `powerjob`                                |
 | Username | `nacos`                                             |
 | Password | `nacos123`                                          |
 

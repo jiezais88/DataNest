@@ -89,13 +89,22 @@ export async function ensureUser(api: Api, u: {
         }
         return existing;
     }
-    const user = await api.post('/system/users', {
-        username: u.username,
-        password: u.password,
-        roles: u.roles,
-        email: u.email,
-    });
-    return String(user.id);
+    try {
+        const user = await api.post('/system/users', {
+            username: u.username,
+            password: u.password,
+            roles: u.roles,
+            email: u.email,
+        });
+        return String(user.id);
+    } catch (e) {
+        // 幂等兜底：用户名已存在（如历史残留/并发播种）则复用已有用户
+        const again = psql(`SELECT id
+                            FROM sys_user
+                            WHERE username = '${u.username}'`);
+        if (again) return again;
+        throw e;
+    }
 }
 
 export async function ensureTestUsers(): Promise<Record<string, string>> {
@@ -351,6 +360,13 @@ export function cleanupExecTables(): void {
     quiet(pgExec, `DROP TABLE IF EXISTS ${EXEC_TABLE}`);
 }
 
+/** 清理 e2e_s6 前缀的批次/明细残留（被中断运行跳过了 spec afterAll 时会留下孤儿批次，幂等） */
+export function cleanupExecBatches(): void {
+    psql(`DELETE FROM quality_check_detail WHERE batch_id IN (
+        SELECT id FROM quality_check_batch WHERE job_name LIKE 'e2e_s6%')`);
+    psql(`DELETE FROM quality_check_batch WHERE job_name LIKE 'e2e_s6%'`);
+}
+
 /** 清理执行层元数据（数据源 / 元数据表 / 字段，幂等） */
 export function cleanupExecMetadata(): void {
     for (const id of [EXEC_TABLE_MYSQL_OK_ID, EXEC_TABLE_MYSQL_BAD_ID, EXEC_TABLE_PG_OK_ID, EXEC_TABLE_PG_BAD_ID]) {
@@ -491,16 +507,16 @@ const SCORE_BAD_SQL = `SELECT COUNT(*) AS total FROM ${SCORE_PREFIX}_no_such_tab
  * 数据源沿用执行层 seedExecMetadata 播种的 MYSQL 执行数据源，本函数只建评分物理表 + 元数据 + 规则。
  */
 export function seedQualityScores(): void {
-    // 清理历史（先清评分/明细/规则，再清表元数据，最后 DROP 物理表）
+    // 清理历史（先清评分；再按明细反查删批次，然后才删明细——顺序反了会留下孤儿批次；最后清规则/表元数据/DROP 物理表）
     psql(`DELETE FROM quality_score WHERE table_id IN (
         ${SCORE_TABLE_PASS_ID}, ${SCORE_TABLE_WARN_ID}, ${SCORE_TABLE_SEVERE_ID}, ${SCORE_TABLE_UNAVAIL_ID})`);
-    psql(`DELETE FROM quality_check_detail WHERE rule_id IN (
-        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
-        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
     psql(`DELETE FROM quality_check_batch WHERE id IN (
         SELECT DISTINCT batch_id FROM quality_check_detail WHERE rule_id IN (
             ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
             ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL}))`);
+    psql(`DELETE FROM quality_check_detail WHERE rule_id IN (
+        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
     psql(`DELETE FROM quality_rule WHERE id IN (
         ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
         ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
@@ -581,17 +597,18 @@ export function seedQualityScores(): void {
     `);
 }
 
-/** 清理表级质量评分测试数据（评分/明细/批次/规则/元数据/物理表，幂等） */
+/** 清理表级质量评分测试数据（评分/批次/明细/规则/元数据/物理表，幂等） */
 export function cleanupQualityScores(): void {
     psql(`DELETE FROM quality_score WHERE table_id IN (
         ${SCORE_TABLE_PASS_ID}, ${SCORE_TABLE_WARN_ID}, ${SCORE_TABLE_SEVERE_ID}, ${SCORE_TABLE_UNAVAIL_ID})`);
-    psql(`DELETE FROM quality_check_detail WHERE rule_id IN (
-        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
-        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
+    // 先按明细反查删批次，再删明细——顺序反了会因子查询查不到而留下孤儿批次
     psql(`DELETE FROM quality_check_batch WHERE id IN (
         SELECT DISTINCT batch_id FROM quality_check_detail WHERE rule_id IN (
             ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
             ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL}))`);
+    psql(`DELETE FROM quality_check_detail WHERE rule_id IN (
+        ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
+        ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
     psql(`DELETE FROM quality_rule WHERE id IN (
         ${SCORE_RULE_PASS_1}, ${SCORE_RULE_PASS_2}, ${SCORE_RULE_WARN_1}, ${SCORE_RULE_WARN_PASS},
         ${SCORE_RULE_SEVERE_1}, ${SCORE_RULE_SEVERE_PASS}, ${SCORE_RULE_UNAVAIL})`);
@@ -730,6 +747,11 @@ export async function cleanupAll(): Promise<void> {
         cleanupExecMetadata();
     } catch (e) {
         console.warn('sprint6 cleanup exec metadata:', ERR(e));
+    }
+    try {
+        cleanupExecBatches();
+    } catch (e) {
+        console.warn('sprint6 cleanup exec batches:', ERR(e));
     }
     try {
         cleanupExecTables();
