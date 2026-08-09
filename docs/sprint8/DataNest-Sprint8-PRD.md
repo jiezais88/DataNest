@@ -30,14 +30,14 @@ Sprint 6 质量体系 + Sprint 7 Python 规则已经持续产出检查批次、�
 | 分析师找到好表只能记在自己的小本本里，同事互相问「那张表在哪」           | 收藏常用表、打标签（如「核心表/谨慎使用」），资产按标签/热度快速发现       |
 | 表结构变了、数据更新了，用数的人毫不知情，跑出结果才发现不对             | 关注表后，表变更动态自动出现在「我的关注」，可及时感知                     |
 | 用数人对表质量有意见只能私下吐槽，反馈不到负责人                         | 详情页评论讨论，形成「发现 → 反馈 → 改进」闭环                             |
-| 业务库变更要等下次定时同步（分钟~小时级），无法支撑实时场景              | CDC 管道秒级捕获 MySQL Binlog 变更，实时写入 Doris                         |
+| 业务库变更要等下次定时同步（分钟~小时级），无法支撑实时场景              | CDC 管道秒级捕获 MySQL Binlog 变更，实时写入 Iceberg 湖仓（Doris 外部表查询） |
 | 治理管理员汇报治理成效时拿不出报表，只能口头描述「做了很多质量检查」     | 质量报告：多维趋势图 + 问题清单 + CSV 导出，可汇报可考核                   |
 
 ### 1.3 Sprint 8 要达到的状态
 
 > 分析师在资产详情页点「收藏」并给 `dwd.orders` 打上「核心表」标签，下次从「我的收藏」一键进入；关注该表后，某天采集到表结构变更（新增字段），「我的关注」页出现变更动态。
 >
-> 数据工程师在「数据工程 → CDC 管道」新建一条管道：选择业务 MySQL → 勾选 `orders` 表 → 目标 Doris `dwd.orders` → 保存启动。之后业务库的每次增删改都在秒级同步到 Doris，管道页实时展示当前延迟与累计变更数。
+> 数据工程师在「数据工程 → CDC 管道」新建一条管道：选择业务 MySQL → 勾选 `orders` 表 → 目标 Iceberg 湖仓 `dwd.orders`（Doris 外部表可查）→ 保存启动。之后业务库的每次增删改都在秒级进入 Iceberg 湖仓并可由 Doris 查询，管道页实时展示当前延迟与累计变更数。
 >
 > 治理管理员打开「数据治理 → 质量报告」，选择「最近 30 天 · 交易域」，看到四档分布趋势折线、评分趋势、评分最低 Top 10 问题表清单，一键导出 CSV 用于汇报。
 
@@ -53,7 +53,7 @@ Sprint 8 包含 **三大模块**，按优先级分为 P0：
 | 资产目录深化（DC-07 收藏与关注） | P0     | 收藏常用表；关注表后表变更时收到通知（站内动态）                                                        |
 | 资产目录深化（DC-08 评论与讨论） | P0     | 详情页评论，形成数据使用反馈闭环                                                                        |
 | 资产目录深化（DC-09 热度排行）   | P0     | 基于详情页访问埋点，按热度展示热门数据表排行                                                            |
-| 实时 CDC 管道（DI-04 / RC-01）   | P0     | **架构级新增 realtime-service**：MySQL Binlog → Flink CDC → Doris，全量+增量，秒级延迟                  |
+| 实时 CDC 管道（DI-04 / RC-01）   | P0     | **架构级新增 realtime-service**：MySQL Binlog → Flink CDC → Iceberg 湖仓（MinIO），Doris 外部表查询，全量+增量，秒级延迟 |
 | CDC 管道配置向导（RC-03 部分）   | P0     | 可视化向导创建 CDC 管道：源→库表→目标映射→启动；管道启停/监控/日志                                     |
 | 质量报告（DG-07 完整版）         | P0     | 按表/库/数据源/质量任务多维度 + 时间趋势（四档分布、评分趋势）+ 问题清单 + CSV 导出                      |
 
@@ -69,7 +69,7 @@ Sprint 8 包含 **三大模块**，按优先级分为 P0：
 | G2  | 收藏与关注                 | 收藏表可进入「我的收藏」；关注表后表变更动态展示在「我的关注」，变更来源为元数据采集变更           |
 | G3  | 评论与讨论                 | 详情页评论列表 + 发布/删除；作者可删自己评论，治理员/超管可删任意评论                             |
 | G4  | 热度排行                   | 详情页访问埋点生效，资产列表支持按热度排序，展示热门数据表 Top N                                   |
-| G5  | CDC 管道创建与执行         | 向导式创建 MySQL→Doris 管道，全量+增量真实执行，Doris 目标表可见最新变更数据                       |
+| G5  | CDC 管道创建与执行         | 向导式创建 MySQL→Iceberg 湖仓管道，全量+增量真实执行，湖仓表经 Doris 外部表可见最新变更数据       |
 | G6  | CDC 管道运维               | 管道列表（状态/延迟/累计变更数）、启停、编辑、删除、运行日志查看                                     |
 | G7  | 质量报告多维度             | 按数据源/库/质量任务/表/时间范围筛选，展示批次、规则、四档分布、评分趋势、问题清单                 |
 | G8  | 质量报告导出               | 当前筛选范围的问题清单与汇总可导出 CSV（带 BOM）                                                   |
@@ -261,7 +261,7 @@ Sprint 8 新增/调整导航：
 
 ### 6.6 实时 CDC 管道（DI-04 / RC-01 / RC-03 部分）
 
-> **架构说明（用户确认架构级新增）**：本期新增 **realtime-service**（`data-nest-realtime`，容器 `app-realtime`），内嵌 Flink CDC MiniCluster，独立于现有 7 服务注册 Nacos、走 Gateway `/api/realtime/**`。独立新库 `datanest_realtime` 持有 cdc_pipeline/执行记录等表（第 5 个业务库，独立 Flyway）。目标落点为 **Doris + Iceberg 湖仓层**：CDC 数据先入 Iceberg 湖仓表（JDBC Catalog 基于 PostgreSQL/MySQL），再通过 Doris 外部表（`Iceberg Catalog`）查询，严格对齐规格文档 §17 与模块七的「CDC 入湖」语义。基础设施需新增 MinIO（Iceberg 文件存储）+ Iceberg 表格式。
+> **架构说明（用户确认架构级新增）**：本期新增 **realtime-service**（`data-nest-realtime`，容器 `app-realtime`），内嵌 Flink CDC MiniCluster，独立于现有 7 服务注册 Nacos、走 Gateway `/api/realtime/**`。独立新库 `datanest_realtime` 持有 cdc_pipeline/执行记录等表（第 5 个业务库，独立 Flyway）。目标落点为 **Doris + Iceberg 湖仓层**：CDC 数据先入 Iceberg 湖仓表（**Hadoop Catalog**，元数据随数据文件落 MinIO），再通过 Doris 外部表（`Iceberg Catalog`）查询，严格对齐规格文档 §17 与模块七的「CDC 入湖」语义。基础设施需新增 **MinIO**（对象存储 + Iceberg 元数据/数据文件）；Iceberg 本身以内嵌库形式存在于 realtime-service 的 Flink 作业中，非独立服务。
 
 #### 6.6.1 CDC 管道配置向导
 
@@ -292,7 +292,7 @@ Sprint 8 新增/调整导航：
 
 **向导约束**：
 - **源**：本期支持 **MySQL**（binlog 开启校验；Flink CDC 连接器生态内 PG/Oracle 留作后续，规格 DI-04 要求至少 MySQL CDC）。
-- **目标**：CDC 数据先入 **Iceberg 湖仓表**（JDBC Catalog 基于 middleware-postgres，文件存储使用内置 MinIO），再通过 **Doris Iceberg External Catalog** 查询，对齐规格文档模块七「CDC 入湖」语义。
+- **目标**：CDC 数据先入 **Iceberg 湖仓表**（Hadoop Catalog，数据文件 + 元数据文件存储于内置 MinIO，无需额外元数据库），再通过 **Doris Iceberg External Catalog** 查询，对齐规格文档模块七「CDC 入湖」语义。
 - **基础设施**：本期新增 **MinIO** 容器（对象存储）+ Iceberg 表格式（Flink CDC 内嵌 Iceberg Sink）。
 - **全量 + 增量**：默认启动先做一次全量快照，再持续捕获增量变更；`仅增量` 需表已存在快照。
 - **校验**：保存前校验源数据源连通性、binlog 是否开启、MinIO 可写、目标库可访问；失败给出明确错误。
@@ -403,8 +403,8 @@ Sprint 8 新增/调整导航：
 | AC-3   | 关注与变更通知   | 关注后元数据采集变更产生「我的关注」动态；取消关注后不再出现                                    |
 | AC-4   | 评论             | 发布评论可见；作者可删自己评论；治理员可删他人评论；权限隔离生效                               |
 | AC-5   | 热度排行         | 详情页访问后热度计数增长；资产列表按热度排序正确                                                |
-| AC-6   | CDC 管道创建     | 向导创建 MySQL→Doris 管道（全量+增量），Doris 目标表自动建表且数据一致                         |
-| AC-7   | CDC 实时性       | 业务库变更后 Doris 目标表秒级（< 10s）可见变更数据（含增删改）                                  |
+| AC-6   | CDC 管道创建     | 向导创建 MySQL→Iceberg 湖仓管道（全量+增量），湖仓表自动建表且经 Doris 外部表数据一致           |
+| AC-7   | CDC 实时性       | 业务库变更后 Iceberg 湖仓/Doris 外部表秒级（< 10s）可见变更数据（含增删改）                      |
 | AC-8   | CDC 管道运维     | 启停/编辑/删除生效；管道页展示当前延迟与累计变更数；异常态可查日志                             |
 | AC-9   | 质量报告         | 多维筛选生效；KPI/四档趋势/评分趋势/问题清单渲染正确                                            |
 | AC-10  | 报告导出         | 导出 CSV 含 BOM，问题清单与汇总可打开且编码正确                                                |
@@ -426,7 +426,7 @@ Sprint 8 新增/调整导航：
 
 | #  | 风险                               | 影响         | 对策                                                                        |
 |----|------------------------------------|--------------|-----------------------------------------------------------------------------|
-| R1 | Flink CDC + Iceberg + MinIO 引入较重（新服务/新容器/新存储组件） | 部署成本高 | 内嵌 Flink MiniCluster + MinIO 容器；按需启停（无管道可停）；Iceberg JDBC Catalog 复用 middleware-postgres |
+| R1 | Flink CDC + Iceberg + MinIO 引入较重（新服务/新容器/新存储组件） | 部署成本高 | 内嵌 Flink MiniCluster + MinIO 容器；按需启停（无管道可停）；Iceberg 用 Hadoop Catalog（元数据落 MinIO），不新增元数据库 |
 | R2 | 源库 binlog 未开启 / 权限不足      | 管道建不起来 | 创建前预检 binlog 状态与权限；测试库（middleware-test-mysql）确保开启 binlog |
 | R3 | CDC 全量阶段耗时长 / Iceberg 快照提交频率高 | 首启慢 / 小文件多 | 全量走批式拉取（对齐 Addax）；增量可调 snapshot commit interval；全量进度展示 |
 | R4 | Iceberg 快照 + Doris 刷新引入额外延迟 | 端到端延迟变大 | 端到端延迟放宽至 30 秒（含 Iceberg commit + Doris metadata refresh）；可调刷新间隔 |
@@ -467,7 +467,7 @@ Sprint 8 新增/调整导航：
 
 | #  | 决策点                                           | 最终结论                                                                                                                                  |
 |----|--------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| T1 | 实时 CDC 的目标落点                              | **Doris + 引入 Iceberg 湖仓层**：严格对齐规格 D17/模块七「CDC 入湖」。需新增 MinIO + Iceberg（JDBC Catalog 基于 middleware-postgres）基础设施 |
+| T1 | 实时 CDC 的目标落点                              | **Doris + 引入 Iceberg 湖仓层**：严格对齐规格 D17/模块七「CDC 入湖」。需新增 MinIO + Iceberg（Hadoop Catalog，元数据随数据落 MinIO）基础设施 |
 | T2 | realtime-service 的数据存储边界                   | **独立新库 `datanest_realtime`**（第 5 个业务库，独立 Flyway）。realtime-service 本地持有 cdc_pipeline/执行记录等表                              |
 | T3 | 评分趋势数据来源                                 | **新增 `quality_score_history`**（批次结束写快照）；存量从 `quality_check_detail` 补算                                                       |
 | T4 | 标签/收藏/关注/评论的删除语义                    | **表删除级联清理绑定；用户删除保留评论历史（标记"已注销"）、删除收藏/关注数据**                                                             |
@@ -482,13 +482,17 @@ Sprint 8 新增/调整导航：
 | Sprint 8 主题边界  | 严格按规格文档 §15 路线图映射：实际 S8 = 路线图 S9 = **资产目录深化 + 实时 CDC 管道** |
 | 实时 CDC 处置      | **并入本期，架构级新增**：新增 realtime-service + Flink CDC MiniCluster，完整实现 CDC 管道 |
 | 质量报告 DG-07     | **完整版**：多维（表/库/数据源/任务）+ 时间趋势（四档分布、评分趋势）+ 问题清单 + CSV 导出 |
-| T1 CDC 目标落点    | **Doris + Iceberg 湖仓层**：新增 MinIO + Iceberg（JDBC Catalog），CDC 先入湖再 Doris 外部表查询 |
+| T1 CDC 目标落点    | **Doris + Iceberg 湖仓层**：新增 MinIO + Iceberg（**Hadoop Catalog**，元数据随数据落 MinIO，避免额外元数据库），CDC 先入湖再 Doris 外部表查询 |
 | T2 realtime 数据存储 | **独立新库 `datanest_realtime`**（第 5 个业务库，独立 Flyway）                             |
 | T3 评分趋势数据     | **新增 `quality_score_history`**：批次结束写快照，存量从 check_detail 补算               |
 | T4 删除语义         | **表删除级联清理**标签/收藏/关注/评论；**用户删除保留评论**（标记"已注销"）、删收藏/关注 |
+| B1 Flink 版本       | **Flink 2.0.x + CDC 3.4.x**（官方支持 Java 21，匹配项目 JDK 21）；容器内验证依赖，阻塞则降级 1.20+3.3 |
+| B2 Doris 版本       | 实测 **doris-4.0.7-rc02**，Multi-Catalog 可用，支持 Iceberg Catalog（≥1.2 满足）          |
+| B4 评论「已注销」   | **前端批量回填用户名，查无显示「已注销」**（零后端改动）                                |
 
 ---
 
 > **版本记录**
 > - v1.0 (2026-08-09)：初始版本。基于规格文档 §15 路线图映射（实际 S8=路线图 S9）与用户确认的范围（资产目录深化 + 实时 CDC 管道 + 质量报告完整版）编写；复用点经代码核验。
 > - v1.1 (2026-08-09)：用户交互确认 T1~T4 决策后更新——T1 落点确认为 Doris + Iceberg 湖仓层（新增 MinIO + Iceberg 基础设施）、T2 确认为独立新库 datanest_realtime、T3 确认为新增 quality_score_history、T4 确认为表删除级联清理 + 用户删除保留评论历史。
+> - v1.2 (2026-08-09)：技术确认补充——T1 细化 Iceberg 用 **Hadoop Catalog**（元数据随数据落 MinIO，避免额外元数据库）；B1 Flink 2.0.x + CDC 3.4.x（Java 21）定稿；B2 实测 Doris **4.0.7-rc02**（Multi-Catalog 可用）；B4 评论「已注销」走前端批量回填查无兜底。
