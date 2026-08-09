@@ -85,9 +85,21 @@
 
 ## 6. 开发分阶段计划
 
-> **划分原则**：按功能块切分，**每块 = 后端 → 前端 → 测试 完整闭环**。不做"先全部后端、再全部前端"的横切。
-> **顺序**：F1（资产目录深化，纯 governance 增量，无架构风险）→ F3（质量报告，复用现有质量底座）→ F2（实时 CDC，架构级新增，依赖 B1/B2 容器验证，风险最高放最后）。
+> **划分原则**：按功能块切分（三个 F），**每块 = 后端 → 前端 → 测试 完整闭环**。不做"先全部后端、再全部前端"的横切。
+> **顺序**：F1（资产目录深化，纯 governance 增量，无架构风险）→ F3（质量报告，复用现有质量底座）→ F2（实时 CDC，架构级新增，依赖 M0 容器预研，风险最高放最后）。
 > **每块验证口径**：① 后端 Postman/curl 自测 → ② 前端联调 → ③ 新建 `e2e/sprint8/e2e/*.spec.ts` 跑通 → ④ 更新本 Handoff 状态看板。
+
+### 阶段总览（2026-08-09 用户确认：按三个 F 拆分）
+
+| 阶段 | 范围 | 主要产出 | 验证口径 | 依赖 | 预估人日* |
+|------|------|----------|----------|------|-----------|
+| **M0 环境预研**（F2 前置，可先行） | B1 容器验证 Flink 2.0+CDC 3.4+Iceberg 最小示例；docker-compose 加 MinIO + app-realtime + datanest_realtime 库；Doris `CREATE CATALOG` | 最小示例跑通：MySQL→Iceberg(MinIO)→Doris 外部表可查；依赖矩阵锁定 | 容器内 SELECT 验证 + B1 降级点评估 | 无（独立环境，与 F1 不冲突） | ~1 |
+| **F1 资产目录深化**（DC-06~09） | 标签/收藏/关注/评论/热度 + 详情页扩展 + 我的收藏/关注 2 页 + 首页热门 Top10 | governance V1.4.0 + `AssetCollaborationService` + Controller 13 端点 + 前端 4 处 | curl 自测 → 前端联调 → `asset-collaboration.spec.ts` | 无 | ~4 |
+| **F3 质量报告**（DG-07） | KPI/四档趋势/评分趋势/问题清单/CSV + 质量报告 Dashboard 页 | governance V1.5.0 + `ScoreCalculator` 写历史 + `QualityReportController` 6 端点 + 前端 1 页 | curl 自测 → 前端联调 → `quality-report.spec.ts` | 无（与 F1 同服务不同 Controller，可先后或并行） | ~3 |
+| **F2 实时 CDC**（DI-04/RC-01） | realtime-service + MinIO + Iceberg 湖仓 + CDC 向导/监控 + engineering 删除校验 | realtime 库 V1.0.0 + `CdcPipelineController` 10 端点 + Flink YAML 作业 + 前端 1 页 | M0 预研通过 → curl → 手工 E2E（test-mysql→湖仓→Doris 秒级可见）→ `cdc-pipeline.spec.ts` | **M0 完成** | ~5.5 |
+
+> \* 预估为粗粒度参考（基于实现清单条目数），不含联调兜底与返工。总计约 **13.5 人日**。
+> **M0 建议尽早启动**（与 F1 并行）：它是 F2 唯一架构风险，若 B1 阻塞降级 Flink 1.20+3.3，越早暴露越不阻塞后续。
 
 ---
 
@@ -98,7 +110,6 @@
 - [x] Sprint 8 UI 原型（`DataNest-Sprint8-原型.{html,css,js}`：7 视图，含 SVG 趋势图 + CDC 向导 + 日志抽屉；Playwright 验证渲染 OK、无 JS 错误）
 - [x] 代码现状核验：资产协作 6 表从零、collect_change_detail 可复用、quality_score 仅最新、无 realtime 服务、Doris 4.0.7-rc02 实测
 - [x] 技术调研：Flink 2.0 支持 Java 21 / CDC 3.4 Iceberg Sink / Doris Iceberg Catalog 支持
-- [ ] UI 原型（制作中）
 
 ---
 
@@ -157,7 +168,7 @@
 **范围**：realtime-service + MinIO + Iceberg 湖仓 + CDC 管道配置向导/监控 + Doris 外部表查询。
 **块内依赖**：B1/B2 容器验证 → realtime 新库 Flyway V1.0.0 → realtime-service（Flink 内嵌）→ engineering 删除校验 → 前端 CDC 管道页 → 联调。
 
-**前置验证（实现首步）**
+**M0 环境预研（对应阶段总览 M0，F2 前置，可先行）**
 - [ ] 容器内最小示例：Flink 2.0 + CDC 3.4 MySQL→Iceberg（MinIO）→ Doris 外部表查询（B1/B2 落地）
 - [ ] docker-compose 新增 middleware-minio + app-realtime；PG 建 datanest_realtime 库；Doris `CREATE CATALOG`（§7.2）
 
