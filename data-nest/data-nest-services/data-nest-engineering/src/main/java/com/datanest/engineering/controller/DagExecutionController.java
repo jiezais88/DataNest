@@ -9,6 +9,9 @@ import com.datanest.engineering.dto.GlobalExecutionFilter;
 import com.datanest.engineering.dto.NodeExecutionLogDTO;
 import com.datanest.engineering.service.DagExecutionService;
 import com.datanest.engineering.service.NodeExecutionLogQueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,6 +30,7 @@ import java.util.List;
  * - 单独建一个 Controller 而不是塞进 DagController：因为此端点不属于 /dev/dags 资源层级（不属于某个 DAG 的子资源），是顶层资源
  * - 入参用 @RequestParam 字符串解析时间：避免 @DateTimeFormat(ISO.DATE_TIME) 对 'Z' 后缀处理不一致的坑
  */
+@Tag(name = "DAG 执行历史", description = "全局 DAG 执行历史查询与节点执行日志")
 @RestController
 @RequestMapping("/dag-executions")
 public class DagExecutionController {
@@ -53,17 +57,18 @@ public class DagExecutionController {
      * - page：默认 1
      * - pageSize：默认 20
      */
+    @Operation(summary = "全局 DAG 执行历史分页")
     @GetMapping
     public Result<PageResult<DagExecutionGlobalDto>> listAll(
-            @RequestParam(required = false) String dagName,
-            @RequestParam(required = false) String projectName,
-            @RequestParam(required = false) Long dagId,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String triggerType,
-            @RequestParam(required = false) String startTimeFrom,
-            @RequestParam(required = false) String startTimeTo,
-            @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "20") long pageSize) {
+            @Parameter(description = "DAG 名称（模糊匹配）") @RequestParam(required = false) String dagName,
+            @Parameter(description = "项目名称（模糊匹配）") @RequestParam(required = false) String projectName,
+            @Parameter(description = "DAG ID（精确过滤，优先级高于 dagName）") @RequestParam(required = false) Long dagId,
+            @Parameter(description = "状态（RUNNING/SUCCESS/FAILED/TERMINATED）") @RequestParam(required = false) String status,
+            @Parameter(description = "触发方式（MANUAL/SCHEDULED）") @RequestParam(required = false) String triggerType,
+            @Parameter(description = "执行时间下界（ISO 8601，支持 \"Z\" 后缀 UTC 写法）") @RequestParam(required = false) String startTimeFrom,
+            @Parameter(description = "执行时间上界（ISO 8601）") @RequestParam(required = false) String startTimeTo,
+            @Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") long page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") long pageSize) {
         GlobalExecutionFilter filter = new GlobalExecutionFilter();
         filter.setDagName(dagName);
         filter.setProjectName(projectName);
@@ -77,13 +82,11 @@ public class DagExecutionController {
         return Result.ok(dagExecutionService.listAll(filter));
     }
 
-    /**
-     * 查询节点执行日志（node_execution_log）
-     */
+    @Operation(summary = "节点执行日志查询（node_execution_log）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
     @GetMapping("/{executionId}/nodes/{nodeId}/logs")
-    public Result<List<NodeExecutionLogDTO>> nodeLogs(@PathVariable Long executionId,
-                                                      @PathVariable String nodeId) {
+    public Result<List<NodeExecutionLogDTO>> nodeLogs(@Parameter(description = "执行实例 ID") @PathVariable Long executionId,
+                                                      @Parameter(description = "节点 ID") @PathVariable String nodeId) {
         return Result.ok(nodeExecutionLogQueryService.query(executionId, nodeId));
     }
 }

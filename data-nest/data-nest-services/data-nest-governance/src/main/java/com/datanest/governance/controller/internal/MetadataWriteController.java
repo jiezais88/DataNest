@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 元数据写入 + 血缘域内部接口（实现 governance-api 的 MetadataWriteApi 契约）。
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 仅供服务间内部调用（task 服务上报 Doris 元数据注册/刷新/移除与血缘记录），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class MetadataWriteController {

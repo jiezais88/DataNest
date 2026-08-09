@@ -1,25 +1,24 @@
 package com.datanest.task.core.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 表级质量评分列表查询请求（Sprint 6 NG8）。
- * <p>
- * 按表名关键字 / 数据源 / 健康度筛选，分页返回。
- */
+@Schema(description = "表级质量评分列表查询请求")
 @Data
 public class QualityScoreQueryRequest {
 
+    @Schema(description = "页码，从 1 开始")
     private Long page = 1L;
 
+    @Schema(description = "每页条数")
     private Long pageSize = 10L;
 
-    /** 表名关键字（库名.表名 模糊匹配） */
+    @Schema(description = "表名关键字（库名.表名 模糊匹配）")
     private String keyword;
 
-    /** 数据源 ID 过滤 */
+    @Schema(description = "数据源 ID 过滤", example = "1234567890123456789")
     private Long datasourceId;
 
-    /** 健康度过滤：EXCELLENT/GOOD/WARNING/BAD */
+    @Schema(description = "健康度过滤（EXCELLENT/GOOD/WARNING/BAD）")
     private String healthLevel;
 }

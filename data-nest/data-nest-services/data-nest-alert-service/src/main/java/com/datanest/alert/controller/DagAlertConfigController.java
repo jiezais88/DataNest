@@ -7,6 +7,9 @@ import com.datanest.alert.mapper.DagAlertConfigMapper;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,6 +22,7 @@ import java.util.regex.Pattern;
  * 自 engineering-service 平移：原 /dev/alert-config 与 /dev/dags/{dagId}/alert-config，
  * 现整体挂载到告警服务 /dag-alert-config 下。
  */
+@Tag(name = "DAG 告警配置", description = "DAG 告警全局配置与按 DAG 覆盖配置")
 @RestController
 @RequestMapping("/dag-alert-config")
 public class DagAlertConfigController {
@@ -32,12 +36,14 @@ public class DagAlertConfigController {
         this.dagAlertConfigMapper = dagAlertConfigMapper;
     }
 
+    @Operation(summary = "读取全局 DAG 告警配置")
     @GetMapping
     public Result<DagAlertConfigPayload> getConfig() {
         DagAlertConfig config = dagAlertConfigMapper.selectGlobal();
         return Result.ok(toPayload(config));
     }
 
+    @Operation(summary = "保存全局 DAG 告警配置")
     @PutMapping
     public Result<DagAlertConfigPayload> updateConfig(@RequestBody DagAlertConfigPayload payload) {
         validate(payload);
@@ -46,11 +52,9 @@ public class DagAlertConfigController {
         return Result.ok(toPayload(saveConfig(config, null, payload)));
     }
 
-    /**
-     * Sprint 4 review：按 DAG 读取告警配置（含全局回退的完整视图）。
-     */
+    @Operation(summary = "按 DAG 读取告警配置", description = "无专属配置时返回全局配置的完整回退视图")
     @GetMapping("/dags/{dagId}")
-    public Result<DagAlertConfigPayload> getConfigByDag(@PathVariable Long dagId) {
+    public Result<DagAlertConfigPayload> getConfigByDag(@Parameter(description = "DAG ID") @PathVariable Long dagId) {
         DagAlertConfig dedicated = dagAlertConfigMapper.selectByDagId(dagId);
         if (dedicated != null) {
             return Result.ok(toPayload(dedicated));
@@ -59,11 +63,9 @@ public class DagAlertConfigController {
         return Result.ok(toPayload(global));
     }
 
-    /**
-     * Sprint 4 review：按 DAG 保存告警配置。
-     */
+    @Operation(summary = "按 DAG 保存告警配置")
     @PutMapping("/dags/{dagId}")
-    public Result<DagAlertConfigPayload> updateConfigByDag(@PathVariable Long dagId,
+    public Result<DagAlertConfigPayload> updateConfigByDag(@Parameter(description = "DAG ID") @PathVariable Long dagId,
                                                            @RequestBody DagAlertConfigPayload payload) {
         validate(payload);
 

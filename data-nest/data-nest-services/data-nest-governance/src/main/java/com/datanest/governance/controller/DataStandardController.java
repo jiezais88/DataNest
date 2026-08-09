@@ -13,6 +13,9 @@ import com.datanest.task.core.dto.ComplianceCheckRequest;
 import com.datanest.task.core.dto.ComplianceCheckResultDTO;
 import com.datanest.task.core.dto.ComplianceCheckSummaryDTO;
 import com.datanest.governance.service.ComplianceCheckService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,6 +32,7 @@ import java.util.List;
  * - 标准配置（命名规范/字段类型标准增删改查）：仅治理员/超管。
  * - 合规检查（执行/结果/分页/忽略/导出）：另开放工程师（DATA_ENGINEER）查看与操作（PRD §7）。
  */
+@Tag(name = "数据标准", description = "命名规范 / 字段类型标准配置与标准合规检查")
 @RestController
 @RequestMapping("/data-standards")
 public class DataStandardController {
@@ -47,32 +51,37 @@ public class DataStandardController {
 
     // ---------------- 命名规范（治理员/超管） ----------------
 
+    @Operation(summary = "创建命名规范")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/naming-standards")
     public Result<NamingStandardDTO> createNamingStandard(@Valid @RequestBody NamingStandardCreateRequest request) {
         return Result.ok(namingStandardService.create(request));
     }
 
+    @Operation(summary = "编辑命名规范")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PutMapping("/naming-standards/{id}")
-    public Result<NamingStandardDTO> updateNamingStandard(@PathVariable Long id,
+    public Result<NamingStandardDTO> updateNamingStandard(@Parameter(description = "命名规范 ID") @PathVariable Long id,
                                                           @Valid @RequestBody NamingStandardUpdateRequest request) {
         return Result.ok(namingStandardService.update(id, request));
     }
 
+    @Operation(summary = "删除命名规范")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @DeleteMapping("/naming-standards/{id}")
-    public Result<Void> deleteNamingStandard(@PathVariable Long id) {
+    public Result<Void> deleteNamingStandard(@Parameter(description = "命名规范 ID") @PathVariable Long id) {
         namingStandardService.delete(id);
         return Result.ok(null);
     }
 
+    @Operation(summary = "命名规范详情")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/naming-standards/{id}")
-    public Result<NamingStandardDTO> getNamingStandard(@PathVariable Long id) {
+    public Result<NamingStandardDTO> getNamingStandard(@Parameter(description = "命名规范 ID") @PathVariable Long id) {
         return Result.ok(namingStandardService.getById(id));
     }
 
+    @Operation(summary = "命名规范分页列表")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/naming-standards/page")
     public Result<PageResult<NamingStandardDTO>> listNamingStandards(@RequestBody NamingStandardQueryRequest request) {
@@ -81,32 +90,37 @@ public class DataStandardController {
 
     // ---------------- 字段类型标准（治理员/超管） ----------------
 
+    @Operation(summary = "创建字段类型标准")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/field-type-standards")
     public Result<FieldTypeStandardDTO> createFieldTypeStandard(@Valid @RequestBody FieldTypeStandardCreateRequest request) {
         return Result.ok(fieldTypeStandardService.create(request));
     }
 
+    @Operation(summary = "编辑字段类型标准")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PutMapping("/field-type-standards/{id}")
-    public Result<FieldTypeStandardDTO> updateFieldTypeStandard(@PathVariable Long id,
+    public Result<FieldTypeStandardDTO> updateFieldTypeStandard(@Parameter(description = "字段类型标准 ID") @PathVariable Long id,
                                                                 @Valid @RequestBody FieldTypeStandardUpdateRequest request) {
         return Result.ok(fieldTypeStandardService.update(id, request));
     }
 
+    @Operation(summary = "删除字段类型标准")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @DeleteMapping("/field-type-standards/{id}")
-    public Result<Void> deleteFieldTypeStandard(@PathVariable Long id) {
+    public Result<Void> deleteFieldTypeStandard(@Parameter(description = "字段类型标准 ID") @PathVariable Long id) {
         fieldTypeStandardService.delete(id);
         return Result.ok(null);
     }
 
+    @Operation(summary = "字段类型标准详情")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/field-type-standards/{id}")
-    public Result<FieldTypeStandardDTO> getFieldTypeStandard(@PathVariable Long id) {
+    public Result<FieldTypeStandardDTO> getFieldTypeStandard(@Parameter(description = "字段类型标准 ID") @PathVariable Long id) {
         return Result.ok(fieldTypeStandardService.getById(id));
     }
 
+    @Operation(summary = "字段类型标准分页列表")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/field-type-standards/page")
     public Result<PageResult<FieldTypeStandardDTO>> listFieldTypeStandards(@RequestBody FieldTypeStandardQueryRequest request) {
@@ -116,44 +130,51 @@ public class DataStandardController {
     // ---------------- 合规检查（治理员/超管/工程师） ----------------
 
     // 运行扫描仅治理员/超管（PRD §8：运行标准合规扫描工程师 ❌）；结果查看/忽略/导出放开工程师
+    @Operation(summary = "运行标准合规扫描")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/compliance-check")
     public Result<List<ComplianceCheckResultDTO>> runComplianceCheck(@RequestBody ComplianceCheckRequest request) {
         return Result.ok(complianceCheckService.check(request));
     }
 
+    @Operation(summary = "合规检查结果列表")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/results")
     public Result<List<ComplianceCheckResultDTO>> listComplianceCheckResults(@RequestBody ComplianceCheckRequest request) {
         return Result.ok(complianceCheckService.listResults(request));
     }
 
+    @Operation(summary = "合规检查结果分页")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/page")
     public Result<PageResult<ComplianceCheckResultDTO>> pageComplianceCheckResults(@RequestBody ComplianceCheckPageRequest request) {
         return Result.ok(complianceCheckService.page(request));
     }
 
+    @Operation(summary = "合规检查结果汇总")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/summary")
     public Result<ComplianceCheckSummaryDTO> summaryComplianceCheck(@RequestBody ComplianceCheckRequest request) {
         return Result.ok(complianceCheckService.summary(request));
     }
 
+    @Operation(summary = "忽略合规检查结果")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/ignore/{resultId}")
-    public Result<Void> ignoreComplianceCheckResult(@PathVariable Long resultId) {
+    public Result<Void> ignoreComplianceCheckResult(@Parameter(description = "检查结果 ID") @PathVariable Long resultId) {
         complianceCheckService.ignore(resultId, currentUserId());
         return Result.ok(null);
     }
 
+    @Operation(summary = "取消忽略合规检查结果")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/unignore/{resultId}")
-    public Result<Void> unignoreComplianceCheckResult(@PathVariable Long resultId) {
+    public Result<Void> unignoreComplianceCheckResult(@Parameter(description = "检查结果 ID") @PathVariable Long resultId) {
         complianceCheckService.unignore(resultId);
         return Result.ok(null);
     }
 
+    @Operation(summary = "导出合规检查结果 CSV")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/export")
     public ResponseEntity<byte[]> exportComplianceCheck(@RequestBody ComplianceCheckRequest request) {

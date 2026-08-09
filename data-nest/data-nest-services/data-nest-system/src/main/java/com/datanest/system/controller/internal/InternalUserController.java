@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 用户内部接口（实现 system-api 的 Feign 契约）。
@@ -18,6 +19,7 @@ import java.util.Map;
  * 仅供服务间内部调用（如告警服务反查收件人邮箱/用户名），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal/users")
 public class InternalUserController {

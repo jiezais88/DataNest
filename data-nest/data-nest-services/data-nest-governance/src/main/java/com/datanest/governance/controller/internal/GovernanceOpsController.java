@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 治理域低频运维内部接口（实现 governance-api 的 GovernanceOpsApi 契约）。
@@ -22,6 +23,7 @@ import java.util.List;
  * 仅供服务间内部调用（data-nest-job 的定时清理/合规扫描/质量自动触发对账），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class GovernanceOpsController {

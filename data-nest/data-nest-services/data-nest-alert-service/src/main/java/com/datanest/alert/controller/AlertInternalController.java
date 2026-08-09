@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 告警服务内部接口（实现 alert-api 的 Feign 契约）。
@@ -22,6 +23,7 @@ import java.util.Objects;
  * 仅供服务间内部调用，路径挂在 context-path /alert 下（servlet path 以 /internal/ 开头），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class AlertInternalController {

@@ -27,12 +27,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * DAG 定义域内部接口（实现 engineering-api 的 EngineeringDagApi 契约，worker 节点执行读取定义）。
  * <p>
  * 均为只读简单查询，直接在 Controller 转发 mapper（与 InternalObjectController 风格一致）。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal/dags")
 public class InternalDagController {

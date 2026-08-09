@@ -152,6 +152,13 @@
             <artifactId>spring-jdbc</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <!-- swagger 注解（provided，dto 包 @Schema 文档描述用；消费方经 springdoc starter 传递引入） -->
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

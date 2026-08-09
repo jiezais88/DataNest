@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 采集回写域内部接口（实现 governance-api 的 CollectWriteApi 契约，仅镜像路径不 implement）。
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 仅供服务间内部调用（worker 采集执行回写任务状态/采集历史/执行日志/变更明细/元数据，
  * 及 Sprint 7 DD-09 任务模板一键创建采集任务），由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class CollectWriteController {

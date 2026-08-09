@@ -10,6 +10,7 @@ import com.datanest.governance.api.dto.QualityExecutionPlanRequest;
 import com.datanest.governance.api.dto.QualityRulePlanRequest;
 import com.datanest.governance.service.internal.QualityExecutionService;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 质量执行域内部接口（实现 governance-api 的 QualityExecutionApi 契约）。
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
  * 仅供服务间内部调用（worker 执行质量检查：计划装配、批次/明细落库、批次收尾、超时回调查询），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class QualityExecutionController {

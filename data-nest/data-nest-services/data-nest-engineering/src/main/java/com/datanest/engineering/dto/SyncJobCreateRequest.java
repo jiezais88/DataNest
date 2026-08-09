@@ -1,60 +1,77 @@
 package com.datanest.engineering.dto;
 
 import com.datanest.task.core.dto.FieldMappingItem;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 
 import java.util.List;
 
+@Schema(description = "同步任务创建请求")
 public class SyncJobCreateRequest {
 
+    @Schema(description = "任务名称（3~50 个字符）")
     @NotBlank(message = "同步任务名称不能为空")
     @Size(min = 3, max = 50, message = "同步任务名称长度需在 3-50 个字符之间")
     private String name;
 
+    @Schema(description = "源数据源 ID", example = "1234567890123456789")
     @NotNull(message = "源数据源 ID 不能为空")
     private Long sourceDatasourceId;
 
+    @Schema(description = "源数据库名")
     @Size(max = 100, message = "源数据库名最多 100 个字符")
     private String sourceDatabase;
 
+    @Schema(description = "源 Schema 名")
     @Size(max = 100, message = "源 Schema 名最多 100 个字符")
     private String sourceSchema;
 
+    @Schema(description = "源数据表列表")
     @NotEmpty(message = "源数据表不能为空")
     private List<String> sourceTables;
 
+    @Schema(description = "同步模式（FULL/INCREMENTAL）")
     @NotBlank(message = "同步模式不能为空")
     @Pattern(regexp = "^(FULL|INCREMENTAL)$", message = "同步模式只能是 FULL 或 INCREMENTAL")
     private String syncMode;
 
+    @Schema(description = "增量字段名（增量同步必填）")
     @Size(max = 100, message = "增量字段名最多 100 个字符")
     private String incrementalField;
 
+    @Schema(description = "触发方式（MANUAL/CRON）")
     @NotBlank(message = "触发方式不能为空")
     @Pattern(regexp = "^(MANUAL|CRON)$", message = "触发方式只能是 MANUAL 或 CRON")
     private String triggerType;
 
+    @Schema(description = "Cron 表达式（CRON 触发必填）")
     @Size(max = 100, message = "Cron 表达式最多 100 个字符")
     private String cronExpression;
 
+    @Schema(description = "目标库名")
     @NotBlank(message = "目标库名不能为空")
     @Size(max = 100, message = "目标库名最多 100 个字符")
     private String targetDatabase;
 
+    @Schema(description = "目标表名")
     @NotBlank(message = "目标表名不能为空")
     @Size(max = 100, message = "目标表名最多 100 个字符")
     private String targetTable;
 
+    @Schema(description = "重试次数（0~3）")
     @Min(value = 0, message = "重试次数不能小于 0")
     @Max(value = 3, message = "重试次数不能大于 3")
     private Integer retryTimes = 3;
 
+    @Schema(description = "重试间隔（分钟，0~30）")
     @Min(value = 0, message = "重试间隔不能小于 0")
     @Max(value = 30, message = "重试间隔不能大于 30")
     private Integer retryInterval = 5;
 
+    @Schema(description = "字段映射配置")
     private List<FieldMappingItem> fieldMapping;
 
+    @Schema(description = "任务描述")
     @Size(max = 1000, message = "描述最多 1000 个字符")
     private String description;
 
@@ -64,17 +81,21 @@ public class SyncJobCreateRequest {
      * 多表结构化配置（JSON 数组）
      * 形态：[{"tableName":"t1","incrementalField":"id","lastSyncTime":"2026-07-30 12:00:00"}, ...]
      */
+    @Schema(description = "多表结构化配置（JSON 数组，元素含 tableName/incrementalField/lastSyncTime）")
     private String sourceTablesDetail;
 
     /** 读取速率限制（MB/s，0=不限制） */
+    @Schema(description = "读取速率限制（MB/s，0=不限制）")
     @Min(value = 0, message = "读取速率不能小于 0")
     private Integer readRateLimitMbps = 0;
 
     /** 写入速率限制（行/秒，0=不限制） */
+    @Schema(description = "写入速率限制（行/秒，0=不限制）")
     @Min(value = 0, message = "写入速率不能小于 0")
     private Integer writeRateLimitRowsPerSecond = 0;
 
     /** 限流总开关 */
+    @Schema(description = "限流总开关")
     private Boolean rateLimitEnabled = false;
 
     @AssertTrue(message = "Cron 触发方式必须填写 Cron 表达式")

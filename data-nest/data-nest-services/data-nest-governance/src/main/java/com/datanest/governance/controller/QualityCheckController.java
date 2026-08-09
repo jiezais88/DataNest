@@ -7,6 +7,9 @@ import com.datanest.common.model.Result;
 import com.datanest.governance.service.QualityCheckQueryService;
 import com.datanest.task.core.dto.QualityCheckBatchDTO;
 import com.datanest.task.core.dto.QualityCheckQueryRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
  * 微服务化 4.2：查询走 governance 本地 QualityCheckQueryService（task-core 的 QualityCheckService
  * 只保留 worker 执行路径）。
  */
+@Tag(name = "质量检查结果", description = "质量检查批次分页查询与批次详情（含规则明细）")
 @RestController
 @RequestMapping("/quality/checks")
 @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
@@ -27,19 +31,15 @@ public class QualityCheckController {
         this.checkQueryService = checkQueryService;
     }
 
-    /**
-     * 批次分页列表（按 job / trigger_type / status 过滤）。
-     */
+    @Operation(summary = "批次分页列表", description = "按 job / trigger_type / status 过滤")
     @PostMapping("/page")
     public Result<PageResult<QualityCheckBatchDTO>> page(@RequestBody QualityCheckQueryRequest request) {
         return Result.ok(checkQueryService.listBatches(request));
     }
 
-    /**
-     * 批次详情（含规则明细）。
-     */
+    @Operation(summary = "批次详情（含规则明细）")
     @GetMapping("/{id}")
-    public Result<QualityCheckBatchDTO> getById(@PathVariable Long id) {
+    public Result<QualityCheckBatchDTO> getById(@Parameter(description = "批次 ID") @PathVariable Long id) {
         return Result.ok(checkQueryService.getBatchDetail(id));
     }
 }

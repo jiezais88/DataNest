@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 子 DAG 异步触发内部端点（Sprint 5）。
@@ -20,6 +21,7 @@ import java.util.Map;
  * 触发后父节点状态由 DagExecutionSyncService 轮询 PowerJob 工作流实例同步（节点 job 成功 → SUCCESS），
  * 因此本端点无需回写 node_execution。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/dev/internal")
 public class SubDagTriggerController {

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 治理域数据源内部接口（实现 governance-api 的 GovernanceDatasourceApi 契约）。
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 仅供服务间内部调用（engineering 删除/保存数据源时的跨域读写），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class InternalDatasourceController {

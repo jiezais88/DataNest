@@ -5,6 +5,8 @@ import com.datanest.common.model.LoginRequest;
 import com.datanest.common.model.Result;
 import com.datanest.common.model.UserLoginDTO;
 import com.datanest.system.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.Map;
 
+@Tag(name = "认证", description = "用户登录/登出")
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
@@ -24,10 +27,7 @@ public class AuthController {
         this.userService = userService;
     }
 
-    /**
-     * 用户登录
-     * POST /api/system/auth/login
-     */
+    @Operation(summary = "用户登录", description = "校验用户名密码，返回 sa-token 令牌与用户信息")
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
         UserLoginDTO user = userService.verify(req.username(), req.password());
@@ -45,9 +45,7 @@ public class AuthController {
         return Result.ok(result);
     }
 
-    /**
-     * 用户登出
-     */
+    @Operation(summary = "用户登出")
     @PostMapping("/logout")
     public Result<Void> logout() {
         StpUtil.logout();

@@ -1,43 +1,75 @@
 package com.datanest.engineering.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Schema(description = "同步任务执行历史 DTO")
 public class SyncJobHistoryDTO {
 
+    @Schema(description = "执行历史 ID", example = "1234567890123456789")
     private Long id;
+    @Schema(description = "同步任务 ID", example = "1234567890123456789")
     private Long syncJobId;
+    @Schema(description = "任务名称")
     private String taskName;
     /** 由 DAG 编排触发时的 dag_execution.id；手动/定时触发为 null */
+    @Schema(description = "DAG 编排触发时的执行实例 ID（手动/定时触发为 null）", example = "1234567890123456789")
     private Long dagExecutionId;
     /** DAG 编排触发时的 dag.id（用于前端跳转） */
+    @Schema(description = "DAG 编排触发时的 DAG ID（用于前端跳转）", example = "1234567890123456789")
     private Long dagId;
     /** DAG 编排触发时的 DAG 名称（用于展示） */
+    @Schema(description = "DAG 编排触发时的 DAG 名称（用于展示）")
     private String dagName;
+    @Schema(description = "触发方式（MANUAL/CRON/DAG）")
     private String triggerType;
+    @Schema(description = "执行状态（RUNNING/SUCCESS/FAILED/TERMINATED）")
     private String status;
+    @Schema(description = "开始时间（ISO 8601）")
     private LocalDateTime startTime;
+    @Schema(description = "结束时间（ISO 8601）")
     private LocalDateTime endTime;
+    @Schema(description = "耗时（毫秒）")
     private Long durationMs;
+    @Schema(description = "耗时（秒）")
     private Long durationSeconds;
+    @Schema(description = "吞吐（行/秒）")
     private Double throughputRowsPerSecond;
+    @Schema(description = "源端读取行数")
     private Long sourceRows;
+    @Schema(description = "目标端写入行数")
     private Long targetRows;
+    @Schema(description = "错误信息")
     private String errorMessage;
+    @Schema(description = "源数据库名")
     private String sourceDatabase;
+    @Schema(description = "源 Schema 名")
     private String sourceSchema;
+    @Schema(description = "源表名")
     private String sourceTable;
+    @Schema(description = "目标库名")
     private String targetDatabase;
+    @Schema(description = "目标表名")
     private String targetTable;
     /** 多表同步全量源表列表（单表时为单元素列表） */
+    @Schema(description = "多表同步全量源表列表（单表时为单元素列表）")
     private List<String> sourceTables;
     /** 多表同步 per-table 明细（源表→目标表、状态、行数、耗时、错误） */
+    @Schema(description = "多表同步 per-table 明细（源表→目标表、状态、行数、耗时、错误）")
     private List<SyncTableResultDTO> tableResults;
+    @Schema(description = "同步模式（FULL/INCREMENTAL）")
     private String syncMode;
+    @Schema(description = "增量字段名")
     private String incrementalField;
+    @Schema(description = "父执行历史 ID（重试场景指向原始执行）", example = "1234567890123456789")
     private Long parentHistoryId;
+    @Schema(description = "已重试次数")
     private Integer retryCount;
+    @Schema(description = "下次重试时间（ISO 8601）")
     private LocalDateTime nextRetryAt;
+    @Schema(description = "创建时间（ISO 8601）")
     private LocalDateTime createdAt;
 
     public Long getId() {

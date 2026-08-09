@@ -6,6 +6,8 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.PythonTestRequest;
 import com.datanest.task.core.dto.PythonExecuteResult;
 import com.datanest.task.core.service.PythonExecutor;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +22,7 @@ import java.util.Map;
  * 使用场景：新建 DAG 尚未保存时，Python 节点编辑器需要「运行测试」按钮可用。
  * 此时没有 dagId，无法解析 DAG 级参数，因此只执行脚本本身，不替换占位符。
  */
+@Tag(name = "Python 脚本测试", description = "不依赖 DAG 的 Python 脚本独立测试")
 @RestController
 @RequestMapping("/dev")
 public class PythonTestController {
@@ -30,10 +33,7 @@ public class PythonTestController {
         this.pythonExecutor = pythonExecutor;
     }
 
-    /**
-     * 独立执行 Python 脚本并返回结果，不注册元数据、不写 node_execution。
-     * 请求体中的 params 如有值则作为上下文参数，但不进行 DAG 级参数解析/占位符替换。
-     */
+    @Operation(summary = "独立执行 Python 脚本测试", description = "执行脚本并返回结果，不注册元数据、不写 node_execution；params 仅作上下文参数，不做 DAG 级参数解析/占位符替换")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/python/test")
     public Result<PythonExecuteResult> testPythonScript(@RequestBody PythonTestRequest request) {

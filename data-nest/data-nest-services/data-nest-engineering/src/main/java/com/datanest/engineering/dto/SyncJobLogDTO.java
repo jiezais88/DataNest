@@ -1,17 +1,28 @@
 package com.datanest.engineering.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
+@Schema(description = "同步任务执行日志行 DTO")
 public class SyncJobLogDTO {
 
+    @Schema(description = "日志 ID", example = "1234567890123456789")
     private Long id;
+    @Schema(description = "所属执行历史 ID", example = "1234567890123456789")
     private Long historyId;
+    @Schema(description = "同步任务 ID", example = "1234567890123456789")
     private Long syncJobId;
+    @Schema(description = "日志级别（如 INFO/ERROR）")
     private String level;
+    @Schema(description = "日志内容")
     private String message;
+    @Schema(description = "行号")
     private Integer lineNum;
     /** 所属表名；平台概要行为 null（归「概览」） */
+    @Schema(description = "所属表名；平台概要行为 null（归「概览」）")
     private String tableName;
+    @Schema(description = "创建时间（ISO 8601）")
     private LocalDateTime createdAt;
 
     public Long getId() {

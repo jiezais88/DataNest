@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 治理域对象内部接口（实现 governance-api 的 Feign 契约）。
@@ -21,6 +22,7 @@ import java.util.*;
  * 仅供服务间内部调用（如告警服务解析对象名称/下拉选项、DAG 成功后自动触发质量任务），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class InternalObjectController {

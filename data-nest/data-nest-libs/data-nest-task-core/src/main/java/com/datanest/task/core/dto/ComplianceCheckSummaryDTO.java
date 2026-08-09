@@ -1,5 +1,6 @@
 package com.datanest.task.core.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 /**
@@ -13,18 +14,19 @@ import lombok.Data;
  *   <li>complianceRate：合规率 = (1 - nonCompliant / totalObjects) * 100，保留 1 位小数；totalObjects=0 时为 100。</li>
  * </ul>
  */
+@Schema(description = "标准合规检查统计摘要")
 @Data
 public class ComplianceCheckSummaryDTO {
 
-    /** 未忽略的不合规项数。 */
+    @Schema(description = "未忽略的不合规项数")
     private Long nonCompliant;
 
-    /** 已忽略的不合规项数。 */
+    @Schema(description = "已忽略的不合规项数")
     private Long ignored;
 
-    /** 范围内在线元数据对象总数（表 + 字段）。 */
+    @Schema(description = "范围内在线元数据对象总数（表 + 字段）")
     private Long totalObjects;
 
-    /** 合规率（0-100，保留 1 位小数）。 */
+    @Schema(description = "合规率（0-100，保留 1 位小数）")
     private Double complianceRate;
 }

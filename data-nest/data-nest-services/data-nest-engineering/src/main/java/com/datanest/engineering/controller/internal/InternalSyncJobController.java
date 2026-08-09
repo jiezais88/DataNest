@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 同步任务域内部接口（实现 engineering-api 的 EngineeringSyncJobApi 契约）。
@@ -35,6 +36,7 @@ import java.util.List;
  * Controller 只做参数校验与转发，状态翻转/日志续号/收割/清理逻辑在
  * {@link InternalSyncJobService}（@Transactional 保持原子性）。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal/sync-jobs")
 public class InternalSyncJobController {

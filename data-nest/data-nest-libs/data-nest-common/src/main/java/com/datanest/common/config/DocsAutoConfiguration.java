@@ -6,6 +6,7 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -31,6 +32,14 @@ public class DocsAutoConfiguration {
 
     /** 全局安全方案名（Authorization 头，对齐 sa-token token-name） */
     private static final String AUTH_SCHEME = "Authorization";
+
+    static {
+        // Long/long 在文档中渲染为 string（对齐 common JacksonConfig 的全局 Long→String 序列化约定；
+        // swagger-core ModelResolver 读不到 Jackson 3 自定义序列化器，默认渲染 integer/int64 与实际 JSON 不符）。
+        // 用 springdoc 官方类型替换机制（首次请求生成文档前生效）。
+        SpringDocUtils.getConfig().replaceWithClass(Long.class, String.class);
+        SpringDocUtils.getConfig().replaceWithClass(long.class, String.class);
+    }
 
     @Bean
     public OpenAPI datanestOpenAPI(

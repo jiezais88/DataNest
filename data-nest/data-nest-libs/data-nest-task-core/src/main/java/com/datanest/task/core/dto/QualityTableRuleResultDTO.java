@@ -1,5 +1,6 @@
 package com.datanest.task.core.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -10,36 +11,37 @@ import java.time.LocalDateTime;
  * <p>
  * 按表查询该表所有启用规则，逐条回填最近一次检查的分级与结果值（rule_id 取最近一条）。
  */
+@Schema(description = "单表规则 + 最近一次检查结果")
 @Data
 public class QualityTableRuleResultDTO {
 
-    /** 规则 ID */
+    @Schema(description = "规则 ID", example = "1234567890123456789")
     private Long ruleId;
 
-    /** 规则名称 */
+    @Schema(description = "规则名称")
     private String ruleName;
 
-    /** 规则类型：COMPLETENESS / UNIQUENESS / RANGE / CUSTOM_SQL */
+    @Schema(description = "规则类型（COMPLETENESS/UNIQUENESS/RANGE/CUSTOM_SQL/PYTHON）")
     private String ruleType;
 
-    /** 所属任务名（可被多任务引用，逗号拼接） */
+    @Schema(description = "所属任务名（可被多任务引用，逗号拼接）")
     private String jobName;
 
-    /** 检查字段 */
+    @Schema(description = "检查字段")
     private String columnName;
 
-    /** 权重 */
+    @Schema(description = "权重")
     private Integer weight;
 
-    /** 最近一次结果值 */
+    @Schema(description = "最近一次结果值")
     private BigDecimal resultValue;
 
-    /** 最近一次分级：PASS/WARNING/SEVERE/UNAVAILABLE */
+    @Schema(description = "最近一次分级（PASS/WARNING/SEVERE/UNAVAILABLE）")
     private String resultLevel;
 
-    /** 最近一次检查时间（取明细 created_at） */
+    @Schema(description = "最近一次检查时间（取明细 created_at，ISO 8601）")
     private LocalDateTime lastCheckedAt;
 
-    /** 最近一次执行是否成功：1 成功，0 失败 */
+    @Schema(description = "最近一次执行是否成功（1 成功，0 失败）")
     private Integer success;
 }

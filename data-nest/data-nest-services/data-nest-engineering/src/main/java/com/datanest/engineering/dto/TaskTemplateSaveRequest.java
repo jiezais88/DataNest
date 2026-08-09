@@ -1,5 +1,6 @@
 package com.datanest.engineering.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -10,22 +11,28 @@ import lombok.Data;
  * configTemplate 与 sourceTaskId 二选一：sourceTaskId 非空时从既有任务配置生成模板（另存为），
  * 否则使用 configTemplate 原文。编辑时两者都缺省 = 仅改名称/说明，保留原配置。
  */
+@Schema(description = "新增/编辑任务模板请求")
 @Data
 public class TaskTemplateSaveRequest {
 
+    @Schema(description = "模板名称")
     @NotBlank(message = "模板名称不能为空")
     @Size(max = 100, message = "模板名称最多 100 个字符")
     private String name;
 
+    @Schema(description = "模板类型（SYNC/COLLECT）")
     @NotBlank(message = "模板类型不能为空")
     private String type;
 
+    @Schema(description = "模板说明")
     @Size(max = 500, message = "模板说明最多 500 个字符")
     private String description;
 
     /** 模板 JSON 原文（另存为场景忽略） */
+    @Schema(description = "模板 JSON 原文（另存为场景忽略）")
     private String configTemplate;
 
     /** 从既有任务另存为模板：任务 ID（SYNC→sync_job.id / COLLECT→collect_task.id） */
+    @Schema(description = "从既有任务另存为模板：任务 ID（SYNC→sync_job.id / COLLECT→collect_task.id）", example = "1234567890123456789")
     private Long sourceTaskId;
 }

@@ -36,6 +36,8 @@
         <commons-pool2.version>2.12.0</commons-pool2.version>
         <!-- springdoc 3.x 线适配 Spring Boot 4（2.x 线仅支持 Boot 3；Knife4j 4.5.0 未适配 Boot 4 未采用） -->
         <springdoc.version>3.0.2</springdoc.version>
+        <!-- 与 springdoc 3.0.2 传递引入的 swagger-annotations 版本对齐（task-core 等共享模块编译注解用） -->
+        <swagger-annotations.version>2.2.43</swagger-annotations.version>
     </properties>
 
     <dependencyManagement>
@@ -142,6 +144,11 @@
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
                 <version>${springdoc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations-jakarta</artifactId>
+                <version>${swagger-annotations.version}</version>
             </dependency>
 
             <!-- DataNest Common -->

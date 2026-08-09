@@ -8,7 +8,7 @@
 | 文件 | 内容 | 何时查阅 |
 |------|------|----------|
 | `docs/agent/architecture.md` | 模块/容器/包结构/task-core 拆分依赖关系 | 需要理解模块边界、依赖方向、改共享模块时 |
-| `docs/agent/conventions-backend.md` | 后端技术栈、响应协议、异常、实体/Mapper/Flyway、Controller/URL、Nacos | 写后端代码时 |
+| `docs/agent/conventions-backend.md` | 后端技术栈、响应协议、异常、实体/Mapper/Flyway、Controller/URL、接口文档注解、Nacos | 写后端代码时 |
 | `docs/agent/conventions-frontend.md` | 前端技术栈、目录结构、API/错误/状态/路由/样式规范 | 写前端代码时 |
 | `docs/agent/gotchas.md` | 已知坑完整版 + 已解决坑 + E2E 测试细节 | 排查问题、写/改测试时 |
 | `docs/agent/prototype-guide.md` | UI 原型高保真制作规范 + 真实 token/组件速查表 | 做静态高保真原型时 |

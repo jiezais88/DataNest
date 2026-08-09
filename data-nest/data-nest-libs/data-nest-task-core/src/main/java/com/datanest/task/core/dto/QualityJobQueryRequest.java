@@ -1,25 +1,24 @@
 package com.datanest.task.core.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 质量任务分页查询请求（Sprint 6 配置层）。
- */
+@Schema(description = "质量任务分页查询请求")
 @Data
 public class QualityJobQueryRequest {
 
-    /** 页码，默认 1 */
+    @Schema(description = "页码，从 1 开始")
     private Long page = 1L;
 
-    /** 每页条数，默认 10 */
+    @Schema(description = "每页条数")
     private Long pageSize = 10L;
 
-    /** 关键字（名称/描述模糊匹配） */
+    @Schema(description = "关键字（名称/描述模糊匹配）")
     private String keyword;
 
-    /** 启用状态过滤 */
+    @Schema(description = "启用状态过滤（1 启用，0 停用）")
     private Integer enabled;
 
-    /** 是否开定时调度过滤 */
+    @Schema(description = "是否开定时调度过滤（1 开，0 关）")
     private Integer scheduledEnabled;
 }

@@ -122,7 +122,20 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - 新增配置项优先放到对应 shared-config，不要硬编码在 `application.yml`。
 - 环境变量默认值写法：`${NACOS_HOST:localhost}:${NACOS_PORT:8848}`。
 
-## 11. 日志
+## 11. 接口文档注解（springdoc，2026-08-09 起）
+
+- **选型**：springdoc-openapi 3.0.x（Boot 4 线），不用 Knife4j（未适配 Boot 4）。聚合入口 `http://localhost:8080/swagger-ui.html`（网关 swagger-ui 右上角切服务）；实现与坑见 AGENTS.md §6 / gotchas §一。
+- **注解标准**（样板：`system` 服务的 `UserController`/`UserVO`）：
+  - Controller 类级 `@Tag(name = "中文模块名", description = "一句话")`；端点方法 `@Operation(summary = "中文动作短语")`（复杂语义加 description）。
+  - 所有 `@PathVariable`/`@RequestParam` 加 `@Parameter(description=…)`；`@RequestBody` 不加。
+  - DTO（class/record）类级 + 字段级 `@Schema(description=…)`；ID 字段加 `example = "1234567890123456789"`；枚举型字符串字段描述里列候选值（必须核实代码来源，不编造）；时间字段注明 ISO 8601。
+  - 被 `@Operation` 取代的冗余单行 javadoc 删除；含 ADR/决策/调用链说明的 javadoc 保留。
+- **Long/long 不写 `type="string"`**：common `DocsAutoConfiguration` 静态块用 `SpringDocUtils.replaceWithClass` 全局渲染为 string（对齐 Jackson Long→String）。
+- **internal 端点（`/internal/**` Feign 契约）不进文档**：类级 `@Hidden`（已加，新 internal Controller 照做）。
+- **新服务接文档三步**：引 `springdoc-openapi-starter-webmvc-ui` → application.yml 配 `datanest.docs.title/gateway-prefix` → 网关 `springdoc.swagger-ui.urls` 加一行。
+- 共享 DTO 模块（common/task-core）的 swagger 注解依赖为 `provided`（`swagger-annotations-jakarta`），消费方经 springdoc starter 传递引入。
+
+## 12. 日志
 
 - **公用 logback 配置（生产级）**：`data-nest-common/src/main/resources/logback-spring.xml`，随 common 进入全部后端服务（gateway/system/engineering/governance/worker/job）classpath 根自动生效。
 - **三通道**：console（docker logs 在线排查）+ 全量滚动文件 + ERROR 单独滚动文件（排障第一入口）；文件输出全部走 **AsyncAppender 异步队列**（queueSize 8192、`neverBlock=true` 队列满丢弃不阻塞业务、`discardingThreshold=0` 不主动丢 INFO）。

@@ -11,11 +11,15 @@ import com.datanest.engineering.dto.DataSourceUpdateRequest;
 import com.datanest.engineering.service.DataSourceService;
 import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Tag(name = "数据源", description = "数据源 CRUD / 连接测试 / 库表浏览")
 @RestController
 @RequestMapping("/datasources")
 public class DataSourceController {
@@ -26,18 +30,14 @@ public class DataSourceController {
         this.dataSourceService = dataSourceService;
     }
 
-    /**
-     * 分页查询数据源（超管、工程师、治理员）
-     */
+    @Operation(summary = "数据源分页查询（超管、工程师、治理员）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/page")
     public Result<PageResult<DataSourceDTO>> list(@RequestBody DataSourceQueryRequest request) {
         return Result.ok(dataSourceService.list(request));
     }
 
-    /**
-     * 新增数据源（超管、工程师）
-     */
+    @Operation(summary = "新增数据源（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping
     public Result<DataSourceDTO> create(@Valid @RequestBody DataSourceCreateRequest request) {
@@ -48,78 +48,62 @@ public class DataSourceController {
         return Result.ok(dto);
     }
 
-    /**
-     * 修改数据源（超管、工程师）
-     */
+    @Operation(summary = "修改数据源（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PutMapping("/{id}")
-    public Result<DataSourceDTO> update(@PathVariable Long id, @Valid @RequestBody DataSourceUpdateRequest request) {
+    public Result<DataSourceDTO> update(@Parameter(description = "数据源 ID") @PathVariable Long id, @Valid @RequestBody DataSourceUpdateRequest request) {
         return Result.ok(dataSourceService.update(id, request));
     }
 
-    /**
-     * 删除数据源（超管、工程师）
-     */
+    @Operation(summary = "删除数据源（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         dataSourceService.delete(id);
         return Result.ok(null);
     }
 
-    /**
-     * 测试任意连接参数（超管、工程师）
-     */
+    @Operation(summary = "测试任意连接参数（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/test")
     public Result<TestConnectionResult> testConnection(@Valid @RequestBody TestConnectionRequest request) {
         return Result.ok(dataSourceService.testConnection(request));
     }
 
-    /**
-     * 测试已保存的数据源并更新状态（超管、工程师）
-     */
+    @Operation(summary = "测试已保存的数据源并更新状态（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/{id}/test")
-    public Result<TestConnectionResult> testAndUpdateStatus(@PathVariable Long id) {
+    public Result<TestConnectionResult> testAndUpdateStatus(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.testAndUpdateStatus(id));
     }
 
-    /**
-     * 查询单个数据源详情（超管、工程师、治理员）
-     */
+    @Operation(summary = "查询单个数据源详情（超管、工程师、治理员）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/{id}")
-    public Result<DataSourceDTO> getById(@PathVariable Long id) {
+    public Result<DataSourceDTO> getById(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.getById(id));
     }
 
-    /**
-     * 拉取数据源下所有库/Schema（超管、工程师、治理员）
-     */
+    @Operation(summary = "拉取数据源下所有库/Schema（超管、工程师、治理员）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/{id}/schemas")
-    public Result<List<String>> getSchemas(@PathVariable Long id) {
+    public Result<List<String>> getSchemas(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.getSchemas(id));
     }
 
-    /**
-     * 拉取数据源下所有库/Database（超管、工程师、治理员）
-     */
+    @Operation(summary = "拉取数据源下所有库/Database（超管、工程师、治理员）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/{id}/databases")
-    public Result<List<String>> getDatabases(@PathVariable Long id) {
+    public Result<List<String>> getDatabases(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.getDatabases(id));
     }
 
-    /**
-     * 拉取指定库/Schema 下的所有表（超管、工程师、治理员）
-     */
+    @Operation(summary = "拉取指定库/Schema 下的所有表（超管、工程师、治理员）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/{id}/tables")
-    public Result<List<String>> getTables(@PathVariable Long id,
-                                          @RequestParam(required = false) String database,
-                                          @RequestParam(required = false) String schema) {
+    public Result<List<String>> getTables(@Parameter(description = "数据源 ID") @PathVariable Long id,
+                                          @Parameter(description = "数据库名") @RequestParam(required = false) String database,
+                                          @Parameter(description = "Schema 名") @RequestParam(required = false) String schema) {
         return Result.ok(dataSourceService.getTables(id, database, schema));
     }
 }

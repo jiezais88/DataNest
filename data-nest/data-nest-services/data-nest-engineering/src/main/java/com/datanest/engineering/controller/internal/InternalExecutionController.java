@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * DAG 执行记录域内部接口（实现 engineering-api 的 EngineeringDagExecutionApi 契约）。
@@ -30,6 +31,7 @@ import java.util.List;
  * Controller 只做参数校验与转发，ensureDagExecution/finalize/乐观锁批量/收割/清理/日志续号
  * 逻辑在 {@link InternalDagExecutionService}（@Transactional 保持原子性）。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal")
 public class InternalExecutionController {

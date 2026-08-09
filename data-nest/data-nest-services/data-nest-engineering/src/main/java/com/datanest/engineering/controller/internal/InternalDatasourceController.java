@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import io.swagger.v3.oas.annotations.Hidden;
 
 /**
  * 数据源域内部接口（实现 engineering-api 的 EngineeringDatasourceApi 契约）。
@@ -23,6 +24,7 @@ import java.util.Map;
  * 仅供服务间内部调用（worker 建 JDBC 读取连接信息、job 定时刷新状态），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
  */
+@Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
 @RequestMapping("/internal/datasources")
 public class InternalDatasourceController {

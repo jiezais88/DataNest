@@ -1,5 +1,7 @@
 package com.datanest.engineering.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * 全局执行历史查询条件
  * - 与 PRD §6.7.3 筛选条件对齐：所属 DAG（模糊）/ 状态 / 触发方式 / 时间范围 / 分页
@@ -8,31 +10,41 @@ package com.datanest.engineering.dto;
  *   controller 负责把 String 解析为 LocalDateTime（容器时区 Asia/Shanghai，shared-common.yaml）
  *   避免 Spring 内置 @DateTimeFormat 对 'Z' 处理不一致的坑。
  */
+@Schema(description = "全局执行历史查询条件")
 public class GlobalExecutionFilter {
 
     /** DAG 名称模糊匹配；null/空 视为全部 */
+    @Schema(description = "DAG 名称（模糊匹配）；空视为全部")
     private String dagName;
 
     /** 所属项目名称模糊匹配；null/空 视为全部 */
+    @Schema(description = "所属项目名称（模糊匹配）；空视为全部")
     private String projectName;
 
     /** DAG id 精确过滤（任务列表「历史」跳入时只展示该 DAG）；null 视为全部 */
+    @Schema(description = "DAG ID 精确过滤；空视为全部", example = "1234567890123456789")
     private Long dagId;
 
     /** RUNNING / SUCCESS / FAILED / TERMINATED；null/空 视为全部 */
+    @Schema(description = "执行状态过滤（RUNNING/SUCCESS/FAILED/TERMINATED）；空视为全部")
     private String status;
 
-    /** MANUAL / CRON；null/空 视为全部 */
+    /** MANUAL / SCHEDULED；null/空 视为全部 */
+    @Schema(description = "触发方式过滤（MANUAL/SCHEDULED）；空视为全部")
     private String triggerType;
 
     /** 执行时间下界（inclusive）；null/空 视为无下界 */
+    @Schema(description = "执行时间下界（含，ISO 8601）")
     private String startTimeFrom;
 
     /** 执行时间上界（exclusive）；null/空 视为无上界 */
+    @Schema(description = "执行时间上界（不含，ISO 8601）")
     private String startTimeTo;
 
+    @Schema(description = "页码，从 1 开始")
     private long page = 1;
 
+    @Schema(description = "每页条数")
     private long pageSize = 20;
 
     public String getDagName() {
