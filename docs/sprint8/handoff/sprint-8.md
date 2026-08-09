@@ -60,7 +60,7 @@
 | `docs/sprint8/DataNest-Sprint8-PRD.md`（新增）                   | Sprint 8 产品文档 v1.0 → v1.1（T1~T4 交互确认）→ v1.2（B1/B2/B4 + Hadoop Catalog 口径统一）。对齐 Sprint7 PRD 范本，13 章 |
 | `docs/sprint8/DataNest-Sprint8-技术文档.md`（新增）               | Sprint 8 技术设计文档 v1.0 → v1.1（B1/B2/B4 定稿 + Iceberg 部署形态说明）。10 章，含 6 个 ADR、迁移脚本规划、接口设计、部署方案 |
 | `docs/sprint8/handoff/sprint-8.md`（新增）                        | 本 Handoff                                                                                       |
-| `docs/sprint8/DataNest-Sprint8-原型.html/css/js`（新增）| UI 原型：**单 HTML 多视图**（沿用 Sprint 7 范本），prototype-switch 切换 7 视图：数据资产（标签云 + 热门 Top10）、资产详情（标签/收藏/关注/评论/热度）、我的收藏、我的关注（表变更动态）、CDC 管道列表（含日志抽屉）、CDC 新建向导（4 步）、质量报告（KPI + SVG 四档趋势/评分趋势 + 问题清单）；视觉严格对齐真实 ds-* token + antd 组件结构（accent indigo #4f46e5、圆角 8/12/16px、表头 11px 大写、表格 10px 16px） |
+| `docs/sprint8/DataNest-Sprint8-原型.html/css/js`（新增）| UI 原型：**单 HTML 多视图**（沿用 Sprint 7 范本），prototype-switch 切换 7 视图：数据资产（标签云 + 热门 Top10）、资产详情（标签/收藏/关注/评论/热度）、我的收藏、我的关注（表变更动态）、CDC 管道列表（含日志抽屉）、CDC 新建向导（4 步）、质量报告（**Dashboard 一屏版**：KPI×5 + 四档趋势 + 评分分布环图 + 数据源对比横向条 + 表评分趋势 + 问题清单 TOP5，无滚动）；视觉严格对齐真实 ds-* token + antd 组件结构（accent indigo #4f46e5、圆角 8/12/16px、表头 11px 大写、表格 10px 16px） |
 
 ### 代码现状核验要点（2026-08-09，影响落地路径）
 

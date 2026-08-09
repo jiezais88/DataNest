@@ -856,140 +856,155 @@
 
   <div class="layout-main">
     <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
-    <main class="layout-main-inner">
-      <nav class="breadcrumb">
-        <a class="bc-link">数据治理</a><svg class="hi bc-sep"><use href="#i-chevron-r"/></svg>
-        <span class="bc-current">质量报告</span>
-      </nav>
-
-      <div class="page-head">
+    <main class="layout-main-inner report-dashboard">
+      <div class="report-topbar">
         <div>
           <h1><svg class="hi" style="color:var(--ds-accent)"><use href="#i-chart"/></svg>质量报告</h1>
-          <div class="head-sub">多维聚合质量检查成果：四档分布趋势、表评分趋势、问题清单，可汇报、可考核。</div>
+          <div class="head-sub">多维质量成果一屏总览：趋势 · 分布 · 对比 · 问题清单</div>
         </div>
-        <div class="actions" style="display:flex;gap:8px">
-          <button class="btn btn-default"><svg class="hi"><use href="#i-download"/></svg>导出 CSV</button>
-          <button class="btn btn-primary"><svg class="hi"><use href="#i-refresh"/></svg>生成报告</button>
-        </div>
-      </div>
-
-      <!-- 筛选区 -->
-      <div class="table-card">
-        <div class="card-toolbar">
+        <div class="rt-right">
           <div class="filter-select"><select><option>全部数据源</option><option>Doris 数仓</option><option>MySQL 业务库</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
           <div class="filter-select"><select><option>全部库</option><option>dwd</option><option>dws</option><option>ads</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
           <div class="filter-select"><select><option>全部质量任务</option><option>订单质量任务</option><option>用户质量任务</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
           <div class="filter-select"><select><option>最近 30 天</option><option>最近 7 天</option><option>最近 90 天</option><option>自定义</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
-          <div class="actions"><button class="btn btn-primary">查询</button><button class="btn btn-default">重置</button></div>
+          <button class="btn btn-default"><svg class="hi"><use href="#i-download"/></svg>导出</button>
+          <button class="btn btn-primary"><svg class="hi"><use href="#i-refresh"/></svg>生成报告</button>
         </div>
       </div>
 
-      <!-- KPI -->
-      <div class="kpi-strip">
-        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-check"/></svg>检查批次</div><div class="kpi-num">128<span class="unit">批次</span></div><div class="kpi-sub">范围内执行完成批次</div></div>
+      <!-- KPI × 5 -->
+      <div class="kpi-strip kpi-strip-5">
+        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-check"/></svg>检查批次</div><div class="kpi-num">128<span class="unit">批次</span></div><div class="kpi-sub">范围内执行完成</div></div>
         <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-info)"><use href="#i-list"/></svg>规则明细</div><div class="kpi-num">342<span class="unit">条</span></div><div class="kpi-sub">全部规则检查明细</div></div>
-        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-success)"><use href="#i-star"/></svg>平均评分</div><div class="kpi-num">82.5</div><div class="kpi-sub">范围内所有表最近评分均值</div></div>
-        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-warning)"><use href="#i-scale"/></svg>通过率</div><div class="kpi-num">91.2<span class="unit">%</span></div><div class="kpi-sub">PASS 明细 / 规则总数</div></div>
+        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-success)"><use href="#i-star"/></svg>平均评分</div><div class="kpi-num">82.5</div><div class="kpi-sub">表最近评分均值</div></div>
+        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-warning)"><use href="#i-scale"/></svg>通过率</div><div class="kpi-num">91.2<span class="unit">%</span></div><div class="kpi-sub">PASS / 规则总数</div></div>
+        <div class="kpi-card"><div class="kpi-label"><svg class="hi" style="color:var(--ds-danger)"><use href="#i-triangle"/></svg>待处理问题</div><div class="kpi-num" style="color:var(--ds-danger)">32</div><div class="kpi-sub">SEVERE 8 / WARNING 24</div></div>
       </div>
 
-      <!-- 四档分布趋势 -->
-      <div class="chart-card">
-        <div class="cc-head">
-          <span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-chart"/></svg>四档分布趋势</span>
-          <span class="sub">按天聚合范围内检查明细的四档数量</span>
-          <div class="cc-actions">
-            <span class="chart-legend">
-              <span class="lg-item"><span class="lg-dot" style="background:#16a34a"></span>通过 PASS</span>
-              <span class="lg-item"><span class="lg-dot" style="background:#d97706"></span>警告 WARNING</span>
-              <span class="lg-item"><span class="lg-dot" style="background:#dc2626"></span>严重 SEVERE</span>
-              <span class="lg-item"><span class="lg-dot" style="background:#94a3b8"></span>不可用 UNAVAILABLE</span>
-            </span>
-          </div>
-        </div>
-        <div class="cc-body">
-          <svg class="trend-chart" viewBox="0 0 880 260" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"/><stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/></linearGradient></defs>
-            <!-- 网格 -->
-            <line x1="50" y1="20" x2="850" y2="20" class="grid-line"/><line x1="50" y1="80" x2="850" y2="80" class="grid-line"/>
-            <line x1="50" y1="140" x2="850" y2="140" class="grid-line"/><line x1="50" y1="200" x2="850" y2="200" class="grid-line"/>
-            <!-- Y 轴 -->
-            <text x="20" y="24" class="axis-text">16</text><text x="26" y="84" class="axis-text">12</text>
-            <text x="26" y="144" class="axis-text">8</text><text x="26" y="204" class="axis-text">4</text>
-            <!-- PASS 线 -->
-            <path class="line-pass" d="M60,45 L135,40 L210,52 L285,48 L360,38 L435,30 L510,42 L585,36 L660,28 L735,32 L810,25 L870,20"/>
-            <circle cx="60" cy="45" r="3.5" class="dot dot-pass"/><circle cx="210" cy="52" r="3.5" class="dot dot-pass"/><circle cx="360" cy="38" r="3.5" class="dot dot-pass"/><circle cx="510" cy="42" r="3.5" class="dot dot-pass"/><circle cx="660" cy="28" r="3.5" class="dot dot-pass"/><circle cx="810" cy="25" r="3.5" class="dot dot-pass"/>
-            <!-- WARNING 线 -->
-            <path class="line-warning" d="M60,95 L135,88 L210,102 L285,92 L360,85 L435,96 L510,90 L585,84 L660,98 L735,88 L810,92 L870,84"/>
-            <circle cx="135" cy="88" r="3.5" class="dot dot-warning"/><circle cx="285" cy="92" r="3.5" class="dot dot-warning"/><circle cx="435" cy="96" r="3.5" class="dot dot-warning"/><circle cx="585" cy="84" r="3.5" class="dot dot-warning"/><circle cx="735" cy="88" r="3.5" class="dot dot-warning"/>
-            <!-- SEVERE 线 -->
-            <path class="line-severe" d="M60,185 L135,178 L210,192 L285,182 L360,175 L435,186 L510,180 L585,188 L660,176 L735,182 L810,179 L870,184"/>
-            <circle cx="60" cy="185" r="3.5" class="dot dot-severe"/><circle cx="210" cy="192" r="3.5" class="dot dot-severe"/><circle cx="360" cy="175" r="3.5" class="dot dot-severe"/><circle cx="510" cy="180" r="3.5" class="dot dot-severe"/><circle cx="660" cy="176" r="3.5" class="dot dot-severe"/><circle cx="810" cy="179" r="3.5" class="dot dot-severe"/>
-            <!-- UNAVAILABLE 线 -->
-            <path class="line-unavail" d="M60,145 L135,150 L210,143 L285,148 L360,152 L435,147 L510,142 L585,149 L660,146 L735,143 L810,148 L870,144"/>
-            <!-- X 轴 -->
-            <text x="60" y="240" class="axis-text" text-anchor="middle">07-11</text><text x="195" y="240" class="axis-text" text-anchor="middle">07-15</text>
-            <text x="330" y="240" class="axis-text" text-anchor="middle">07-19</text><text x="465" y="240" class="axis-text" text-anchor="middle">07-23</text>
-            <text x="600" y="240" class="axis-text" text-anchor="middle">07-27</text><text x="735" y="240" class="axis-text" text-anchor="middle">07-31</text>
-            <text x="870" y="240" class="axis-text" text-anchor="middle">08-04</text>
-          </svg>
-        </div>
-      </div>
-
-      <!-- 表评分趋势 -->
-      <div class="chart-card">
-        <div class="cc-head">
-          <span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-star"/></svg>表评分趋势</span>
-          <span class="sub">选择表查看历史评分变化（来源：quality_score_history）</span>
-          <div class="cc-actions">
-            <div class="filter-select table-picker"><select><option>dwd_orders（85 分）</option><option>dim_user（92 分）</option><option>ads_gmv（64 分）</option><option>dws_user_daily（52 分）</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
-          </div>
-        </div>
-        <div class="cc-body">
-          <svg class="trend-chart" viewBox="0 0 880 260" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="scoreGrad2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"/><stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/></linearGradient></defs>
-            <line x1="50" y1="20" x2="850" y2="20" class="grid-line"/><line x1="50" y1="80" x2="850" y2="80" class="grid-line"/>
-            <line x1="50" y1="140" x2="850" y2="140" class="grid-line"/><line x1="50" y1="200" x2="850" y2="200" class="grid-line"/>
-            <text x="20" y="24" class="axis-text">100</text><text x="26" y="84" class="axis-text">80</text>
-            <text x="26" y="144" class="axis-text">60</text><text x="26" y="204" class="axis-text">40</text>
-            <!-- 评分面积 + 线 -->
-            <path class="area-score" d="M60,95 L135,80 L210,88 L285,72 L360,78 L435,60 L510,66 L585,52 L660,58 L735,44 L810,50 L870,40 L870,220 L60,220 Z"/>
-            <path class="line-score" d="M60,95 L135,80 L210,88 L285,72 L360,78 L435,60 L510,66 L585,52 L660,58 L735,44 L810,50 L870,40"/>
-            <circle cx="60" cy="95" r="4" class="dot dot-score"/><circle cx="210" cy="88" r="4" class="dot dot-score"/><circle cx="360" cy="78" r="4" class="dot dot-score"/><circle cx="510" cy="66" r="4" class="dot dot-score"/><circle cx="660" cy="58" r="4" class="dot dot-score"/><circle cx="810" cy="50" r="4" class="dot dot-score"/><circle cx="870" cy="40" r="4" class="dot dot-score"/>
-            <text x="60" y="240" class="axis-text" text-anchor="middle">07-11</text><text x="195" y="240" class="axis-text" text-anchor="middle">07-15</text>
-            <text x="330" y="240" class="axis-text" text-anchor="middle">07-19</text><text x="465" y="240" class="axis-text" text-anchor="middle">07-23</text>
-            <text x="600" y="240" class="axis-text" text-anchor="middle">07-27</text><text x="735" y="240" class="axis-text" text-anchor="middle">07-31</text>
-            <text x="870" y="240" class="axis-text" text-anchor="middle">08-04</text>
-          </svg>
-        </div>
-      </div>
-
-      <!-- 问题清单 -->
-      <div class="table-card">
-        <div class="card-toolbar">
-          <span class="text-title"><svg class="hi" style="color:var(--ds-danger)"><use href="#i-triangle"/></svg>问题清单</span>
-          <span class="text-small">范围内 SEVERE / WARNING 规则明细</span>
-          <div class="actions"><button class="btn btn-default btn-sm"><svg class="hi-sm"><use href="#i-download"/></svg>导出问题清单</button></div>
-        </div>
-        <div class="card-body">
-          <table class="ant-table">
-            <thead class="ant-table-thead"><tr><th style="width:160px">表</th><th>规则</th><th style="width:100px">类型</th><th style="width:110px">判定</th><th style="width:100px">结果值</th><th style="width:100px">阈值</th><th style="width:120px">检查时间</th></tr></thead>
-            <tbody class="ant-table-tbody">
-              <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">dwd_orders</span></td><td class="problem-cell"><span class="rule-name">amount 非空率</span><div class="rule-task">订单质量任务</div></td><td>完整性</td><td><span class="viol-badge viol-warning"><span class="dot" style="width:5px;height:5px;border-radius:50%;background:currentColor"></span>WARNING</span></td><td class="problem-value">3.5%</td><td class="problem-threshold">≥ 2%</td><td class="problem-time">08-08 02:00</td></tr>
-              <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">dwd_orders</span></td><td class="problem-cell"><span class="rule-name">order_id 唯一性</span><div class="rule-task">订单质量任务</div></td><td>唯一性</td><td><span class="viol-badge viol-severe"><span class="dot" style="width:5px;height:5px;border-radius:50%;background:currentColor"></span>SEVERE</span></td><td class="problem-value">2 条</td><td class="problem-threshold">0</td><td class="problem-time">08-07 02:00</td></tr>
-              <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">ads_gmv</span></td><td class="problem-cell"><span class="rule-name">金额范围校验</span><div class="rule-task">GMV 质量任务</div></td><td>值域范围</td><td><span class="viol-badge viol-warning"><span class="dot" style="width:5px;height:5px;border-radius:50%;background:currentColor"></span>WARNING</span></td><td class="problem-value">1.5%</td><td class="problem-threshold">≥ 1%</td><td class="problem-time">08-08 03:00</td></tr>
-              <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">dws_user_daily</span></td><td class="problem-cell"><span class="rule-name">活跃用户非空率</span><div class="rule-task">用户质量任务</div></td><td>完整性</td><td><span class="viol-badge viol-severe"><span class="dot" style="width:5px;height:5px;border-radius:50%;background:currentColor"></span>SEVERE</span></td><td class="problem-value">4.2%</td><td class="problem-threshold">≥ 2%</td><td class="problem-time">08-07 03:00</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="card-foot">
-          <div class="pagination">
-            <span class="page-info">共 24 条问题</span>
-            <div class="page-nav">
-              <button class="page-btn" disabled><svg class="hi"><use href="#i-chevron-r" style="transform:rotate(180deg)"/></svg>上一页</button>
-              <button class="page-btn active">1</button>
-              <button class="page-btn">2</button>
-              <button class="page-btn">下一页<svg class="hi"><use href="#i-chevron-r"/></svg></button>
+      <!-- 行 2：四档趋势 + 评分分布 + 数据源对比 -->
+      <div class="report-row">
+        <div class="chart-card small" style="flex:1.4">
+          <div class="cc-head">
+            <span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-chart"/></svg>四档分布趋势</span>
+            <span class="sub">按天聚合的四档检查明细</span>
+            <div class="cc-actions">
+              <span class="chart-legend">
+                <span class="lg-item"><span class="lg-dot" style="background:#16a34a"></span>PASS</span>
+                <span class="lg-item"><span class="lg-dot" style="background:#d97706"></span>WARNING</span>
+                <span class="lg-item"><span class="lg-dot" style="background:#dc2626"></span>SEVERE</span>
+                <span class="lg-item"><span class="lg-dot" style="background:#94a3b8"></span>UNAVAILABLE</span>
+              </span>
             </div>
+          </div>
+          <div class="cc-body">
+            <svg class="trend-chart" viewBox="0 0 880 230" xmlns="http://www.w3.org/2000/svg">
+              <defs><linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"/><stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/></linearGradient></defs>
+              <line x1="50" y1="18" x2="850" y2="18" class="grid-line"/><line x1="50" y1="72" x2="850" y2="72" class="grid-line"/>
+              <line x1="50" y1="126" x2="850" y2="126" class="grid-line"/><line x1="50" y1="180" x2="850" y2="180" class="grid-line"/>
+              <text x="20" y="22" class="axis-text">16</text><text x="26" y="76" class="axis-text">12</text>
+              <text x="26" y="130" class="axis-text">8</text><text x="26" y="184" class="axis-text">4</text>
+              <path class="line-pass" d="M60,42 L135,38 L210,48 L285,44 L360,35 L435,28 L510,39 L585,33 L660,26 L735,30 L810,23 L870,19"/>
+              <circle cx="60" cy="42" r="3.5" class="dot dot-pass"/><circle cx="210" cy="48" r="3.5" class="dot dot-pass"/><circle cx="360" cy="35" r="3.5" class="dot dot-pass"/><circle cx="510" cy="39" r="3.5" class="dot dot-pass"/><circle cx="660" cy="26" r="3.5" class="dot dot-pass"/><circle cx="810" cy="23" r="3.5" class="dot dot-pass"/>
+              <path class="line-warning" d="M60,86 L135,80 L210,92 L285,84 L360,78 L435,88 L510,82 L585,76 L660,90 L735,80 L810,84 L870,77"/>
+              <circle cx="135" cy="80" r="3.5" class="dot dot-warning"/><circle cx="285" cy="84" r="3.5" class="dot dot-warning"/><circle cx="435" cy="88" r="3.5" class="dot dot-warning"/><circle cx="585" cy="76" r="3.5" class="dot dot-warning"/><circle cx="735" cy="80" r="3.5" class="dot dot-warning"/>
+              <path class="line-severe" d="M60,168 L135,162 L210,175 L285,166 L360,158 L435,170 L510,164 L585,172 L660,160 L735,166 L810,163 L870,167"/>
+              <circle cx="60" cy="168" r="3.5" class="dot dot-severe"/><circle cx="210" cy="175" r="3.5" class="dot dot-severe"/><circle cx="360" cy="158" r="3.5" class="dot dot-severe"/><circle cx="510" cy="164" r="3.5" class="dot dot-severe"/><circle cx="660" cy="160" r="3.5" class="dot dot-severe"/><circle cx="810" cy="163" r="3.5" class="dot dot-severe"/>
+              <path class="line-unavail" d="M60,132 L135,137 L210,130 L285,135 L360,139 L435,134 L510,129 L585,136 L660,133 L735,130 L810,135 L870,131"/>
+              <text x="60" y="214" class="axis-text" text-anchor="middle">07-11</text><text x="195" y="214" class="axis-text" text-anchor="middle">07-15</text>
+              <text x="330" y="214" class="axis-text" text-anchor="middle">07-19</text><text x="465" y="214" class="axis-text" text-anchor="middle">07-23</text>
+              <text x="600" y="214" class="axis-text" text-anchor="middle">07-27</text><text x="735" y="214" class="axis-text" text-anchor="middle">07-31</text>
+              <text x="870" y="214" class="axis-text" text-anchor="middle">08-04</text>
+            </svg>
+          </div>
+        </div>
+        <div class="report-col">
+          <div class="chart-card small" style="flex:1">
+            <div class="cc-head">
+              <span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-star"/></svg>表评分分布</span>
+              <span class="sub">42 张表</span>
+            </div>
+            <div class="cc-body compact">
+              <div class="donut-wrap">
+                <svg class="donut-svg" viewBox="0 0 104 104" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="52" cy="52" r="34" class="donut-ring donut-track"/>
+                  <circle cx="52" cy="52" r="34" class="donut-ring" stroke="#16a34a" stroke-dasharray="54 160" stroke-dashoffset="25" transform="rotate(-90 52 52)"/>
+                  <circle cx="52" cy="52" r="34" class="donut-ring" stroke="#d97706" stroke-dasharray="81 160" stroke-dashoffset="-29" transform="rotate(-90 52 52)"/>
+                  <circle cx="52" cy="52" r="34" class="donut-ring" stroke="#dc2626" stroke-dasharray="36 160" stroke-dashoffset="-110" transform="rotate(-90 52 52)"/>
+                  <circle cx="52" cy="52" r="34" class="donut-ring" stroke="#94a3b8" stroke-dasharray="18 160" stroke-dashoffset="-146" transform="rotate(-90 52 52)"/>
+                  <text x="52" y="52" class="donut-center-text">82.5</text>
+                  <text x="52" y="66" class="donut-center-sub">平均分</text>
+                </svg>
+                <div class="donut-legend">
+                  <div class="dl-item"><span class="dl-dot" style="background:#16a34a"></span><span class="dl-lbl">优秀</span><span class="dl-pct">28.6%</span><span class="dl-num">12</span></div>
+                  <div class="dl-item"><span class="dl-dot" style="background:#d97706"></span><span class="dl-lbl">一般</span><span class="dl-pct">42.9%</span><span class="dl-num">18</span></div>
+                  <div class="dl-item"><span class="dl-dot" style="background:#dc2626"></span><span class="dl-lbl">差</span><span class="dl-pct">19.0%</span><span class="dl-num">8</span></div>
+                  <div class="dl-item"><span class="dl-dot" style="background:#94a3b8"></span><span class="dl-lbl">无评分</span><span class="dl-pct">9.5%</span><span class="dl-num">4</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="chart-card small" style="flex:1">
+            <div class="cc-head">
+              <span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-db"/></svg>数据源质量对比</span>
+              <span class="sub">平均评分</span>
+            </div>
+            <div class="cc-body compact">
+              <div class="bar-compare">
+                <div class="bc-row"><span class="bc-name"><svg class="hi"><use href="#i-doris"/></svg>Doris</span><div class="bc-track"><div class="bc-fill good" style="width:88%"></div></div><span class="bc-score">88</span></div>
+                <div class="bc-row"><span class="bc-name"><svg class="hi"><use href="#i-mysql"/></svg>MySQL</span><div class="bc-track"><div class="bc-fill mid" style="width:74%"></div></div><span class="bc-score">74</span></div>
+                <div class="bc-row"><span class="bc-name"><svg class="hi"><use href="#i-db"/></svg>PostgreSQL</span><div class="bc-track"><div class="bc-fill bad" style="width:58%"></div></div><span class="bc-score">58</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 行 3：表评分趋势 + 问题清单 -->
+      <div class="report-row">
+        <div class="chart-card small">
+          <div class="cc-head">
+            <span class="ttl"><svg class="hi" style="color:var(--ds-accent)"><use href="#i-star"/></svg>表评分趋势</span>
+            <span class="sub">quality_score_history 历史评分</span>
+            <div class="cc-actions">
+              <div class="filter-select table-picker" style="min-width:150px"><select><option>dwd_orders（85）</option><option>dim_user（92）</option><option>ads_gmv（64）</option><option>dws_user_daily（52）</option></select><svg class="hi chev"><use href="#i-chevron-d"/></svg></div>
+            </div>
+          </div>
+          <div class="cc-body">
+            <svg class="trend-chart" viewBox="0 0 620 230" xmlns="http://www.w3.org/2000/svg">
+              <defs><linearGradient id="scoreGrad2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"/><stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/></linearGradient></defs>
+              <line x1="45" y1="18" x2="590" y2="18" class="grid-line"/><line x1="45" y1="72" x2="590" y2="72" class="grid-line"/>
+              <line x1="45" y1="126" x2="590" y2="126" class="grid-line"/><line x1="45" y1="180" x2="590" y2="180" class="grid-line"/>
+              <text x="18" y="22" class="axis-text">100</text><text x="24" y="76" class="axis-text">80</text>
+              <text x="24" y="130" class="axis-text">60</text><text x="24" y="184" class="axis-text">40</text>
+              <path class="area-score" d="M55,88 L120,75 L185,82 L250,68 L315,73 L380,58 L445,63 L510,50 L575,55 L590,48 L590,205 L55,205 Z"/>
+              <path class="line-score" d="M55,88 L120,75 L185,82 L250,68 L315,73 L380,58 L445,63 L510,50 L575,55 L590,48"/>
+              <circle cx="55" cy="88" r="4" class="dot dot-score"/><circle cx="185" cy="82" r="4" class="dot dot-score"/><circle cx="315" cy="73" r="4" class="dot dot-score"/><circle cx="445" cy="63" r="4" class="dot dot-score"/><circle cx="575" cy="55" r="4" class="dot dot-score"/>
+              <text x="55" y="224" class="axis-text" text-anchor="middle">07-11</text><text x="185" y="224" class="axis-text" text-anchor="middle">07-16</text>
+              <text x="315" y="224" class="axis-text" text-anchor="middle">07-21</text><text x="445" y="224" class="axis-text" text-anchor="middle">07-26</text>
+              <text x="575" y="224" class="axis-text" text-anchor="middle">07-31</text>
+            </svg>
+          </div>
+        </div>
+        <div class="chart-card small problem-list" style="flex:1.25">
+          <div class="cc-head">
+            <span class="ttl"><svg class="hi" style="color:var(--ds-danger)"><use href="#i-triangle"/></svg>问题清单</span>
+            <span class="sub">SEVERE / WARNING 明细</span>
+            <div class="cc-actions">
+              <button class="btn btn-default btn-sm"><svg class="hi-sm"><use href="#i-download"/></svg>导出</button>
+              <span class="link-all">查看全部 24 条<svg class="hi"><use href="#i-chevron-r"/></svg></span>
+            </div>
+          </div>
+          <div class="card-body">
+            <table class="ant-table">
+              <thead class="ant-table-thead"><tr><th style="width:120px">表</th><th>规则</th><th style="width:92px">判定</th><th style="width:76px">结果值</th><th style="width:70px">阈值</th><th style="width:92px">时间</th></tr></thead>
+              <tbody class="ant-table-tbody">
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">dwd_orders</span></td><td class="problem-cell"><span class="rule-name">amount 非空率</span><div class="rule-task">订单质量任务</div></td><td><span class="viol-badge viol-warning">WARNING</span></td><td class="problem-value">3.5%</td><td class="problem-threshold">≥ 2%</td><td class="problem-time">08-08 02:00</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">dwd_orders</span></td><td class="problem-cell"><span class="rule-name">order_id 唯一性</span><div class="rule-task">订单质量任务</div></td><td><span class="viol-badge viol-severe">SEVERE</span></td><td class="problem-value">2 条</td><td class="problem-threshold">0</td><td class="problem-time">08-07 02:00</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">ads_gmv</span></td><td class="problem-cell"><span class="rule-name">金额范围校验</span><div class="rule-task">GMV 质量任务</div></td><td><span class="viol-badge viol-warning">WARNING</span></td><td class="problem-value">1.5%</td><td class="problem-threshold">≥ 1%</td><td class="problem-time">08-08 03:00</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">dws_user_daily</span></td><td class="problem-cell"><span class="rule-name">活跃用户非空率</span><div class="rule-task">用户质量任务</div></td><td><span class="viol-badge viol-severe">SEVERE</span></td><td class="problem-value">4.2%</td><td class="problem-threshold">≥ 2%</td><td class="problem-time">08-07 03:00</td></tr>
+                <tr onclick="switchView('asset-detail')"><td><span class="row-title mono">ods_orders</span></td><td class="problem-cell"><span class="rule-name">user_id 非空率</span><div class="rule-task">订单质量任务</div></td><td><span class="viol-badge viol-warning">WARNING</span></td><td class="problem-value">2.8%</td><td class="problem-threshold">≥ 2%</td><td class="problem-time">08-06 02:00</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

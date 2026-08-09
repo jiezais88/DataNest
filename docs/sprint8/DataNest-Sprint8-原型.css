@@ -815,6 +815,71 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 }
 .notice .hi{color:var(--ds-accent)}
 
+/* ---------- 质量报告 Dashboard 紧凑版（一屏展示，无滚动） ---------- */
+.report-dashboard{padding:12px 24px;gap:10px}
+.report-topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;flex-shrink:0}
+.report-topbar h1{font-size:18px;font-weight:800;letter-spacing:-.4px;display:flex;align-items:center;gap:8px}
+.report-topbar h1 .hi{width:17px;height:17px}
+.report-topbar .head-sub{margin-top:1px;font-size:11px;color:var(--ds-text-muted)}
+.report-topbar .rt-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.report-topbar .rt-right .filter-select select{min-width:100px;height:30px;padding:5px 28px 5px 9px;font-size:12px}
+.report-topbar .rt-right .btn{height:30px;padding:4px 11px}
+/* 两列行 */
+.report-row{display:flex;gap:10px;min-height:0;flex-shrink:0}
+.report-row .chart-card{flex:1;min-width:0}
+.report-col{display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
+/* KPI 5 列 */
+.kpi-strip-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.kpi-strip-5 .kpi-card{padding:12px 16px}
+.kpi-strip-5 .kpi-label{font-size:11px;margin-bottom:2px}
+.kpi-strip-5 .kpi-num{font-size:20px}
+.kpi-strip-5 .kpi-sub{font-size:10px;margin-top:2px}
+
+/* ---------- 表评分分布 环形图 ---------- */
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut-svg{width:88px;height:88px;flex-shrink:0}
+.donut-ring{fill:none;stroke-width:13}
+.donut-track{stroke:var(--ds-bg-subtle)}
+.donut-center-text{font-size:19px;font-weight:800;fill:var(--ds-text-primary);text-anchor:middle}
+.donut-center-sub{font-size:10px;fill:var(--ds-text-muted);text-anchor:middle}
+.donut-legend{display:flex;flex-direction:column;gap:6px;min-width:0}
+.donut-legend .dl-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ds-text-secondary)}
+.donut-legend .dl-dot{width:9px;height:9px;border-radius:3px;flex-shrink:0}
+.donut-legend .dl-lbl{white-space:nowrap}
+.donut-legend .dl-pct{font-size:11px;color:var(--ds-text-muted);width:40px;text-align:right;flex-shrink:0}
+.donut-legend .dl-num{font-weight:700;color:var(--ds-text-primary);font-size:13px;flex-shrink:0}
+
+/* ---------- 数据源质量对比 横向条形 ---------- */
+.bar-compare{display:flex;flex-direction:column;gap:7px}
+.bc-row{display:flex;align-items:center;gap:9px}
+.bc-row .bc-name{width:82px;font-size:12px;color:var(--ds-text-secondary);flex-shrink:0;display:flex;align-items:center;gap:5px}
+.bc-row .bc-name .hi{width:13px;height:13px}
+.bc-track{flex:1;height:7px;border-radius:9999px;background:var(--ds-bg-subtle);overflow:hidden}
+.bc-fill{height:100%;border-radius:9999px}
+.bc-fill.good{background:linear-gradient(90deg,#22c55e,#16a34a)}
+.bc-fill.mid{background:linear-gradient(90deg,#fbbf24,#d97706)}
+.bc-fill.bad{background:linear-gradient(90deg,#f87171,#dc2626)}
+.bc-row .bc-score{width:48px;font-size:12px;font-weight:700;color:var(--ds-text-primary);text-align:right;flex-shrink:0}
+
+/* ---------- 紧凑小标题卡体 ---------- */
+.chart-card .cc-body.compact{padding:10px 14px}
+.chart-card.small .cc-head{padding:8px 14px}
+.chart-card.small .cc-head .ttl{font-size:13px}
+.chart-card.small .cc-head .sub{font-size:11px}
+.chart-card.small .cc-body{padding:12px 14px}
+
+/* ---------- 问题清单紧凑版 ---------- */
+.problem-list .ant-table-tbody td{padding:4px 10px;font-size:12px}
+.problem-list .ant-table-thead th{padding:5px 10px}
+.problem-list .problem-value{font-size:11px}
+.problem-list .rule-name{font-size:12px}
+.problem-list .viol-badge{padding:1px 8px;font-size:10px}
+.problem-list .rule-task{font-size:10px}
+.problem-list .problem-time{font-size:11px}
+.link-all{margin-left:auto;font-size:12px;color:var(--ds-accent);cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.link-all:hover{text-decoration:underline}
+.link-all .hi{width:12px;height:12px}
+
 /* ---------- 血液/血缘 保留 ---------- */
 .lineage{position:relative;padding:60px 20px 56px;min-height:260px;background:var(--ds-bg-surface);border:1px solid var(--ds-border);border-radius:var(--ds-radius-md)}
 .lg-node{
