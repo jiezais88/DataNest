@@ -23,11 +23,13 @@ import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
+import com.datanest.governance.entity.QualityCheckBatch;
 import com.datanest.governance.entity.QualityJob;
 import com.datanest.governance.entity.QualityJobRule;
 import com.datanest.governance.entity.QualityRule;
 import com.datanest.governance.entity.QualityScore;
 import com.datanest.governance.mapper.CollectTaskMapper;
+import com.datanest.governance.mapper.QualityCheckBatchMapper;
 import com.datanest.governance.mapper.QualityJobMapper;
 import com.datanest.governance.mapper.QualityJobRuleMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
@@ -80,6 +82,7 @@ public class QualityJobService {
     private final QualityRuleMapper qualityRuleMapper;
     private final QualityScoreMapper qualityScoreMapper;
     private final CollectTaskMapper collectTaskMapper;
+    private final QualityCheckBatchMapper qualityCheckBatchMapper;
     private final EngineeringObjectApi engineeringObjectApi;
 
     public QualityJobService(QualityJobMapper jobMapper,
@@ -92,6 +95,7 @@ public class QualityJobService {
                              QualityRuleMapper qualityRuleMapper,
                              QualityScoreMapper qualityScoreMapper,
                              CollectTaskMapper collectTaskMapper,
+                             QualityCheckBatchMapper qualityCheckBatchMapper,
                              EngineeringObjectApi engineeringObjectApi) {
         this.jobMapper = jobMapper;
         this.ruleService = ruleService;
@@ -103,6 +107,7 @@ public class QualityJobService {
         this.qualityRuleMapper = qualityRuleMapper;
         this.qualityScoreMapper = qualityScoreMapper;
         this.collectTaskMapper = collectTaskMapper;
+        this.qualityCheckBatchMapper = qualityCheckBatchMapper;
         this.engineeringObjectApi = engineeringObjectApi;
     }
 
@@ -160,7 +165,9 @@ public class QualityJobService {
         entity.setName(name);
         entity.setDescription(request.getDescription());
         entity.setEnabled(request.getEnabled() == null ? 1 : request.getEnabled());
-        entity.setScheduledEnabled(request.getScheduledEnabled() == null ? 0 : request.getScheduledEnabled());
+        // 统一创建语义（对齐同步/采集任务）：创建 cron 任务不自动开启调度，scheduled_enabled 恒存 0，
+        // 由用户手动 startSchedule 开启；cron 本身仍保存，作为开启调度时的配置。
+        entity.setScheduledEnabled(0);
         entity.setCron(request.getCron());
         entity.setAutoTriggerEnabled(request.getAutoTriggerEnabled() == null ? 0 : request.getAutoTriggerEnabled());
         entity.setAutoTriggerObjectType(request.getAutoTriggerObjectType());
@@ -172,26 +179,27 @@ public class QualityJobService {
         jobMapper.insert(entity);
         // 绑定引用的质量规则（多对多）
         ruleService.setJobRules(entity.getId(), request.getRuleIds());
-        // 创建即开启定时调度：scheduledEnabled=1 且配置了 cron 时，事务内同步注册 PowerJob 任务；
-        // 注册失败抛错 → 事务回滚（任务不落库），前端可见错误，避免「任务在但调度中心没注册」的不一致。
-        boolean scheduleOnCreate = entity.getScheduledEnabled() != null && entity.getScheduledEnabled() == 1
-                && StringUtils.hasText(entity.getCron());
-        if (scheduleOnCreate) {
-            registerSchedule(entity);
+        // 配置了 cron 时事务内同步注册 PowerJob 任务（start=false 不启动），回填 scheduler_job_id，
+        // 供用户手动「开启调度」时快速启动（startSchedule 走 startJob 分支）；
+        // 注册失败抛错 → 事务回滚（任务不落库），避免「任务在但调度中心没注册」的不一致。
+        if (StringUtils.hasText(entity.getCron())) {
+            registerSchedule(entity, false);
         }
         return getById(entity.getId());
     }
 
     /**
      * 为任务注册/启动独立的 PowerJob 任务（worker App，带自身 cron），并写回 scheduler_job_id。
+     * start=true 注册后立即启动（手动开启调度用）；start=false 仅注册不启动（创建 cron 任务时，
+     * 统一与同步/采集任务一致，由用户后续手动开启）。
      * 事务内同步调用（不再 afterCommit 静默吞异常）：注册失败抛 BusinessException 使事务回滚，保证 DB 与调度一致。
      */
-    private void registerSchedule(QualityJob entity) {
+    private void registerSchedule(QualityJob entity, boolean start) {
         Long schedulerJobId = schedulerClient.registerJob(workerAppName, HANDLER_NAME, entity.getId(),
-                entity.getName(), entity.getCron(), TRIGGER_TYPE_CRON, true, 0, 0);
+                entity.getName(), entity.getCron(), TRIGGER_TYPE_CRON, start, 0, 0);
         jobMapper.update(null, new UpdateWrapper<QualityJob>()
                 .eq("id", entity.getId()).set("scheduler_job_id", schedulerJobId));
-        logger.info("注册质量任务定时调度: jobId={}, schedulerJobId={}, cron={}", entity.getId(), schedulerJobId, entity.getCron());
+        logger.info("注册质量任务定时调度: jobId={}, schedulerJobId={}, cron={}, start={}", entity.getId(), schedulerJobId, entity.getCron(), start);
     }
 
     @Transactional
@@ -243,24 +251,34 @@ public class QualityJobService {
             ruleService.setJobRules(id, request.getRuleIds());
         }
 
-        // Sprint 8：cron 变更且任务已注册调度中心时，事务提交后同步调度 cron（参照同步任务）
+        // 调度同步（对齐创建统一语义）：cron 或调度开关变化时，同步调度中心（参照同步任务）。
+        // 1) 尚未注册（oldSchedulerJobId==null）但本次配了 cron：事务内注册（是否启动按最终调度开关），
+        //    失败抛错回滚，保证 DB 与调度一致；
+        // 2) 已注册且 cron/调度开关变化：事务提交后 updateJob 同步。
         Long oldSchedulerJobId = entity.getSchedulerJobId();
+        String newCron = request.getCron() != null ? request.getCron() : entity.getCron();
         boolean cronChanged = request.getCron() != null
                 && !request.getCron().equals(entity.getCron());
-        if (oldSchedulerJobId != null && cronChanged) {
-            String newCron = request.getCron();
-            String newName = name;
-            boolean scheduleEnabled = request.getScheduledEnabled() != null
-                    ? request.getScheduledEnabled() == 1
-                    : entity.getScheduledEnabled() != null && entity.getScheduledEnabled() == 1;
+        boolean scheduleEnabled = request.getScheduledEnabled() != null
+                ? request.getScheduledEnabled() == 1
+                : entity.getScheduledEnabled() != null && entity.getScheduledEnabled() == 1;
+        boolean scheduleEnabledChanged = request.getScheduledEnabled() != null
+                && request.getScheduledEnabled() != (entity.getScheduledEnabled() == null ? 0 : entity.getScheduledEnabled());
+        if (oldSchedulerJobId == null && StringUtils.hasText(newCron)) {
+            entity.setCron(newCron);
+            registerSchedule(entity, scheduleEnabled);
+        } else if (oldSchedulerJobId != null && (cronChanged || scheduleEnabledChanged)) {
+            String syncName = name;
+            String syncCron = newCron;
+            boolean syncScheduleEnabled = scheduleEnabled;
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
-                        schedulerClient.updateJob(oldSchedulerJobId, workerAppName, HANDLER_NAME, id, newName,
-                                newCron, TRIGGER_TYPE_CRON, scheduleEnabled, 0, 0);
+                        schedulerClient.updateJob(oldSchedulerJobId, workerAppName, HANDLER_NAME, id, syncName,
+                                syncCron, TRIGGER_TYPE_CRON, syncScheduleEnabled, 0, 0);
                     } catch (Exception e) {
-                        logger.warn("更新调度 cron 失败（不影响已提交的 DB 数据）: jobId={}", id, e);
+                        logger.warn("更新调度 cron/开关失败（不影响已提交的 DB 数据）: jobId={}", id, e);
                     }
                 }
             });
@@ -275,6 +293,16 @@ public class QualityJobService {
     @Transactional
     public void delete(Long id) {
         QualityJob entity = requireJob(id);
+        // 运行中保护：任务下仍有 RUNNING 批次时禁止删除——worker 执行中仍会经质量执行接口
+        // 回写批次/明细，删除会让 worker 把结果写到已不存在的任务上产生孤儿批次（对齐采集/同步任务语义）
+        Long runningBatches = qualityCheckBatchMapper.selectCount(
+                new QueryWrapper<QualityCheckBatch>()
+                        .eq("job_id", id)
+                        .eq("status", "RUNNING"));
+        if (runningBatches != null && runningBatches > 0) {
+            throw new BusinessException(ErrorCode.QUALITY_JOB_ALREADY_RUNNING,
+                    "质量任务正在执行中，请等待执行完成后再删除");
+        }
         // 删除关联校验：若任务已被告警规则绑定（对象类型 QUALITY），阻止删除，并返回具体告警规则名称
         // 微服务化改造：引用校验经 alert-service 远程查询；远程不可用时失败关闭（阻止删除并提示重试），
         // 避免跳过校验误删仍被引用的任务
@@ -376,8 +404,8 @@ public class QualityJobService {
         }
         Long oldSchedulerJobId = entity.getSchedulerJobId();
         if (oldSchedulerJobId == null) {
-            // 同步注册（失败抛错 → 事务回滚，scheduled_enabled 不置 1）
-            registerSchedule(entity);
+            // 同步注册并启动（失败抛错 → 事务回滚，scheduled_enabled 不置 1）
+            registerSchedule(entity, true);
         } else {
             schedulerClient.startJob(oldSchedulerJobId);
         }

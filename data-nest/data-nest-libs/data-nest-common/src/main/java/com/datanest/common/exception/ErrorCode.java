@@ -121,6 +121,7 @@ public enum ErrorCode {
     QUALITY_CHECK_SQL_GENERATE_FAILED(4215, "质量规则校验 SQL 生成失败"),
     QUALITY_CHECK_EXECUTE_FAILED(4216, "质量检查执行失败"),
     QUALITY_SCORE_CONFIG_INVALID(4217, "质量评分全局配置参数非法"),
+    QUALITY_JOB_ALREADY_RUNNING(4218, "质量任务正在执行中"),
 
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),

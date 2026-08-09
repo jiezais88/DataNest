@@ -332,6 +332,20 @@
 
 ---
 
+### 6.5 收尾补强（2026-08-09，三态梳理后修复）
+
+**背景**：Sprint 7 交付后按「级联删除 / 删除校验 / 平台定时任务」三态复盘，结合业务与代码实际评估发现 2 处补齐项（governance 侧，均已实现并重建 app-governance）：
+
+- **[x] 质量任务删除加 RUNNING 保护**：`QualityJobService.delete` 原无运行中拦截（采集/同步任务均有），worker 执行中仍会经质量执行接口回写批次/明细，删除会让 worker 把结果写到已不存在的任务上产生孤儿批次。修复：注入 `QualityCheckBatchMapper`，删除前校验任务下是否存在 `status="RUNNING"` 批次（`quality_check_batch.job_id=id`），存在则抛 `ErrorCode.QUALITY_JOB_ALREADY_RUNNING(4218)`（common ErrorCode 新增）阻止删除，对齐采集/同步任务语义。判定依据：`QualityJob` 实体无运行状态字段，worker 经 `initBatch` 创建 RUNNING 批次、收尾回写终态。
+- **[x] 统一「创建 cron 任务不自动开启调度」**（对齐同步/采集任务模型）：`QualityJobService.create` 原行为是请求 `scheduledEnabled=1` 且配 cron 时 `registerSchedule` 直接启动（自动开启）；现改为 `scheduled_enabled` 恒存 0、cron 有值仅注册 PowerJob 任务（`registerSchedule(entity, false)`，start=false 不启动）回填 `scheduler_job_id`，由用户手动 `startSchedule` 开启（注册并 start=true）。`registerSchedule` 加 `start` 参数。
+- **[x] 顺带修复 `update` 调度同步不一致**：原逻辑仅 `oldSchedulerJobId != null && cronChanged` 时同步调度中心；统一创建语义后编辑任务「手动→定时（无调度任务→有 cron）」或「仅开启调度」会漏同步（DB 显示已开启但调度中心未注册/未启动）。现改为：未注册但本次配 cron → 事务内 `registerSchedule(entity, scheduleEnabled)`（失败回滚）；已注册且 cron/调度开关变化 → 事务提交后 `updateJob` 同步。
+
+**部署**：改动涉及 common（ErrorCode 4218）+ governance，已 `mvn package` + `docker compose build app-governance` + up，healthy，启动日志无 ERROR。
+
+**前端影响**：质量任务表单里「开启定时调度」开关语义不变——勾选后在保存时创建任务（`scheduled_enabled=0`），仍需用户进入任务详情点「启动调度」才会真正生效；已创建的定时任务（旧数据 `scheduled_enabled=1` 且已注册）不受影响。
+
+---
+
 ### 6.5 收尾（全部块完成后）
 
 - [ ] 全量回归：`docker compose up -d` 全部服务 + 前端 build + 各块 E2E 全跑

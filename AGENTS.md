@@ -227,6 +227,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **质量执行在 app-worker**：改 task-core 质量执行代码后必须重建 **app-worker**（不只是 governance）；手动/定时/自动三触发统一投递 `qualityCheckExecuteHandler`。
 - **PYTHON 质量规则（Sprint 7 DG-10）**：第 5 类规则类型；沙箱 `read_table(table, where, limit)` + `check(df)` 返回 dict 按 `result_metric` 取值复用 `determineLevel`，失败 UNAVAILABLE。坑：质量模式已放开 `socket` 禁令（pymysql 必需；DAG 节点保持禁令）；Doris 凭据必须从 `DorisDataSourceConfig` 静态 getter 取。新端点 `test-script`/`preview-execute` 见 §5 文档聚合页。
 - **质量任务定时 = 每任务独立注册 PowerJob**（`scheduler_job_id` 字段）；调度参数带触发类型：手动/自动 `jobId:MANUAL`/`jobId:AUTO_TRIGGER`（带冒号），**定时是纯 `jobId`（无冒号默认 SCHEDULED）**。
+- **质量任务创建 cron 不自动开启调度**（2026-08-09 起统一，对齐同步/采集任务）：`QualityJobService.create` 的 `scheduled_enabled` 恒存 0，cron 有值仅注册（`registerSchedule(entity, false)`）回填 `scheduler_job_id`，手动 `startSchedule` 才 start=true 启动；`update` 中「未注册→配 cron」事务内注册（按开关决定启动，失败回滚）、「已注册→cron/开关变化」事务提交后 `updateJob` 同步。**质量任务删除有 RUNNING 保护**：任务下存在 `quality_check_batch.status="RUNNING"` 批次时禁止删除（ErrorCode 4218，对齐采集/同步任务语义）。
 - **结果值提取**：RANGE 按 `out_of_range/total`（列名大小写不敏感，NULL/0 按 0）；多指标按 `result_metric` 列名取。
 - **质量接口前缀是 `/api/governance/quality/**`**（直接调 `/api/quality/**` 会 404）。
 - **结果表 `quality_check_batch` + `quality_check_detail`**；明细 `result_level`（PASS/WARNING/SEVERE/UNAVAILABLE）；**执行层 successCount 与判定层 passCount 等四档语义不同，勿混淆**；UNAVAILABLE 不告警。
