@@ -12,4 +12,7 @@ public class CdcSourceTableDTO {
 
     @Schema(description = "约估行数（information_schema.TABLES.TABLE_ROWS，InnoDB 为估算值）", example = "1024")
     private Long tableRows;
+
+    @Schema(description = "主键列（逗号分隔，按 ORDINAL_POSITION 排序；无主键为 null）", example = "id")
+    private String primaryKey;
 }

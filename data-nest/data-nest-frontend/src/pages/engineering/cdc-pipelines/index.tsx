@@ -1,5 +1,5 @@
 // Sprint 8 F2：CDC 管道列表页（DI-04 管理 + 监控）。
-// MySQL Binlog → Flink CDC → Iceberg 湖仓（MinIO）→ Doris 外部表。
+// MySQL Binlog / PostgreSQL WAL → Flink CDC → Iceberg 湖仓（MinIO）→ Doris 外部表。
 // 读四角色可见；写操作（新建/编辑/启停/刷 catalog/删除）仅超管+数据工程师。
 // 有 RUNNING 管道时列表与统计卡每 5s 轮询（延迟/累计变更由后端监控回写）。
 import {useCallback, useEffect, useMemo, useState} from 'react';
@@ -366,7 +366,7 @@ export default function CdcPipelinesPage() {
                         CDC 管道
                     </h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        MySQL Binlog → Flink CDC → Iceberg 湖仓（MinIO）→ Doris 外部表，秒级捕获业务库变更。
+                        MySQL Binlog / PostgreSQL WAL → Flink CDC → Iceberg 湖仓（MinIO）→ Doris 外部表，秒级捕获业务库变更。
                     </p>
                 </div>
                 {canWrite && (

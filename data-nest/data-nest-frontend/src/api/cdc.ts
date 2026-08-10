@@ -22,9 +22,13 @@ export const validateCdcSource = (datasourceId: string, sourceDatabase?: string)
 export const listCdcSourceDatabases = (datasourceId: string) =>
     request.get<Result<string[]>>(`${BASE}/source-databases/${datasourceId}`).then(r => r.data);
 
-/** 源库表列表（向导勾选同步表；表名 + 约估行数） */
+/** 源库表列表（向导勾选同步表；表名 + 约估行数 + 主键列） */
 export const listCdcSourceTables = (datasourceId: string, database: string) =>
     request.get<Result<CdcSourceTable[]>>(`${BASE}/source-tables/${datasourceId}`, {params: {database}}).then(r => r.data);
+
+/** 现有湖仓库名列表（向导目标库下拉；允许自由输入新库名，Iceberg namespace 自动创建） */
+export const listCdcTargetDatabases = () =>
+    request.get<Result<string[]>>(`${BASE}/target-databases`).then(r => r.data);
 
 /** 创建管道（初始 STOPPED；UPSERT 模式每表必须配主键） */
 export const createCdcPipeline = (data: CdcPipelineSaveRequest) =>

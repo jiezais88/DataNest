@@ -1,14 +1,13 @@
 // Sprint 8 F2：CDC 管道配置向导（DI-04，整页 4 步：基本信息/源配置/目标配置/确认启动）。
 // 新建 /engineering/cdc-pipelines/new；编辑 /engineering/cdc-pipelines/:id/edit（仅 STOPPED 可编辑，后端兜底）。
-// 源仅支持 MySQL（binlog/ROW 预检）；目标 = Iceberg 湖仓（MinIO）→ Doris Iceberg Catalog 查询。
+// 源支持 MySQL（binlog/ROW 预检）与 PostgreSQL（wal_level=logical/复制权限预检，本期仅 public schema，无「从最早」位点）；
+// 目标 = Iceberg 湖仓（MinIO）→ Doris Iceberg Catalog 查询。
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {Checkbox, Select, Spin} from 'antd';
+import {AutoComplete, Checkbox, Select, Spin} from 'antd';
 import {
     HiOutlineCheckCircle,
     HiOutlineCircleStack,
-    HiOutlineInformationCircle,
-    HiOutlineServer,
     HiOutlineXCircle,
 } from 'react-icons/hi2';
 import {
@@ -16,6 +15,7 @@ import {
     getCdcPipeline,
     listCdcSourceDatabases,
     listCdcSourceTables,
+    listCdcTargetDatabases,
     startCdcPipeline,
     updateCdcPipeline,
     validateCdcSource,
@@ -27,6 +27,7 @@ import {DataSourceTypeEnum} from '../../../../constants/datasource';
 import {notify} from '../../../../utils/notify';
 import type {
     CdcPipelineSaveRequest,
+    CdcSourceTable,
     CdcSourceValidateResult,
     CdcStartupMode,
     CdcSyncMode,
@@ -121,8 +122,10 @@ export default function CdcPipelineWizardPage() {
     // ============ 下拉数据 ============
     const [datasourceOptions, setDatasourceOptions] = useState<{ value: string; label: string }[]>([]);
     const [databaseOptions, setDatabaseOptions] = useState<{ value: string; label: string }[]>([]);
-    const [sourceTables, setSourceTables] = useState<{ tableName: string; tableRows?: string }[]>([]);
+    const [sourceTables, setSourceTables] = useState<CdcSourceTable[]>([]);
     const [tablesLoading, setTablesLoading] = useState(false);
+    /** 现有湖仓库名（目标库 AutoComplete 选项，允许自由输入新库名） */
+    const [targetDbOptions, setTargetDbOptions] = useState<{ value: string; label: string }[]>([]);
     /** 源数据源名称缓存（确认页展示） */
     const [datasourceName, setDatasourceName] = useState('');
 
@@ -130,14 +133,26 @@ export default function CdcPipelineWizardPage() {
     const [precheck, setPrecheck] = useState<CdcSourceValidateResult | null>(null);
     const [precheckLoading, setPrecheckLoading] = useState(false);
 
-    // MySQL 数据源下拉（仅 MySQL 支持 CDC 源）
+    // CDC 源数据源下拉（MySQL + PostgreSQL；按 id 缓存类型，启动位点等按类型联动）
+    const [datasourceTypeMap, setDatasourceTypeMap] = useState<Record<string, string>>({});
     useEffect(() => {
-        getDataSources({type: DataSourceTypeEnum.MYSQL, page: 1, pageSize: 100})
-            .then(res => {
-                const records = res.data?.records ?? [];
+        Promise.all([
+            getDataSources({type: DataSourceTypeEnum.MYSQL, page: 1, pageSize: 100}),
+            getDataSources({type: DataSourceTypeEnum.POSTGRESQL, page: 1, pageSize: 100}),
+        ])
+            .then(([mysqlRes, pgRes]) => {
+                const records = [...(mysqlRes.data?.records ?? []), ...(pgRes.data?.records ?? [])];
                 setDatasourceOptions(records.map(d => ({value: d.id, label: `${d.name}（${d.host}）`})));
+                setDatasourceTypeMap(Object.fromEntries(records.map(d => [d.id, d.type])));
             })
             .catch(() => setDatasourceOptions([]));
+    }, []);
+
+    // 现有湖仓库名（目标库下拉候选；接口失败降级为空，仍可自由输入）
+    useEffect(() => {
+        listCdcTargetDatabases()
+            .then(list => setTargetDbOptions((list ?? []).map(db => ({value: db, label: db}))))
+            .catch(() => setTargetDbOptions([]));
     }, []);
 
     // 编辑模式：加载详情预填
@@ -193,6 +208,17 @@ export default function CdcPipelineWizardPage() {
     useEffect(() => {
         setStartupMode(syncMode === 'FULL_AND_INCREMENT' ? 'INITIAL' : 'LATEST_OFFSET');
     }, [syncMode]);
+
+    /** 当前选中源数据源类型（MYSQL / POSTGRESQL；编辑模式选项未加载完时短暂为空） */
+    const sourceType = datasourceId ? datasourceTypeMap[datasourceId] : undefined;
+    const isPostgres = sourceType === DataSourceTypeEnum.POSTGRESQL;
+
+    // PG connector 无 earliest-offset：选中 PG 源时禁用「从最早」，残留值回退到「从最新」（后端同样拦截）
+    useEffect(() => {
+        if (isPostgres && startupMode === 'EARLIEST_OFFSET') {
+            setStartupMode('LATEST_OFFSET');
+        }
+    }, [isPostgres, startupMode]);
 
     const runPrecheck = useCallback(() => {
         if (!datasourceId) return;
@@ -254,10 +280,11 @@ export default function CdcPipelineWizardPage() {
     // ============ 表勾选/映射 ============
     const isTableSelected = (tableName: string) => selectedTables.some(t => t.sourceTable === tableName);
 
-    const toggleTable = (tableName: string, checked: boolean) => {
+    /** 勾选时用源表主键预填映射主键（用户可手改；无主键则空，UPSERT 下标 warning） */
+    const toggleTable = (table: CdcSourceTable, checked: boolean) => {
         setSelectedTables(prev => checked
-            ? [...prev, {sourceTable: tableName, targetTable: tableName, primaryKey: ''}]
-            : prev.filter(t => t.sourceTable !== tableName));
+            ? [...prev, {sourceTable: table.tableName, targetTable: table.tableName, primaryKey: table.primaryKey ?? ''}]
+            : prev.filter(t => t.sourceTable !== table.tableName));
     };
 
     const updateMapping = (sourceTable: string, patch: Partial<CdcTableMapping>) => {
@@ -349,7 +376,7 @@ export default function CdcPipelineWizardPage() {
                     </h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
                         {isEdit ? '仅停止状态可编辑；保存后清空 savepoint，下次启动按启动位点从头跑。'
-                            : 'MySQL Binlog → Iceberg 湖仓（MinIO），Doris 经 Iceberg Catalog 查询。'}
+                            : 'MySQL Binlog / PostgreSQL WAL → Iceberg 湖仓（MinIO），Doris 经 Iceberg Catalog 查询。'}
                     </p>
                 </div>
             </div>
@@ -385,8 +412,9 @@ export default function CdcPipelineWizardPage() {
                 })}
             </div>
 
-            {/* 步骤内容 */}
-            <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-6 mb-ds-4">
+            {/* 步骤内容：左侧步骤表单 + 右侧配置摘要栏 */}
+            <div className="flex items-start gap-ds-4 mb-ds-4">
+            <div className="flex-1 min-w-0 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-6">
                 {step === 1 && (
                     <div className="max-w-[560px]">
                         <FormItem label="管道名称" required hint="用于区分多个 CDC 管道，建议包含业务含义；平台内唯一。">
@@ -405,10 +433,13 @@ export default function CdcPipelineWizardPage() {
 
                 {step === 2 && (
                     <div className="max-w-[720px]">
-                        <FormItem label="源数据源" required hint="仅支持 MySQL 数据源；保存前将校验连通性与 binlog 开启状态。">
+                        <FormItem label="源数据源" required
+                                  hint={isPostgres
+                                      ? 'PostgreSQL 源本期仅同步 public schema；保存前将校验连通性、wal_level=logical 与复制权限。'
+                                      : '支持 MySQL / PostgreSQL 数据源；保存前将校验连通性与增量日志（binlog / WAL）开启状态。'}>
                             <Select
                                 className="w-full"
-                                placeholder="选择 MySQL 数据源"
+                                placeholder="选择 MySQL / PostgreSQL 数据源"
                                 value={datasourceId || undefined}
                                 options={datasourceOptions}
                                 onChange={(v) => {
@@ -447,7 +478,7 @@ export default function CdcPipelineWizardPage() {
                                                 setSelectedTables(sourceTables.map(t => ({
                                                     sourceTable: t.tableName,
                                                     targetTable: t.tableName,
-                                                    primaryKey: '',
+                                                    primaryKey: t.primaryKey ?? '',
                                                 })));
                                             } else {
                                                 setSelectedTables([]);
@@ -468,7 +499,7 @@ export default function CdcPipelineWizardPage() {
                                                className="flex items-center gap-ds-2 px-ds-3 py-ds-2 border-b border-ds-border-subtle last:border-b-0 hover:bg-ds-bg-hover cursor-pointer">
                                             <Checkbox
                                                 checked={isTableSelected(t.tableName)}
-                                                onChange={(e) => toggleTable(t.tableName, e.target.checked)}
+                                                onChange={(e) => toggleTable(t, e.target.checked)}
                                             />
                                             <span className="font-mono text-ds-small text-ds-text-primary">{t.tableName}</span>
                                             <span className="ml-auto text-ds-tiny text-ds-text-muted font-mono">
@@ -496,9 +527,14 @@ export default function CdcPipelineWizardPage() {
                                     <RadioRow checked={startupMode === 'LATEST_OFFSET'}
                                               onChange={() => setStartupMode('LATEST_OFFSET')}
                                               label="从最新" hint="只捕获启动后产生的变更"/>
-                                    <RadioRow checked={startupMode === 'EARLIEST_OFFSET'}
-                                              onChange={() => setStartupMode('EARLIEST_OFFSET')}
-                                              label="从最早" hint="从 binlog 最早可用位点开始"/>
+                                    {isPostgres ? (
+                                        <RadioRow checked={false} onChange={() => undefined} disabled
+                                                  label="从最早" hint="PostgreSQL connector 不支持该位点（仅 initial / latest-offset）"/>
+                                    ) : (
+                                        <RadioRow checked={startupMode === 'EARLIEST_OFFSET'}
+                                                  onChange={() => setStartupMode('EARLIEST_OFFSET')}
+                                                  label="从最早" hint="从 binlog 最早可用位点开始"/>
+                                    )}
                                 </>
                             )}
                         </FormItem>
@@ -513,12 +549,18 @@ export default function CdcPipelineWizardPage() {
                         </FormItem>
                         <FormItem label="目标库（Iceberg 库名）" required
                                   hint={(
-                                      <>Doris 通过 Iceberg Catalog 查询：<span
+                                      <>下拉为现有湖仓库，可自由输入新库名（Iceberg namespace 自动创建）；Doris 查询：<span
                                           className="font-mono">datalake_catalog.{targetDatabase || '<目标库>'}.{'<表名>'}</span></>
                                   )}>
-                            <input className={INPUT_CLASS} value={targetDatabase} maxLength={100}
-                                   placeholder="例如：dwd"
-                                   onChange={(e) => setTargetDatabase(e.target.value)}/>
+                            <AutoComplete
+                                className="w-full"
+                                value={targetDatabase}
+                                options={targetDbOptions}
+                                maxLength={100}
+                                placeholder="选择现有湖仓库，或输入新库名，例如：dwd"
+                                aria-label="目标库"
+                                onChange={(v) => setTargetDatabase(v)}
+                            />
                         </FormItem>
                         <FormItem label="表名映射与主键" required
                                   hint={writeMode === 'UPSERT' ? 'Upsert 模式每表必须配置主键列（多列逗号分隔）' : 'Append 模式主键可留空'}>
@@ -541,9 +583,13 @@ export default function CdcPipelineWizardPage() {
                                         />
                                         <span className="text-ds-tiny text-ds-text-muted ml-auto">主键：</span>
                                         <input
-                                            className="w-32 px-2 py-1 text-ds-small font-mono border border-ds-border-subtle rounded-ds-sm outline-none focus:border-ds-accent"
+                                            className={`w-32 px-2 py-1 text-ds-small font-mono border rounded-ds-sm outline-none focus:border-ds-accent ${
+                                                writeMode === 'UPSERT' && !t.primaryKey?.trim()
+                                                    ? 'border-ds-warning' : 'border-ds-border-subtle'
+                                            }`}
                                             value={t.primaryKey ?? ''}
                                             placeholder={writeMode === 'UPSERT' ? '必填，如 id' : '可空'}
+                                            title={writeMode === 'UPSERT' && !t.primaryKey?.trim() ? '源表无主键且未填写，Upsert 模式必须配置主键列' : undefined}
                                             aria-label={`主键列 ${t.sourceTable}`}
                                             onChange={(e) => updateMapping(t.sourceTable, {primaryKey: e.target.value})}
                                         />
@@ -562,73 +608,84 @@ export default function CdcPipelineWizardPage() {
 
                 {step === 4 && (
                     <div className="max-w-[720px]">
-                        {/* 预检结果 */}
-                        <div className="border border-ds-border-subtle rounded-ds-md p-ds-4 mb-ds-4">
-                            <div className="flex items-center gap-ds-2 mb-ds-3">
-                                <HiOutlineCheckCircle size={16} className="text-ds-accent"/>
-                                <span className="text-ds-small font-semibold text-ds-text-primary">源数据源预检</span>
-                                {precheckLoading && <span className="text-ds-tiny text-ds-text-muted">检查中...</span>}
-                                {precheck && (
-                                    <DsStatusBadge
-                                        variant={precheck.success ? 'success' : 'danger'}
-                                        label={precheck.success ? '全部通过' : '存在未通过项'}
-                                    />
-                                )}
-                            </div>
-                            {precheck?.checks?.map(c => (
-                                <div key={c.name} className="flex items-center gap-ds-2 py-ds-1">
-                                    {c.passed
-                                        ? <HiOutlineCheckCircle size={14} className="text-ds-success flex-shrink-0"/>
-                                        : <HiOutlineXCircle size={14} className="text-ds-danger flex-shrink-0"/>}
-                                    <span className="text-ds-small text-ds-text-primary">{c.name}</span>
-                                    <span className="text-ds-tiny text-ds-text-muted">{c.message}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* 确认信息 */}
-                        <div className="border border-ds-border-subtle rounded-ds-md p-ds-4 mb-ds-4">
-                            <div className="flex items-center gap-ds-2 mb-ds-3">
-                                <HiOutlineInformationCircle size={16} className="text-ds-accent"/>
-                                <span className="text-ds-small font-semibold text-ds-text-primary">基本信息</span>
-                            </div>
-                            <ConfirmRow label="管道名称" value={name}/>
-                            {description && <ConfirmRow label="管道描述" value={description}/>}
-                        </div>
-                        <div className="border border-ds-border-subtle rounded-ds-md p-ds-4 mb-ds-4">
-                            <div className="flex items-center gap-ds-2 mb-ds-3">
-                                <HiOutlineServer size={16} className="text-ds-accent"/>
-                                <span className="text-ds-small font-semibold text-ds-text-primary">源配置</span>
-                            </div>
-                            <ConfirmRow label="源数据源" value={dsLabel}/>
-                            <ConfirmRow label="源数据库" value={sourceDatabase} mono/>
-                            <ConfirmRow label="同步表"
-                                        value={`${selectedTables.map(t => t.sourceTable).join('、')}（${selectedTables.length} 表）`}/>
-                            <ConfirmRow label="同步模式" value={SYNC_MODE_LABEL[syncMode]}/>
-                            <ConfirmRow label="启动位点" value={STARTUP_MODE_LABEL[startupMode]}/>
-                        </div>
+                        {/* 表映射明细（预检结果与配置摘要在右侧摘要栏） */}
                         <div className="border border-ds-border-subtle rounded-ds-md p-ds-4">
                             <div className="flex items-center gap-ds-2 mb-ds-3">
                                 <HiOutlineCircleStack size={16} className="text-ds-accent"/>
-                                <span className="text-ds-small font-semibold text-ds-text-primary">目标配置</span>
+                                <span className="text-ds-small font-semibold text-ds-text-primary">
+                                    表映射明细（{selectedTables.length} 表）
+                                </span>
                             </div>
-                            <ConfirmRow label="湖仓存储" value="内置 MinIO"/>
-                            <ConfirmRow label="目标库" value={targetDatabase} mono/>
-                            <ConfirmRow label="表映射" mono
-                                        value={selectedTables.map(t => `${t.sourceTable} → ${targetDatabase}.${t.targetTable?.trim() || t.sourceTable}`).join('；')}/>
-                            <ConfirmRow label="写入模式" value={WRITE_MODE_LABEL[writeMode]}/>
-                            <ConfirmRow label="查询入口" mono
-                                        value={`datalake_catalog.${targetDatabase}.${selectedTables[0]?.targetTable?.trim() || selectedTables[0]?.sourceTable || '<表名>'}`}/>
+                            {selectedTables.map(t => (
+                                <div key={t.sourceTable} className="flex items-center gap-ds-2 py-ds-1 flex-wrap">
+                                    <span className="font-mono text-ds-small text-ds-text-secondary">
+                                        {sourceDatabase}.{t.sourceTable}
+                                    </span>
+                                    <span className="text-ds-text-muted">→</span>
+                                    <span className="font-mono text-ds-small text-ds-text-primary">
+                                        datalake_catalog.{targetDatabase}.{t.targetTable?.trim() || t.sourceTable}
+                                    </span>
+                                    <span className="ml-auto text-ds-tiny text-ds-text-muted">
+                                        主键：<span className="font-mono">{t.primaryKey?.trim() || '—'}</span>
+                                    </span>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* 右侧摘要栏：实时显示当前已选配置 */}
+            <div className="w-[340px] flex-shrink-0 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-5">
+                {step === 4 && (
+                    <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-ds-4">
+                        <div className="flex items-center gap-ds-2 mb-ds-2 flex-wrap">
+                            <HiOutlineCheckCircle size={16} className="text-ds-accent"/>
+                            <span className="text-ds-small font-semibold text-ds-text-primary">源数据源预检</span>
+                            {precheckLoading && <span className="text-ds-tiny text-ds-text-muted">检查中...</span>}
+                            {precheck && (
+                                <DsStatusBadge
+                                    variant={precheck.success ? 'success' : 'danger'}
+                                    label={precheck.success ? '全部通过' : '存在未通过项'}
+                                />
+                            )}
+                        </div>
+                        {precheck?.checks?.map(c => (
+                            <div key={c.name} className="flex items-start gap-ds-2 py-ds-1">
+                                {c.passed
+                                    ? <HiOutlineCheckCircle size={14} className="text-ds-success flex-shrink-0 mt-0.5"/>
+                                    : <HiOutlineXCircle size={14} className="text-ds-danger flex-shrink-0 mt-0.5"/>}
+                                <div className="min-w-0">
+                                    <div className="text-ds-tiny text-ds-text-primary">{c.name}</div>
+                                    {c.message && <div className="text-ds-tiny text-ds-text-muted break-all">{c.message}</div>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <div className="text-ds-small font-semibold text-ds-text-primary mb-ds-3">配置摘要</div>
+                <ConfirmRow label="管道名称" value={name || '—'}/>
+                <ConfirmRow label="源数据源" value={datasourceId ? dsLabel : '—'}/>
+                <ConfirmRow label="源库" value={sourceDatabase || '—'} mono/>
+                <ConfirmRow label="同步表" value={selectedTables.length > 0 ? `${selectedTables.length} 表` : '—'}/>
+                <ConfirmRow label="同步模式" value={SYNC_MODE_LABEL[syncMode]}/>
+                <ConfirmRow label="启动位点" value={STARTUP_MODE_LABEL[startupMode]}/>
+                <ConfirmRow label="目标库" value={targetDatabase || '—'} mono/>
+                <ConfirmRow label="写入模式" value={WRITE_MODE_LABEL[writeMode]}/>
+                <div className="mt-ds-4 pt-ds-3 border-t border-ds-border-subtle">
+                    <div className="text-ds-tiny text-ds-text-muted mb-ds-1">Doris 查询入口</div>
+                    <div className="text-ds-tiny font-mono text-ds-text-secondary break-all">
+                        datalake_catalog.{targetDatabase || '<目标库>'}.{'<表名>'}
+                    </div>
+                </div>
+            </div>
             </div>
 
             {/* 底部操作 */}
             <div
                 className="flex items-center justify-between bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-6 py-ds-4">
                 <span className="text-ds-tiny text-ds-text-muted">
-                    保存前将校验：源库连通性 / binlog 开启 / binlog 格式 ROW
+                    保存前将校验：源库连通性 / 增量日志开启（MySQL binlog、PG wal_level=logical）/ PG 复制权限
                 </span>
                 <div className="flex items-center gap-ds-2">
                     {step > 1 && <DsButton variant="secondary" onClick={goPrev}>上一步</DsButton>}

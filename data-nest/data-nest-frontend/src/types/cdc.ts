@@ -91,6 +91,8 @@ export interface CdcCheckItem {
 export interface CdcSourceTable {
     tableName: string;
     tableRows?: string;
+    /** 源表主键列（逗号分隔，无主键缺省/null；用于勾选时预填映射主键） */
+    primaryKey?: string;
 }
 
 /** 源预检结果 */

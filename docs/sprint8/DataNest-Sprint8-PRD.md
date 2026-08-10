@@ -293,7 +293,7 @@ Sprint 8 新增/调整导航：
 
 **向导约束**：
 - **基本信息**：管道名称（唯一）+ 管道描述（可空）；**不做单独的「负责人」字段**（创建人即负责人，2026-08-10 确认）。
-- **源**：本期支持 **MySQL**（binlog 开启校验；Flink CDC 连接器生态内 PG/Oracle 留作后续，规格 DI-04 要求至少 MySQL CDC）。
+- **源**：本期支持 **MySQL / PostgreSQL**（binlog / WAL 预检，2026-08-10 PG 已全链路实测通过；PG 表需 `REPLICA IDENTITY FULL`，仅 public schema）。**Oracle / SQLServer 均待 Flink CDC 3.7.0**（2026-08-10 用户确认）：SQLServer 官方 pipeline connector 已合入 master 随 3.7 发布；Oracle connector 与 postgres connector 存在 base 类打包冲突（同名类 + Hikari shading 不同），待上游 3.7 统一后再评估接入。
 - **目标**：CDC 数据先入 **Iceberg 湖仓表**（Hadoop Catalog，数据文件 + 元数据文件存储于内置 MinIO，无需额外元数据库），再通过 **Doris Iceberg External Catalog** 查询，对齐规格文档模块七「CDC 入湖」语义。
 - **基础设施**：本期新增 **MinIO** 容器（对象存储）+ **Flink 集群**（JobManager+TaskManager）+ Iceberg 表格式（Flink CDC Iceberg Sink connector 随作业运行）。
 - **全量 + 增量**：默认启动先做一次全量快照，再持续捕获增量变更；`仅增量` 需表已存在快照。

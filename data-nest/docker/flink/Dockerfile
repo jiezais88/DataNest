@@ -2,11 +2,16 @@
 # Flink 2.2.1 Session 集群（Sprint 8 实时 CDC）
 # 基于官方镜像，预置 Flink CDC 3.6.0-2.2 全部运行时依赖 + S3/MinIO 访问配置
 # 依赖版本矩阵（M0 实测锁定）：
-#   - flink-cdc-pipeline-connector-mysql/iceberg: 3.6.0-2.2（shaded 自包含）
+#   - flink-cdc-pipeline-connector-mysql/iceberg/postgres: 3.6.0-2.2（shaded 自包含）
 #   - flink-cdc-dist / flink-cdc-common / flink-cdc-flink2-compat: 3.6.0-2.2
 #   - mysql-connector-j: 8.0.33（CDC 文档推荐 8.0.27 已从 central 下架）
 #   - flink-shaded-hadoop-2-uber: 2.8.3-10.0（Hadoop FileSystem，S3A 依赖）
 #   - flink-s3-fs-hadoop: 2.2.1（S3AFileSystem 实现，lib 内供作业可见；勿同时放 plugins/ 会重复注册）
+# 注意（2026-08-10 PG 实测发现）：oracle 与 postgres pipeline connector 不能同时放 lib——
+# 两 jar 内含同名 org.apache.flink.cdc.connectors.base.* 类（131 个），但 oracle 版引用 shaded
+# HikariCP、postgres 版引用未 shade HikariCP；lib 按字母序 oracle 先加载，会导致 PG 源
+# HikariProxyConnection ClassCastException。oracle connector + ojdbc 暂移至 lib-oracle-pending/，
+# P3 接 Oracle 时需先解决共存（验证 oracle 能否复用 postgres 版 base 类，或等上游修复）。
 # ============================================================
 FROM flink:2.2.1-scala_2.12-java21
 

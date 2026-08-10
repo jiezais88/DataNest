@@ -19,7 +19,7 @@
 | Sprint 8 技术设计                        | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-技术文档.md`（v1.1，含 6 个 ADR D1~D6）                         |
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
 | F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` 15/15 通过（2026-08-10）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
-| F2 实时 CDC 管道（DI-04/RC-01）          | 🔄 前端完成 | 后端两轮实测通过（2026-08-10）；前端完成 + 联调调通 + Review 修复（2026-08-10）：列表页 + 4 步向导整页 + 日志抽屉 + 统计卡；后端小补 description/stats/source-tables/page 回填 tables；E2E 另一会话负责 |
+| F2 实时 CDC 管道（DI-04/RC-01）          | ✅ 完成   | 后端两轮实测 + 前端完成 + Review 修复 + 联调调通（2026-08-10）；**源范围扩展：MySQL + PostgreSQL**（PG 全链路实测通过）；Oracle/SQLServer 决策等 Flink CDC 3.7.0（B7/B8）；E2E 另一会话负责 |
 | F3 质量报告（DG-07 完整版）              | ⏳ 未开始 | 报告聚合接口 + 评分历史表 + 前端报告页                                                         |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
 | Sprint 8 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
@@ -89,7 +89,9 @@
 | B3 | 存量评分历史补算 | V1.5.0 不做迁移内补算；一次性 job 从 `quality_check_detail` 补写 `quality_score_history`（复用 ScoreCalculator 算法）；补算范围与触发方式实现时细化 | 待实现 |
 | B4 | 删除用户时评论「已注销」 | ✅ 已定稿（用户确认）：前端批量回填用户名，user_id 查无显示「已注销」，零后端改动 | 明确 |
 | B5 | 评论阈值字段回填 | `quality_check_detail` 无阈值字段，问题清单按 `rule_id` 回填 `quality_rule` 阈值，历史 rule 已删则缺省 | 明确（按 rule_id 回填） |
-| B6 | Flink 依赖 jar 版本矩阵 | ✅ **已锁定并固化**：`flink-cdc-dist/common/flink2-compat/pipeline-connector-mysql/pipeline-connector-iceberg:3.6.0-2.2` + `mysql-connector-j:8.0.33` + `flink-shaded-hadoop-2-uber:2.8.3-10.0` + `flink-s3-fs-hadoop:2.2.1`，全部预置进自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`） | ✅ 已通过 |
+| B6 | Flink 依赖 jar 版本矩阵 | ✅ **已锁定并固化**：`flink-cdc-dist/common/flink2-compat/pipeline-connector-mysql/pipeline-connector-iceberg:3.6.0-2.2` + `mysql-connector-j:8.0.33` + `flink-shaded-hadoop-2-uber:2.8.3-10.0` + `flink-s3-fs-hadoop:2.2.1`，全部预置进自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`）；**2026-08-10 扩展**：+ `pipeline-connector-postgres/pipeline-connector-oracle:3.6.0-2.2` + `postgresql:42.7.4` + `ojdbc11:23.5.0.24.07` | ✅ 已通过 |
+| B7 | SQLServer 源支持 | ✅ **已决策（2026-08-10 用户确认）：本期跳过**。Flink CDC 3.6.0 无 SQLServer YAML pipeline connector（Maven Central 无产物）；官方 PR [FLINK-39252](https://github.com/apache/flink-cdc/pull/4320) 已合入 master、将随 3.7.0 发布（支持 initial/latest-offset/snapshot/timestamp + schema evolution），届时放 jar 即可接入。DataStream 自定义作业路径已评估为不值得（iceberg-flink-runtime 无 2.2 构件、无 schema evolution、第二套作业形态） | ✅ 明确 |
+| B8 | Oracle 源支持 | ✅ **已决策（2026-08-10 用户确认）：本期跳过，与 SQLServer 一起等 3.7.0**。oracle 与 postgres pipeline connector 打包冲突（131 个同名 `connectors.base.*` 类 + shaded/未 shade HikariCP，lib 字母序 oracle 先加载 → PG 作业 HikariProxyConnection CCE）；oracle connector + ojdbc 暂存 `docker/flink/lib-oracle-pending/`（README 有原因与候选方案）；Oracle 测试容器已放开运行（testuser 就绪），接入时无需再备环境 | ✅ 明确 |
 
 ## 6. 开发分阶段计划
 
@@ -226,3 +228,4 @@
 - **消费方重建**：改到 task-core 共享模块必须全量重建消费方；realtime 是共享执行侧新服务，本次不涉及 task-core 改动（CDC 逻辑全在 realtime 内）。
 - **删除语义**：删表级联清理标签/收藏/关注/评论；删用户保留评论（前端「已注销」兜底）——F1 实现时注意 metadata_table 删除钩子。
 - **E2E 设施**：复用 sprint7 的 `helpers/db.ts`（拆库版 psql，按表路由域库）；新增业务表需补 sprint5 `TABLE_DB` 映射。
+- **F2 遗留 TODO（2026-08-10 记录）**：① 监控对 Flink REST 404（集群重启丢作业）只 WARN「保持原状态」，管道永远卡 RUNNING 无法停止/删除——需把 404 归并到「外部停止」语义（置 ERROR/STOPPED）；② stop-with-savepoint 在作业已丢失时失败 8008 且无降级路径；③ savepoint 文件物理清理未做（需 S3 客户端）；④ PG 源：REPLICA IDENTITY FULL 依赖、仅 public schema、无 earliest-offset（见 gotchas PG 小节）。

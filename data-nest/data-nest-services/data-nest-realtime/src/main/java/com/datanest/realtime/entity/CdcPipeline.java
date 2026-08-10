@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 /**
  * CDC 实时同步管道（Sprint 8 F2）。
  * <p>
- * 管道 = MySQL binlog →（Flink CDC YAML Pipeline，提交到独立 Flink Session 集群）→ Iceberg 湖仓
+ * 管道 = MySQL binlog / PostgreSQL WAL →（Flink CDC YAML Pipeline，提交到独立 Flink Session 集群）→ Iceberg 湖仓
  * 的同步单元，下挂多条 {@code cdc_pipeline_table} 表级映射。
  * 停止语义 = cancel-with-savepoint（savepoint 落 s3a://datalake/savepoints），
  * 启动时 savepoint_path 有值优先从 savepoint 恢复（不丢不重）。
@@ -54,7 +54,7 @@ public class CdcPipeline {
     /** 源数据源 ID（engineering datasource_connection.id） */
     private Long sourceDatasourceId;
 
-    /** 源库名（MySQL database） */
+    /** 源库名（MySQL database / PostgreSQL database；PG 本期仅 public schema） */
     private String sourceDatabase;
 
     /** 目标库名（Iceberg/Doris catalog 下的 database） */

@@ -238,7 +238,7 @@ public class CdcPipelineService {
         String savepointPath = entity.getSavepointPath();
         boolean restoreFromSavepoint = savepointPath != null && !savepointPath.isBlank();
 
-        // 无 savepoint 可恢复时先做源数据源预检（连通性/binlog/源库存在性），失败抛对应错误码
+        // 无 savepoint 可恢复时先做源数据源预检（连通性/增量日志/源库存在性），失败抛对应错误码
         if (!restoreFromSavepoint) {
             CdcSourceValidateResult precheck = precheckService.validate(
                     entity.getSourceDatasourceId(), entity.getSourceDatabase());
@@ -258,8 +258,8 @@ public class CdcPipelineService {
         DataSourceInfo datasource = precheckService.getDatasource(entity.getSourceDatasourceId());
         List<CdcPipelineTable> tables = tableMapper.selectList(
                 new QueryWrapper<CdcPipelineTable>().eq("pipeline_id", id));
-        String yaml = yamlBuilder.build(entity, tables, datasource.getHost(), datasource.getPort(),
-                datasource.getUsername(), precheckService.decryptPassword(datasource));
+        String yaml = yamlBuilder.build(entity, tables, datasource.getType(), datasource.getHost(),
+                datasource.getPort(), datasource.getUsername(), precheckService.decryptPassword(datasource));
 
         // CAS 占位防并发重复提交：双击/并发请求都能通过上面的读检查，
         // 不设防会重复提交 Flink 作业（同 server-id 区间互相干扰 binlog），先提交的作业成孤儿泄漏在集群
@@ -449,6 +449,14 @@ public class CdcPipelineService {
                 && !CdcPipeline.STARTUP_MODE_INITIAL.equals(request.getStartupMode())) {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
                     "全量+增量模式启动位点固定为 INITIAL");
+        }
+        // 按源类型校验（同时兜底数据源存在性与类型白名单）：PG connector 无 earliest-offset，保存期拦截
+        DataSourceInfo datasource = precheckService.getDatasource(request.getSourceDatasourceId());
+        if (SourcePrecheckService.TYPE_POSTGRESQL.equalsIgnoreCase(datasource.getType())
+                && CdcPipeline.STARTUP_MODE_EARLIEST_OFFSET.equals(request.getStartupMode())) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "PostgreSQL 源不支持「从最早位点」启动（connector 仅支持 initial/latest-offset），"
+                            + "请改用「从最新位点」或「全量+增量」");
         }
         if (!CdcPipeline.WRITE_MODE_UPSERT.equals(request.getWriteMode())
                 && !CdcPipeline.WRITE_MODE_APPEND.equals(request.getWriteMode())) {

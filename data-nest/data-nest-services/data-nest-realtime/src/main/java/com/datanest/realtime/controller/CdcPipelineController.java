@@ -12,6 +12,7 @@ import com.datanest.realtime.dto.CdcSourceTableDTO;
 import com.datanest.realtime.dto.CdcSourceValidateRequest;
 import com.datanest.realtime.dto.CdcSourceValidateResult;
 import com.datanest.realtime.service.CdcPipelineService;
+import com.datanest.realtime.service.DorisCatalogService;
 import com.datanest.realtime.service.SourcePrecheckService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -33,33 +34,43 @@ public class CdcPipelineController {
 
     private final CdcPipelineService pipelineService;
     private final SourcePrecheckService precheckService;
+    private final DorisCatalogService dorisCatalogService;
 
     public CdcPipelineController(CdcPipelineService pipelineService,
-                                 SourcePrecheckService precheckService) {
+                                 SourcePrecheckService precheckService,
+                                 DorisCatalogService dorisCatalogService) {
         this.pipelineService = pipelineService;
         this.precheckService = precheckService;
+        this.dorisCatalogService = dorisCatalogService;
     }
 
-    @Operation(summary = "源数据源预检", description = "连通性 / binlog 开启 / binlog_format=ROW / 源库存在性逐项检查")
+    @Operation(summary = "源数据源预检", description = "连通性 / 增量日志（MySQL binlog+ROW、PG wal_level=logical）/ PG 复制权限 / 源库存在性逐项检查")
     @PostMapping("/validate-source")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     public Result<CdcSourceValidateResult> validateSource(@RequestBody CdcSourceValidateRequest request) {
         return Result.ok(precheckService.validate(request.getDatasourceId(), request.getSourceDatabase()));
     }
 
-    @Operation(summary = "源数据源库列表", description = "列出源 MySQL 的全部业务库（过滤系统库），供建管道选库")
+    @Operation(summary = "源数据源库列表", description = "列出源数据源的全部业务库（MySQL 过滤系统库；PG 过滤模板库、保留 postgres 维护库），供建管道选库")
     @GetMapping("/source-databases/{datasourceId}")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     public Result<List<String>> listSourceDatabases(@Parameter(description = "源数据源 ID") @PathVariable Long datasourceId) {
         return Result.ok(precheckService.listDatabases(datasourceId));
     }
 
-    @Operation(summary = "源库表列表", description = "列出源库下全部业务表（表名 + 约估行数），供建管道勾选同步表")
+    @Operation(summary = "源库表列表", description = "列出源库下全部业务表（表名 + 约估行数 + 主键列），供建管道勾选同步表；PG 本期仅支持 public schema")
     @GetMapping("/source-tables/{datasourceId}")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     public Result<List<CdcSourceTableDTO>> listSourceTables(@Parameter(description = "源数据源 ID") @PathVariable Long datasourceId,
                                                             @Parameter(description = "源库名") @RequestParam String database) {
         return Result.ok(precheckService.listTables(datasourceId, database));
+    }
+
+    @Operation(summary = "湖仓目标库列表", description = "列出现有 Iceberg 湖仓库名（Doris 外部 catalog 下 SHOW DATABASES，过滤系统 schema），供建管道选目标库")
+    @GetMapping("/target-databases")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    public Result<List<String>> listTargetDatabases() {
+        return Result.ok(dorisCatalogService.listLakeDatabases());
     }
 
     @Operation(summary = "创建管道", description = "初始状态 STOPPED；UPSERT 模式每表必须配置主键")

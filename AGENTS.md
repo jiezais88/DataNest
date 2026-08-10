@@ -245,13 +245,14 @@ docker compose up -d --no-deps app-engineering app-worker
 
 > 细节见 gotchas §一。独立 Flink 2.2.1 Session 集群 + MinIO + Iceberg；app-realtime（第 8 个服务，持第 5 库 `datanest_realtime`）经 REST 提交（`FlinkPipelineComposer.ofRemoteCluster`，提交端依赖集照 `tmp/m0-cdc-verify/pom.xml`）。
 
-- **依赖矩阵已固化**：集群用自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`），预置 7 个 jar（`flink-cdc-dist/common/flink2-compat/两 connector:3.6.0-2.2` + `mysql-connector-j:8.0.33` + `flink-shaded-hadoop-2-uber` + `flink-s3-fs-hadoop:2.2.1`）；**`flink-s3-fs-hadoop` 只能放 lib 不能放 plugins/**。
+- **依赖矩阵已固化**：集群用自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`），预置 9 个 jar（`flink-cdc-dist/common/flink2-compat/三 connector(mysql/iceberg/postgres):3.6.0-2.2` + `mysql-connector-j:8.0.33` + `flink-shaded-hadoop-2-uber` + `flink-s3-fs-hadoop:2.2.1`）；**`flink-s3-fs-hadoop` 只能放 lib 不能放 plugins/**。
 - **`classloader.resolve-order: parent-first` 必须写集群 config.yaml**（`-D` 不生效），否则 iceberg 双 classloader → `HadoopCatalog cannot be cast to Catalog`；**`classloader.check-leaked-classloader: false` 必须配**（compose FLINK_PROPERTIES），否则作业停止/重启后 S3A closed classloader、Iceberg 提交全失败。
 - **CDC 源库账号需 `REPLICATION CLIENT/SLAVE/RELOAD` 权限**（root 不暴露，低权账号必授）。
 - **S3A 配置**：凭据用容器环境变量 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`；endpoint 用 `core-site.xml` + `HADOOP_CONF_DIR`（`s3.*`/`hadoop.*` 前缀均不透传）。
 - **禁开 unaligned checkpoint**（与 CDC partitioner 冲突）；`pekko.ask.timeout` ≥120s；宿主 8081 被 nacos 占用，Flink JM 映射 18081。
 - **Flink 2.2 REST 差异**：无 `/jobs/{id}/vertices` 子资源（vertices 内嵌 `/jobs/{id}`）；stop-with-savepoint body `{"drain":false,"targetDirectory":"s3a://datalake/savepoints"}`（无 formatType）；无 `SavepointRestoreSettings` 类（恢复走 `execution.savepoint.path` 配置键）；CDC 3.6 iceberg sink 无 upsert 选项。
 - **Doris Iceberg catalog 的 `s3.endpoint` 用宿主侧 `http://192.168.119.1:9000`**（VMnet8），不能写容器名；湖仓新数据/新表需 `REFRESH CATALOG/TABLE` 后 Doris 可见（realtime 有 refresh-catalog 端点）。
+- **PG 源（2026-08-10 已全链路实测）**：镜像已加 `flink-cdc-pipeline-connector-postgres`（PG 驱动由 connector 内置 42.7.3，**不要再向 lib 单放 postgresql 驱动 jar**）；**oracle connector 与 postgres connector 不能同时放 lib**（同名 base 类 + shaded/未 shade Hikari 冲突，oracle 已移至 `docker/flink/lib-oracle-pending/`）；**PG 表必须 REPLICA IDENTITY FULL**（否则 UPDATE/DELETE 事件 before=null → NPE 毒消息无限重启）；PG 无 earliest-offset 位点；本期仅 public schema；复制权限检查用 `pg_roles.rolreplication OR rolsuper`（`pg_has_role(...,'replication')` 非法）。
 
 ## 7. 代码与提交约定
 

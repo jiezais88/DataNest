@@ -17,7 +17,7 @@ public class CdcPipelineSaveRequest {
     @Schema(description = "源数据源 ID", example = "2083088527209295874")
     private Long sourceDatasourceId;
 
-    @Schema(description = "源库名（MySQL database）", example = "testdb")
+    @Schema(description = "源库名（MySQL database / PostgreSQL database；PG 本期仅同步 public schema）", example = "testdb")
     private String sourceDatabase;
 
     @Schema(description = "目标库名（Iceberg/Doris catalog 下的 database）", example = "cdc_test")
@@ -26,7 +26,7 @@ public class CdcPipelineSaveRequest {
     @Schema(description = "同步模式：FULL_AND_INCREMENT 全量+增量 / INCREMENTAL_ONLY 仅增量", example = "FULL_AND_INCREMENT")
     private String syncMode;
 
-    @Schema(description = "启动位点：INITIAL 全量快照+增量 / LATEST_OFFSET 从最新位点 / EARLIEST_OFFSET 从最早位点（仅增量模式可选，全量+增量固定 INITIAL）", example = "INITIAL")
+    @Schema(description = "启动位点：INITIAL 全量快照+增量 / LATEST_OFFSET 从最新位点 / EARLIEST_OFFSET 从最早位点（仅增量模式可选，全量+增量固定 INITIAL；PostgreSQL 源不支持 EARLIEST_OFFSET）", example = "INITIAL")
     private String startupMode;
 
     @Schema(description = "写入模式：UPSERT 主键覆盖 / APPEND 追加", example = "UPSERT")
