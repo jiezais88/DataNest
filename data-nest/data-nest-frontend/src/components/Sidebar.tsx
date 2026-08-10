@@ -6,6 +6,7 @@ import {ALERT_VIEW_ROLES, ALL_ROLES, COMPLIANCE_VIEW_ROLES, ENGINEERING_WRITE_RO
 import LogoMark from './LogoMark';
 import {
     HiOutlineArrowsRightLeft,
+    HiOutlineBell,
     HiOutlineBellAlert,
     HiOutlineCheckBadge,
     HiOutlineCheckCircle,
@@ -19,6 +20,7 @@ import {
     HiOutlineScale,
     HiOutlineServer,
     HiOutlineShieldCheck,
+    HiOutlineStar,
     HiOutlineTableCells,
     HiOutlineUsers,
 } from 'react-icons/hi2';
@@ -78,6 +80,18 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: '数据资产',
                 path: '/asset-catalog',
                 icon: <HiOutlineCircleStack size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: '我的收藏',
+                path: '/asset-catalog/favorites',
+                icon: <HiOutlineStar size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: '我的关注',
+                path: '/asset-catalog/follows',
+                icon: <HiOutlineBell size={18}/>,
                 roles: ALL_ROLES
             },
         ],

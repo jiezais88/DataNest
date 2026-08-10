@@ -70,10 +70,12 @@ public class AssetCatalogService {
     /** 分类浏览 sort=score 内存排序时的最大拉取条数（千级表规模兜底） */
     private static final int MAX_BROWSABLE_ROWS = 1000;
 
-    /** 相关度权重：表名命中 > 注释命中 > 字段命中 > 负责人命中（技术文档 §4.1） */
+    /** 相关度权重：表名命中 > 注释命中 > 字段/标签命中 > 负责人命中（技术文档 §4.1） */
     private static final int SCORE_TABLE_NAME = 100;
     private static final int SCORE_COMMENT = 60;
     private static final int SCORE_COLUMN = 40;
+    /** Sprint 8 F1：标签维度命中（与字段同权重，2026-08-10 用户确认搜索支持标签名） */
+    private static final int SCORE_TAG = 40;
     private static final int SCORE_OWNER = 20;
     /** 表名前缀命中加成（前缀命中优先） */
     private static final int SCORE_PREFIX_BONUS = 20;
@@ -115,8 +117,8 @@ public class AssetCatalogService {
     // ==================== DC-01 资产搜索 ====================
 
     /**
-     * 多维资产搜索：表名/注释/字段名/负责人模糊匹配，按相关度排序，回填质量分与分类。
-     * Sprint 8 F1 起回填标签名数组（tags，DC-06）。
+     * 多维资产搜索：表名/注释/字段名/负责人/标签名模糊匹配，按相关度排序，回填质量分与分类。
+     * Sprint 8 F1 起回填标签名数组（tags，DC-06）；搜索维度补齐标签名匹配（2026-08-10 用户确认）。
      * 可选过滤：datasourceId 按数据源收窄；healthLevel 按健康度收窄（经 quality_score 反查表 ID）。
      */
     public List<AssetSearchItemDTO> search(String keyword, Long datasourceId, String healthLevel) {
@@ -132,22 +134,25 @@ public class AssetCatalogService {
                 return List.of();
             }
         }
-        // 负责人维度：关键词反查 userId；字段维度：关键词反查 tableId
+        // 负责人维度：关键词反查 userId；字段维度：关键词反查 tableId；标签维度：关键词反查绑定 tableId
         List<Long> ownerUserIds = findUserIdsByNameKeyword(trimmed);
         List<Long> columnHitTableIds = metadataColumnMapper.selectTableIdsByColumnKeyword(trimmed);
+        List<Long> tagHitTableIds = findTableIdsByTagKeyword(trimmed);
 
         List<MetadataTable> rows = metadataTableMapper.searchAssetTables(
-                trimmed, ownerUserIds, columnHitTableIds, datasourceId, healthTableIds, maxSearchResults);
+                trimmed, ownerUserIds, columnHitTableIds, tagHitTableIds, datasourceId, healthTableIds,
+                maxSearchResults);
         if (rows.size() >= maxSearchResults) {
             log.warn("资产搜索结果达到上限 {}，已截断（keyword={}）", maxSearchResults, trimmed);
         }
 
         Set<Long> columnHitSet = new HashSet<>(columnHitTableIds);
         Set<Long> ownerHitSet = new HashSet<>(ownerUserIds);
+        Set<Long> tagHitSet = new HashSet<>(tagHitTableIds);
         String lowerKeyword = trimmed.toLowerCase();
 
         List<AssetSearchItemDTO> items = rows.stream()
-                .map(t -> toItemDTO(t, computeScore(t, lowerKeyword, columnHitSet, ownerHitSet)))
+                .map(t -> toItemDTO(t, computeScore(t, lowerKeyword, columnHitSet, ownerHitSet, tagHitSet)))
                 .sorted(Comparator.comparing(AssetSearchItemDTO::getScore).reversed())
                 .toList();
         backfill(items);
@@ -171,7 +176,7 @@ public class AssetCatalogService {
 
     /** 相关度得分：取命中维度的最高权重，表名前缀命中加成。 */
     private int computeScore(MetadataTable t, String lowerKeyword,
-                             Set<Long> columnHitSet, Set<Long> ownerHitSet) {
+                             Set<Long> columnHitSet, Set<Long> ownerHitSet, Set<Long> tagHitSet) {
         int score = 0;
         if (containsIgnoreCase(t.getTableName(), lowerKeyword)) {
             score = SCORE_TABLE_NAME;
@@ -187,10 +192,26 @@ public class AssetCatalogService {
         if (score < SCORE_COLUMN && columnHitSet.contains(t.getId())) {
             score = SCORE_COLUMN;
         }
+        if (score < SCORE_TAG && tagHitSet.contains(t.getId())) {
+            score = SCORE_TAG;
+        }
         if (score < SCORE_OWNER && t.getOwnerUserId() != null && ownerHitSet.contains(t.getOwnerUserId())) {
             score = SCORE_OWNER;
         }
         return score;
+    }
+
+    /** 标签维度：关键词模糊匹配标签名，反查绑定表 ID 集合（无命中返回空列表）。 */
+    private List<Long> findTableIdsByTagKeyword(String keyword) {
+        List<Long> tagIds = assetTagMapper.selectList(new QueryWrapper<AssetTag>()
+                        .select("id").like("name", keyword))
+                .stream().map(AssetTag::getId).toList();
+        if (tagIds.isEmpty()) {
+            return List.of();
+        }
+        return assetTableTagMapper.selectList(new QueryWrapper<AssetTableTag>()
+                        .select("table_id").in("tag_id", tagIds))
+                .stream().map(AssetTableTag::getTableId).distinct().toList();
     }
 
     private boolean containsIgnoreCase(String field, String lowerKeyword) {
@@ -372,7 +393,8 @@ public class AssetCatalogService {
     /**
      * 分类浏览：按数据域/主题/数据源/健康度筛选 ONLINE 表分页返回，回填质量分与负责人名。
      * uncategorized=true 时查未分类（data_domain 为空）的表；sort=score 按质量分降序（内存排序，封顶 1000）。
-     * Sprint 8 F1：新增 tag 按标签名筛选（2026-08-10 用户确认传标签名）；sort=hot 按最近 30 天热度降序（DC-09）。
+     * Sprint 8 F1：新增 tag 按标签名筛选（2026-08-10 用户确认传标签名）；sort=hot 按最近 30 天热度降序（DC-09）；
+     * sort=latest 按元数据更新时间降序（DB 层排序，2026-08-10 用户确认补齐）。
      */
     public PageResult<AssetSearchItemDTO> browse(String domain, String topic, Long datasourceId,
                                                  String healthLevel, boolean uncategorized, String sort,
@@ -423,12 +445,8 @@ public class AssetCatalogService {
             List<AssetSearchItemDTO> items = all.stream()
                     .map(t -> toItemDTO(t, null))
                     .collect(Collectors.toCollection(ArrayList::new));
+            // backfill 统一回填 viewCount（最近 30 天），此处直接按其排序
             backfill(items);
-            Map<Long, Long> viewCountMap = viewCountMap30d(
-                    items.stream().map(AssetSearchItemDTO::getTableId).toList());
-            for (AssetSearchItemDTO item : items) {
-                item.setViewCount(viewCountMap.getOrDefault(item.getTableId(), 0L));
-            }
             items.sort(Comparator.comparing(AssetSearchItemDTO::getViewCount,
                     Comparator.nullsLast(Comparator.reverseOrder())));
             int from = Math.min((page - 1) * pageSize, items.size());
@@ -436,7 +454,12 @@ public class AssetCatalogService {
             return new PageResult<>(new ArrayList<>(items.subList(from, to)), items.size(), page, pageSize);
         }
 
-        wrapper.orderByAsc("table_name");
+        if ("latest".equalsIgnoreCase(sort)) {
+            // 最新排序：按元数据更新时间降序（DB 层排序，无需内存分页）
+            wrapper.orderByDesc("updated_at").orderByAsc("table_name");
+        } else {
+            wrapper.orderByAsc("table_name");
+        }
         IPage<MetadataTable> mpPage = metadataTableMapper.selectPage(new Page<>(page, pageSize), wrapper);
         List<AssetSearchItemDTO> items = mpPage.getRecords().stream()
                 .map(t -> toItemDTO(t, null))
@@ -457,7 +480,7 @@ public class AssetCatalogService {
                 .stream().map(AssetTableTag::getTableId).toList();
     }
 
-    /** 批量聚合最近 30 天访问数（tableId → viewCount），sort=hot 排序用。 */
+    /** 批量聚合最近 30 天访问数（tableId → viewCount），backfill 统一回填用。 */
     private Map<Long, Long> viewCountMap30d(List<Long> tableIds) {
         if (tableIds == null || tableIds.isEmpty()) {
             return Map.of();
@@ -590,7 +613,10 @@ public class AssetCatalogService {
 
     // ==================== private ====================
 
-    /** 批量回填：质量分/健康度（mapByTableIds 一次 IN 查询）+ 负责人名 + 数据源名称/类型 + 标签名数组（Sprint 8 DC-06）。 */
+    /**
+     * 批量回填：质量分/健康度（mapByTableIds 一次 IN 查询）+ 负责人名 + 数据源名称/类型
+     * + 标签名数组（Sprint 8 DC-06）+ 最近 30 天热度 viewCount（DC-09，2026-08-10 起全场景统一回填）。
+     */
     public void backfill(List<? extends AssetSearchItemDTO> items) {
         if (items.isEmpty()) {
             return;
@@ -600,6 +626,7 @@ public class AssetCatalogService {
         Map<Long, String> usernameMap = usernames(
                 items.stream().map(AssetSearchItemDTO::getOwnerUserId).filter(Objects::nonNull).toList());
         Map<Long, List<String>> tagMap = tagNamesByTableIds(tableIds);
+        Map<Long, Long> viewCountMap = viewCountMap30d(tableIds);
         List<Long> dsIds = items.stream().map(AssetSearchItemDTO::getDatasourceId)
                 .filter(Objects::nonNull).distinct().toList();
         // 经 engineering 服务 Feign 批量回填数据源名/类型；失败经 RemoteCalls 降级为空 Map（名称列退化），不阻断搜索
@@ -626,7 +653,39 @@ public class AssetCatalogService {
                 item.setDatasourceType(ds.getType());
             }
             item.setTags(tagMap.getOrDefault(item.getTableId(), List.of()));
+            item.setViewCount(viewCountMap.getOrDefault(item.getTableId(), 0L));
         }
+    }
+
+    /**
+     * 我的收藏/关注筛选（Sprint 8 F1，2026-08-10 用户确认补齐）：按关键词（表名/注释模糊）/数据源/健康度
+     * 反查匹配的 ONLINE 表 ID 集合。返回 null = 无任何筛选条件（调用方不过滤）；空列表 = 有条件但无命中。
+     */
+    public List<Long> matchTableIds(String keyword, Long datasourceId, String healthLevel) {
+        boolean hasKeyword = keyword != null && !keyword.isBlank();
+        boolean hasHealth = healthLevel != null && !healthLevel.isBlank();
+        if (!hasKeyword && datasourceId == null && !hasHealth) {
+            return null;
+        }
+        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.select("id").eq("source_status", "ONLINE");
+        if (hasKeyword) {
+            String kw = keyword.trim();
+            wrapper.and(w -> w.like("table_name", kw)
+                    .or().like("table_comment", kw)
+                    .or().like("manual_comment", kw));
+        }
+        if (datasourceId != null) {
+            wrapper.eq("datasource_id", datasourceId);
+        }
+        if (hasHealth) {
+            List<Long> healthTableIds = qualityScoreService.findTableIdsByHealthLevel(healthLevel);
+            if (healthTableIds.isEmpty()) {
+                return List.of();
+            }
+            wrapper.in("id", healthTableIds);
+        }
+        return metadataTableMapper.selectList(wrapper).stream().map(MetadataTable::getId).toList();
     }
 
     /** 批量查表标签名（tableId → 标签名数组，按标签名排序），backfill 回填用（避免 N+1）。 */

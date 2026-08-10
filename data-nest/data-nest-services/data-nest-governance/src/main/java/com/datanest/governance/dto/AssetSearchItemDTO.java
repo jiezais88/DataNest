@@ -58,7 +58,7 @@ public class AssetSearchItemDTO {
     @Schema(description = "表标签名数组（Sprint 8 DC-06，搜索/浏览回填；无标签为空数组）")
     private java.util.List<String> tags;
 
-    @Schema(description = "最近 30 天访问数（Sprint 8 DC-09，仅热门排行/热度排序场景回填，其余为 null）")
+    @Schema(description = "最近 30 天访问数（Sprint 8 DC-09；2026-08-10 起搜索/浏览/收藏/关注/热门全场景统一回填，无访问为 0）")
     private Long viewCount;
 
     @Schema(description = "更新时间（ISO 8601）")

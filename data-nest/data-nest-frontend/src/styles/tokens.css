@@ -314,3 +314,58 @@ body {
 .sb-nav::-webkit-scrollbar-thumb:hover {
     background-color: rgba(148, 163, 184, 0.75);
 }
+
+/* ============================================
+ * 表格滚动条美化（Sprint 8 F1）
+ * 资产目录等多列卡片表格 scroll.x 会出原生粗滚动条，悬在白带上视觉突兀；
+ * 改为细滚动条 + 半透明圆角 thumb（横向常驻可见作滚动提示，hover 加深）。
+ * 注意：WebKit 内核滚动条样式；Firefox 使用 scrollbar-width/thumb。
+ * ============================================ */
+.prototype-table .ant-table-body,
+.prototype-table .ant-table-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+.prototype-table .ant-table-body::-webkit-scrollbar,
+.prototype-table .ant-table-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.prototype-table .ant-table-body::-webkit-scrollbar-track,
+.prototype-table .ant-table-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.prototype-table .ant-table-body::-webkit-scrollbar-thumb,
+.prototype-table .ant-table-content::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.35);
+    border-radius: 4px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.prototype-table .ant-table-body::-webkit-scrollbar-thumb:hover,
+.prototype-table .ant-table-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(148, 163, 184, 0.65);
+}
+
+/* ============================================
+ * 固定高度卡片表格：横向滚动条钉在卡片底部（Sprint 8 F1）
+ * 双栏页表格区是 flex-1 固定高度，antd scroll.x 的横向滚动条默认跟在最后一行下面，
+ * 行数不满一页时滚动条悬在半空、下方一大块留白。把 antd 内部容器链拉伸到满高，
+ * 滚动由 .ant-table-content 承担 → 横向滚动条落在卡片底边。
+ * ============================================ */
+.ds-table-fill .ant-spin-nested-loading,
+.ds-table-fill .ant-spin,
+.ds-table-fill .ant-spin-container,
+.ds-table-fill .ant-table-wrapper,
+.ds-table-fill .ant-table,
+.ds-table-fill .ant-table-container,
+.ds-table-fill .ant-table-content {
+    height: 100%;
+}
+
+.ds-table-fill .ant-table-content {
+    overflow: auto;
+}

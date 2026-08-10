@@ -1,6 +1,6 @@
 # Sprint 8 Handoff
 
-> **更新时间**：2026-08-10 | **阶段**：F1 后端完成（curl 自测通过）→ F1 前端待开发
+> **更新时间**：2026-08-10 | **阶段**：F1 完成（后端 + 前端 + E2E 15/15）→ F3 质量报告待开发
 > **Sprint 主题**：资产目录深化 + 实时 CDC 管道 + 质量报告（三大模块均为 P0）
 
 ## 1. Sprint 目标
@@ -18,7 +18,7 @@
 | Sprint 8 PRD                             | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-PRD.md`（v1.2，2026-08-09）                                     |
 | Sprint 8 技术设计                        | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-技术文档.md`（v1.1，含 6 个 ADR D1~D6）                         |
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
-| F1 资产目录深化（DC-06~09）              | 🔄 后端完成 | 后端已实现并 curl 自测通过（2026-08-10）：V1.4.0 六表 + 协作 16 端点 + browse/search 回填；前端 + E2E 未开始 |
+| F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` 15/15 通过（2026-08-10）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
 | F2 实时 CDC 管道（DI-04/RC-01）          | ⏳ 未开始 | 架构级新增 realtime-service + MinIO + Iceberg + **独立 Flink 集群**（JobManager+TaskManager）  |
 | F3 质量报告（DG-07 完整版）              | ⏳ 未开始 | 报告聚合接口 + 评分历史表 + 前端报告页                                                         |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
@@ -61,6 +61,11 @@
 | `docs/sprint8/DataNest-Sprint8-技术文档.md`（新增）               | Sprint 8 技术设计文档 v1.0 → v1.1（B1/B2/B4 定稿 + Iceberg 部署形态说明）→ **v1.2（B1 版本组合修订：Flink 2.2.1 + CDC 3.6.0）→ v1.3（部署形态修订：内嵌 MiniCluster → 独立 Flink Session 集群）→ v1.4（依赖坐标锁定）→ v1.5（M0 完成：B1/B2/B6 实测通过 + 已知坑固化）**。10 章，含 6 个 ADR、迁移脚本规划、接口设计、部署方案 |
 | `docs/sprint8/handoff/sprint-8.md`（新增）                        | 本 Handoff                                                                                       |
 | F1 后端代码（2026-08-10，新增/修改）                              | governance：V1.4.0 迁移脚本 + 协作 6 实体/Mapper + `AssetCollaborationService` + 9 个 DTO；`AssetCatalogController` 扩展 16 端点、`AssetCatalogService`（tags 回填/tag 筛选/sort=hot，`backfill`/`toItemDTO` 转 public 复用）；删除钩子（`MetadataWriteService.remove`/`InternalDatasourceService.cascadeDelete`）；common `ErrorCode` 4021~4024；技术文档 v1.6 回落（collaboration 端点/comment 补字段/tag 传名） |
+| F1 后端补齐（2026-08-10 前端联调前用户确认补 5 项缺口）           | ① browse `sort=latest`（updated_at 降序，DB 层排序）；② `my-favorites`/`my-follows` 补 keyword/datasourceId/healthLevel 筛选（`AssetCatalogService.matchTableIds` 反查表 ID 集合，null=不过滤/空=无命中空页）；③ `viewCount` 改为 `backfill` 全场景统一回填（搜索/浏览/收藏/关注/热门，无访问为 0）；④ `search` 新增标签名命中维度（权重 40 与字段同级，`searchAssetTables` 加 `tagHitTableIds`）；⑤ 新增 `GET /my-favorites/export`（CSV BOM，复用合规导出文件名/转义模式）。均已 curl 自测通过并重建 app-governance |
+| F1 前端代码（2026-08-10，新增/修改）                              | `types/asset.ts` + `api/asset.ts` 扩展（协作 13 个 API + 7 个类型）；详情页 `CollaborationBar.tsx`（标签打/删 + 收藏/关注）+ `CommentsTab.tsx`（发表/删除/分页）+ 第 4 张热度卡 + 会话级埋点去重；资产首页标签云筛选 + 排序（默认/热度/最新/评分，搜索态禁用）+ 标签/热度两列 + 热门 Top10 面板 + `?tag=` 跳转支持；新页 `favorites/index.tsx`（筛选 + 导出 CSV + 取消收藏）/ `follows/index.tsx`（变更动态摘要 + 取消关注）；router + Sidebar 两菜单（ALL_ROLES） |
+| F1 E2E（2026-08-10，新增）                                        | `e2e/sprint8/e2e/asset-collaboration.spec.ts`（复用 sprint7 seed/data + sprint6 Api/gotoAs；协作数据 e2e_s8 前缀自播种自清理）；sprint5/sprint6 `helpers/db.ts` TABLE_DB 补协作 6 表映射 |
+| F1 文档回落（2026-08-10）                                          | 技术文档 §5.1（5 项后端补齐口径）；PRD §6.3.1（导出收藏）/§6.5（热度统一 30 天窗口）；原型 html（热度文案 7 天/本周 → 近 30 天）；`conventions-frontend.md` 高度策略补 `ds-table-fill` 约定 |
+| 回归修复（2026-08-10）                                             | sprint7 `asset-catalog.spec.ts` 血缘回跳断言修复：`53065d6` 把血缘页「← 返回」改为带 `?tab=lineage`，Playwright glob 匹配含 query 串导致 `waitForURL` 超时（存量问题，非 F1 引入）；断言对齐新行为。最终回归 sprint7 26 + sprint8 15 + 其余共 **47/47 通过** |
 | `docs/sprint8/DataNest-Sprint8-原型.html/css/js`（新增）| UI 原型：**单 HTML 多视图**（沿用 Sprint 7 范本），prototype-switch 切换 7 视图：数据资产（标签云 + 热门 Top10）、资产详情（标签/收藏/关注/评论/热度）、我的收藏、我的关注（表变更动态）、CDC 管道列表（含日志抽屉）、CDC 新建向导（4 步）、质量报告（**Dashboard 一屏版**：KPI×5 + 四档趋势 + 评分分布环图 + 数据源对比横向条 + 表评分趋势 + 问题清单 TOP5，无滚动）；视觉严格对齐真实 ds-* token + antd 组件结构（accent indigo #4f46e5、圆角 8/12/16px、表头 11px 大写、表格 10px 16px） |
 
 ### 代码现状核验要点（2026-08-09，影响落地路径）
@@ -127,15 +132,17 @@
 - [x] 删除校验：删表级联清理协作数据（`MetadataWriteService.remove` + `InternalDatasourceService.cascadeDelete` 两处钩子）
 - [x] 重建 governance + 部署 + curl 自测（25 项断言全过：标签 CRUD/幂等/标签云/筛选、收藏/关注幂等与分页、评论发布/软删/4022/4024、热度埋点/hot-tables/sort=hot、search 回填 tags、孤儿标签物理删）
 
-**前端**
-- [ ] `Sidebar.tsx`：「数据资产」组新增「我的收藏」「我的关注」（ALL_ROLES）
-- [ ] `router/index.tsx`：`/asset-catalog/favorites`、`/asset-catalog/follows`
-- [ ] 资产详情页扩展：标签区（打/删）、收藏/关注按钮、评论页签、热度展示
-- [ ] 我的收藏/关注页（复用资产卡片 + 变更动态列表）
-- [ ] `types/asset.ts` 扩展（tags/热度）、`api/asset.ts` 新端点
+**前端**——✅ 已完成（2026-08-10）
+- [x] `Sidebar.tsx`：「数据资产」组新增「我的收藏」「我的关注」（ALL_ROLES）
+- [x] `router/index.tsx`：`/asset-catalog/favorites`、`/asset-catalog/follows`
+- [x] 资产详情页扩展：`CollaborationBar`（标签打/删 + 收藏/关注）+ `CommentsTab`（发表/删除/分页/权限）+ 第 4 张热度指标卡 + 会话级埋点去重
+- [x] 我的收藏页（关键词/数据源/健康度筛选 + 导出 CSV + 取消收藏）/ 我的关注页（变更动态摘要 + 取消关注）
+- [x] `types/asset.ts` 扩展（tags/viewCount/协作 7 类型）、`api/asset.ts` 新端点（13 个）
+- [x] 资产首页：标签云筛选 + 排序（默认/热度/最新/评分，搜索态禁用）+ 标签/热度列 + 热门 Top10 面板 + `?tag=` 跳转
+- [x] 滚动体验优化（2026-08-10 用户反馈后，两轮）：列宽压缩（1360）+ 表名列左冻结 + 表格细滚动条 + 热门面板可折叠（localStorage 持久化）+ `ds-table-fill` 拉伸 antd 容器链把横向滚动条钉在卡片底边（消除行数不满时的悬空滚动条 + 下方留白）
 
-**测试**
-- [ ] curl 自测 → 前端联调 → `e2e/sprint8/e2e/asset-collaboration.spec.ts`
+**测试**——✅ 完成
+- [x] curl 自测 → 前端联调 → `e2e/sprint8/e2e/asset-collaboration.spec.ts`（15/15 通过）
 
 ---
 

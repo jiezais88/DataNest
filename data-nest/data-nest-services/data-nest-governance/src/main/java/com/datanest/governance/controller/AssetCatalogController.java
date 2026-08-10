@@ -24,8 +24,15 @@ import com.datanest.governance.service.AssetCollaborationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -88,7 +95,7 @@ public class AssetCatalogController {
         return Result.ok(null);
     }
 
-    @Operation(summary = "分类浏览资产列表", description = "分页；uncategorized=true 查未分类；sort=score 按质量分降序、sort=hot 按最近 30 天热度降序；healthLevel 按健康度筛选；tag 按标签名筛选")
+    @Operation(summary = "分类浏览资产列表", description = "分页；uncategorized=true 查未分类；sort=score 按质量分降序、sort=hot 按最近 30 天热度降序、sort=latest 按元数据更新时间降序；healthLevel 按健康度筛选；tag 按标签名筛选")
     @GetMapping("/browse")
     public Result<PageResult<AssetSearchItemDTO>> browse(@Parameter(description = "数据域名称") @RequestParam(required = false) String domain,
                                                          @Parameter(description = "主题名称") @RequestParam(required = false) String topic,
@@ -176,11 +183,32 @@ public class AssetCatalogController {
         return Result.ok(null);
     }
 
-    @Operation(summary = "我的收藏", description = "收藏时间倒序分页，复用资产卡片字段 + 收藏时间")
+    @Operation(summary = "我的收藏", description = "收藏时间倒序分页，复用资产卡片字段 + 收藏时间；支持关键词（表名/注释）/数据源/健康度筛选")
     @GetMapping("/my-favorites")
-    public Result<PageResult<AssetFavoriteItemDTO>> myFavorites(@Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
+    public Result<PageResult<AssetFavoriteItemDTO>> myFavorites(@Parameter(description = "关键词（表名/注释模糊）") @RequestParam(required = false) String keyword,
+                                                                @Parameter(description = "数据源 ID") @RequestParam(required = false) Long datasourceId,
+                                                                @Parameter(description = "健康度（EXCELLENT/GOOD/WARNING/BAD）") @RequestParam(required = false) String healthLevel,
+                                                                @Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
                                                                 @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.ok(assetCollaborationService.myFavorites(page, pageSize));
+        return Result.ok(assetCollaborationService.myFavorites(keyword, datasourceId, healthLevel, page, pageSize));
+    }
+
+    @Operation(summary = "导出我的收藏 CSV", description = "与列表同一套筛选条件，导出全部匹配记录（UTF-8 BOM）")
+    @GetMapping("/my-favorites/export")
+    public ResponseEntity<byte[]> exportMyFavorites(@Parameter(description = "关键词（表名/注释模糊）") @RequestParam(required = false) String keyword,
+                                                    @Parameter(description = "数据源 ID") @RequestParam(required = false) Long datasourceId,
+                                                    @Parameter(description = "健康度（EXCELLENT/GOOD/WARNING/BAD）") @RequestParam(required = false) String healthLevel) {
+        String csv = assetCollaborationService.exportMyFavorites(keyword, datasourceId, healthLevel);
+        // 产品化文件名：DataNest-我的收藏-日期.csv；ASCII 兜底 + RFC5987 中文编码（对齐合规导出）
+        String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String filename = "DataNest-我的收藏-" + date + ".csv";
+        String asciiFilename = "DataNest-my-favorites-" + date + ".csv";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
+                                + URLEncoder.encode(filename, StandardCharsets.UTF_8))
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(csv.getBytes(StandardCharsets.UTF_8));
     }
 
     @Operation(summary = "关注", description = "uk 幂等，重复关注不报错")
@@ -197,11 +225,14 @@ public class AssetCatalogController {
         return Result.ok(null);
     }
 
-    @Operation(summary = "我的关注", description = "关注时间倒序分页，每表附最近一次采集变更动态")
+    @Operation(summary = "我的关注", description = "关注时间倒序分页，每表附最近一次采集变更动态；支持关键词（表名/注释）/数据源/健康度筛选")
     @GetMapping("/my-follows")
-    public Result<PageResult<AssetFollowItemDTO>> myFollows(@Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
+    public Result<PageResult<AssetFollowItemDTO>> myFollows(@Parameter(description = "关键词（表名/注释模糊）") @RequestParam(required = false) String keyword,
+                                                            @Parameter(description = "数据源 ID") @RequestParam(required = false) Long datasourceId,
+                                                            @Parameter(description = "健康度（EXCELLENT/GOOD/WARNING/BAD）") @RequestParam(required = false) String healthLevel,
+                                                            @Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
                                                             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.ok(assetCollaborationService.myFollows(page, pageSize));
+        return Result.ok(assetCollaborationService.myFollows(keyword, datasourceId, healthLevel, page, pageSize));
     }
 
     @Operation(summary = "评论列表", description = "有效评论（deleted=0）按时间倒序分页")

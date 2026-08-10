@@ -116,6 +116,7 @@ const {list, total, page, pageSize, loading, setPage, setPageSize, applyQuery, r
 Layout 视口固定（`h-screen`），按页面类型二选一，新页面必须遵守：
 
 - **双栏/多栏结构页（树+表、左导航+内容）→ 固定撑满 + 栏内独立滚动**。根容器 `h-[calc(100vh-9rem)] flex flex-col overflow-hidden`；分栏容器 `flex-1 min-h-0 flex`；左栏卡片 `min-h-0 overflow-y-auto`；右栏卡片 `flex-1 min-h-0 overflow-hidden flex flex-col`，内部表格区 `flex-1 min-h-0 overflow-auto`，工具栏/分页器 `flex-shrink-0` 钉住。范本：元数据管理页、数据资产目录首页。判断依据：页面存在多个高度独立、需同时可见的区域。
+  - **固定高度表格区的横向滚动条（Sprint 8 定）**：antd `scroll.x` 的横向滚动条默认跟在最后一行下面，行数不满时悬空 + 下方留白。表格区改用 `ds-table-fill flex-1 min-h-0 overflow-hidden`（tokens.css 把 antd 容器链拉伸到满高），滚动条钉在卡片底边；表格滚动条统一样式走 `.prototype-table` 细滚动条。
 - **单栏列表页（工具栏+表格+分页）→ 保持整页滚动**，不强行定高（避免 flex 滚动陷阱，见 gotchas）。
 - 表单/详情页 → 整页滚动。
 

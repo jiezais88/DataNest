@@ -325,17 +325,20 @@ Sprint 8 三大模块，均为 P0：
 | GET | `/tables/{tableId}/collaboration` | 详情页协作状态聚合（tags + favorited/followed + viewCount30d + commentCount；2026-08-10 用户确认新增，详情页头部一次拉取） | 全角色 |
 | POST | `/tables/{tableId}/favorite` | 收藏 | 全角色 |
 | DELETE | `/tables/{tableId}/favorite` | 取消收藏 | 全角色 |
-| GET | `/my-favorites` | 我的收藏（分页） | 全角色 |
+| GET | `/my-favorites` | 我的收藏（分页；2026-08-10 用户确认补 `keyword`/`datasourceId`/`healthLevel` 筛选，复用资产卡片字段 + 收藏时间 + 热度回填） | 全角色 |
+| GET | `/my-favorites/export` | 导出我的收藏 CSV（UTF-8 BOM，与列表同一套筛选，不分页；2026-08-10 用户确认新增） | 全角色 |
 | POST | `/tables/{tableId}/follow` | 关注 | 全角色 |
 | DELETE | `/tables/{tableId}/follow` | 取消关注 | 全角色 |
-| GET | `/my-follows` | 我的关注（含最近变更动态，分页） | 全角色 |
+| GET | `/my-follows` | 我的关注（含最近变更动态，分页；2026-08-10 用户确认补 `keyword`/`datasourceId`/`healthLevel` 筛选） | 全角色 |
 | GET | `/tables/{tableId}/comments` | 评论列表（分页，deleted=0） | 全角色 |
 | POST | `/tables/{tableId}/comments` | 发表评论 | 全角色 |
 | DELETE | `/comments/{commentId}` | 删除评论（作者/治理员/超管；治理员/超管删记录删除人） | 作者 / 治理员 / 超管 |
 | POST | `/tables/{tableId}/view` | 热度埋点（幂等，防抖） | 全角色 |
 | GET | `/hot-tables` | 热门数据表 Top N（30 天热度） | 全角色 |
 
-> **`browse` 扩展**：新增可选 `tag`（按标签筛选，**传标签名**，2026-08-10 用户确认）、`sort=hot`（热度降序）；`search`/`browse` 返回 `tags`（表标签名数组）。
+> **`browse` 扩展**：新增可选 `tag`（按标签筛选，**传标签名**，2026-08-10 用户确认）、`sort=hot`（热度降序）、`sort=latest`（元数据更新时间降序，2026-08-10 用户确认补齐）；`search`/`browse` 返回 `tags`（表标签名数组）。
+> **`search` 扩展（2026-08-10 用户确认）**：关键词新增「标签名」命中维度（权重 40，与字段同级），`searchAssetTables` 增加 `tagHitTableIds` 参数。
+> **`viewCount` 回填口径（2026-08-10 修订）**：搜索/浏览/我的收藏/我的关注/热门排行全场景统一由 `backfill` 回填最近 30 天访问数（无访问为 0），不再限于热度场景。
 
 ### 5.2 CDC 管道（realtime `CdcPipelineController`，`/cdc/pipelines`）
 

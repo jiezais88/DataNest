@@ -283,7 +283,8 @@ test.describe('DC-02/03/04 资产详情页', () => {
         await page.waitForURL(/\/governance\/metadata\/lineage\?.*from=asset-catalog/);
         await expect(page.getByRole('heading', {name: '血缘图谱'})).toBeVisible();
         await page.getByRole('button', {name: '← 返回'}).click();
-        await page.waitForURL(`**/asset-catalog/${T1_ID}`);
+        // 返回落到详情页血缘图谱 tab（53065d6 起带回 ?tab=lineage，glob 需匹配 query）
+        await page.waitForURL(`**/asset-catalog/${T1_ID}?tab=lineage`);
     });
 
     test('血缘空态（无血缘表）', async ({page}) => {

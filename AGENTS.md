@@ -22,7 +22,7 @@ DataNest 是一个数据平台，技术栈如下：
 - **部署**：Docker Compose，所有服务在同一 `datanest-net` 网络
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
 - **调度**：PowerJob 5.1.2（官方镜像，容器 `middleware-powerjob`，控制台/OpenAPI http://localhost:7700，DB 为 MySQL `powerjob` 库）。两个 App：`data-nest-job`（id=1，平台定时任务）/ `data-nest-worker`（id=2，业务任务与 DAG 节点执行）。worker 通信协议 HTTP、store-strategy=memory、max-result-length=32768（`shared-powerjob.yaml`，2026-08-08 调优）。原 XXL-JOB / DolphinScheduler / Zookeeper 已随迁移（2026-08-07）全部下线
-- **目标数仓**：内置 Doris（当前在 `192.168.119.135:9030`）
+- **目标数仓**：内置 Doris（**4.1.3**，2026-08-10 由 4.0.7-rc02 升级，裸机单节点 1FE+1BE，`/usr/local/apache-doris-4.0.7` 目录原位替换，systemd `doris-fe`/`doris-be` 守护，数据在 `/data/doris/`；当前在 `192.168.119.135:9030`）
 - **业务库（按域拆 4 库）**：`datanest_system` / `datanest_alert` / `datanest_engineering` / `datanest_governance`，均在 middleware-postgres 同实例；**worker/job 无库**（纯执行/调度节点，已排除 DataSource 自动配置）。旧 `datanest` 库只读观察后下线。各服务 Flyway 独立管理本库（见 §6）
 
 ### 核心模块

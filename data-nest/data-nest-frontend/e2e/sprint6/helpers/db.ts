@@ -15,6 +15,12 @@ export type BizDb = 'datanest_governance' | 'datanest_engineering' | 'datanest_s
 const TABLE_DB: Record<string, BizDb> = {
     // datanest_governance（app-governance）
     asset_classification: 'datanest_governance',
+    asset_comment: 'datanest_governance',
+    asset_favorite: 'datanest_governance',
+    asset_follow: 'datanest_governance',
+    asset_table_tag: 'datanest_governance',
+    asset_tag: 'datanest_governance',
+    asset_view_log: 'datanest_governance',
     collect_change_detail: 'datanest_governance',
     collect_execution_log: 'datanest_governance',
     collect_history: 'datanest_governance',

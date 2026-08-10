@@ -2,16 +2,19 @@
 // 独立路由 /assets/:tableId，与治理侧 /governance/metadata?tableId= 双入口并存。
 // 不新建聚合接口：基础信息/字段用元数据 API，血缘用 getLineageGraph，质量用评分 API，
 // 页签懒加载（antd Tabs 默认首个激活页签才挂载，切到才拉取）。
+// Sprint 8 F1：协作条（标签/收藏/关注，DC-06/07）+ 热度指标卡与埋点（DC-09）+ 评论页签（DC-08）。
 import {useCallback, useEffect, useState} from 'react';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {Spin, Tabs, Tooltip} from 'antd';
 import {
+    HiOutlineChatBubbleLeftRight,
     HiOutlineCheckCircle,
+    HiOutlineFire,
     HiOutlineInformationCircle,
     HiOutlineQueueList,
     HiOutlineShare,
 } from 'react-icons/hi2';
-import {getAssetClassifications} from '../../../api/asset';
+import {getAssetClassifications, getAssetCollaboration, recordAssetView} from '../../../api/asset';
 import {getLineageGraph} from '../../../api/lineage';
 import {getMetadataTable} from '../../../api/metadata';
 import {getQualityScoreByTable} from '../../../api/quality';
@@ -22,14 +25,19 @@ import QualityScoreBadge from '../../../components/QualityScoreBadge';
 import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
 import {useHasRole} from '../../../hooks/useHasRole';
 import {formatDateTime} from '../../../utils/format';
-import type {AssetClassification} from '../../../types/asset';
+import type {AssetClassification, AssetCollaboration} from '../../../types/asset';
 import type {MetadataTable} from '../../../types/metadata';
 import type {QualityScore} from '../../../types/quality';
 import AssignClassificationModal from '../modals/AssignClassificationModal';
 import AssignOwnerModal from '../modals/AssignOwnerModal';
 import AssetLineageTab from './AssetLineageTab';
+import CollaborationBar from './CollaborationBar';
 import ColumnsTab from './ColumnsTab';
+import CommentsTab from './CommentsTab';
 import QualityTab from './QualityTab';
+
+/** 热度埋点会话级去重 key（同一会话同一表只上报一次，PRD NAC-4） */
+const viewedKey = (tableId: string) => `asset-viewed:${tableId}`;
 
 /** 基础信息页签：三列 kv 网格 */
 function BasicInfoTab({table}: { table: MetadataTable }) {
@@ -111,10 +119,12 @@ export default function AssetDetailPage() {
     const [table, setTable] = useState<MetadataTable | null>(null);
     const [score, setScore] = useState<QualityScore | null>(null);
     const [loading, setLoading] = useState(true);
+    /** Sprint 8 F1：协作状态聚合（标签 + 收藏/关注状态 + 30 天热度 + 评论数），头部一次拉取 */
+    const [collaboration, setCollaboration] = useState<AssetCollaboration | null>(null);
     // 初始 tab：优先 URL ?tab=（血缘图谱 → 查看完整血缘 → 返回时回到血缘图谱 tab）
     const [activeTab, setActiveTab] = useState(() => {
         const t = searchParams.get('tab');
-        return t === 'lineage' ? 'lineage' : 'basic';
+        return ['basic', 'columns', 'lineage', 'quality', 'comments'].includes(t || '') ? t! : 'basic';
     });
     /** 直接上游/下游表数（指标卡，取自血缘 graph depth=1 的边） */
     const [lineageStats, setLineageStats] = useState<{ up: number; down: number } | null>(null);
@@ -139,6 +149,29 @@ export default function AssetDetailPage() {
     useEffect(() => {
         loadTable();
     }, [loadTable]);
+
+    // Sprint 8 F1：协作聚合 + 热度埋点（会话级去重，上报失败静默不打扰浏览）
+    const loadCollaboration = useCallback(() => {
+        if (!tableId) return;
+        getAssetCollaboration(tableId)
+            .then(data => setCollaboration(data ?? null))
+            .catch(() => setCollaboration(null));
+    }, [tableId]);
+
+    useEffect(() => {
+        if (!tableId) return;
+        try {
+            if (!sessionStorage.getItem(viewedKey(tableId))) {
+                sessionStorage.setItem(viewedKey(tableId), '1');
+                recordAssetView(tableId).catch(() => {
+                    // 埋点失败不影响页面
+                });
+            }
+        } catch {
+            // sessionStorage 不可用（隐私模式等）时跳过埋点
+        }
+        loadCollaboration();
+    }, [tableId, loadCollaboration]);
 
     // 指标卡的上下游表数：血缘 graph（depth=1）的边按 source/target 统计
     useEffect(() => {
@@ -218,8 +251,11 @@ export default function AssetDetailPage() {
                 )}
             </div>
 
-            {/* 指标卡（对齐原型 stat-strip，三张：质量评分 / 字段数 / 直接上下游表数） */}
-            <div className="grid grid-cols-3 gap-ds-4 mb-ds-4 flex-shrink-0">
+            {/* Sprint 8 F1：协作条（标签区 + 收藏/关注，全角色可用） */}
+            <CollaborationBar tableId={tableId} collaboration={collaboration} onChange={setCollaboration}/>
+
+            {/* 指标卡（对齐原型 stat-strip：质量评分 / 字段数 / 直接上下游表数 / 近 30 天热度） */}
+            <div className="grid grid-cols-4 gap-ds-4 mb-ds-4 flex-shrink-0">
                 <StatCard
                     icon={<HiOutlineCheckCircle size={20}/>}
                     iconClass="bg-ds-accent-light text-ds-accent"
@@ -239,6 +275,16 @@ export default function AssetDetailPage() {
                     value={
                         <span className="text-ds-heading font-bold text-ds-text-primary">
                             {lineageStats ? `${lineageStats.up} / ${lineageStats.down}` : '—'}
+                        </span>
+                    }
+                />
+                <StatCard
+                    icon={<HiOutlineFire size={20}/>}
+                    iconClass="bg-ds-danger-light text-ds-danger"
+                    label="热度（近 30 天访问）"
+                    value={
+                        <span className="text-ds-heading font-bold text-ds-text-primary">
+                            {collaboration?.viewCount30d ?? '—'}
                         </span>
                     }
                 />
@@ -294,6 +340,21 @@ export default function AssetDetailPage() {
                                 </span>
                             ),
                             children: <QualityTab tableId={tableId} canWrite={canWrite}/>,
+                        },
+                        {
+                            key: 'comments',
+                            label: (
+                                <span className="flex items-center gap-ds-1">
+                                    <HiOutlineChatBubbleLeftRight size={14}/>
+                                    评论
+                                    {collaboration?.commentCount != null && collaboration.commentCount > 0 && (
+                                        <span className="text-ds-tiny text-ds-accent font-semibold">
+                                            {collaboration.commentCount}
+                                        </span>
+                                    )}
+                                </span>
+                            ),
+                            children: <CommentsTab tableId={tableId} onCountChange={loadCollaboration}/>,
                         },
                     ]}
                 />

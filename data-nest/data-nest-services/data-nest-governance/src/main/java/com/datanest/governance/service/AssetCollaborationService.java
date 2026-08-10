@@ -232,17 +232,32 @@ public class AssetCollaborationService {
                 .eq("user_id", currentUserId()).eq("table_id", tableId));
     }
 
-    /** 我的收藏：收藏时间倒序分页，复用资产卡片字段回填。 */
-    public PageResult<AssetFavoriteItemDTO> myFavorites(int page, int pageSize) {
-        IPage<AssetFavorite> mpPage = assetFavoriteMapper.selectPage(new Page<>(page, pageSize),
-                new QueryWrapper<AssetFavorite>().eq("user_id", currentUserId()).orderByDesc("created_at"));
+    /** 我的收藏：收藏时间倒序分页，复用资产卡片字段回填；支持关键词/数据源/健康度筛选（2026-08-10 用户确认补齐）。 */
+    public PageResult<AssetFavoriteItemDTO> myFavorites(String keyword, Long datasourceId, String healthLevel,
+                                                        int page, int pageSize) {
+        List<Long> matchedTableIds = assetCatalogService.matchTableIds(keyword, datasourceId, healthLevel);
+        if (matchedTableIds != null && matchedTableIds.isEmpty()) {
+            // 有筛选条件但无命中表，直接返回空页（避免把空 IN 拼进 SQL）
+            return new PageResult<>(List.of(), 0, page, pageSize);
+        }
+        QueryWrapper<AssetFavorite> wrapper = new QueryWrapper<AssetFavorite>()
+                .eq("user_id", currentUserId()).orderByDesc("created_at");
+        if (matchedTableIds != null) {
+            wrapper.in("table_id", matchedTableIds);
+        }
+        IPage<AssetFavorite> mpPage = assetFavoriteMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        List<AssetFavoriteItemDTO> items = buildFavoriteItems(mpPage.getRecords());
+        return new PageResult<>(items, mpPage.getTotal(), mpPage.getCurrent(), mpPage.getSize());
+    }
+
+    /** 收藏记录 → 列表项（资产卡片字段 + 收藏时间；表已物理删除的历史数据兜底跳过）。 */
+    private List<AssetFavoriteItemDTO> buildFavoriteItems(List<AssetFavorite> favorites) {
         Map<Long, MetadataTable> tableMap = tablesByIds(
-                mpPage.getRecords().stream().map(AssetFavorite::getTableId).toList());
+                favorites.stream().map(AssetFavorite::getTableId).toList());
         List<AssetFavoriteItemDTO> items = new ArrayList<>();
-        for (AssetFavorite f : mpPage.getRecords()) {
+        for (AssetFavorite f : favorites) {
             MetadataTable t = tableMap.get(f.getTableId());
             if (t == null) {
-                // 表已物理删除但级联清理未覆盖到的历史数据，兜底跳过
                 continue;
             }
             AssetFavoriteItemDTO dto = new AssetFavoriteItemDTO();
@@ -251,7 +266,54 @@ public class AssetCollaborationService {
             items.add(dto);
         }
         assetCatalogService.backfill(items);
-        return new PageResult<>(items, mpPage.getTotal(), mpPage.getCurrent(), mpPage.getSize());
+        return items;
+    }
+
+    /**
+     * 导出我的收藏 CSV（UTF-8 with BOM，兼容 Excel；复用 Sprint 6 合规导出经验）。
+     * 与列表同一套筛选条件，导出全部匹配记录（不分页，个人收藏量级小）。
+     */
+    public String exportMyFavorites(String keyword, Long datasourceId, String healthLevel) {
+        List<Long> matchedTableIds = assetCatalogService.matchTableIds(keyword, datasourceId, healthLevel);
+        List<AssetFavorite> favorites;
+        if (matchedTableIds != null && matchedTableIds.isEmpty()) {
+            favorites = List.of();
+        } else {
+            QueryWrapper<AssetFavorite> wrapper = new QueryWrapper<AssetFavorite>()
+                    .eq("user_id", currentUserId()).orderByDesc("created_at");
+            if (matchedTableIds != null) {
+                wrapper.in("table_id", matchedTableIds);
+            }
+            favorites = assetFavoriteMapper.selectList(wrapper);
+        }
+        List<AssetFavoriteItemDTO> items = buildFavoriteItems(favorites);
+        StringBuilder sb = new StringBuilder("\uFEFF");
+        sb.append("表名,注释,数据源,库名,数据域,主题,负责人,质量评分,近30天热度,收藏时间\n");
+        for (AssetFavoriteItemDTO item : items) {
+            sb.append(esc(item.getTableName())).append(',')
+                    .append(esc(item.getTableComment())).append(',')
+                    .append(esc(item.getDatasourceName())).append(',')
+                    .append(esc(item.getDatabaseName())).append(',')
+                    .append(esc(item.getDataDomain())).append(',')
+                    .append(esc(item.getDataTopic())).append(',')
+                    .append(esc(item.getOwnerName())).append(',')
+                    .append(item.getQualityScore() == null ? "" : item.getQualityScore()).append(',')
+                    .append(item.getViewCount() == null ? "" : item.getViewCount()).append(',')
+                    .append(item.getFavoritedAt() == null ? "" : item.getFavoritedAt().toString())
+                    .append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** CSV 单元格转义：含逗号/引号/换行时加双引号并内层引号双写（对齐 ComplianceCheckService.esc）。 */
+    private String esc(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
+            return '"' + value.replace("\"", "\"\"") + '"';
+        }
+        return value;
     }
 
     /** 关注（uk 幂等，重复关注不报错）。 */
@@ -278,10 +340,19 @@ public class AssetCollaborationService {
                 .eq("user_id", currentUserId()).eq("table_id", tableId));
     }
 
-    /** 我的关注：关注时间倒序分页，每表附最近一次采集变更动态（collect_change_detail 三元组匹配）。 */
-    public PageResult<AssetFollowItemDTO> myFollows(int page, int pageSize) {
-        IPage<AssetFollow> mpPage = assetFollowMapper.selectPage(new Page<>(page, pageSize),
-                new QueryWrapper<AssetFollow>().eq("user_id", currentUserId()).orderByDesc("created_at"));
+    /** 我的关注：关注时间倒序分页，每表附最近一次采集变更动态；支持关键词/数据源/健康度筛选（2026-08-10 用户确认补齐）。 */
+    public PageResult<AssetFollowItemDTO> myFollows(String keyword, Long datasourceId, String healthLevel,
+                                                    int page, int pageSize) {
+        List<Long> matchedTableIds = assetCatalogService.matchTableIds(keyword, datasourceId, healthLevel);
+        if (matchedTableIds != null && matchedTableIds.isEmpty()) {
+            return new PageResult<>(List.of(), 0, page, pageSize);
+        }
+        QueryWrapper<AssetFollow> wrapper = new QueryWrapper<AssetFollow>()
+                .eq("user_id", currentUserId()).orderByDesc("created_at");
+        if (matchedTableIds != null) {
+            wrapper.in("table_id", matchedTableIds);
+        }
+        IPage<AssetFollow> mpPage = assetFollowMapper.selectPage(new Page<>(page, pageSize), wrapper);
         Map<Long, MetadataTable> tableMap = tablesByIds(
                 mpPage.getRecords().stream().map(AssetFollow::getTableId).toList());
         List<AssetFollowItemDTO> items = new ArrayList<>();

@@ -119,7 +119,8 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
     /**
      * Sprint 7 F1：资产多维搜索（扁平结果）。
      * 命中维度：表名/表注释/手工注释（本方法内 LIKE）、负责人（ownerUserIds 由调用方按关键词反查）、
-     * 字段（columnHitTableIds 由调用方经 metadata_column 反查）。
+     * 字段（columnHitTableIds 由调用方经 metadata_column 反查）、
+     * 标签（tagHitTableIds 由调用方经 asset_tag/asset_table_tag 反查，Sprint 8 F1 补齐）。
      * 只查 ONLINE 表；LIMIT 由调用方传入（对齐搜索保护）。
      */
     @Select("""
@@ -151,6 +152,10 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
                 OR t.id IN
                 <foreach collection="columnHitTableIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
                 </if>
+                <if test="tagHitTableIds != null and !tagHitTableIds.isEmpty()">
+                OR t.id IN
+                <foreach collection="tagHitTableIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
+                </if>
               )
             <if test="datasourceId != null">
               AND t.datasource_id = #{datasourceId}
@@ -166,6 +171,7 @@ public interface MetadataTableMapper extends BaseMapper<MetadataTable> {
     List<MetadataTable> searchAssetTables(@Param("keyword") String keyword,
                                           @Param("ownerUserIds") List<Long> ownerUserIds,
                                           @Param("columnHitTableIds") List<Long> columnHitTableIds,
+                                          @Param("tagHitTableIds") List<Long> tagHitTableIds,
                                           @Param("datasourceId") Long datasourceId,
                                           @Param("healthTableIds") List<Long> healthTableIds,
                                           @Param("limit") int limit);

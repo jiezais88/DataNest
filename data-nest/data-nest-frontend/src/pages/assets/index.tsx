@@ -3,15 +3,18 @@
 // 治理员/超管额外可见：树节点编辑/删除、新增数据域/主题、分配表到分类、表格操作列（负责人/移出）。
 // 双态互斥：关键词非空 = 搜索态（/assets/search，相关度排序，上限 200 不分页）；否则 = 浏览态分页。
 // 数据源/健康度下拉变更即时生效（浏览态走后端参数，搜索态同样传给后端）。
+// Sprint 8 F1：标签云筛选（DC-06，仅浏览态）+ 排序（热度/最新/评分，仅浏览态）+ 热度列 + 热门 Top10 面板（DC-09）。
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
-import {HiOutlineArrowRightOnRectangle, HiOutlineUser} from 'react-icons/hi2';
+import {HiOutlineArrowRightOnRectangle, HiOutlineChevronLeft, HiOutlineChevronRight, HiOutlineFire, HiOutlineUser} from 'react-icons/hi2';
 import {
     browseAssets,
     deleteClassification,
     getAssetClassifications,
+    getHotTables,
     assignTableClassification,
+    listAssetTags,
     searchAssets,
 } from '../../api/asset';
 import {listMetadataDatasourceIds} from '../../api/metadata';
@@ -22,6 +25,7 @@ import DsIconButton from '../../components/DsIconButton';
 import DsTableEmpty from '../../components/DsTableEmpty';
 import DsToolbar from '../../components/DsToolbar';
 import Pagination from '../../components/Pagination';
+import QualityScoreBadge from '../../components/QualityScoreBadge';
 import SearchInput from '../../components/SearchInput';
 import {GOVERNANCE_WRITE_ROLES} from '../../constants/roles';
 import {COL} from '../../constants/table';
@@ -29,7 +33,7 @@ import usePagedList from '../../hooks/usePagedList';
 import {useHasRole} from '../../hooks/useHasRole';
 import {notify} from '../../utils/notify';
 import {QUALITY_HEALTH_OPTIONS} from '../../types/quality';
-import type {AssetClassification, AssetClassificationTree, AssetSearchItem} from '../../types/asset';
+import type {AssetClassification, AssetClassificationTree, AssetSearchItem, AssetTag} from '../../types/asset';
 import AssetTree, {ALL_SELECTION, selectionKey, selectionToQuery} from './AssetTree';
 import type {AssetTreeSelection} from './AssetTree';
 import {buildAssetColumns} from './assetColumns';
@@ -39,6 +43,14 @@ import ClassificationFormModal from './modals/ClassificationFormModal';
 import type {ClassificationFormState} from './modals/ClassificationFormModal';
 
 const SEARCH_LIMIT = 200;
+
+/** 浏览态排序选项（搜索态按相关度排序，排序下拉禁用） */
+const SORT_OPTIONS = [
+    {value: '', label: '默认排序'},
+    {value: 'hot', label: '按热度'},
+    {value: 'latest', label: '按最新'},
+    {value: 'score', label: '按评分'},
+];
 
 // 左侧分类树可拖拽宽度（方案 C）：范围 + 持久化到 localStorage
 const TREE_MIN_W = 220;
@@ -119,6 +131,10 @@ export default function AssetsPage() {
     const [keyword, setKeyword] = useState('');
     const [datasourceId, setDatasourceId] = useState('');
     const [healthLevel, setHealthLevel] = useState('');
+    // Sprint 8 F1：标签筛选 + 排序（仅浏览态生效；支持详情页标签 chip 跳转带来的 ?tag= 初始值）
+    const [searchParams] = useSearchParams();
+    const [tag, setTag] = useState(() => searchParams.get('tag') ?? '');
+    const [sort, setSort] = useState('');
     const isSearch = keyword.trim() !== '';
 
     const [datasourceOptions, setDatasourceOptions] = useState<{ value: string; label: string }[]>([
@@ -155,19 +171,52 @@ export default function AssetsPage() {
         initialQuery: selectionToQuery(ALL_SELECTION),
     });
 
-    // 树选中 / 数据源 / 健康度变化 → 即时重新浏览（跳过与 initialQuery 重复的首跑）
+    // 树选中 / 数据源 / 健康度 / 标签 / 排序变化 → 即时重新浏览（跳过与 initialQuery 重复的首跑）
     useEffect(() => {
         if (browseQueryRef.current.skipFirst) {
             browseQueryRef.current.skipFirst = false;
-            if (selection.type === 'all' && !datasourceId && !healthLevel) return;
+            if (selection.type === 'all' && !datasourceId && !healthLevel && !tag && !sort) return;
         }
         applyQuery({
             ...selectionToQuery(selection),
             datasourceId: datasourceId || undefined,
             healthLevel: healthLevel || undefined,
+            tag: tag || undefined,
+            sort: (sort || undefined) as 'score' | 'hot' | 'latest' | undefined,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selection, datasourceId, healthLevel]);
+    }, [selection, datasourceId, healthLevel, tag, sort]);
+
+    // ============ Sprint 8 F1：标签云 + 热门 Top10 ============
+    const [tagCloud, setTagCloud] = useState<AssetTag[]>([]);
+    const [hotList, setHotList] = useState<AssetSearchItem[]>([]);
+    // 热门面板可折叠（表格列多，折叠后释放 280px 宽度减少横向滚动；偏好持久化）
+    const [hotCollapsed, setHotCollapsed] = useState(() => {
+        try {
+            return localStorage.getItem('asset-catalog.hotCollapsed') === '1';
+        } catch {
+            return false;
+        }
+    });
+    const toggleHotPanel = () => {
+        setHotCollapsed(prev => {
+            try {
+                localStorage.setItem('asset-catalog.hotCollapsed', prev ? '0' : '1');
+            } catch {
+                // 写入失败（隐私模式等）忽略
+            }
+            return !prev;
+        });
+    };
+
+    useEffect(() => {
+        listAssetTags()
+            .then(list => setTagCloud(list ?? []))
+            .catch(() => setTagCloud([]));
+        getHotTables(10)
+            .then(list => setHotList(list ?? []))
+            .catch(() => setHotList([]));
+    }, []);
 
     // ============ 搜索态（关键词或下拉变化即时重搜） ============
     const [searchList, setSearchList] = useState<AssetSearchItem[]>([]);
@@ -206,6 +255,9 @@ export default function AssetsPage() {
 
     // ============ 搜索/重置 ============
     const handleSearch = () => {
+        // 标签筛选/排序仅浏览态生效，进入搜索态时清掉避免误解
+        setTag('');
+        setSort('');
         setKeyword(keywordInput.trim());
     };
 
@@ -214,8 +266,17 @@ export default function AssetsPage() {
         setKeyword('');
         setDatasourceId('');
         setHealthLevel('');
+        setTag('');
+        setSort('');
         setSelection(ALL_SELECTION);
         applyQuery(selectionToQuery(ALL_SELECTION));
+    };
+
+    /** 点标签云 chip：退出搜索态进入浏览态并按标签筛选（再次点击当前标签 = 取消筛选） */
+    const handleTagSelect = (name: string) => {
+        setKeyword('');
+        setKeywordInput('');
+        setTag(prev => (prev === name ? '' : name));
     };
 
     const handleTreeSelect = (sel: AssetTreeSelection) => {
@@ -392,7 +453,7 @@ export default function AssetsPage() {
                                 value={keywordInput}
                                 onChange={(e) => setKeywordInput(e.target.value)}
                                 onEnter={handleSearch}
-                                placeholder="搜索表名 / 注释 / 负责人…"
+                                placeholder="搜索表名 / 注释 / 字段 / 标签 / 负责人…"
                                 aria-label="搜索数据资产"
                             />
                             <DsFilterSelect
@@ -407,8 +468,53 @@ export default function AssetsPage() {
                                 aria-label="按健康度筛选"
                                 options={QUALITY_HEALTH_OPTIONS}
                             />
+                            <Tooltip title={isSearch ? '搜索结果按相关度排序' : undefined}>
+                                <span>
+                                    <DsFilterSelect
+                                        value={sort}
+                                        onChange={setSort}
+                                        aria-label="排序方式"
+                                        options={SORT_OPTIONS}
+                                        disabled={isSearch}
+                                    />
+                                </span>
+                            </Tooltip>
                         </DsToolbar>
                     </div>
+
+                    {/* Sprint 8 F1：标签云筛选行（仅浏览态生效；有标签才展示） */}
+                    {tagCloud.length > 0 && (
+                        <div
+                            className="flex items-center gap-ds-2 flex-wrap px-ds-4 py-ds-2 border-b border-ds-border-subtle flex-shrink-0">
+                            <span className="text-ds-tiny text-ds-text-muted flex-shrink-0">标签筛选</span>
+                            <button
+                                type="button"
+                                onClick={() => handleTagSelect('')}
+                                className={`px-2.5 py-1 rounded-full text-ds-badge transition-colors ${
+                                    !tag
+                                        ? 'bg-ds-accent text-white'
+                                        : 'bg-ds-bg-hover text-ds-text-secondary hover:text-ds-accent'
+                                }`}
+                            >
+                                全部
+                            </button>
+                            {tagCloud.map(t => (
+                                <button
+                                    key={t.tagId}
+                                    type="button"
+                                    onClick={() => handleTagSelect(t.tagName)}
+                                    title={`${t.refCount ?? 0} 张表`}
+                                    className={`px-2.5 py-1 rounded-full text-ds-badge transition-colors ${
+                                        tag === t.tagName
+                                            ? 'bg-ds-accent text-white'
+                                            : 'bg-ds-accent-light text-ds-accent hover:bg-ds-accent hover:text-white'
+                                    }`}
+                                >
+                                    {t.tagName}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     {/* 治理员 + 浏览态选中具体分类时的管理条 */}
                     {canWrite && !isSearch && isClassified && (
@@ -438,14 +544,14 @@ export default function AssetsPage() {
                         </div>
                     )}
 
-                    <div className="flex-1 min-h-0 overflow-auto">
+                    <div className="ds-table-fill flex-1 min-h-0 overflow-hidden">
                         <Table
                             rowKey={(r) => r.tableId}
                             columns={columns}
                             dataSource={tableData}
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1280}}
+                            scroll={{x: 1360}}
                             className="prototype-table prototype-table-flush"
                             onRow={(r) => ({
                                 onClick: () => openDetail(r.tableId),
@@ -481,6 +587,80 @@ export default function AssetsPage() {
                         />
                     )}
                 </div>
+
+                {/* Sprint 8 F1：热门数据表面板（DC-09，近 30 天访问 Top10，点击进详情；可折叠释放表格宽度） */}
+                {hotCollapsed ? (
+                    <button
+                        type="button"
+                        onClick={toggleHotPanel}
+                        title="展开热门数据表面板"
+                        aria-label="展开热门数据表面板"
+                        className="w-[36px] flex-shrink-0 min-h-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle flex flex-col items-center py-ds-3 gap-ds-2 hover:bg-ds-bg-hover transition-colors"
+                    >
+                        <HiOutlineFire size={16} className="text-ds-warning"/>
+                        <HiOutlineChevronLeft size={14} className="text-ds-text-muted"/>
+                    </button>
+                ) : (
+                    <div
+                        className="w-[280px] flex-shrink-0 min-h-0 bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
+                        <div
+                            className="flex items-center gap-ds-2 px-ds-4 py-ds-3 border-b border-ds-border-subtle flex-shrink-0">
+                            <HiOutlineFire size={16} className="text-ds-warning"/>
+                            <span className="text-ds-small font-semibold text-ds-text-primary">热门数据表</span>
+                            <span className="text-ds-tiny text-ds-text-muted ml-auto">近 30 天</span>
+                            <Tooltip title="收起面板，表格更宽">
+                                <button
+                                    type="button"
+                                    onClick={toggleHotPanel}
+                                    aria-label="收起热门数据表面板"
+                                    className="text-ds-text-muted hover:text-ds-text-primary transition-colors"
+                                >
+                                    <HiOutlineChevronRight size={14}/>
+                                </button>
+                            </Tooltip>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto">
+                            {hotList.length === 0 ? (
+                                <div className="px-ds-4 py-ds-8 text-center text-ds-tiny text-ds-text-muted">
+                                    暂无访问数据<br/>访问任意表详情后，这里会出现热门排行
+                                </div>
+                            ) : (
+                                hotList.map((item, idx) => (
+                                    <button
+                                        key={item.tableId}
+                                        type="button"
+                                        onClick={() => openDetail(item.tableId)}
+                                        className="w-full flex items-center gap-ds-3 px-ds-4 py-ds-3 text-left hover:bg-ds-bg-hover transition-colors border-b border-ds-border-subtle last:border-b-0"
+                                    >
+                                        <span
+                                            className={`w-5 text-center text-ds-small font-bold flex-shrink-0 ${idx < 3 ? 'text-ds-warning' : 'text-ds-text-muted'}`}>
+                                            {idx + 1}
+                                        </span>
+                                        <span className="flex-1 min-w-0">
+                                            <span className="flex items-center gap-ds-2">
+                                                <span
+                                                    className="font-mono text-ds-small text-ds-text-primary truncate">{item.tableName}</span>
+                                                <QualityScoreBadge table score={item.qualityScore ?? null}
+                                                                   healthLevel={item.healthLevel}/>
+                                            </span>
+                                            <span
+                                                className="block text-ds-tiny text-ds-text-muted truncate mt-0.5">{item.tableComment || '—'}</span>
+                                        </span>
+                                        <span
+                                            className="inline-flex items-center gap-ds-1 text-ds-tiny text-ds-warning flex-shrink-0">
+                                            <HiOutlineFire size={12}/>
+                                            {item.viewCount ?? 0}
+                                        </span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                        <div
+                            className="px-ds-4 py-ds-2 border-t border-ds-border-subtle flex-shrink-0 text-ds-tiny text-ds-text-muted">
+                            按详情页访问埋点聚合
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* 新增/编辑分类 */}
