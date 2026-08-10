@@ -35,7 +35,12 @@ function Row({label, mono, children}: { label: string; mono?: boolean; children:
 }
 
 /** 解析 configJson 高级配置（非法 JSON 兜底空对象，键缺失走「默认」展示） */
-function parseAdvancedConfig(configJson?: string): { parallelism?: number; checkpointIntervalSeconds?: number } {
+function parseAdvancedConfig(configJson?: string): {
+    parallelism?: number;
+    checkpointIntervalSeconds?: number;
+    schemaChangeBehavior?: string;
+    scanChunkSize?: number;
+} {
     if (!configJson) return {};
     try {
         const cfg = JSON.parse(configJson) as Record<string, unknown>;
@@ -43,6 +48,9 @@ function parseAdvancedConfig(configJson?: string): { parallelism?: number; check
             parallelism: typeof cfg.parallelism === 'number' ? cfg.parallelism : undefined,
             checkpointIntervalSeconds: typeof cfg.checkpointIntervalSeconds === 'number'
                 ? cfg.checkpointIntervalSeconds : undefined,
+            schemaChangeBehavior: typeof cfg.schemaChangeBehavior === 'string'
+                ? cfg.schemaChangeBehavior : undefined,
+            scanChunkSize: typeof cfg.scanChunkSize === 'number' ? cfg.scanChunkSize : undefined,
         };
     } catch {
         return {};
@@ -140,6 +148,12 @@ export default function CdcPipelineDetailDrawer({pipelineId, onClose}: CdcPipeli
                         <Row label="Checkpoint 间隔">
                             {advanced.checkpointIntervalSeconds != null
                                 ? `${advanced.checkpointIntervalSeconds} 秒` : '默认'}
+                        </Row>
+                        <Row label="表结构变更策略">
+                            {advanced.schemaChangeBehavior ?? '默认（EVOLVE）'}
+                        </Row>
+                        <Row label="快照分块大小">
+                            {advanced.scanChunkSize != null ? String(advanced.scanChunkSize) : '默认'}
                         </Row>
                     </Section>
                 </>

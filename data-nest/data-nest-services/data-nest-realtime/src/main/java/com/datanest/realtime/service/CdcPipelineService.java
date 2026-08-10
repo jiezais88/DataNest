@@ -492,6 +492,17 @@ public class CdcPipelineService {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
                     "高级配置 checkpointIntervalSeconds 最小为 3 秒: " + advanced.checkpointIntervalSeconds());
         }
+        if (advanced.schemaChangeBehavior() != null
+                && !CdcYamlBuilder.SCHEMA_CHANGE_BEHAVIORS.contains(advanced.schemaChangeBehavior())) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "高级配置 schemaChangeBehavior 仅支持 EVOLVE/LENIENT/EXCEPTION: "
+                            + advanced.schemaChangeBehavior());
+        }
+        if (advanced.scanChunkSize() != null
+                && (advanced.scanChunkSize() < 16 || advanced.scanChunkSize() > 1048576)) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "高级配置 scanChunkSize 取值范围为 16~1048576: " + advanced.scanChunkSize());
+        }
         for (CdcTableMappingDTO table : request.getTables()) {
             if (table.getSourceTable() == null || table.getSourceTable().isBlank()) {
                 throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID, "源表名不能为空");
