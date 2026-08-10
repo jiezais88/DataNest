@@ -660,9 +660,12 @@ public class AssetCatalogService {
     /**
      * 我的收藏/关注筛选（Sprint 8 F1，2026-08-10 用户确认补齐）：按关键词（表名/注释模糊）/数据源/健康度
      * 反查匹配的 ONLINE 表 ID 集合。返回 null = 无任何筛选条件（调用方不过滤）；空列表 = 有条件但无命中。
+     * 口径说明：只查 ONLINE 表（筛选 = 资产目录视角）；不加筛选时收藏/关注列表仍可展示已下线表——有意为之。
+     * 关键词复用 search 的 cleanKeyword（纯通配符视为无关键词、超长截断），结果封顶 MAX_BROWSABLE_ROWS 防无界 IN。
      */
     public List<Long> matchTableIds(String keyword, Long datasourceId, String healthLevel) {
-        boolean hasKeyword = keyword != null && !keyword.isBlank();
+        String kw = keyword == null ? null : cleanKeyword(keyword);
+        boolean hasKeyword = kw != null;
         boolean hasHealth = healthLevel != null && !healthLevel.isBlank();
         if (!hasKeyword && datasourceId == null && !hasHealth) {
             return null;
@@ -670,7 +673,6 @@ public class AssetCatalogService {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
         wrapper.select("id").eq("source_status", "ONLINE");
         if (hasKeyword) {
-            String kw = keyword.trim();
             wrapper.and(w -> w.like("table_name", kw)
                     .or().like("table_comment", kw)
                     .or().like("manual_comment", kw));
@@ -685,7 +687,8 @@ public class AssetCatalogService {
             }
             wrapper.in("id", healthTableIds);
         }
-        return metadataTableMapper.selectList(wrapper).stream().map(MetadataTable::getId).toList();
+        return metadataTableMapper.selectList(wrapper.last("LIMIT " + MAX_BROWSABLE_ROWS))
+                .stream().map(MetadataTable::getId).toList();
     }
 
     /** 批量查表标签名（tableId → 标签名数组，按标签名排序），backfill 回填用（避免 N+1）。 */

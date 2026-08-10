@@ -32,34 +32,37 @@ data-nest/
 - `data-nest-task-core-governance`（阶段 4.3 删除，质量编排迁 governance、ConnectionTester/DataPreview 迁 engineering）
 - `data-nest-task-core-entity`（阶段 6.1 删除，dto 迁 `data-nest-task-core`、constant 迁 `data-nest-common`；实体/mapper 在此之前已逐域迁到各 owner 服务本地包）
 
-## 2. 服务清单（7 个可部署服务）
+## 2. 服务清单（8 个可部署服务）
 
 | 服务 | 容器 | 端口 | context-path | 职责 | 持有库表 |
 |------|------|------|--------------|------|----------|
 | `data-nest-gateway` | app-gateway | 8080 | — | 网关入口（WebFlux），前端统一经 `/api/**` 访问 | 无 |
 | `data-nest-system` | app-system | 8087 | `/system` | 认证、用户、权限（SysUser 体系已迁入本模块） | datanest_system（5 表） |
 | `data-nest-alert-service` | app-alert | 8088 | `/alert` | 告警中心：告警规则/历史、邮件发送、dag_alert_config/history。**不暴露宿主机端口**，对外统一走 gateway `/api/alert/**` | datanest_alert（6 表） |
+| `data-nest-realtime` | app-realtime | 8089 | `/realtime` | 实时 CDC（Sprint 8 F2）：CDC 管道 CRUD/启停/监控/日志，Flink CDC YAML 组装经 REST 提交独立 Flink Session 集群（不内嵌 Flink）。**不暴露宿主机端口**，对外走 gateway `/api/realtime/**` | datanest_realtime（3 表） |
 | `data-nest-engineering` | app-engineering | 8082 | `/engineering` | 数据工程：数据源、同步任务、DAG 定义与执行实例 | datanest_engineering（13 表） |
-| `data-nest-governance` | app-governance | 8084 | `/governance` | 数据治理：元数据、采集、质量（规则/任务/批次/评分）、标准、合规、血缘 | datanest_governance（19 表） |
+| `data-nest-governance` | app-governance | 8084 | `/governance` | 数据治理：元数据、采集、质量（规则/任务/批次/评分）、标准、合规、血缘、资产目录与协作（标签/收藏/关注/评论/热度，Sprint 8 F1） | datanest_governance（25 表） |
 | `data-nest-worker` | app-worker | 8085 | `/worker` | Addax 同步/DAG 节点/质量/采集的实际执行方，纯执行节点，回写全部走 Feign | 无库 |
 | `data-nest-job` | app-job | 8086 | `/job` | PowerJob worker（App `data-nest-job`），平台定时任务（清理/对账/合规扫描/超时告警等，13 个 CRON 任务） | 无库 |
 
-**库表归属**（4 库均在 middleware-postgres 同一实例，各服务独立 Flyway 管理，基线 V1.0.0）：
+**库表归属**（5 库均在 middleware-postgres 同一实例，各服务独立 Flyway 管理，基线 V1.0.0）：
 
 - **datanest_system（5）**：sys_user、sys_role、sys_permission、sys_user_role、sys_role_permission
 - **datanest_alert（6）**：alert_rule、alert_rule_object、alert_rule_user、alert_history、dag_alert_config、dag_alert_history
 - **datanest_engineering（13）**：sync_job、sync_job_history、sync_job_log、dag、dag_project、dag_node、dag_edge、dag_parameter、dag_version、dag_execution、node_execution、node_execution_log、datasource_connection
-- **datanest_governance（19）**：metadata_table、metadata_column、collect_task、collect_history、collect_execution_log、collect_change_detail、quality_rule、quality_rule_template、quality_job、quality_job_rule、quality_check_batch、quality_check_detail、quality_score、quality_score_config、naming_standard、field_type_standard、compliance_check_result、asset_classification、lineage_record
+- **datanest_governance（25）**：metadata_table、metadata_column、collect_task、collect_history、collect_execution_log、collect_change_detail、quality_rule、quality_rule_template、quality_job、quality_job_rule、quality_check_batch、quality_check_detail、quality_score、quality_score_config、naming_standard、field_type_standard、compliance_check_result、asset_classification、lineage_record、asset_tag、asset_table_tag、asset_favorite、asset_follow、asset_comment、asset_view_log（Sprint 8 F1 新增 6 表）
+- **datanest_realtime（3）**：cdc_pipeline、cdc_pipeline_table、cdc_pipeline_log（Sprint 8 F2 新增库）
 
 ## 3. 服务间调用拓扑
 
-契约模块：`data-nest-apis/` 下 4 个 Feign 契约模块（alert-api / engineering-api / governance-api / system-api），各自包含 @FeignClient 接口 + DTO + fallbackFactory。
+契约模块：`data-nest-apis/` 下 5 个 Feign 契约模块（alert-api / engineering-api / governance-api / system-api / realtime-api），各自包含 @FeignClient 接口 + DTO + fallbackFactory。
 
 | 消费方 | 依赖的 api 模块 | 主要用途 |
 |--------|----------------|----------|
 | app-alert | system-api、engineering-api、governance-api | 用户邮箱/用户名；对象名称解析与下拉；质量自动触发 |
-| app-engineering | alert-api、system-api、governance-api（+ 自用 engineering-api） | 删对象级联告警；创建人名回填；数据源引用检查/级联删除 |
+| app-engineering | alert-api、system-api、governance-api、realtime-api（+ 自用 engineering-api） | 删对象级联告警；创建人名回填；数据源引用检查/级联删除；**删除数据源前 CDC 管道引用校验（fail-closed 8009）** |
 | app-governance | alert-api、system-api、engineering-api（+ 自用 governance-api） | 质量任务删除前告警引用校验（fail-closed）；用户名回填；数据源读取 |
+| app-realtime | engineering-api | 读源数据源连接信息（含 encryptedPassword，本地解密）；数据源名回填 |
 | app-worker | alert-api、system-api、engineering-api、governance-api | 执行回写全链路（同步/DAG/质量/采集/元数据/血缘）+ fire 告警 |
 | app-job | alert-api、system-api、engineering-api、governance-api | 清理/对账/合规扫描/超时告警等 handler 全部端点化 |
 | app-system | 无 | 被其它服务消费，不消费别人 |
@@ -132,13 +135,15 @@ com.datanest.common
 
 | 容器 | 说明 |
 |------|------|
-| `app-gateway` / `app-system` / `app-alert` / `app-engineering` / `app-governance` / `app-worker` / `app-job` | 7 个后端服务（对应 §2） |
+| `app-gateway` / `app-system` / `app-alert` / `app-realtime` / `app-engineering` / `app-governance` / `app-worker` / `app-job` | 8 个后端服务（对应 §2） |
 | `app-frontend` | 前端 |
 | `middleware-mysql` | MySQL：Nacos、PowerJob 元数据 |
-| `middleware-postgres` | PostgreSQL：4 个业务库（datanest_system/alert/engineering/governance） |
+| `middleware-postgres` | PostgreSQL：5 个业务库（datanest_system/alert/engineering/governance/realtime） |
 | `middleware-nacos` | Nacos（配置 + 服务发现） |
 | `middleware-powerjob` | PowerJob server 5.1.2（唯一调度中间件，控制台/OpenAPI :7700） |
 | `middleware-redis` | Redis（Sa-Token 集中式会话） |
 | `middleware-mailhog` | 本地邮件捕获（仅 app-alert 发信） |
+| `middleware-minio` | MinIO 对象存储（Iceberg 湖仓 + savepoint，S3 :9000 / Console :9001，Sprint 8 F2） |
+| `middleware-flink-jobmanager` / `middleware-flink-taskmanager` | 独立 Flink 2.2.1 Session 集群（自定义镜像 `datanest-flink:2.2.1`，JM REST 宿主 18081，Sprint 8 F2） |
 
 > 旧单库 `datanest` 已冻结写入，保留只读观察一个迭代后下线。

@@ -24,5 +24,6 @@
         <module>data-nest-governance</module>
         <module>data-nest-worker</module>
         <module>data-nest-job</module>
+        <module>data-nest-realtime</module>
     </modules>
 </project>

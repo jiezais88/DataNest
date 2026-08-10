@@ -201,6 +201,7 @@ services:
         FLINK_PROPERTIES=jobmanager.memory.process.size:1600m
         pekko.ask.timeout: 120s
         execution.checkpointing.interval: 30s
+        classloader.check-leaked-classloader: false
       # MinIO S3 凭据（flink-s3-fs-hadoop 的 S3A 从环境变量读凭据）
       - AWS_ACCESS_KEY_ID=datanest
       - AWS_SECRET_ACCESS_KEY=datanest123
@@ -231,6 +232,7 @@ services:
         FLINK_PROPERTIES=taskmanager.memory.process.size:1728m
         taskmanager.numberOfTaskSlots:1
         pekko.ask.timeout: 120s
+        classloader.check-leaked-classloader: false
       # MinIO S3 凭据（flink-s3-fs-hadoop 的 S3A 从环境变量读凭据）
       - AWS_ACCESS_KEY_ID=datanest
       - AWS_SECRET_ACCESS_KEY=datanest123
@@ -512,6 +514,54 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Realtime — 实时 CDC 管道服务（Sprint 8 F2：MySQL binlog → Flink CDC → Iceberg 湖仓）
+  # ============================================
+  app-realtime:
+    build:
+      context: .
+      dockerfile: docker/realtime.Dockerfile
+    container_name: datanest-app-realtime
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
+      - NACOS_PORT=8848
+      - NACOS_USERNAME=nacos
+      - NACOS_PASSWORD=nacos
+      - PG_HOST=middleware-postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest_realtime
+      - REDIS_HOST=middleware-redis
+      - REDIS_PORT=6379
+    # 不暴露宿主机端口：对外统一走 gateway /api/realtime/**，容器间 Feign 走 datanest-net:8089
+    depends_on:
+      middleware-nacos:
+        condition: service_healthy
+      middleware-nacos-init:
+        condition: service_completed_successfully
+      middleware-postgres:
+        condition: service_healthy
+      middleware-redis:
+        condition: service_healthy
+      middleware-minio:
+        condition: service_healthy
+      middleware-flink-jobmanager:
+        condition: service_healthy
+      app-engineering:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8089" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # Flink 依赖重，启动较慢，给足预热时间
+      start_period: 90s
     networks:
       - datanest-net
 

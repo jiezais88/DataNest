@@ -65,6 +65,12 @@ spring:
                 - Path=/api/alert/**
               filters:
                 - StripPrefix=1
+            - id: realtime-service
+              uri: lb://data-nest-realtime
+              predicates:
+                - Path=/api/realtime/**
+              filters:
+                - StripPrefix=1
 
 # ============================================
 # 接口文档聚合页（springdoc swagger-ui）
@@ -87,3 +93,5 @@ springdoc:
         url: /api/governance/v3/api-docs
       - name: 告警服务（告警规则/历史/DAG 告警）
         url: /api/alert/v3/api-docs
+      - name: 实时 CDC 管道
+        url: /api/realtime/v3/api-docs

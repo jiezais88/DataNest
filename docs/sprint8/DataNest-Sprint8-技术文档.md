@@ -1,6 +1,6 @@
 # Sprint 8：资产目录深化 + 实时 CDC 管道 + 质量报告——技术设计文档
 
-> **版本**：v1.6 | **日期**：2026-08-10 | **作者**：后端
+> **版本**：v1.7 | **日期**：2026-08-10 | **作者**：后端
 > **关联**：`DataNest-Sprint8-PRD.md`（v1.1）
 > **技术决策**：本 Sprint 范围经 2 轮用户确认（主题边界 + T1~T4 架构决策，见 PRD §13），再经代码现状核验与技术选型调研确定 6 个关键技术决策（D1~D6），见 §1 ADR。涉及架构级新增（realtime-service + MinIO + Iceberg），实现前需先在容器环境验证 Flink/CDC/Iceberg 依赖兼容（§8 B1）。
 
@@ -225,10 +225,11 @@ Sprint 8 三大模块，均为 P0：
 | source_database | VARCHAR(100) | 源库名 |
 | target_database | VARCHAR(100) | 湖仓库名（Iceberg namespace） |
 | sync_mode | VARCHAR(20) | `FULL_AND_INCREMENT` 全量+增量（默认）/ `INCREMENTAL_ONLY` 仅增量 |
-| startup_mode | VARCHAR(20) | `INITIAL` 从最新 / `LATEST_OFFSET` 从最早（Flink CDC 语义） |
-| write_mode | VARCHAR(20) | `UPSERT`（按主键）/ `APPEND` |
+| startup_mode | VARCHAR(20) | `INITIAL` 全量快照+增量 / `LATEST_OFFSET` 从最新位点 / `EARLIEST_OFFSET` 从最早位点（2026-08-10 按 Flink 语义修正，用户确认；FULL_AND_INCREMENT 固定 INITIAL） |
+| write_mode | VARCHAR(20) | `UPSERT`（按主键）/ `APPEND`（F2 实测：CDC 3.6.0-2.2 iceberg sink 无 upsert 选项，YAML 不下发；write_mode 仅平台层保留 + UPSERT 主键必填校验） |
 | status | VARCHAR(20) | `STOPPED` 未启动 / `RUNNING` 运行中 / `ERROR` 异常 |
 | flink_job_id | VARCHAR(64) | Flink 作业 ID（提交后回填，停止时清理） |
+| savepoint_path | VARCHAR(500) | 最近一次 stop-with-savepoint 的 savepoint 路径（启动优先恢复，不丢不重；编辑管道后清空；2026-08-10 用户确认） |
 | current_lag_seconds | INT | 当前端到端延迟（秒） |
 | total_changes | BIGINT | 累计变更数（含全量+增量） |
 | last_error | VARCHAR(2000) | 最近一次错误信息 |
@@ -290,11 +291,11 @@ Sprint 8 三大模块，均为 P0：
          删除（停止后删元数据，不自动删湖仓表数据）
 ```
 
-1. **预检**：源数据源连通性（Feign 读连接信息 + JDBC 探测）、binlog 开启（`SHOW VARIABLES LIKE 'log_bin'`）、目标 MinIO/Iceberg 可写、主键字段存在。
-2. **启动**：按 `cdc_pipeline` + `cdc_pipeline_table` 组装 Flink CDC YAML Pipeline（source: mysql → sink: iceberg），经 `FlinkPipelineComposer.ofRemoteCluster` 提交到独立 Flink Session 集群（REST 8081），回填 `flink_job_id`、置 RUNNING。
-3. **监控**：作业内定期上报延迟（binlog 位点 - 当前时间）/累计变更 → 回写 `current_lag_seconds`/`total_changes`（realtime 服务内轮询，不依赖外部指标系统）。
-4. **停止**：cancel Flink 作业 → 置 STOPPED、清 `flink_job_id`。
-5. **删除校验（PRD §7）**：运行中删除需先停止确认；删除数据源时 engineering 前置校验仍有管道引用（经 realtime-api 查询）。
+1. **预检**：源数据源连通性（Feign 读连接信息 + JDBC 探测）、binlog 开启（`SHOW VARIABLES LIKE 'log_bin'`）、binlog_format=ROW、源库存在（F2 实现口径，共 4 项；MinIO 可写由集群侧配置保证、主键仅 UPSERT 必填校验，不做预检）。
+2. **启动**：按 `cdc_pipeline` + `cdc_pipeline_table` 组装 Flink CDC YAML Pipeline（source: mysql → sink: iceberg，route 逐表映射），经 `FlinkPipelineComposer.ofRemoteCluster` 提交到独立 Flink Session 集群（REST 8081），CAS 占位防并发重复提交，回填 `flink_job_id`、置 RUNNING。**savepoint_path 有值时优先从 savepoint 恢复**（`execution.savepoint.path` 配置键，Flink 2.x 已移除 SavepointRestoreSettings 类），此时跳过预检。
+3. **监控**：realtime 服务内轮询（默认 5s，`/jobs/{id}` 一次调用取 state+vertices）：FAILED → 置 ERROR + last_error（root-exception）；CANCELED/FINISHED → 置 STOPPED；RUNNING → 回写 current_lag_seconds（source `currentEmitEventTimeLag`）/total_changes（sink `numRecordsOut` 之和，查询失败 -1 跳过防误清 0）；集群不可达只 warn 不改状态。
+4. **停止**：**cancel-with-savepoint**（`POST /jobs/{id}/stop`，body `{"drain":false,"targetDirectory":"s3a://datalake/savepoints"}`；savepoint 目录 per-job `state.savepoints.dir` 覆盖，集群无需改）→ 存 savepoint_path、置 STOPPED、清 `flink_job_id`。
+5. **删除校验（PRD §7）**：运行中删除需先停止确认；删除数据源时 engineering 前置校验仍有管道引用（经 realtime-api 查询，fail-closed，8009）。
 
 ### 4.3 质量报告聚合
 
@@ -356,7 +357,7 @@ Sprint 8 三大模块，均为 P0：
 | GET | `/{id}/logs` | 运行日志（分页） | 超管/工程师/治理员/分析师 |
 | GET | `/{id}/refresh-catalog` | 触发 Doris Iceberg Catalog REFRESH（表结构变更后） | 超管/工程师 |
 
-> 配套 internal 端点（realtime-api 契约）：`GET /realtime/internal/cdc/pipelines?datasourceId=`（engineering 删除数据源前置校验引用用，返回管道 id/name 列表）。
+> 配套 internal 端点（realtime-api 契约）：`GET /realtime/internal/cdc/pipelines/by-datasource?datasourceId=`（engineering 删除数据源前置校验引用用，返回管道 id/name 列表；F2 实现落定 `/by-datasource` 路径，fail-closed）。
 
 ### 5.3 质量报告（governance `QualityReportController`，`/quality/report`）
 
@@ -406,7 +407,6 @@ Sprint 8 三大模块，均为 P0：
 | `datanest.realtime.flink.additional-jars` | `flink-cdc-pipeline-connector-mysql/iceberg:3.6.0-2.2` 等 | 提交作业时附加的 CDC/驱动 jar（M0 已锁定精确版本） |
 | `datanest.realtime.iceberg.warehouse` | `s3a://datalake/warehouse` | Iceberg warehouse（MinIO S3） |
 | `datanest.realtime.iceberg.catalog-name` | `datalake_catalog` | Hadoop Catalog 名 |
-| `datanest.realtime.iceberg.commit-interval-ms` | 60000 | Iceberg commit 间隔（快照频率） |
 | `datanest.realtime.monitor.interval-ms` | 5000 | 延迟/变更数轮询回写间隔 |
 | `datanest.realtime.lag.warn-threshold` | 30 | 延迟告警阈值（秒） |
 
@@ -538,7 +538,8 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 | | 4022 | 评论不存在 |
 | | 4023 | 无权限删除他人评论 |
 | | 4024 | 收藏/关注/标签 数据校验失败（幂等等） |
-| CDC（8xxx 新增区间） | 8001 | 管道不存在 |
+| CDC（8xxx 新增区间） | 8000 | 管道配置非法（F2 评审补充，参数校验专用，与启动失败 8007 区分） |
+| | 8001 | 管道不存在 |
 | | 8002 | 管道名已存在 |
 | | 8003 | 管道状态非法（编辑/删除时） |
 | | 8004 | 源数据源连接失败 |
@@ -578,3 +579,4 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 > - v1.4 (2026-08-09)：**依赖坐标实测锁定**——Flink CDC 3.6 的 connector Maven 坐标为 **`3.6.0-2.2`**（Flink 2.2 专属后缀，非 `3.6.0`）；mysql/iceberg connector 均为 **shaded 自包含 jar**（iceberg 含 core + FlinkCatalog + S3FileIO，无需单独 `iceberg-flink-runtime-2.0`），mysql 缺 JDBC 驱动需补 `mysql-connector-java:8.0.27`，`s3a://` 协议需补 `flink-shaded-hadoop-2-uber`。同步更新 D-D1 配套依赖、§7.1 additional-jars、§7.2 集群 lib、§8 B1（§1 D-D1 / §8 B1）。
 > - v1.5 (2026-08-09)：**M0 环境预研完成（B1/B2/B6 全部实测通过）**——`flink-cdc.sh -t remote` 提交到独立 Flink Session 集群跑通 **MySQL(testdb.users) → Iceberg(Hadoop Catalog/MinIO S3A) → Doris Iceberg Catalog 查询**全链路，含实时增量。实战结论固化：① 集群 lib 需预置 **dist/common/flink2-compat/两 connector/mysql 驱动/flink-shaded-hadoop/flink-s3-fs-hadoop** 共 7 个 jar（自定义镜像 `datanest-flink:2.2.1`，`docker/flink/Dockerfile`）；② **`classloader.resolve-order=parent-first`** 必配（否则 iceberg 双 classloader 冲突）；③ `flink-s3-fs-hadoop` 放 **lib 非 plugins**（plugins 会 delegration provider 重复注册 + 作业看不到 S3A）；④ S3A endpoint 用 **core-site.xml + HADOOP_CONF_DIR**，凭据用容器环境变量（`s3.*`/`hadoop.*` 前缀均不透传）；⑤ 禁开 `execution.checkpointing.unaligned`（与 CDC partitioner 冲突）；⑥ `pekko.ask.timeout=120s`；⑦ Doris 建 catalog 的 `s3.endpoint` 用宿主侧 `192.168.119.1:9000`（VMnet8）。更新 §7.2、§8 B1/B2/B6、§9（M0 完成项）。
 > - v1.6 (2026-08-10)：**F1 实现阶段确认回落**——① §5.1 新增第 16 个端点 `GET /tables/{tableId}/collaboration`（详情页协作状态聚合：tags/favorited/followed/viewCount30d/commentCount，原文档 15 端点未覆盖按钮初始态下发）；② §3.1 `asset_comment` 补 `deleted_by`/`deleted_at` 两列（对齐 §4.1「治理员/超管删记录删除人」语义）；③ `browse` 的 `tag` 筛选明确**传标签名**。以上均经用户确认。
+> - v1.7 (2026-08-10)：**F2 实现完成回落（含实测偏差修正）**——① §3.3 `startup_mode` 注释按 Flink 语义修正（INITIAL/LATEST_OFFSET/EARLIEST_OFFSET，用户确认）+ 补 `savepoint_path` 列（stop-with-savepoint 续传，用户确认）+ `write_mode` 注记（CDC 3.6.0-2.2 iceberg sink 无 upsert 选项，YAML 不下发）；② §4.2 预检按实现改 4 项、停止改 cancel-with-savepoint、监控改 realtime 轮询 `/jobs/{id}` 一次取 state+vertices、启动加 CAS 防并发重复提交；③ §5.2 internal 端点落定 `/by-datasource`；④ §7.1 删死配置 `commit-interval-ms`；⑤ §9.1 补 8000 参数校验码。F2 经两轮验证（施工代理全链路 + 主会话独立冒烟）：initial 快照/增量/savepoint 恢复续传/8009 删除保护均实测通过；F2 评审（With fixes）问题已全部修复（分页拦截器/start CAS/REST 超时/指标 -1 哨兵/vertex 匹配顺序等）。

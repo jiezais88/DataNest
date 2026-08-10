@@ -1,0 +1,11 @@
+# ============================================
+# shared-minio.yaml
+# MinIO 对象存储（Iceberg 湖仓数据 + savepoint）
+# 消费方: app-realtime
+# ============================================
+datanest:
+  minio:
+    endpoint: http://middleware-minio:9000
+    access-key: datanest
+    secret-key: datanest123
+    bucket: datalake

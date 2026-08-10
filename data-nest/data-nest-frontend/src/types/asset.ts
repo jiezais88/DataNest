@@ -24,8 +24,8 @@ export interface AssetSearchItem {
     score?: number;
     /** 表标签名数组（Sprint 8 DC-06，搜索/浏览回填；无标签为空数组） */
     tags?: string[];
-    /** 最近 30 天访问数（Sprint 8 DC-09，搜索/浏览/收藏/关注/热门全场景回填，无访问为 0） */
-    viewCount?: number;
+    /** 最近 30 天访问数（Sprint 8 DC-09，全场景回填；后端 Long 序列化为 string，展示直接用，运算先 Number()） */
+    viewCount?: string;
     updatedAt?: string;
 }
 
@@ -97,8 +97,8 @@ export interface AssetSearchFilter {
 export interface AssetTag {
     tagId: string;
     tagName: string;
-    /** 绑定该标签的表数 */
-    refCount?: number;
+    /** 绑定该标签的表数（后端 Long 序列化为 string） */
+    refCount?: string;
 }
 
 /** 表标签项（某表当前绑定的标签） */
@@ -112,10 +112,10 @@ export interface AssetCollaboration {
     tags?: AssetTableTag[];
     favorited?: boolean;
     followed?: boolean;
-    /** 最近 30 天访问数 */
-    viewCount30d?: number;
-    /** 有效评论数 */
-    commentCount?: number;
+    /** 最近 30 天访问数（后端 Long 序列化为 string） */
+    viewCount30d?: string;
+    /** 有效评论数（后端 Long 序列化为 string，比较先 Number()） */
+    commentCount?: string;
 }
 
 /** 评论列表项（username 已由后端回填：用户注销显示「已注销」，用户服务不可用降级「—」） */

@@ -46,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,8 @@ public class AssetCollaborationService {
     private static final int HOT_WINDOW_DAYS = 30;
     /** 热门排行上限保护（limit 参数封顶） */
     private static final int MAX_HOT_TABLES = 50;
+    /** 收藏导出行数上限保护（超出截断 + warn，对齐搜索 maxSearchResults 模式） */
+    private static final int MAX_EXPORT_ROWS = 5000;
 
     private final MetadataTableMapper metadataTableMapper;
     private final AssetTagMapper assetTagMapper;
@@ -154,6 +157,10 @@ public class AssetCollaborationService {
             } catch (DuplicateKeyException e) {
                 // 并发创建同名标签：回查复用已有字典行
                 tag = findTagByName(tagName);
+                if (tag == null) {
+                    // 极端时序：对方事务尚未提交导致回查不到，抛出让调用方重试（避免 NPE）
+                    throw new BusinessException(ErrorCode.ASSET_COLLABORATION_INVALID, "标签创建冲突，请重试");
+                }
             }
         }
 
@@ -271,7 +278,7 @@ public class AssetCollaborationService {
 
     /**
      * 导出我的收藏 CSV（UTF-8 with BOM，兼容 Excel；复用 Sprint 6 合规导出经验）。
-     * 与列表同一套筛选条件，导出全部匹配记录（不分页，个人收藏量级小）。
+     * 与列表同一套筛选条件，导出全部匹配记录（不分页，个人收藏量级小；上限 MAX_EXPORT_ROWS 兜底截断）。
      */
     public String exportMyFavorites(String keyword, Long datasourceId, String healthLevel) {
         List<Long> matchedTableIds = assetCatalogService.matchTableIds(keyword, datasourceId, healthLevel);
@@ -285,6 +292,10 @@ public class AssetCollaborationService {
                 wrapper.in("table_id", matchedTableIds);
             }
             favorites = assetFavoriteMapper.selectList(wrapper);
+        }
+        if (favorites.size() > MAX_EXPORT_ROWS) {
+            log.warn("我的收藏导出达到上限 {}，已截断（实际 {} 条）", MAX_EXPORT_ROWS, favorites.size());
+            favorites = favorites.subList(0, MAX_EXPORT_ROWS);
         }
         List<AssetFavoriteItemDTO> items = buildFavoriteItems(favorites);
         StringBuilder sb = new StringBuilder("\uFEFF");
@@ -355,6 +366,8 @@ public class AssetCollaborationService {
         IPage<AssetFollow> mpPage = assetFollowMapper.selectPage(new Page<>(page, pageSize), wrapper);
         Map<Long, MetadataTable> tableMap = tablesByIds(
                 mpPage.getRecords().stream().map(AssetFollow::getTableId).toList());
+        // 变更动态批量查询（DISTINCT ON 每表取最新一条），替代逐表 limit 1 的 N+1
+        Map<String, AssetChangeDTO> changeMap = latestChangesByTables(tableMap.values());
         List<AssetFollowItemDTO> items = new ArrayList<>();
         for (AssetFollow f : mpPage.getRecords()) {
             MetadataTable t = tableMap.get(f.getTableId());
@@ -364,7 +377,7 @@ public class AssetCollaborationService {
             AssetFollowItemDTO dto = new AssetFollowItemDTO();
             BeanUtils.copyProperties(assetCatalogService.toItemDTO(t, null), dto);
             dto.setFollowedAt(f.getCreatedAt());
-            dto.setLatestChange(latestChange(t));
+            dto.setLatestChange(changeMap.get(tableTripleKey(t)));
             items.add(dto);
         }
         assetCatalogService.backfill(items);
@@ -454,9 +467,8 @@ public class AssetCollaborationService {
             if (t == null) {
                 continue;
             }
-            AssetSearchItemDTO dto = assetCatalogService.toItemDTO(t, null);
-            dto.setViewCount(((Number) row.get("view_count")).longValue());
-            items.add(dto);
+            // viewCount 由 backfill 统一回填（同为 30 天窗口），无需在此手动 set
+            items.add(assetCatalogService.toItemDTO(t, null));
         }
         assetCatalogService.backfill(items);
         return items;
@@ -531,24 +543,33 @@ public class AssetCollaborationService {
         return map;
     }
 
-    /** 关注表的最近一次采集变更：按 database/schema/table 三元组匹配取 id 最大一条（技术文档 §4.1）。 */
-    private AssetChangeDTO latestChange(MetadataTable t) {
-        CollectChangeDetail detail = collectChangeDetailMapper.selectOne(new QueryWrapper<CollectChangeDetail>()
-                .eq("database_name", t.getDatabaseName())
-                .apply("COALESCE(schema_name, '') = {0}", t.getSchemaName() == null ? "" : t.getSchemaName())
-                .eq("table_name", t.getTableName())
-                .orderByDesc("id")
-                .last("limit 1"));
-        if (detail == null) {
-            return null;
+    /**
+     * 批量取每张表最近一次采集变更（我的关注变更动态）：一次 DISTINCT ON 查询按三元组取每表 id 最大一条，
+     * key = database_name + COALESCE(schema_name) + table_name（技术文档 §4.1 三元组匹配）。
+     */
+    private Map<String, AssetChangeDTO> latestChangesByTables(Collection<MetadataTable> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return Map.of();
         }
-        AssetChangeDTO dto = new AssetChangeDTO();
-        dto.setChangeType(detail.getChangeType());
-        dto.setColumnName(detail.getColumnName());
-        dto.setOldValue(detail.getOldValue());
-        dto.setNewValue(detail.getNewValue());
-        dto.setChangeTime(detail.getCreatedAt());
-        return dto;
+        Map<String, AssetChangeDTO> map = new HashMap<>();
+        for (CollectChangeDetail detail : collectChangeDetailMapper.selectLatestByTableTriples(List.copyOf(tables))) {
+            AssetChangeDTO dto = new AssetChangeDTO();
+            dto.setChangeType(detail.getChangeType());
+            dto.setColumnName(detail.getColumnName());
+            dto.setOldValue(detail.getOldValue());
+            dto.setNewValue(detail.getNewValue());
+            dto.setChangeTime(detail.getCreatedAt());
+            map.put(tableTripleKey(detail.getDatabaseName(), detail.getSchemaName(), detail.getTableName()), dto);
+        }
+        return map;
+    }
+
+    private String tableTripleKey(MetadataTable t) {
+        return tableTripleKey(t.getDatabaseName(), t.getSchemaName(), t.getTableName());
+    }
+
+    private String tableTripleKey(String databaseName, String schemaName, String tableName) {
+        return databaseName + "\0" + (schemaName == null ? "" : schemaName) + "\0" + tableName;
     }
 
     private AssetCommentDTO toCommentDTO(AssetComment comment) {

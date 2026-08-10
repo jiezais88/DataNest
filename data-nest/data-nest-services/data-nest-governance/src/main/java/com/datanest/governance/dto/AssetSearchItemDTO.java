@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "资产搜索/浏览结果项（扁平结构，区别于 search-tree 树结构）")
 @Data
@@ -56,7 +57,7 @@ public class AssetSearchItemDTO {
     private Integer score;
 
     @Schema(description = "表标签名数组（Sprint 8 DC-06，搜索/浏览回填；无标签为空数组）")
-    private java.util.List<String> tags;
+    private List<String> tags;
 
     @Schema(description = "最近 30 天访问数（Sprint 8 DC-09；2026-08-10 起搜索/浏览/收藏/关注/热门全场景统一回填，无访问为 0）")
     private Long viewCount;

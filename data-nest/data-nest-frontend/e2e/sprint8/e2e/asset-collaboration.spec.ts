@@ -154,9 +154,12 @@ test.describe('DC-06 数据标签', () => {
     test('详情页标签 chip 点击 → 跳转资产目录按标签筛选', async ({page}) => {
         await gotoAs(page, TEST_USERS.analyst.username, TEST_USERS.analyst.password, `/asset-catalog/${T1_ID}`);
         await page.getByRole('button', {name: TAG_CORE, exact: true}).click();
-        await page.waitForURL(`**/asset-catalog?tag=${encodeURIComponent(TAG_CORE)}`);
+        // ?tag= 是一次性消费（AssetsPage 读到即清 URL），不等 tag URL，直接断言落在资产目录且筛选生效
+        await page.waitForURL('**/asset-catalog');
         await expect(assetRow(page, T1_NAME)).toBeVisible();
         await expect(assetRow(page, T2_NAME)).toBeVisible();
+        // 标签云 chip 处于选中态
+        await expect(page.getByRole('button', {name: TAG_CORE, exact: true})).toHaveClass(/bg-ds-accent text-white/);
     });
 });
 

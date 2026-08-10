@@ -1,6 +1,7 @@
 package com.datanest.governance.service.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.governance.api.dto.CollectChangeDetailBatchRequest;
@@ -281,6 +282,11 @@ public class CollectWriteService {
             if (wasOffline) {
                 existing.setSourceStatus(MetadataSourceStatus.ONLINE.getCode());
             }
+            // Sprint 8 F1 评审修复：表注释变更/OFFLINE 复活属真实元数据变更，刷新 updated_at
+            // （否则外部采集表的 updated_at 停留在首次采集时间，资产目录 sort=latest 失真）
+            if (commentChanged || wasOffline) {
+                existing.setUpdatedAt(LocalDateTime.now());
+            }
             // 无论表结构是否变化，都更新 last_collect_history_id，确保最近采集信息准确
             existing.setLastCollectHistoryId(historyId);
             metadataTableMapper.updateById(existing);
@@ -420,6 +426,14 @@ public class CollectWriteService {
         result.setUpdatedCount(updated);
         result.setDeletedCount(deleted);
         result.setResurrectedCount(resurrected);
+
+        // Sprint 8 F1 评审修复：存量表的字段级真实变更（新增/修改/删除/复活）同步刷新表 updated_at
+        // （sort=latest 口径与「元数据有变化」对齐；新表 updated_at 由 insert 默认值兜底，不重复刷）
+        if (!tableIsNew && (added + updated + deleted + resurrected) > 0) {
+            UpdateWrapper<MetadataTable> touch = new UpdateWrapper<>();
+            touch.eq("id", tableId).set("updated_at", LocalDateTime.now());
+            metadataTableMapper.update(null, touch);
+        }
         return result;
     }
 

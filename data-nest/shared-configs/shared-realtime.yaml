@@ -1,0 +1,18 @@
+# ============================================
+# shared-realtime.yaml
+# 实时 CDC 管道（Flink 集群 / Iceberg 湖仓 / 监控轮询）
+# 消费方: app-realtime
+# ============================================
+datanest:
+  realtime:
+    flink:
+      jobmanager-url: http://middleware-flink-jobmanager:8081
+      parallelism: 1
+      checkpoint-interval-ms: 30000
+    iceberg:
+      warehouse: s3a://datalake/warehouse
+      catalog-name: datalake_catalog
+    monitor:
+      interval-ms: 5000
+    lag:
+      warn-threshold: 30

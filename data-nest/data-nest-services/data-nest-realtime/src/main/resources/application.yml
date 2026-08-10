@@ -1,0 +1,38 @@
+server:
+  port: 8089
+  servlet:
+    context-path: /realtime
+
+
+spring:
+  application:
+    name: data-nest-realtime
+
+  config:
+    import:
+      - optional:nacos:shared-nacos.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-realtime.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-minio.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+        file-extension: yaml
+
+datanest:
+  # 接口文档（springdoc，common DocsAutoConfiguration 读取；网关聚合页在线调试用前缀）
+  docs:
+    title: DataNest 实时 CDC 服务 API（CDC 管道）
+    gateway-prefix: /api/realtime

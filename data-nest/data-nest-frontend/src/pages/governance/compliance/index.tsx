@@ -15,6 +15,7 @@ import {
     HiOutlineXCircle,
 } from 'react-icons/hi2';
 import {formatDateTime} from '../../../utils/format';
+import {downloadCsvBlob} from '../../../utils/download';
 import {COL} from '../../../constants/table';
 import {notify} from '../../../utils/notify';
 import {useHasRole} from '../../../hooks/useHasRole';
@@ -76,18 +77,6 @@ const IGNORED_OPTIONS = [
     {value: '2', label: '全部'},
     {value: '1', label: '仅已忽略'},
 ];
-
-/** 触发浏览器下载 Blob 文件（CSV 导出） */
-function downloadBlob(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
 
 export default function StandardCompliancePage() {
     const navigate = useNavigate();
@@ -293,8 +282,10 @@ export default function StandardCompliancePage() {
     const handleExport = async () => {
         try {
             const blob = await exportComplianceCheck(buildRangeParams());
-            downloadBlob(blob, `compliance_check_${Date.now()}.csv`);
-            notify.success('问题清单已导出');
+            // blob 错误检出在 downloadCsvBlob 内（业务异常返回 Result JSON，不能当 CSV 存盘）
+            if (await downloadCsvBlob(blob, `compliance_check_${Date.now()}.csv`)) {
+                notify.success('问题清单已导出');
+            }
         } catch {
             // 错误提示由拦截器统一处理
         }

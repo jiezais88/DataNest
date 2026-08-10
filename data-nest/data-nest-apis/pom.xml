@@ -21,5 +21,6 @@
         <module>data-nest-system-api</module>
         <module>data-nest-engineering-api</module>
         <module>data-nest-governance-api</module>
+        <module>data-nest-realtime-api</module>
     </modules>
 </project>

@@ -186,6 +186,13 @@
                 <version>${project.version}</version>
             </dependency>
 
+            <!-- DataNest Realtime API（Sprint 8 F2：实时 CDC 服务 Feign 契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-realtime-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- DataNest Task Core -->
             <dependency>
                 <groupId>com.datanest</groupId>
@@ -197,6 +204,13 @@
             <dependency>
                 <groupId>com.datanest</groupId>
                 <artifactId>data-nest-alert-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Realtime Service（Sprint 8 F2：实时 CDC 管道服务） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-realtime</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

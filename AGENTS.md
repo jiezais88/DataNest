@@ -23,7 +23,7 @@ DataNest 是一个数据平台，技术栈如下：
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
 - **调度**：PowerJob 5.1.2（官方镜像，容器 `middleware-powerjob`，控制台/OpenAPI http://localhost:7700，DB 为 MySQL `powerjob` 库）。两个 App：`data-nest-job`（id=1，平台定时任务）/ `data-nest-worker`（id=2，业务任务与 DAG 节点执行）。worker 通信协议 HTTP、store-strategy=memory、max-result-length=32768（`shared-powerjob.yaml`，2026-08-08 调优）。原 XXL-JOB / DolphinScheduler / Zookeeper 已随迁移（2026-08-07）全部下线
 - **目标数仓**：内置 Doris（**4.1.3**，2026-08-10 由 4.0.7-rc02 升级，裸机单节点 1FE+1BE，`/usr/local/apache-doris-4.0.7` 目录原位替换，systemd `doris-fe`/`doris-be` 守护，数据在 `/data/doris/`；当前在 `192.168.119.135:9030`）
-- **业务库（按域拆 4 库）**：`datanest_system` / `datanest_alert` / `datanest_engineering` / `datanest_governance`，均在 middleware-postgres 同实例；**worker/job 无库**（纯执行/调度节点，已排除 DataSource 自动配置）。旧 `datanest` 库只读观察后下线。各服务 Flyway 独立管理本库（见 §6）
+- **业务库（按域拆 5 库）**：`datanest_system` / `datanest_alert` / `datanest_engineering` / `datanest_governance` / `datanest_realtime`（Sprint 8 F2 新增，CDC 管道），均在 middleware-postgres 同实例；**worker/job 无库**（纯执行/调度节点，已排除 DataSource 自动配置）。旧 `datanest` 库只读观察后下线。各服务 Flyway 独立管理本库（见 §6）
 
 ### 核心模块
 
@@ -36,8 +36,10 @@ DataNest 是一个数据平台，技术栈如下：
 | `data-nest-common` | 公共组件（SchedulerClient/PowerJobWorkflowClient（PowerJob OpenAPI 直连）、InternalTokenFilter/Feign 拦截器等），最底层底座 |
 | `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等 + 共享 dto 包；全部 DB 访问经 Feign） |
 | `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
+| `data-nest-realtime-api` | app-realtime 的 Feign 契约（CdcPipelineApi + DTO，engineering 删除数据源校验依赖，fail-closed） |
 | `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（内部端点 + DTO + fallbackFactory） |
 | `data-nest-alert-service` | **独立告警服务**（app-alert，com.datanest.alert.*）：告警规则/历史/触发/邮件 + dag_alert_config/history |
+| `data-nest-realtime` | **实时 CDC 服务**（app-realtime，com.datanest.realtime.*，Sprint 8 F2）：CDC 管道 CRUD/启停/监控/日志 + Flink YAML 组装经 REST 提交独立 Flink 集群；持 `datanest_realtime` 库 |
 | `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API；13 表本地持有） |
 | `data-nest-worker` | Addax 实际执行方（**无任何业务库**，全部经 Feign 回写） |
 | `data-nest-governance` | 数据治理服务（元数据、数据标准、质量编排/评分；19 表本地持有） |
@@ -56,9 +58,12 @@ DataNest 是一个数据平台，技术栈如下：
 |------|------|
 | `app-engineering` / `app-worker` / `app-governance` / `app-job` / `app-system` / `app-gateway` | 对应六个后端服务 |
 | `app-alert` | 独立告警服务（容器端口 8088，**不暴露宿主机端口**：对外走 gateway `/api/alert/**`，容器间 Feign 走 datanest-net） |
+| `app-realtime` | 实时 CDC 服务（容器端口 8089，**不暴露宿主机端口**：对外走 gateway `/api/realtime/**`） |
 | `middleware-mysql` | MySQL：Nacos、PowerJob |
 | `middleware-postgres` | PostgreSQL：业务主库 |
 | `middleware-nacos` / `middleware-powerjob` / `middleware-redis` | Nacos / PowerJob server（调度，含 DAG 工作流）/ Redis |
+| `middleware-minio` | MinIO 对象存储（Iceberg 湖仓数据/元数据 + savepoint，S3 9000 / Console 9001） |
+| `middleware-flink-jobmanager` / `middleware-flink-taskmanager` | 独立 Flink 2.2.1 Session 集群（自定义镜像 `datanest-flink:2.2.1`，JM REST 宿主 18081→容器 8081） |
 
 ## 2. 会话约定
 
@@ -167,6 +172,8 @@ docker compose up -d --no-deps app-engineering app-worker
 | MySQL nacos | 查 Nacos 配置、业务库 | `docker exec -it datanest-middleware-mysql mysql -u nacos -pnacos123` | nacos / nacos123 |
 | Nacos 配置库 | 存储所有 shared-configs | `nacos.config_info` 表（在 middleware-mysql） | - |
 | PowerJob 控制台/OpenAPI | 调度任务管理（含 DAG 工作流） | http://localhost:7700 | App 密码 `powerjob123`（App：`data-nest-job` id=1 / `data-nest-worker` id=2；DB 为 MySQL `powerjob` 库） |
+| Flink Web UI / REST | CDC 作业观测（独立 Session 集群） | http://localhost:18081（容器内 `middleware-flink-jobmanager:8081`） | - |
+| MinIO Console | 湖仓对象存储管理 | http://localhost:9001（S3 API :9000） | datanest / datanest123 |
 | Doris 内置 | 目标数仓 | `192.168.119.135:9030` | root / password |
 
 ## 6. 已知坑（精简版）
@@ -234,15 +241,17 @@ docker compose up -d --no-deps app-engineering app-worker
 - **批次告警**：按任务 `alert_level` 过滤，一个批次一条 `alert_history`（命中多规则聚合进 `summary`），合并一条邮件；单规则批次 jobName 是「规则名（表名）」。
 - **共享单规则质量 job `maxInstanceNum=1`**：快速连续触发多个单规则执行会被 server 静默丢弃。
 
-### 实时 CDC（Sprint 8，M0 2026-08-09 已验证）
+### 实时 CDC（Sprint 8，F2 2026-08-10 已完成并实测）
 
-> 细节见 gotchas §一。独立 Flink 2.2.1 Session 集群 + MinIO + Iceberg，app-realtime 经 REST 提交（`flink-cdc.sh -t remote` / `FlinkPipelineComposer.ofRemoteCluster`）。
+> 细节见 gotchas §一。独立 Flink 2.2.1 Session 集群 + MinIO + Iceberg；app-realtime（第 8 个服务，持第 5 库 `datanest_realtime`）经 REST 提交（`FlinkPipelineComposer.ofRemoteCluster`，提交端依赖集照 `tmp/m0-cdc-verify/pom.xml`）。
 
 - **依赖矩阵已固化**：集群用自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`），预置 7 个 jar（`flink-cdc-dist/common/flink2-compat/两 connector:3.6.0-2.2` + `mysql-connector-j:8.0.33` + `flink-shaded-hadoop-2-uber` + `flink-s3-fs-hadoop:2.2.1`）；**`flink-s3-fs-hadoop` 只能放 lib 不能放 plugins/**。
-- **`classloader.resolve-order: parent-first` 必须写集群 config.yaml**（`-D` 不生效），否则 iceberg 双 classloader → `HadoopCatalog cannot be cast to Catalog`。
+- **`classloader.resolve-order: parent-first` 必须写集群 config.yaml**（`-D` 不生效），否则 iceberg 双 classloader → `HadoopCatalog cannot be cast to Catalog`；**`classloader.check-leaked-classloader: false` 必须配**（compose FLINK_PROPERTIES），否则作业停止/重启后 S3A closed classloader、Iceberg 提交全失败。
+- **CDC 源库账号需 `REPLICATION CLIENT/SLAVE/RELOAD` 权限**（root 不暴露，低权账号必授）。
 - **S3A 配置**：凭据用容器环境变量 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`；endpoint 用 `core-site.xml` + `HADOOP_CONF_DIR`（`s3.*`/`hadoop.*` 前缀均不透传）。
 - **禁开 unaligned checkpoint**（与 CDC partitioner 冲突）；`pekko.ask.timeout` ≥120s；宿主 8081 被 nacos 占用，Flink JM 映射 18081。
-- **Doris Iceberg catalog 的 `s3.endpoint` 用宿主侧 `http://192.168.119.1:9000`**（VMnet8），不能写容器名。
+- **Flink 2.2 REST 差异**：无 `/jobs/{id}/vertices` 子资源（vertices 内嵌 `/jobs/{id}`）；stop-with-savepoint body `{"drain":false,"targetDirectory":"s3a://datalake/savepoints"}`（无 formatType）；无 `SavepointRestoreSettings` 类（恢复走 `execution.savepoint.path` 配置键）；CDC 3.6 iceberg sink 无 upsert 选项。
+- **Doris Iceberg catalog 的 `s3.endpoint` 用宿主侧 `http://192.168.119.1:9000`**（VMnet8），不能写容器名；湖仓新数据/新表需 `REFRESH CATALOG/TABLE` 后 Doris 可见（realtime 有 refresh-catalog 端点）。
 
 ## 7. 代码与提交约定
 

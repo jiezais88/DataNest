@@ -39,8 +39,8 @@ function TagBadges({tags}: { tags?: string[] }) {
     );
 }
 
-/** 热度列：火焰图标 + 近 30 天访问数（后端全场景回填，无访问为 0） */
-function HotValue({value}: { value?: number }) {
+/** 热度列：火焰图标 + 近 30 天访问数（后端全场景回填，Long 序列化为 string，无访问为 "0"） */
+function HotValue({value}: { value?: string }) {
     if (value == null) return <span className="text-ds-small text-ds-text-muted">—</span>;
     return (
         <span className="inline-flex items-center gap-ds-1 text-ds-small text-ds-warning">
@@ -135,7 +135,7 @@ export function buildAssetColumns(openDetail: (tableId: string) => void): Column
             title: '热度',
             dataIndex: 'viewCount',
             width: 90,
-            render: (v?: number) => <HotValue value={v}/>,
+            render: (v?: string) => <HotValue value={v}/>,
         },
         {
             title: '最近更新',

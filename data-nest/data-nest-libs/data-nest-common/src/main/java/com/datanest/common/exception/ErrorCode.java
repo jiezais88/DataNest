@@ -40,6 +40,7 @@ public enum ErrorCode {
     CLASSIFICATION_PARENT_INVALID(4010, "父分类非法（主题必须挂在数据域下）"),
 
     // Asset collaboration errors — Sprint 8 资产目录深化（DC-06~09）
+    // 注：4021 为技术文档 §9.1 规划码，当前删标签绑定按幂等设计不抛错，预留待单标签查询类端点使用
     ASSET_TAG_NOT_FOUND(4021, "标签不存在"),
     ASSET_COMMENT_NOT_FOUND(4022, "评论不存在"),
     ASSET_COMMENT_DELETE_FORBIDDEN(4023, "无权限删除他人评论"),
@@ -128,6 +129,18 @@ public enum ErrorCode {
     QUALITY_CHECK_EXECUTE_FAILED(4216, "质量检查执行失败"),
     QUALITY_SCORE_CONFIG_INVALID(4217, "质量评分全局配置参数非法"),
     QUALITY_JOB_ALREADY_RUNNING(4218, "质量任务正在执行中"),
+
+    // CDC pipeline errors — Sprint 8 实时 CDC 管道（8xxx）
+    CDC_PIPELINE_CONFIG_INVALID(8000, "管道配置非法"),
+    CDC_PIPELINE_NOT_FOUND(8001, "管道不存在"),
+    CDC_PIPELINE_NAME_EXISTS(8002, "管道名称已存在"),
+    CDC_PIPELINE_STATUS_INVALID(8003, "管道状态非法，请先停止"),
+    CDC_SOURCE_CONNECTION_FAILED(8004, "源数据源连接失败"),
+    CDC_SOURCE_BINLOG_DISABLED(8005, "源库 binlog 未开启或非 ROW 模式"),
+    CDC_TARGET_WRITE_FAILED(8006, "目标湖仓写入失败"),
+    CDC_PIPELINE_START_FAILED(8007, "管道启动失败"),
+    CDC_PIPELINE_STOP_FAILED(8008, "管道停止失败"),
+    CDC_DATASOURCE_REFERENCED(8009, "数据源已被 CDC 管道引用，请先删除管道"),
 
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),

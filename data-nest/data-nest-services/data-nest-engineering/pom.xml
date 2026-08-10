@@ -53,6 +53,12 @@
             <artifactId>data-nest-governance-api</artifactId>
         </dependency>
 
+        <!-- DataNest Realtime API（Sprint 8 F2：数据源删除前 CDC 管道引用校验） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-realtime-api</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

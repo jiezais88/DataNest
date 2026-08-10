@@ -21,11 +21,14 @@ export default function CollaborationBar({tableId, collaboration, onChange}: Col
     const [editing, setEditing] = useState(false);
     const [tagInput, setTagInput] = useState('');
     const [submitting, setSubmitting] = useState(false);
-    const [toggling, setToggling] = useState(false);
+    const [togglingFav, setTogglingFav] = useState(false);
+    const [togglingFollow, setTogglingFollow] = useState(false);
 
     const tags = collaboration?.tags ?? [];
     const favorited = collaboration?.favorited ?? false;
     const followed = collaboration?.followed ?? false;
+    // 聚合状态未返回（加载中/接口失败）时禁点收藏/关注，避免幂等写后 toast 误报与状态覆盖
+    const collaborationReady = collaboration != null;
 
     const submitTag = async () => {
         const name = tagInput.trim();
@@ -54,8 +57,8 @@ export default function CollaborationBar({tableId, collaboration, onChange}: Col
     };
 
     const toggleFavorite = async () => {
-        if (toggling) return;
-        setToggling(true);
+        if (togglingFav) return;
+        setTogglingFav(true);
         try {
             if (favorited) await unfavoriteAsset(tableId);
             else await favoriteAsset(tableId);
@@ -64,13 +67,13 @@ export default function CollaborationBar({tableId, collaboration, onChange}: Col
         } catch {
             // 拦截器已提示
         } finally {
-            setToggling(false);
+            setTogglingFav(false);
         }
     };
 
     const toggleFollow = async () => {
-        if (toggling) return;
-        setToggling(true);
+        if (togglingFollow) return;
+        setTogglingFollow(true);
         try {
             if (followed) await unfollowAsset(tableId);
             else await followAsset(tableId);
@@ -79,7 +82,7 @@ export default function CollaborationBar({tableId, collaboration, onChange}: Col
         } catch {
             // 拦截器已提示
         } finally {
-            setToggling(false);
+            setTogglingFollow(false);
         }
     };
 
@@ -155,7 +158,7 @@ export default function CollaborationBar({tableId, collaboration, onChange}: Col
                 <button
                     type="button"
                     onClick={toggleFavorite}
-                    disabled={toggling}
+                    disabled={togglingFav || !collaborationReady}
                     className={`inline-flex items-center gap-ds-1 px-ds-3 py-ds-2 text-ds-small font-semibold rounded-ds-sm border transition-colors disabled:opacity-60 ${
                         favorited
                             ? 'bg-ds-warning-light border-transparent text-ds-warning'
@@ -168,7 +171,7 @@ export default function CollaborationBar({tableId, collaboration, onChange}: Col
                 <button
                     type="button"
                     onClick={toggleFollow}
-                    disabled={toggling}
+                    disabled={togglingFollow || !collaborationReady}
                     className={`inline-flex items-center gap-ds-1 px-ds-3 py-ds-2 text-ds-small font-semibold rounded-ds-sm border transition-colors disabled:opacity-60 ${
                         followed
                             ? 'bg-ds-accent-light border-transparent text-ds-accent'

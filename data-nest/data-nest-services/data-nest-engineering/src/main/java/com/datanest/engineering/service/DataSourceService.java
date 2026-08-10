@@ -24,6 +24,8 @@ import com.datanest.governance.api.GovernanceDatasourceApi;
 import com.datanest.governance.api.dto.AutoCreateCollectTaskRequest;
 import com.datanest.governance.api.dto.DatasourceReferencesDTO;
 import com.datanest.governance.api.dto.ReferenceItemDTO;
+import com.datanest.realtime.api.CdcPipelineApi;
+import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
 import com.datanest.task.core.dto.TestConnectionRequest;
 import com.datanest.task.core.dto.TestConnectionResult;
 import com.datanest.common.internal.RemoteCalls;
@@ -51,18 +53,21 @@ public class DataSourceService {
     private final SystemUserApi systemUserApi;
     private final EngineeringSyncJobApi engineeringSyncJobApi;
     private final GovernanceDatasourceApi governanceDatasourceApi;
+    private final CdcPipelineApi cdcPipelineApi;
 
     public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester,
                              SystemUserApi systemUserApi,
                              EngineeringSyncJobApi engineeringSyncJobApi,
-                             GovernanceDatasourceApi governanceDatasourceApi) {
+                             GovernanceDatasourceApi governanceDatasourceApi,
+                             CdcPipelineApi cdcPipelineApi) {
         this.dataSourceMapper = dataSourceMapper;
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
         this.systemUserApi = systemUserApi;
         this.engineeringSyncJobApi = engineeringSyncJobApi;
         this.governanceDatasourceApi = governanceDatasourceApi;
+        this.cdcPipelineApi = cdcPipelineApi;
     }
 
     @Transactional
@@ -175,6 +180,17 @@ public class DataSourceService {
         DataSourceConnection entity = dataSourceMapper.selectById(id);
         if (entity == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
+        }
+
+        // CDC 管道引用校验（Sprint 8 F2，fail-closed：直接调 Feign 不走 RemoteCalls 降级，
+        // fallbackFactory 熔断时抛异常中止删除，避免误删仍被 CDC 管道引用的数据源）
+        Result<List<CdcPipelineReferenceDTO>> cdcResult = cdcPipelineApi.listByDatasource(id);
+        List<CdcPipelineReferenceDTO> cdcPipelines = cdcResult == null || cdcResult.data() == null
+                ? List.of() : cdcResult.data();
+        if (!cdcPipelines.isEmpty()) {
+            String names = cdcPipelines.stream().map(CdcPipelineReferenceDTO::getName).toList().toString();
+            throw new BusinessException(ErrorCode.CDC_DATASOURCE_REFERENCED,
+                    "数据源已被 CDC 管道引用：" + names + "，请先删除管道");
         }
 
         List<DataSourceReferenceDTO> references = getReferences(id);

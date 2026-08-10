@@ -33,7 +33,7 @@ import usePagedList from '../../hooks/usePagedList';
 import {useHasRole} from '../../hooks/useHasRole';
 import {notify} from '../../utils/notify';
 import {QUALITY_HEALTH_OPTIONS} from '../../types/quality';
-import type {AssetClassification, AssetClassificationTree, AssetSearchItem, AssetTag} from '../../types/asset';
+import type {AssetBrowseQuery, AssetClassification, AssetClassificationTree, AssetSearchItem, AssetTag} from '../../types/asset';
 import AssetTree, {ALL_SELECTION, selectionKey, selectionToQuery} from './AssetTree';
 import type {AssetTreeSelection} from './AssetTree';
 import {buildAssetColumns} from './assetColumns';
@@ -132,10 +132,18 @@ export default function AssetsPage() {
     const [datasourceId, setDatasourceId] = useState('');
     const [healthLevel, setHealthLevel] = useState('');
     // Sprint 8 F1：标签筛选 + 排序（仅浏览态生效；支持详情页标签 chip 跳转带来的 ?tag= 初始值）
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [tag, setTag] = useState(() => searchParams.get('tag') ?? '');
     const [sort, setSort] = useState('');
     const isSearch = keyword.trim() !== '';
+
+    // ?tag= 一次性消费：读作初值后立即从 URL 清掉，避免页面内取消筛选后刷新又“复活”
+    useEffect(() => {
+        if (searchParams.get('tag')) {
+            setSearchParams({}, {replace: true});
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const [datasourceOptions, setDatasourceOptions] = useState<{ value: string; label: string }[]>([
         {value: '', label: '全部数据源'},
@@ -166,16 +174,22 @@ export default function AssetsPage() {
         reload,
         setPage,
         setPageSize,
-    } = usePagedList({
+    } = usePagedList<AssetBrowseQuery, AssetSearchItem>({
         fetcher: (q) => browseAssets(q).then(r => ({list: r?.records ?? [], total: Number(r?.total ?? 0)})),
-        initialQuery: selectionToQuery(ALL_SELECTION),
+        // 初始查询带上 URL 初始 tag/sort（?tag= 跳转场景），避免 mount 首跑 + effect 二跑的双请求
+        initialQuery: {
+            ...selectionToQuery(ALL_SELECTION),
+            tag: tag || undefined,
+            sort: (sort || undefined) as 'score' | 'hot' | 'latest' | undefined,
+        },
     });
 
     // 树选中 / 数据源 / 健康度 / 标签 / 排序变化 → 即时重新浏览（跳过与 initialQuery 重复的首跑）
     useEffect(() => {
         if (browseQueryRef.current.skipFirst) {
             browseQueryRef.current.skipFirst = false;
-            if (selection.type === 'all' && !datasourceId && !healthLevel && !tag && !sort) return;
+            // tag/sort 初值已含在 initialQuery 里，首跑跳过只需看树/数据源/健康度是否默认
+            if (selection.type === 'all' && !datasourceId && !healthLevel) return;
         }
         applyQuery({
             ...selectionToQuery(selection),
@@ -649,7 +663,7 @@ export default function AssetsPage() {
                                         <span
                                             className="inline-flex items-center gap-ds-1 text-ds-tiny text-ds-warning flex-shrink-0">
                                             <HiOutlineFire size={12}/>
-                                            {item.viewCount ?? 0}
+                                            {item.viewCount ?? '0'}
                                         </span>
                                     </button>
                                 ))

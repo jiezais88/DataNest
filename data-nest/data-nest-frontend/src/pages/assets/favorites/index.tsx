@@ -18,24 +18,13 @@ import SearchInput from '../../../components/SearchInput';
 import {COL} from '../../../constants/table';
 import usePagedList from '../../../hooks/usePagedList';
 import {formatDateTime} from '../../../utils/format';
+import {downloadCsvBlob} from '../../../utils/download';
 import {notify} from '../../../utils/notify';
 import {QUALITY_HEALTH_OPTIONS} from '../../../types/quality';
 import type {AssetFavoriteItem, MyAssetQuery} from '../../../types/asset';
 import {buildAssetColumns} from '../assetColumns';
 
 const INITIAL_QUERY: MyAssetQuery = {};
-
-/** 触发浏览器下载 Blob 文件（CSV 导出，对齐合规导出页写法） */
-function downloadBlob(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
 
 export default function MyFavoritesPage() {
     const navigate = useNavigate();
@@ -110,8 +99,10 @@ export default function MyFavoritesPage() {
             });
             const date = new Date();
             const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-            downloadBlob(blob, `DataNest-我的收藏-${ymd}.csv`);
-            notify.success('已导出我的收藏');
+            // blob 错误检出在 downloadCsvBlob 内（业务异常返回 Result JSON，不能当 CSV 存盘）
+            if (await downloadCsvBlob(blob, `DataNest-我的收藏-${ymd}.csv`)) {
+                notify.success('已导出我的收藏');
+            }
         } catch {
             // 拦截器已提示
         } finally {

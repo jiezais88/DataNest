@@ -347,7 +347,7 @@ export default function AssetDetailPage() {
                                 <span className="flex items-center gap-ds-1">
                                     <HiOutlineChatBubbleLeftRight size={14}/>
                                     评论
-                                    {collaboration?.commentCount != null && collaboration.commentCount > 0 && (
+                                    {collaboration?.commentCount != null && Number(collaboration.commentCount) > 0 && (
                                         <span className="text-ds-tiny text-ds-accent font-semibold">
                                             {collaboration.commentCount}
                                         </span>

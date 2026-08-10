@@ -50,7 +50,9 @@ export default function CommentsTab({tableId, onCountChange}: CommentsTabProps) 
             await addAssetComment(tableId, trimmed);
             setContent('');
             notify.success('评论已发表');
-            reload();
+            // 列表按时间倒序，新评论在第 1 页；翻页状态下发表要回第 1 页才能看到
+            if (page !== 1) setPage(1);
+            else reload();
             onCountChange();
         } catch {
             // 4024（内容校验失败）由拦截器统一提示
@@ -65,7 +67,9 @@ export default function CommentsTab({tableId, onCountChange}: CommentsTabProps) 
         try {
             await deleteAssetComment(deleting);
             notify.success('评论已删除');
-            reload();
+            // 删掉当前页最后一条且不在第 1 页时回退一页，避免停留在空页
+            if (list.length === 1 && page > 1) setPage(page - 1);
+            else reload();
             onCountChange();
         } catch {
             // 4022/4023 由拦截器统一提示
