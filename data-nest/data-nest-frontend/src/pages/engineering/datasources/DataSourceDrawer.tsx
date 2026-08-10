@@ -1,17 +1,17 @@
 import {useEffect, useState} from 'react';
-import type {DataSource, DataSourceCreateRequest, DataSourceUpdateRequest} from '../../../types/datasource';
+import type {DataSource, DataSourceCreateRequest, DataSourceUpdateRequest} from '@/types/datasource';
 import {
     DataSourceType,
     DataSourceTypeEnum,
     DB_TYPES_WITHOUT_SCHEMA,
     DEFAULT_PORTS,
     TYPE_OPTIONS
-} from '../../../constants/datasource';
-import {testConnection} from '../../../api/datasource';
+} from '@/constants/datasource';
+import {testConnection} from '@/api/datasource';
 import {HiOutlineEye, HiOutlineEyeSlash} from 'react-icons/hi2';
-import TestResultModal from '../../../components/TestResultModal';
-import DsButton from '../../../components/DsButton';
-import Drawer from '../../../components/Drawer';
+import TestResultModal from '@/components/TestResultModal';
+import DsButton from '@/components/DsButton';
+import Drawer from '@/components/Drawer';
 
 type FormData = {
     name: string;

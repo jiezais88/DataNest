@@ -1,5 +1,5 @@
 import {HiChevronRight} from 'react-icons/hi2';
-import {cn} from '../utils/cn';
+import {cn} from '@/utils/cn';
 
 /**
  * 工具栏筛选下拉。历史背景：11 个页面各手写一遍

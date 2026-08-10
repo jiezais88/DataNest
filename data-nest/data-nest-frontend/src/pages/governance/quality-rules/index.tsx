@@ -1,11 +1,11 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {notify} from '../../../utils/notify';
-import {formatDateTime} from '../../../utils/format';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
+import {notify} from '@/utils/notify';
+import {formatDateTime} from '@/utils/format';
+import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
 import {
     batchCreateQualityRules,
     createQualityRule,
@@ -16,17 +16,17 @@ import {
     queryQualityRules,
     toggleQualityRule,
     updateQualityRule,
-} from '../../../api/quality';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsModal from '../../../components/DsModal';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import DsToolbar from '../../../components/DsToolbar';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import Pagination from '../../../components/Pagination';
-import SearchInput from '../../../components/SearchInput';
+} from '@/api/quality';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsModal from '@/components/DsModal';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import DsToolbar from '@/components/DsToolbar';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import Pagination from '@/components/Pagination';
+import SearchInput from '@/components/SearchInput';
 import {
     HiOutlineClipboardDocumentCheck,
     HiOutlineEye,
@@ -39,13 +39,13 @@ import {
 import {
     QUALITY_TYPE_LABEL,
     QUALITY_TYPE_OPTIONS,
-} from '../../../types/quality';
+} from '@/types/quality';
 import type {
     QualityRule,
     QualityRuleType,
-} from '../../../types/quality';
-import QualityRuleDrawer from '../data-quality/QualityRuleDrawer';
-import BatchApplyModal from '../data-quality/BatchApplyModal';
+} from '@/types/quality';
+import QualityRuleDrawer from '@/pages/governance/data-quality/QualityRuleDrawer';
+import BatchApplyModal from '@/pages/governance/data-quality/BatchApplyModal';
 
 export default function QualityRulesPage() {
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);

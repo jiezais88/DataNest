@@ -5,12 +5,12 @@
 // 权限：列表/对比所有角色可看；回滚仅 canEdit（PRD §8 权限矩阵）。
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Modal, Spin} from 'antd';
-import DsButton from '../../../../components/DsButton';
-import DsModal from '../../../../components/DsModal';
-import {compareDagVersions, listDagVersions, rollbackDagVersion} from '../api';
-import type {DagNode, DagVersion, DagVersionDiff} from '../types';
-import {formatDateTime} from '../../../../utils/format';
-import {notify} from '../../../../utils/notify';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {compareDagVersions, listDagVersions, rollbackDagVersion} from '@/pages/engineering/dags/api';
+import type {DagNode, DagVersion, DagVersionDiff} from '@/pages/engineering/dags/types';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
 
 interface DagVersionModalProps {
     open: boolean;

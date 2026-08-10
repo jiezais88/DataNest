@@ -20,8 +20,8 @@ import type {
     QualityScriptTestResult,
     QualitySqlPreviewResult,
     QualityTableRuleResult,
-} from '../types/quality';
-import type {PageResult, Result} from '../types/common';
+} from '@/types/quality';
+import type {PageResult, Result} from '@/types/common';
 
 /** 模板列表（含内置，仅启用；可按类型过滤）。供「批量应用」下拉选择等 */
 export function listQualityTemplates(type?: string) {

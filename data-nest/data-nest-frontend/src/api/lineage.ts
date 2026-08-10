@@ -1,6 +1,6 @@
 import request from './request';
-import type {Result} from '../types/common';
-import type {LineageColumnLink, LineageGraphDTO, LineageRecord} from '../types/lineage';
+import type {Result} from '@/types/common';
+import type {LineageColumnLink, LineageGraphDTO, LineageRecord} from '@/types/lineage';
 
 export function getLineageByTargetTable(tableName: string) {
     return request.get<Result<LineageRecord[]>>(`/governance/lineage/target/${encodeURIComponent(tableName)}`);

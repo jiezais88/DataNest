@@ -1,8 +1,8 @@
 import {useEffect, useState} from 'react';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import type {QualityRuleTemplate, QualityRuleTemplateCreateRequest, QualityTemplateType,} from '../../../types/quality';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import type {QualityRuleTemplate, QualityRuleTemplateCreateRequest, QualityTemplateType,} from '@/types/quality';
 
 interface TemplateFormData {
     name: string;

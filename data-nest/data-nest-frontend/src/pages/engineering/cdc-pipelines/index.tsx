@@ -24,21 +24,21 @@ import {
     refreshCdcCatalog,
     startCdcPipeline,
     stopCdcPipeline,
-} from '../../../api/cdc';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import DsToolbar from '../../../components/DsToolbar';
-import Pagination from '../../../components/Pagination';
-import SearchInput from '../../../components/SearchInput';
-import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
-import usePagedList from '../../../hooks/usePagedList';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {formatDateTime, formatRunningDuration} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import type {CdcPipeline, CdcPipelineQuery, CdcPipelineStats, CdcPipelineStatus} from '../../../types/cdc';
+} from '@/api/cdc';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import DsToolbar from '@/components/DsToolbar';
+import Pagination from '@/components/Pagination';
+import SearchInput from '@/components/SearchInput';
+import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
+import usePagedList from '@/hooks/usePagedList';
+import {useHasRole} from '@/hooks/useHasRole';
+import {formatDateTime, formatRunningDuration} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import type {CdcPipeline, CdcPipelineQuery, CdcPipelineStats, CdcPipelineStatus} from '@/types/cdc';
 import CdcLogDrawer from './CdcLogDrawer';
 import CdcPipelineDetailDrawer from './CdcPipelineDetailDrawer';
 import {CdcStatusBadge, LagValue} from './shared';

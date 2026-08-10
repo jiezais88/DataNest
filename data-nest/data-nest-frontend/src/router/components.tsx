@@ -1,10 +1,10 @@
 import {type ComponentType, lazy, Suspense} from 'react';
 import {Navigate, useParams} from 'react-router-dom';
-import DsSpinner from '../components/DsSpinner';
+import DsSpinner from '@/components/DsSpinner';
 
 // DAG 编辑器整页懒加载：画布依赖 ReactFlow + Monaco（SQL 编辑器），
 // 体积约 4MB，只应在这三个画布路由进入时下载
-const DagEditor = lazy(() => import('../pages/engineering/dags/Editor'));
+const DagEditor = lazy(() => import('@/pages/engineering/dags/Editor'));
 
 // 页面级 code-split（Phase 7-N）：除登录外的所有页面懒加载，
 // 首屏只加载 Layout + 当前页，降低初始 bundle 体积

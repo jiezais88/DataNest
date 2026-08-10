@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import type {FieldTypeStandard} from '../../../types/dataStandard';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import type {FieldTypeStandard} from '@/types/dataStandard';
 
 interface FieldTypeStandardFormData {
     name: string;

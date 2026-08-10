@@ -4,20 +4,20 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {Table} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {executeTableQualityRules, getQualityScoreByTable, getTableQualityRuleResults} from '../../../api/quality';
-import DsButton from '../../../components/DsButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import type {DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import QualityScoreBadge from '../../../components/QualityScoreBadge';
-import {COL} from '../../../constants/table';
-import {formatDateTime} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
+import {executeTableQualityRules, getQualityScoreByTable, getTableQualityRuleResults} from '@/api/quality';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import type {DsStatusVariant} from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import {COL} from '@/constants/table';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
 import {
     QUALITY_CHECK_LEVEL_LABEL,
     QUALITY_TYPE_LABEL,
-} from '../../../types/quality';
-import type {QualityCheckLevel, QualityScore, QualityTableRuleResult} from '../../../types/quality';
+} from '@/types/quality';
+import type {QualityCheckLevel, QualityScore, QualityTableRuleResult} from '@/types/quality';
 
 /** 规则分级判定 -> 徽章变体（对齐质量评分页） */
 const LEVEL_VARIANT: Record<QualityCheckLevel, DsStatusVariant> = {

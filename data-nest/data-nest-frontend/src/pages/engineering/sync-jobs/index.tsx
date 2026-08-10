@@ -3,7 +3,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {getDataSources} from '../../../api/datasource';
+import {getDataSources} from '@/api/datasource';
 import {
     createSyncJob,
     deleteSyncJob,
@@ -12,37 +12,37 @@ import {
     startSyncJobSchedule,
     stopSyncJobSchedule,
     updateSyncJob,
-} from '../../../api/sync';
-import type {DataSource} from '../../../types/datasource';
+} from '@/api/sync';
+import type {DataSource} from '@/types/datasource';
 import type {
     SyncExecutionStatus,
     SyncJob,
     SyncJobCreateRequest,
     SyncJobQueryParams,
     SyncTriggerType,
-} from '../../../types/sync';
-import {formatDateTime, formatRelativeTime} from '../../../utils/format';
-import {executionStatusVariant} from '../../../utils/status';
-import {notify} from '../../../utils/notify';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
-import {NODE_STATUS_COLOR} from '../../../constants/statusColors';
-import usePagedList from '../../../hooks/usePagedList';
-import Pagination from '../../../components/Pagination';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import ReferenceListModal from '../../../components/ReferenceListModal';
-import type {ApiError} from '../../../utils/error';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import StatusSpine from '../../../components/StatusSpine';
-import SearchInput from '../../../components/SearchInput';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsToolbar from '../../../components/DsToolbar';
-import DsTableEmpty from '../../../components/DsTableEmpty';
+} from '@/types/sync';
+import {formatDateTime, formatRelativeTime} from '@/utils/format';
+import {executionStatusVariant} from '@/utils/status';
+import {notify} from '@/utils/notify';
+import {useHasRole} from '@/hooks/useHasRole';
+import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
+import {NODE_STATUS_COLOR} from '@/constants/statusColors';
+import usePagedList from '@/hooks/usePagedList';
+import Pagination from '@/components/Pagination';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import ReferenceListModal from '@/components/ReferenceListModal';
+import type {ApiError} from '@/utils/error';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import StatusSpine from '@/components/StatusSpine';
+import SearchInput from '@/components/SearchInput';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsToolbar from '@/components/DsToolbar';
+import DsTableEmpty from '@/components/DsTableEmpty';
 import SyncJobDrawer from './SyncJobDrawer';
-import AlertRuleModal from '../../../components/AlertRuleModal';
+import AlertRuleModal from '@/components/AlertRuleModal';
 import {triggerBadge} from './history-common-utils';
 import {
     HiOutlineBell,

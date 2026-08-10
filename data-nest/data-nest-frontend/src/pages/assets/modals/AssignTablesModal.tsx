@@ -4,16 +4,16 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Table} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {assignTablesClassificationBatch, browseAssets, searchAssets} from '../../../api/asset';
-import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import SearchInput from '../../../components/SearchInput';
-import {COL} from '../../../constants/table';
-import {notify} from '../../../utils/notify';
-import type {AssetSearchItem} from '../../../types/asset';
+import {assignTablesClassificationBatch, browseAssets, searchAssets} from '@/api/asset';
+import DatabaseTypeIcon from '@/components/DatabaseTypeIcon';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import SearchInput from '@/components/SearchInput';
+import {COL} from '@/constants/table';
+import {notify} from '@/utils/notify';
+import type {AssetSearchItem} from '@/types/asset';
 
 interface AssignTablesModalProps {
     open: boolean;

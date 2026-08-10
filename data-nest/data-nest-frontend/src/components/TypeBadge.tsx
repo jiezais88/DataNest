@@ -1,4 +1,4 @@
-import type {DataSourceType} from '../constants/datasource';
+import type {DataSourceType} from '@/constants/datasource';
 import DatabaseTypeIcon from './DatabaseTypeIcon';
 
 // 数据源类型色走 ds-type-* token（品牌色体系，Phase 7-K），

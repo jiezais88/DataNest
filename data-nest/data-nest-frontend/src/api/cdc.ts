@@ -1,7 +1,7 @@
 // Sprint 8 F2：实时 CDC 管道 API（realtime CdcPipelineController，/realtime/cdc/pipelines/**）
 // 读接口四角色可用；写接口（增删改/启停/预检/刷 catalog）仅超管+数据工程师（后端 SaCheckRole 兜底）。
 import request from './request';
-import type {PageResult, Result} from '../types/common';
+import type {PageResult, Result} from '@/types/common';
 import type {
     CdcPipeline,
     CdcPipelineLog,
@@ -10,7 +10,7 @@ import type {
     CdcPipelineStats,
     CdcSourceTable,
     CdcSourceValidateResult,
-} from '../types/cdc';
+} from '@/types/cdc';
 
 const BASE = '/realtime/cdc/pipelines';
 

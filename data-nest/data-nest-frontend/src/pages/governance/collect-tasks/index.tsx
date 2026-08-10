@@ -3,14 +3,14 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {nextRunTime} from '../../../utils/cron';
-import {notify} from '../../../utils/notify';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {ALERT_WRITE_ROLES, GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
-import {NODE_STATUS_COLOR} from '../../../constants/statusColors';
-import StatusSpine from '../../../components/StatusSpine';
-import {getDataSources} from '../../../api/datasource';
+import {nextRunTime} from '@/utils/cron';
+import {notify} from '@/utils/notify';
+import {useHasRole} from '@/hooks/useHasRole';
+import {ALERT_WRITE_ROLES, GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
+import {NODE_STATUS_COLOR} from '@/constants/statusColors';
+import StatusSpine from '@/components/StatusSpine';
+import {getDataSources} from '@/api/datasource';
 import {
     createCollectTask,
     deleteCollectTask,
@@ -19,24 +19,24 @@ import {
     startCollectTaskSchedule,
     stopCollectTaskSchedule,
     updateCollectTask,
-} from '../../../api/collect';
-import type {CollectTask, CollectTaskCreateRequest, CollectTaskQueryParams, TaskStatus} from '../../../types/collect';
-import type {DataSource} from '../../../types/datasource';
-import {formatDateTime, formatRelativeTime} from '../../../utils/format';
-import usePagedList from '../../../hooks/usePagedList';
-import Pagination from '../../../components/Pagination';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import TriggerBadge from '../../../components/TriggerBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import {executionStatusVariant} from '../../../utils/status';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import SearchInput from '../../../components/SearchInput';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsToolbar from '../../../components/DsToolbar';
+} from '@/api/collect';
+import type {CollectTask, CollectTaskCreateRequest, CollectTaskQueryParams, TaskStatus} from '@/types/collect';
+import type {DataSource} from '@/types/datasource';
+import {formatDateTime, formatRelativeTime} from '@/utils/format';
+import usePagedList from '@/hooks/usePagedList';
+import Pagination from '@/components/Pagination';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import TriggerBadge from '@/components/TriggerBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import {executionStatusVariant} from '@/utils/status';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import SearchInput from '@/components/SearchInput';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsToolbar from '@/components/DsToolbar';
 import TaskDrawer from './TaskDrawer';
-import AlertRuleModal from '../../../components/AlertRuleModal';
+import AlertRuleModal from '@/components/AlertRuleModal';
 import {
     HiOutlineBell,
     HiOutlineCalendar,

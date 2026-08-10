@@ -1,5 +1,5 @@
 import request from './request';
-import type {Result} from '../types/common';
+import type {Result} from '@/types/common';
 
 export function getDataSourceSchemas(datasourceId: string) {
     return request.get<Result<string[]>>(`/engineering/datasources/${datasourceId}/schemas`);

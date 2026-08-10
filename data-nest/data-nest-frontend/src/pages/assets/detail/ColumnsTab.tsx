@@ -2,10 +2,10 @@
 import {useEffect, useState} from 'react';
 import {Table} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {listMetadataColumns} from '../../../api/metadata';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import {COL} from '../../../constants/table';
-import type {MetadataColumn} from '../../../types/metadata';
+import {listMetadataColumns} from '@/api/metadata';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import {COL} from '@/constants/table';
+import type {MetadataColumn} from '@/types/metadata';
 
 const columns: ColumnsType<MetadataColumn> = [
     {

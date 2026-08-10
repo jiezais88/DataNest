@@ -1,9 +1,9 @@
-import {useAuthStore} from '../../store/useAuthStore';
+import {useAuthStore} from '@/store/useAuthStore';
 import {Card, List, Progress} from 'antd';
 import {useNavigate} from 'react-router-dom';
-import DsButton from '../../components/DsButton';
-import DsStatusBadge from '../../components/DsStatusBadge';
-import {executionStatusVariant} from '../../utils/status';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import {executionStatusVariant} from '@/utils/status';
 import {
     HiArrowTrendingDown,
     HiArrowTrendingUp,

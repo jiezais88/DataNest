@@ -1,4 +1,4 @@
-import type {DataSourceStatus, DataSourceType} from '../constants/datasource';
+import type {DataSourceStatus, DataSourceType} from '@/constants/datasource';
 
 export interface DataSource {
     id: string;

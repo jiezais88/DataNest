@@ -3,11 +3,11 @@
 // 改名会级联更新 metadata_table 冗余名，保存成功后父组件需刷新树和列表。
 import {useEffect, useState} from 'react';
 import {Select} from 'antd';
-import {createClassification, updateClassification} from '../../../api/asset';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import {notify} from '../../../utils/notify';
-import type {AssetClassification} from '../../../types/asset';
+import {createClassification, updateClassification} from '@/api/asset';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {notify} from '@/utils/notify';
+import type {AssetClassification} from '@/types/asset';
 
 export interface ClassificationFormState {
     /** create = 新增（parent 为空 = 数据域，否则 = 该域下主题）；edit = 编辑 node */

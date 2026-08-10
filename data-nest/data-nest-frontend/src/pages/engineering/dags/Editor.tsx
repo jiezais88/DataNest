@@ -31,8 +31,8 @@ import {
     HiOutlineRectangleStack,
     HiOutlineVariable,
 } from 'react-icons/hi2';
-import DsButton from '../../../components/DsButton';
-import Drawer from '../../../components/Drawer';
+import DsButton from '@/components/DsButton';
+import Drawer from '@/components/Drawer';
 import {
     createDag,
     createDagParameter,
@@ -46,20 +46,20 @@ import {
     updateDag
 } from './api';
 import {validateDagParameters} from './utils/validateDagParameters';
-import {getSyncJob, querySyncJobs} from '../../../api/sync';
-import {formatDateTime, formatDuration} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import {layoutWithDagre} from '../../../utils/dagLayout';
-import CronPicker from '../../../components/CronPicker';
+import {getSyncJob, querySyncJobs} from '@/api/sync';
+import {formatDateTime, formatDuration} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import {layoutWithDagre} from '@/utils/dagLayout';
+import CronPicker from '@/components/CronPicker';
 import DagParameterDrawer from './components/DagParameterDrawer';
 import TriggerParamsModal from './components/TriggerParamsModal';
 import DagVersionModal from './components/DagVersionModal';
 import ConditionNodeModal from './components/ConditionNodeModal';
 import SubDagNodeModal from './components/SubDagNodeModal';
 import NodeRuntimeLogPanel from './components/NodeRuntimeLogPanel';
-import AlertRuleModal from '../../../components/AlertRuleModal';
-import {HistoryLogModal} from '../sync-jobs/history-common';
-import {describeCron} from '../../../utils/cron';
+import AlertRuleModal from '@/components/AlertRuleModal';
+import {HistoryLogModal} from '@/pages/engineering/sync-jobs/history-common';
+import {describeCron} from '@/utils/cron';
 import type {
     ConditionBranch,
     Dag,
@@ -70,11 +70,11 @@ import type {
     ParamMapping,
     UpstreamNodeInfo
 } from './types';
-import type {AlertRuleDTO} from '../../../types/alert';
-import type {SyncJob, SyncJobLog} from '../../../types/sync';
-import {useCanEdit} from '../../../hooks/useCanEdit';
-import {usePollingWhile} from '../../../hooks/usePollingWhile';
-import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '../../../constants/statusColors';
+import type {AlertRuleDTO} from '@/types/alert';
+import type {SyncJob, SyncJobLog} from '@/types/sync';
+import {useCanEdit} from '@/hooks/useCanEdit';
+import {usePollingWhile} from '@/hooks/usePollingWhile';
+import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '@/constants/statusColors';
 
 const SqlEditorModal = lazy(() => import('./components/SqlEditorModal'));
 const PythonEditorModal = lazy(() => import('./components/PythonEditorModal'));

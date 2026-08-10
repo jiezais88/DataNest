@@ -1,4 +1,4 @@
-import type {DagParameter} from '../types';
+import type {DagParameter} from '@/pages/engineering/dags/types';
 
 /** 系统变量名（参数名不允许与它们重名） */
 export const SYSTEM_VARIABLES = ['biz_date', 'current_time', 'dag_id'] as const;

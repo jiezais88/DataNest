@@ -1,4 +1,4 @@
-import type {SyncTriggerType} from '../types/sync';
+import type {SyncTriggerType} from '@/types/sync';
 
 /**
  * 触发方式徽标（手动触发 / DAG 编排 / 定时触发）。Phase 7-K2：

@@ -1,10 +1,10 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
-import {notify} from '../../../utils/notify';
+import {notify} from '@/utils/notify';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
+import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
 import {
     createFieldTypeStandard,
     createNamingStandard,
@@ -14,17 +14,17 @@ import {
     queryNamingStandards,
     updateFieldTypeStandard,
     updateNamingStandard,
-} from '../../../api/dataStandard';
-import ReferenceListModal from '../../../components/ReferenceListModal';
-import type {ApiError} from '../../../utils/error';
-import Pagination from '../../../components/Pagination';
-import SearchInput from '../../../components/SearchInput';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import DsButton from '../../../components/DsButton';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
+} from '@/api/dataStandard';
+import ReferenceListModal from '@/components/ReferenceListModal';
+import type {ApiError} from '@/utils/error';
+import Pagination from '@/components/Pagination';
+import SearchInput from '@/components/SearchInput';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsButton from '@/components/DsButton';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
 import {
     HiOutlineBookOpen,
     HiOutlineCalendar,
@@ -40,9 +40,9 @@ import type {
     NamingStandard,
     NamingStandardCreateRequest,
     NamingStandardQueryParams,
-} from '../../../types/dataStandard';
-import {formatDateTime} from '../../../utils/format';
-import {COL} from '../../../constants/table';
+} from '@/types/dataStandard';
+import {formatDateTime} from '@/utils/format';
+import {COL} from '@/constants/table';
 import NamingStandardDrawer from './NamingStandardDrawer';
 import FieldTypeStandardDrawer from './FieldTypeStandardDrawer';
 

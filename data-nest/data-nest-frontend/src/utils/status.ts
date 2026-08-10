@@ -1,4 +1,4 @@
-import type {DsStatusVariant} from '../components/DsStatusBadge';
+import type {DsStatusVariant} from '@/components/DsStatusBadge';
 
 /**
  * 后端执行状态字符串 → DsStatusBadge variant 的统一映射。

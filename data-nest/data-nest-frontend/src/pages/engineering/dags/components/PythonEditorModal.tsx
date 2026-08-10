@@ -10,14 +10,14 @@
 import {useEffect, useRef, useState} from 'react';
 import {Spin} from 'antd';
 import {HiOutlineCheckCircle, HiOutlineClock, HiOutlineXCircle} from 'react-icons/hi2';
-import DsButton from '../../../../components/DsButton';
-import DsModal from '../../../../components/DsModal';
-import '../../../../lib/monacoSetup';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import '@/lib/monacoSetup';
 import Editor, {type OnMount} from '@monaco-editor/react';
-import {testPythonNode, testPythonScript} from '../api';
-import type {PythonExecuteResult} from '../types';
-import {formatDuration} from '../../../../utils/format';
-import {getErrorMessage} from '../../../../utils/error';
+import {testPythonNode, testPythonScript} from '@/pages/engineering/dags/api';
+import type {PythonExecuteResult} from '@/pages/engineering/dags/types';
+import {formatDuration} from '@/utils/format';
+import {getErrorMessage} from '@/utils/error';
 
 interface PythonEditorModalProps {
     open: boolean;

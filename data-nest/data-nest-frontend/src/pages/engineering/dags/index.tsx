@@ -13,17 +13,17 @@ import {
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {createDagProject, deleteDagProject, listDagProjects, listDags, updateDagProject} from './api';
 import type {DagProject} from './types';
-import usePagedList from '../../../hooks/usePagedList';
-import {useCanEdit} from '../../../hooks/useCanEdit';
-import SearchInput from '../../../components/SearchInput';
-import Pagination from '../../../components/Pagination';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsToolbar from '../../../components/DsToolbar';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import {formatDateTime} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import {COL} from '../../../constants/table';
+import usePagedList from '@/hooks/usePagedList';
+import {useCanEdit} from '@/hooks/useCanEdit';
+import SearchInput from '@/components/SearchInput';
+import Pagination from '@/components/Pagination';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsToolbar from '@/components/DsToolbar';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import {COL} from '@/constants/table';
 
 export default function DagsPage() {
     const navigate = useNavigate();

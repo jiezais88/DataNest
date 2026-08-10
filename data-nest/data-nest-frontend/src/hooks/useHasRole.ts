@@ -1,5 +1,5 @@
-import {useAuthStore} from '../store/useAuthStore';
-import type {RoleCode} from '../constants/roles';
+import {useAuthStore} from '@/store/useAuthStore';
+import type {RoleCode} from '@/constants/roles';
 
 /**
  * 当前用户是否拥有任一指定角色。角色代码和组合常量在 src/constants/roles.ts，

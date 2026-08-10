@@ -1,6 +1,6 @@
-import type {DataSource} from '../../../types/datasource';
-import type {SyncHistoryStatus, SyncJob, SyncJobHistory, SyncMode, SyncTriggerType} from '../../../types/sync';
-import TriggerBadge from '../../../components/TriggerBadge';
+import type {DataSource} from '@/types/datasource';
+import type {SyncHistoryStatus, SyncJob, SyncJobHistory, SyncMode, SyncTriggerType} from '@/types/sync';
+import TriggerBadge from '@/components/TriggerBadge';
 
 export const STATUS_OPTIONS: { value: SyncHistoryStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},

@@ -5,31 +5,31 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import type {IconType} from 'react-icons';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {ALERT_WRITE_ROLES} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
-import {deleteAlertRule, getAlertHistory, getAlertRules, getUsersWithEmail, toggleAlertRule,} from '../../../api/alert';
+import {useHasRole} from '@/hooks/useHasRole';
+import {ALERT_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
+import {deleteAlertRule, getAlertHistory, getAlertRules, getUsersWithEmail, toggleAlertRule,} from '@/api/alert';
 import type {
     AlertHistory,
     AlertObjectType,
     AlertRuleDTO,
     AlertSendStatus,
     AlertTriggerType,
-} from '../../../types/alert';
-import {formatDateTime} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import usePagedList from '../../../hooks/usePagedList';
-import Pagination from '../../../components/Pagination';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import SearchInput from '../../../components/SearchInput';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsToolbar from '../../../components/DsToolbar';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import DsModal from '../../../components/DsModal';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import AlertRuleModal from '../../../components/AlertRuleModal';
+} from '@/types/alert';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import usePagedList from '@/hooks/usePagedList';
+import Pagination from '@/components/Pagination';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import SearchInput from '@/components/SearchInput';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsToolbar from '@/components/DsToolbar';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import DsModal from '@/components/DsModal';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import AlertRuleModal from '@/components/AlertRuleModal';
 import {
     HiOutlineBell,
     HiOutlineBellAlert,

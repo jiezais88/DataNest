@@ -1,4 +1,4 @@
-import {ENGINEERING_WRITE_ROLES} from '../constants/roles';
+import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
 import {useHasRole} from './useHasRole';
 
 /**

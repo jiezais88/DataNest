@@ -18,16 +18,16 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Spin, Tooltip} from 'antd';
-import DsButton from '../../../../components/DsButton';
-import Drawer from '../../../../components/Drawer';
-import EmptyState from '../../../../components/EmptyState';
-import QualityScoreBadge from '../../../../components/QualityScoreBadge';
-import {getLineageGraph, getLineageImpact, getLineageSource,} from '../../../../api/lineage';
-import {getMetadataTable, searchMetadataTree} from '../../../../api/metadata';
-import type {MetadataTreeNode} from '../../../../types/metadata';
-import type {LineageEdgeDTO, LineageGraphDTO, LineageNodeDTO} from '../../../../types/lineage';
-import {layoutWithDagre} from '../../../../utils/dagLayout';
-import {notify} from '../../../../utils/notify';
+import DsButton from '@/components/DsButton';
+import Drawer from '@/components/Drawer';
+import EmptyState from '@/components/EmptyState';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import {getLineageGraph, getLineageImpact, getLineageSource,} from '@/api/lineage';
+import {getMetadataTable, searchMetadataTree} from '@/api/metadata';
+import type {MetadataTreeNode} from '@/types/metadata';
+import type {LineageEdgeDTO, LineageGraphDTO, LineageNodeDTO} from '@/types/lineage';
+import {layoutWithDagre} from '@/utils/dagLayout';
+import {notify} from '@/utils/notify';
 import FieldLineagePanel from './FieldLineagePanel';
 
 interface LineageNodeData {

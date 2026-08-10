@@ -2,10 +2,10 @@
 // 打开时按 id 拉详情（列表行数据可能因无轮询而过期，且不含完整审计/高级配置信息）。
 import {useEffect, useState} from 'react';
 import {Spin} from 'antd';
-import {getCdcPipeline} from '../../../api/cdc';
-import Drawer from '../../../components/Drawer';
-import {formatDateTime, formatRunningDuration} from '../../../utils/format';
-import type {CdcPipeline} from '../../../types/cdc';
+import {getCdcPipeline} from '@/api/cdc';
+import Drawer from '@/components/Drawer';
+import {formatDateTime, formatRunningDuration} from '@/utils/format';
+import type {CdcPipeline} from '@/types/cdc';
 import {CdcStatusBadge, LagValue} from './shared';
 import {STARTUP_MODE_LABEL, SYNC_MODE_LABEL, WRITE_MODE_LABEL} from './constants';
 

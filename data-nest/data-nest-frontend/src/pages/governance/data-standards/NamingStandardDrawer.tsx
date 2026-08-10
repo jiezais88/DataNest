@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import type {AppliesTo, FieldTypeStandard, NamingStandard, RuleType} from '../../../types/dataStandard';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import type {AppliesTo, FieldTypeStandard, NamingStandard, RuleType} from '@/types/dataStandard';
 
 interface NamingStandardFormData {
     name: string;

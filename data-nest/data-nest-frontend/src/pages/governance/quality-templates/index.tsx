@@ -1,9 +1,9 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Table, Tooltip} from 'antd';
-import {notify} from '../../../utils/notify';
+import {notify} from '@/utils/notify';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
+import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
 import {
     batchCreateQualityRules,
     createQualityTemplate,
@@ -11,15 +11,15 @@ import {
     queryQualityTemplates,
     toggleQualityTemplate,
     updateQualityTemplate,
-} from '../../../api/quality';
-import Pagination from '../../../components/Pagination';
-import SearchInput from '../../../components/SearchInput';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import DsButton from '../../../components/DsButton';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
+} from '@/api/quality';
+import Pagination from '@/components/Pagination';
+import SearchInput from '@/components/SearchInput';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsButton from '@/components/DsButton';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
 import {
     HiOutlineCalendar,
     HiOutlineCodeBracketSquare,
@@ -28,11 +28,11 @@ import {
     HiOutlineRocketLaunch,
     HiOutlineTrash,
 } from 'react-icons/hi2';
-import type {QualityRuleTemplate, QualityRuleTemplateCreateRequest, QualityTemplateType,} from '../../../types/quality';
-import {formatDateTime} from '../../../utils/format';
-import {COL} from '../../../constants/table';
+import type {QualityRuleTemplate, QualityRuleTemplateCreateRequest, QualityTemplateType,} from '@/types/quality';
+import {formatDateTime} from '@/utils/format';
+import {COL} from '@/constants/table';
 import QualityTemplateDrawer, {TYPE_OPTIONS} from './QualityTemplateDrawer';
-import BatchApplyModal from '../data-quality/BatchApplyModal';
+import BatchApplyModal from '@/pages/governance/data-quality/BatchApplyModal';
 
 /** 模板类型中文名 */
 const TYPE_LABEL: Record<QualityTemplateType, string> = {

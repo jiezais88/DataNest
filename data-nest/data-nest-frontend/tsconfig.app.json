@@ -23,7 +23,14 @@
     "verbatimModuleSyntax": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    /* 路径别名：@ → src（跨目录导入统一用 @/，与 vite.config.ts resolve.alias 对齐） */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
   },
   "include": [
     "src"

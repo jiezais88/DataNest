@@ -1,7 +1,7 @@
 import {type HTMLAttributes, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
-import {notify} from '../../../utils/notify';
+import {notify} from '@/utils/notify';
 import type {ColumnsType} from 'antd/es/table';
 import {
     createDataSource,
@@ -9,38 +9,38 @@ import {
     getDataSources,
     testSavedDataSource,
     updateDataSource,
-} from '../../../api/datasource';
+} from '@/api/datasource';
 import type {
     DataSource,
     DataSourceCreateRequest,
     DataSourceReference,
     DataSourceUpdateRequest,
-} from '../../../types/datasource';
-import {DataSourceStatus, DataSourceStatusEnum, DataSourceType, TYPE_OPTIONS} from '../../../constants/datasource';
-import Pagination from '../../../components/Pagination';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import DsModal from '../../../components/DsModal';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge, {type DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
+} from '@/types/datasource';
+import {DataSourceStatus, DataSourceStatusEnum, DataSourceType, TYPE_OPTIONS} from '@/constants/datasource';
+import Pagination from '@/components/Pagination';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsModal from '@/components/DsModal';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge, {type DsStatusVariant} from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
 import DataSourceDrawer from './DataSourceDrawer';
-import TypeBadge from '../../../components/TypeBadge';
-import TestResultModal from '../../../components/TestResultModal';
-import SearchInput from '../../../components/SearchInput';
-import {formatDateTime, formatRelativeTime} from '../../../utils/format';
-import type {ApiError} from '../../../utils/error';
-import {previewDataSource, type PreviewResult} from '../../../api/preview';
-import PreviewModal from '../../../components/PreviewModal';
+import TypeBadge from '@/components/TypeBadge';
+import TestResultModal from '@/components/TestResultModal';
+import SearchInput from '@/components/SearchInput';
+import {formatDateTime, formatRelativeTime} from '@/utils/format';
+import type {ApiError} from '@/utils/error';
+import {previewDataSource, type PreviewResult} from '@/api/preview';
+import PreviewModal from '@/components/PreviewModal';
 import DatasourcePreviewSelector from './DatasourcePreviewSelector';
-import usePagedList from '../../../hooks/usePagedList';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {ENGINEERING_WRITE_ROLES, ROLE} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
-import {NODE_STATUS_COLOR} from '../../../constants/statusColors';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsToolbar from '../../../components/DsToolbar';
-import StatusSpine from '../../../components/StatusSpine';
+import usePagedList from '@/hooks/usePagedList';
+import {useHasRole} from '@/hooks/useHasRole';
+import {ENGINEERING_WRITE_ROLES, ROLE} from '@/constants/roles';
+import {COL} from '@/constants/table';
+import {NODE_STATUS_COLOR} from '@/constants/statusColors';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsToolbar from '@/components/DsToolbar';
+import StatusSpine from '@/components/StatusSpine';
 import {HiOutlineBolt, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
 
 const STATUS_OPTIONS: { value: DataSourceStatus | ''; label: string }[] = [

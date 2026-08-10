@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {changePassword} from '../api/auth';
+import {changePassword} from '@/api/auth';
 import DsButton from './DsButton';
 import DsModal from './DsModal';
 

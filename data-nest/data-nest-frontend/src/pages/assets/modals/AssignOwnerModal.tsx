@@ -2,11 +2,11 @@
 // 单选 + 可清空（清空 = 清除负责人）。候选人 = 全部启用用户（/system/users/options，不要求邮箱）。
 import {useEffect, useMemo, useState} from 'react';
 import {Select, Spin} from 'antd';
-import {assignTableOwner} from '../../../api/asset';
-import {getUserOptions} from '../../../api/auth';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import {notify} from '../../../utils/notify';
+import {assignTableOwner} from '@/api/asset';
+import {getUserOptions} from '@/api/auth';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {notify} from '@/utils/notify';
 
 interface AssignOwnerModalProps {
     open: boolean;

@@ -5,9 +5,9 @@
 // SYNC 节点不走这里：复用同步任务日志 HistoryLogModal（PropertyPanel 的「查看日志」按钮）。
 import {useCallback, useEffect, useState} from 'react';
 import {Spin} from 'antd';
-import {getNodeRuntimeLogs} from '../api';
-import type {NodeExecutionLog} from '../types';
-import {usePollingWhile} from '../../../../hooks/usePollingWhile';
+import {getNodeRuntimeLogs} from '@/pages/engineering/dags/api';
+import type {NodeExecutionLog} from '@/pages/engineering/dags/types';
+import {usePollingWhile} from '@/hooks/usePollingWhile';
 
 interface NodeRuntimeLogPanelProps {
     executionId: string | number;

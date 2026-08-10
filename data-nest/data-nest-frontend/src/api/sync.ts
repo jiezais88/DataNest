@@ -6,8 +6,8 @@ import type {
     SyncJobHistoryQueryParams,
     SyncJobLog,
     SyncJobQueryParams,
-} from '../types/sync';
-import type {PageResult, Result} from '../types/common';
+} from '@/types/sync';
+import type {PageResult, Result} from '@/types/common';
 
 export function createSyncJob(data: SyncJobCreateRequest) {
     return request.post<Result<SyncJob>>('/engineering/sync-jobs', data);

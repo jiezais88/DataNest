@@ -1,8 +1,8 @@
 import {useLocation, useNavigate} from 'react-router-dom';
 import type {ReactNode} from 'react';
-import {useAuthStore} from '../store/useAuthStore';
-import type {RoleCode} from '../constants/roles';
-import {ALERT_VIEW_ROLES, ALL_ROLES, COMPLIANCE_VIEW_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '../constants/roles';
+import {useAuthStore} from '@/store/useAuthStore';
+import type {RoleCode} from '@/constants/roles';
+import {ALERT_VIEW_ROLES, ALL_ROLES, COMPLIANCE_VIEW_ROLES, ENGINEERING_WRITE_ROLES, GOVERNANCE_WRITE_ROLES, ROLE,} from '@/constants/roles';
 import LogoMark from './LogoMark';
 import {
     HiOutlineArrowsRightLeft,

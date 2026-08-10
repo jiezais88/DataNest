@@ -1,7 +1,7 @@
 import {type ReactNode, useRef} from 'react';
 import {HiOutlineXMark} from 'react-icons/hi2';
 import DsIconButton from './DsIconButton';
-import {useModalA11y} from '../hooks/useModalA11y';
+import {useModalA11y} from '@/hooks/useModalA11y';
 
 /**
  * 全局统一弹窗基座。历史背景：项目里曾有 antd Modal / ConfirmDialog / 各页面手写

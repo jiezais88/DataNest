@@ -5,29 +5,29 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {formatDateTime, formatDuration, getDefaultTimeRange} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import {COL} from '../../../constants/table';
+import {formatDateTime, formatDuration, getDefaultTimeRange} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import {COL} from '@/constants/table';
 import {
     getQualityCheckDetail,
     queryQualityChecks,
-} from '../../../api/quality';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import type {DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import DsToolbar from '../../../components/DsToolbar';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsRangePicker from '../../../components/DsRangePicker';
-import Pagination from '../../../components/Pagination';
+} from '@/api/quality';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import type {DsStatusVariant} from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import DsToolbar from '@/components/DsToolbar';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsRangePicker from '@/components/DsRangePicker';
+import Pagination from '@/components/Pagination';
 import {
     QUALITY_CHECK_LEVEL_LABEL,
     QUALITY_CHECK_STATUS_LABEL,
     QUALITY_CHECK_TRIGGER_LABEL,
     QUALITY_TYPE_LABEL,
-} from '../../../types/quality';
+} from '@/types/quality';
 import type {
     QualityBatchAlertHistory,
     QualityCheckBatch,
@@ -35,7 +35,7 @@ import type {
     QualityCheckLevel,
     QualityCheckStatus,
     QualityCheckTriggerType,
-} from '../../../types/quality';
+} from '@/types/quality';
 import {HiOutlineEye} from 'react-icons/hi2';
 
 /** 批次状态 -> 徽章变体（单一出处） */

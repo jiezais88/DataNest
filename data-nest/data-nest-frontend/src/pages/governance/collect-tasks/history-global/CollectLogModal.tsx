@@ -11,12 +11,12 @@
 // - MODIFIED_COLUMN_*：oldValue/newValue 为属性原值，按类型加前缀标签渲染。
 
 import {type ReactNode, useEffect, useMemo, useState} from 'react';
-import DsModal from '../../../../components/DsModal';
-import DsButton from '../../../../components/DsButton';
-import {getCollectHistory, getCollectHistoryLogs} from '../../../../api/collect';
-import type {CollectChangeDetailDTO, CollectExecutionLog, CollectTaskExecution,} from '../../../../types/collect';
-import {formatDateTime} from '../../../../utils/format';
-import {notify} from '../../../../utils/notify';
+import DsModal from '@/components/DsModal';
+import DsButton from '@/components/DsButton';
+import {getCollectHistory, getCollectHistoryLogs} from '@/api/collect';
+import type {CollectChangeDetailDTO, CollectExecutionLog, CollectTaskExecution,} from '@/types/collect';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
 
 interface CollectLogModalProps {
     open: boolean;

@@ -4,12 +4,12 @@ import {
     listMetadataSchemas,
     listMetadataTables,
     listMetadataTablesWithoutSchema
-} from '../../../api/metadata';
-import type {DataSource} from '../../../types/datasource';
-import {DB_TYPES_WITHOUT_SCHEMA} from '../../../constants/datasource';
-import type {MetadataTable} from '../../../types/metadata';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
+} from '@/api/metadata';
+import type {DataSource} from '@/types/datasource';
+import {DB_TYPES_WITHOUT_SCHEMA} from '@/constants/datasource';
+import type {MetadataTable} from '@/types/metadata';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
 
 
 interface DatasourcePreviewSelectorProps {

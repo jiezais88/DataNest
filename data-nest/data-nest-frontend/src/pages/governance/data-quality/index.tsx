@@ -2,12 +2,12 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {notify} from '../../../utils/notify';
-import {formatDateTime} from '../../../utils/format';
-import {nextRunTime} from '../../../utils/cron';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {COL} from '../../../constants/table';
+import {notify} from '@/utils/notify';
+import {formatDateTime} from '@/utils/format';
+import {nextRunTime} from '@/utils/cron';
+import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
 import {
     createQualityJob,
     deleteQualityJob,
@@ -17,18 +17,18 @@ import {
     stopQualityJobSchedule,
     toggleQualityJob,
     updateQualityJob,
-} from '../../../api/quality';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import DsToolbar from '../../../components/DsToolbar';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import ReferenceListModal from '../../../components/ReferenceListModal';
-import type {ApiError} from '../../../utils/error';
-import Pagination from '../../../components/Pagination';
-import SearchInput from '../../../components/SearchInput';
+} from '@/api/quality';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import DsToolbar from '@/components/DsToolbar';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import ReferenceListModal from '@/components/ReferenceListModal';
+import type {ApiError} from '@/utils/error';
+import Pagination from '@/components/Pagination';
+import SearchInput from '@/components/SearchInput';
 import {
     HiOutlineCalendar,
     HiOutlineEye,
@@ -42,7 +42,7 @@ import type {
     QualityAlertLevel,
     QualityJob,
     AutoTriggerObjectType,
-} from '../../../types/quality';
+} from '@/types/quality';
 import QualityJobDrawer from './QualityJobDrawer';
 
 const ALERT_LEVEL_LABEL: Record<QualityAlertLevel, string> = {

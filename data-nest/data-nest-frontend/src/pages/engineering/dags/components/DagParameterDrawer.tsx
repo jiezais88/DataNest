@@ -6,14 +6,14 @@
 import {useEffect, useState} from 'react';
 import {Spin} from 'antd';
 import {HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
-import Drawer from '../../../../components/Drawer';
-import DsButton from '../../../../components/DsButton';
-import DsIconButton from '../../../../components/DsIconButton';
-import {createDagParameter, deleteDagParameter, listDagParameters, updateDagParameter,} from '../api';
-import type {DagParameter} from '../types';
-import {notify} from '../../../../utils/notify';
-import {getErrorMessage} from '../../../../utils/error';
-import {PARAM_TYPE_OPTIONS, validateDagParameters,} from '../utils/validateDagParameters';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import {createDagParameter, deleteDagParameter, listDagParameters, updateDagParameter,} from '@/pages/engineering/dags/api';
+import type {DagParameter} from '@/pages/engineering/dags/types';
+import {notify} from '@/utils/notify';
+import {getErrorMessage} from '@/utils/error';
+import {PARAM_TYPE_OPTIONS, validateDagParameters,} from '@/pages/engineering/dags/utils/validateDagParameters';
 
 interface DagParameterDrawerProps {
     open: boolean;

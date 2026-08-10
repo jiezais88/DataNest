@@ -1,12 +1,12 @@
 import {useEffect, useState} from 'react';
-import type {CollectMode, CollectTask, CollectTaskCreateRequest, TaskTriggerType,} from '../../../types/collect';
-import type {DataSource} from '../../../types/datasource';
-import {DB_TYPES_WITHOUT_SCHEMA} from '../../../constants/datasource';
-import {CollectModeEnum, TaskTriggerTypeEnum} from '../../../constants/task';
-import {getDataSourceSchemas} from '../../../api/engineering';
-import Drawer from '../../../components/Drawer';
-import CronPicker from '../../../components/CronPicker';
-import DsButton from '../../../components/DsButton';
+import type {CollectMode, CollectTask, CollectTaskCreateRequest, TaskTriggerType,} from '@/types/collect';
+import type {DataSource} from '@/types/datasource';
+import {DB_TYPES_WITHOUT_SCHEMA} from '@/constants/datasource';
+import {CollectModeEnum, TaskTriggerTypeEnum} from '@/constants/task';
+import {getDataSourceSchemas} from '@/api/engineering';
+import Drawer from '@/components/Drawer';
+import CronPicker from '@/components/CronPicker';
+import DsButton from '@/components/DsButton';
 
 interface TaskFormData {
     name: string;

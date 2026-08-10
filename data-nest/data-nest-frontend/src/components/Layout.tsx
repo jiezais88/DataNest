@@ -3,10 +3,10 @@ import {useEffect, useState} from 'react';
 import Sidebar from './Sidebar';
 import Breadcrumb from './Breadcrumb';
 import ErrorBoundary from './ErrorBoundary';
-import {useAuthStore} from '../store/useAuthStore';
+import {useAuthStore} from '@/store/useAuthStore';
 import ChangePasswordModal from './ChangePasswordModal';
 import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/hi2';
-import {resolveMenuTitle} from '../utils/breadcrumb';
+import {resolveMenuTitle} from '@/utils/breadcrumb';
 
 export default function Layout() {
     const {userInfo, logout} = useAuthStore();

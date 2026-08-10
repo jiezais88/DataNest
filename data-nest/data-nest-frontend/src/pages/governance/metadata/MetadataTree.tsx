@@ -13,11 +13,11 @@ import {
     listMetadataTables,
     listMetadataTablesWithoutSchema,
     searchMetadataTree,
-} from '../../../api/metadata';
-import type {MetadataDatasource, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
-import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
-import DsSpinner from '../../../components/DsSpinner';
-import {isWithoutSchema, SourceTypeEnum} from '../../../constants/datasource';
+} from '@/api/metadata';
+import type {MetadataDatasource, MetadataTable, MetadataTreeNode} from '@/types/metadata';
+import DatabaseTypeIcon from '@/components/DatabaseTypeIcon';
+import DsSpinner from '@/components/DsSpinner';
+import {isWithoutSchema, SourceTypeEnum} from '@/constants/datasource';
 import {Tooltip} from 'antd';
 
 interface MetadataTreeProps {

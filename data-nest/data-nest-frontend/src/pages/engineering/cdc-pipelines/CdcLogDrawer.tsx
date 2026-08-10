@@ -2,15 +2,15 @@
 // 运行中的管道每 5s 自动刷新（usePollingWhile）；「清屏」仅清当前视图并暂停自动刷新，点刷新恢复。
 import {useCallback, useEffect, useState} from 'react';
 import {HiOutlineArrowPath, HiOutlineTrash} from 'react-icons/hi2';
-import {getCdcPipelineLogs} from '../../../api/cdc';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import Pagination from '../../../components/Pagination';
-import usePagedList from '../../../hooks/usePagedList';
-import {usePollingWhile} from '../../../hooks/usePollingWhile';
-import {formatDateTime} from '../../../utils/format';
-import type {CdcPipeline, CdcPipelineLog} from '../../../types/cdc';
+import {getCdcPipelineLogs} from '@/api/cdc';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import Pagination from '@/components/Pagination';
+import usePagedList from '@/hooks/usePagedList';
+import {usePollingWhile} from '@/hooks/usePollingWhile';
+import {formatDateTime} from '@/utils/format';
+import type {CdcPipeline, CdcPipelineLog} from '@/types/cdc';
 
 /** 日志级别 → 徽章变体 */
 function levelVariant(level?: string): 'success' | 'warning' | 'danger' | 'pending' {

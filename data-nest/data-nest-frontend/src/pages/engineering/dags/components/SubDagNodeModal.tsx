@@ -4,11 +4,11 @@
 import {useEffect, useState} from 'react';
 import {AutoComplete, Select} from 'antd';
 import {HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
-import DsButton from '../../../../components/DsButton';
-import DsIconButton from '../../../../components/DsIconButton';
-import DsModal from '../../../../components/DsModal';
-import {listDagParameters} from '../api';
-import type {ParamMapping} from '../types';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsModal from '@/components/DsModal';
+import {listDagParameters} from '@/pages/engineering/dags/api';
+import type {ParamMapping} from '@/pages/engineering/dags/types';
 
 /** 主参数可选系统变量（与后端校验白名单一致） */
 const SYSTEM_PARAMS = ['biz_date', 'current_time', 'dag_id'];

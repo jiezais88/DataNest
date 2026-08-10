@@ -3,18 +3,18 @@
 // 用户名由后端批量回填：用户已注销显示「已注销」，用户服务不可用降级「—」（B4）。
 import {useState} from 'react';
 import {HiOutlineTrash} from 'react-icons/hi2';
-import {addAssetComment, deleteAssetComment, listAssetComments} from '../../../api/asset';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import DsButton from '../../../components/DsButton';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import Pagination from '../../../components/Pagination';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import usePagedList from '../../../hooks/usePagedList';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {useAuthStore} from '../../../store/useAuthStore';
-import {formatDateTime} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import type {AssetComment} from '../../../types/asset';
+import {addAssetComment, deleteAssetComment, listAssetComments} from '@/api/asset';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsButton from '@/components/DsButton';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import Pagination from '@/components/Pagination';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import usePagedList from '@/hooks/usePagedList';
+import {useHasRole} from '@/hooks/useHasRole';
+import {useAuthStore} from '@/store/useAuthStore';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import type {AssetComment} from '@/types/asset';
 
 const MAX_COMMENT_LENGTH = 2000;
 

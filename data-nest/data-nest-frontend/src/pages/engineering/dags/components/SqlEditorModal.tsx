@@ -22,14 +22,14 @@
 import {useEffect, useRef, useState} from 'react';
 import {Select, Spin, Tabs} from 'antd';
 import {HiChevronRight, HiOutlineCheckCircle, HiOutlineXCircle} from 'react-icons/hi2';
-import DsButton from '../../../../components/DsButton';
-import DsModal from '../../../../components/DsModal';
-import '../../../../lib/monacoSetup';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import '@/lib/monacoSetup';
 import Editor, {type OnMount} from '@monaco-editor/react';
-import {previewSql} from '../api';
-import type {DagParameter, SqlStatementResult} from '../types';
-import {formatDuration} from '../../../../utils/format';
-import {getErrorMessage} from '../../../../utils/error';
+import {previewSql} from '@/pages/engineering/dags/api';
+import type {DagParameter, SqlStatementResult} from '@/pages/engineering/dags/types';
+import {formatDuration} from '@/utils/format';
+import {getErrorMessage} from '@/utils/error';
 
 interface SqlEditorModalProps {
     open: boolean;

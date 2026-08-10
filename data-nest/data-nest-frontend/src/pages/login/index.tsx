@@ -1,11 +1,11 @@
 import {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {login} from '../../api/auth';
-import {useAuthStore} from '../../store/useAuthStore';
-import ErrorCard from '../../components/ErrorCard';
-import DsButton from '../../components/DsButton';
-import LogoMark from '../../components/LogoMark';
-import {getErrorMessage} from '../../utils/error';
+import {login} from '@/api/auth';
+import {useAuthStore} from '@/store/useAuthStore';
+import ErrorCard from '@/components/ErrorCard';
+import DsButton from '@/components/DsButton';
+import LogoMark from '@/components/LogoMark';
+import {getErrorMessage} from '@/utils/error';
 
 export default function LoginPage() {
     const navigate = useNavigate();

@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import {fileURLToPath, URL} from 'node:url'
 import {defineConfig, loadEnv} from 'vite'
 import react from '@vitejs/plugin-react'
 import {visualizer} from 'rollup-plugin-visualizer'
@@ -12,6 +13,10 @@ export default defineConfig(({mode}) => {
     const apiTarget = env.VITE_API_TARGET || 'http://localhost:8080'
 
     return {
+        resolve: {
+            // 路径别名 @ → src（跨目录导入统一用 @/，替代多层 ../../；详见 conventions-frontend §2）
+            alias: {'@': fileURLToPath(new URL('./src', import.meta.url))},
+        },
         plugins: [
             react(),
             // 预压缩 .br（nginx brotli_static 直接吐，压缩率比 gzip 高 ~15-20%；nginx 需启用 ngx_brotli）。

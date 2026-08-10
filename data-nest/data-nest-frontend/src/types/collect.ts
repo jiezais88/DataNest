@@ -1,4 +1,4 @@
-import type {CollectMode, ExecutionStatus as AnyExecutionStatus, TaskTriggerType} from '../constants/task';
+import type {CollectMode, ExecutionStatus as AnyExecutionStatus, TaskTriggerType} from '@/constants/task';
 
 export type {CollectMode, TaskTriggerType};
 

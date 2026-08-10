@@ -1,11 +1,11 @@
 import {useEffect, useState} from 'react';
 import {Select} from 'antd';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import {queryQualityRules} from '../../../api/quality';
-import CronPicker from '../../../components/CronPicker';
-import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule, QualityRuleType} from '../../../types/quality';
-import {QUALITY_TYPE_LABEL} from '../../../types/quality';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import {queryQualityRules} from '@/api/quality';
+import CronPicker from '@/components/CronPicker';
+import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule, QualityRuleType} from '@/types/quality';
+import {QUALITY_TYPE_LABEL} from '@/types/quality';
 import AutoTriggerSelect from './AutoTriggerSelect';
 
 interface QualityJobFormData {

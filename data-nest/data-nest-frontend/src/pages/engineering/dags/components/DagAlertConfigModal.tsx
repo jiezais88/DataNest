@@ -1,14 +1,14 @@
 // Sprint 4 按 DAG 告警配置弹窗（PRD §6.5.2 / 技术文档 §8.2）
 import {useEffect, useMemo, useState} from 'react';
 import {Select, Spin, Switch} from 'antd';
-import DsButton from '../../../../components/DsButton';
-import DsModal from '../../../../components/DsModal';
-import {getDagAlertConfig, putDagAlertConfig} from '../api';
-import type {UserVO} from '../../../../api/auth';
-import {getUsers} from '../../../../api/auth';
-import type {DagAlertConfig} from '../types';
-import {notify} from '../../../../utils/notify';
-import {getErrorMessage} from '../../../../utils/error';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {getDagAlertConfig, putDagAlertConfig} from '@/pages/engineering/dags/api';
+import type {UserVO} from '@/api/auth';
+import {getUsers} from '@/api/auth';
+import type {DagAlertConfig} from '@/pages/engineering/dags/types';
+import {notify} from '@/utils/notify';
+import {getErrorMessage} from '@/utils/error';
 
 interface DagAlertConfigModalProps {
     open: boolean;

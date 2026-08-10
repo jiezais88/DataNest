@@ -1,7 +1,7 @@
 import {useRef} from 'react';
 import {HiOutlineXMark} from 'react-icons/hi2';
 import DsIconButton from './DsIconButton';
-import {useModalA11y} from '../hooks/useModalA11y';
+import {useModalA11y} from '@/hooks/useModalA11y';
 
 interface DrawerProps {
     open: boolean;

@@ -5,7 +5,7 @@
 //  - system-service UserSelectorController(/users/with-email，保持不变)
 // 统一 .then(r => r.data) 拆信封，调用方直接拿数据。
 import request from './request';
-import type {PageResult, Result} from '../types/common';
+import type {PageResult, Result} from '@/types/common';
 import type {
     AlertHistory,
     AlertObjectOption,
@@ -14,7 +14,7 @@ import type {
     AlertSendStatus,
     AlertTriggerType,
     UserOption,
-} from '../types/alert';
+} from '@/types/alert';
 
 // =================== 规则 CRUD（全局告警中心） ===================
 

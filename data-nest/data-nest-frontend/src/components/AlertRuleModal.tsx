@@ -19,10 +19,10 @@ import {
     putDagAlertRule,
     putSyncJobAlertRule,
     updateAlertRule,
-} from '../api/alert';
-import type {AlertObjectOption, AlertObjectType, AlertRuleDTO, AlertTriggerType} from '../types/alert';
-import {notify} from '../utils/notify';
-import {getErrorMessage} from '../utils/error';
+} from '@/api/alert';
+import type {AlertObjectOption, AlertObjectType, AlertRuleDTO, AlertTriggerType} from '@/types/alert';
+import {notify} from '@/utils/notify';
+import {getErrorMessage} from '@/utils/error';
 
 const OBJECT_TYPE_OPTIONS: { value: AlertObjectType; label: string }[] = [
     {value: 'DAG', label: 'DAG'},

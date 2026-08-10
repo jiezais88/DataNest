@@ -1,13 +1,13 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import type {AutoTriggerObjectType} from '../../../types/quality';
+import type {AutoTriggerObjectType} from '@/types/quality';
 import {
     getDag,
     listDagProjects,
     listDags,
-} from '../../engineering/dags/api';
-import {querySyncJobs} from '../../../api/sync';
-import {queryCollectTasks} from '../../../api/collect';
-import type {DagProject} from '../../engineering/dags/types';
+} from '@/pages/engineering/dags/api';
+import {querySyncJobs} from '@/api/sync';
+import {queryCollectTasks} from '@/api/collect';
+import type {DagProject} from '@/pages/engineering/dags/types';
 
 interface AutoTriggerSelectProps {
     /** 当前对象类型（可为空表示未选） */

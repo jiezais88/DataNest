@@ -3,14 +3,14 @@
 // 新增：名称 + 类型 + 说明 +「从已配置任务另存」（选任务则忽略 JSON 原文；手动配置则填 configTemplate JSON）。
 // 编辑：仅名称/说明（类型不可变 7303；config 缺省保留原配置）。复制：内置模板复制为自定义（预填配置）。
 import {useEffect, useState} from 'react';
-import {createTaskTemplate, updateTaskTemplate} from '../../../api/taskTemplate';
-import {queryCollectTasks} from '../../../api/collect';
-import {querySyncJobs} from '../../../api/sync';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
-import {notify} from '../../../utils/notify';
-import type {TaskTemplate, TaskTemplateType} from '../../../types/taskTemplate';
-import {TASK_TEMPLATE_TYPE_LABEL} from '../../../types/taskTemplate';
+import {createTaskTemplate, updateTaskTemplate} from '@/api/taskTemplate';
+import {queryCollectTasks} from '@/api/collect';
+import {querySyncJobs} from '@/api/sync';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
+import {notify} from '@/utils/notify';
+import type {TaskTemplate, TaskTemplateType} from '@/types/taskTemplate';
+import {TASK_TEMPLATE_TYPE_LABEL} from '@/types/taskTemplate';
 
 export type TemplateFormMode = 'create' | 'edit' | 'copy';
 

@@ -1,7 +1,7 @@
 // Sprint 7 F1：数据资产目录 API（governance AssetCatalogController，/governance/assets/**）
 // 读接口四角色可用；写接口（分类 CRUD / 分配分类 / 配置负责人）仅超管+治理员（后端兜底 1005）。
 import request from './request';
-import type {PageResult, Result} from '../types/common';
+import type {PageResult, Result} from '@/types/common';
 import type {
     AssetBrowseQuery,
     AssetClassification,
@@ -17,7 +17,7 @@ import type {
     AssignClassificationRequest,
     ClassificationSaveRequest,
     MyAssetQuery,
-} from '../types/asset';
+} from '@/types/asset';
 
 /** 多维搜索（表名/注释/字段/负责人），按相关度 score 降序，上限 200 条不分页；可选数据源/健康度过滤 */
 export const searchAssets = (keyword: string, filter?: AssetSearchFilter) =>

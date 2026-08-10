@@ -32,8 +32,10 @@ src
 ├── store/             # Zustand store
 ├── styles/            # tokens.css（颜色唯一来源）
 ├── types/             # TypeScript 类型：common.ts、sync.ts、datasource.ts...
-└── utils/             # 工具函数：notify.ts、error.ts、format.ts、cn.ts...
+└── utils/             # 工具函数：notify.ts、error.ts、format.ts、cn.ts、download.ts...
 ```
+
+**导入路径约定（2026-08-10 起）**：跨目录导入一律用别名 `@/`（`@` → `src`，vite `resolve.alias` + tsconfig `paths` 双配置），不再写 `../../` 多层相对路径；同目录兄弟文件仍用 `./`。存量代码已全量 codemod 迁移（838 处），新增代码照此执行。e2e 目录在 alias 范围外，维持相对路径。
 
 ## 3. API 请求规范
 

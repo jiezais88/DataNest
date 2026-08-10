@@ -23,12 +23,12 @@ import {
     startCdcPipeline,
     updateCdcPipeline,
     validateCdcSource,
-} from '../../../../api/cdc';
-import {getDataSources} from '../../../../api/datasource';
-import DsButton from '../../../../components/DsButton';
-import DsStatusBadge from '../../../../components/DsStatusBadge';
-import {DataSourceTypeEnum} from '../../../../constants/datasource';
-import {notify} from '../../../../utils/notify';
+} from '@/api/cdc';
+import {getDataSources} from '@/api/datasource';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import {DataSourceTypeEnum} from '@/constants/datasource';
+import {notify} from '@/utils/notify';
 import type {
     CdcPipelineSaveRequest,
     CdcSourceTable,
@@ -37,8 +37,8 @@ import type {
     CdcSyncMode,
     CdcTableMapping,
     CdcWriteMode,
-} from '../../../../types/cdc';
-import {STARTUP_MODE_LABEL, SYNC_MODE_LABEL, WRITE_MODE_LABEL} from '../constants';
+} from '@/types/cdc';
+import {STARTUP_MODE_LABEL, SYNC_MODE_LABEL, WRITE_MODE_LABEL} from '@/pages/engineering/cdc-pipelines/constants';
 
 const STEPS = ['基本信息', '配置管道', '确认启动'];
 

@@ -2,8 +2,8 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tabs, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {ALL_ROLES, GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
+import {useHasRole} from '@/hooks/useHasRole';
+import {ALL_ROLES, GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
 import {
     getMetadataTable,
     listMetadataColumns,
@@ -14,16 +14,16 @@ import {
     updateColumnComment,
     updateColumnRemark,
     updateTableComment,
-} from '../../../api/metadata';
-import {getLineageByTargetTable} from '../../../api/lineage';
-import {executeTableQualityRules, getQualityScoreByTable, getTableQualityRuleResults} from '../../../api/quality';
-import type {MetadataColumn, MetadataTable, MetadataTreeNode} from '../../../types/metadata';
-import type {LineageRecord} from '../../../types/lineage';
-import type {QualityCheckLevel, QualityScore, QualityTableRuleResult} from '../../../types/quality';
-import {QUALITY_CHECK_LEVEL_LABEL, QUALITY_TYPE_LABEL} from '../../../types/quality';
+} from '@/api/metadata';
+import {getLineageByTargetTable} from '@/api/lineage';
+import {executeTableQualityRules, getQualityScoreByTable, getTableQualityRuleResults} from '@/api/quality';
+import type {MetadataColumn, MetadataTable, MetadataTreeNode} from '@/types/metadata';
+import type {LineageRecord} from '@/types/lineage';
+import type {QualityCheckLevel, QualityScore, QualityTableRuleResult} from '@/types/quality';
+import {QUALITY_CHECK_LEVEL_LABEL, QUALITY_TYPE_LABEL} from '@/types/quality';
 import MetadataTree from './MetadataTree';
-import EmptyState from '../../../components/EmptyState';
-import {previewMetadataTable, type PreviewResult} from '../../../api/preview';
+import EmptyState from '@/components/EmptyState';
+import {previewMetadataTable, type PreviewResult} from '@/api/preview';
 import {
     HiOutlineArrowPath,
     HiOutlineBookOpen,
@@ -35,16 +35,16 @@ import {
     HiOutlineShare,
     HiOutlineTableCells
 } from 'react-icons/hi2';
-import {formatDateTime} from '../../../utils/format';
-import {COL} from '../../../constants/table';
-import {isWithoutSchema} from '../../../constants/datasource';
-import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
-import DsButton from '../../../components/DsButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import type {DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import QualityScoreBadge from '../../../components/QualityScoreBadge';
-import {notify} from '../../../utils/notify';
+import {formatDateTime} from '@/utils/format';
+import {COL} from '@/constants/table';
+import {isWithoutSchema} from '@/constants/datasource';
+import DatabaseTypeIcon from '@/components/DatabaseTypeIcon';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import type {DsStatusVariant} from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import {notify} from '@/utils/notify';
 
 const extractDatasourceId = (node: MetadataTreeNode) => {
     if (node.datasourceId) return node.datasourceId;

@@ -1,15 +1,15 @@
 import {useEffect, useState} from 'react';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
 import {
     listMetadataDatabases,
     listMetadataSchemas,
     listMetadataTables,
     listMetadataTablesWithoutSchema,
     listMetadataDatasourceIds,
-} from '../../../api/metadata';
-import {isWithoutSchema} from '../../../constants/datasource';
-import type {MetadataDatasource, MetadataTable} from '../../../types/metadata';
+} from '@/api/metadata';
+import {isWithoutSchema} from '@/constants/datasource';
+import type {MetadataDatasource, MetadataTable} from '@/types/metadata';
 
 interface TableSelectModalProps {
     open: boolean;

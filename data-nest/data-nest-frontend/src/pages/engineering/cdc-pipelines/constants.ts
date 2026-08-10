@@ -1,5 +1,5 @@
 // Sprint 8 F2：CDC 管道模式枚举中文标签（列表详情抽屉 / 配置向导共用，就近放在页面目录）。
-import type {CdcStartupMode, CdcSyncMode, CdcWriteMode} from '../../../types/cdc';
+import type {CdcStartupMode, CdcSyncMode, CdcWriteMode} from '@/types/cdc';
 
 /** 同步模式中文标签 */
 export const SYNC_MODE_LABEL: Record<CdcSyncMode, string> = {

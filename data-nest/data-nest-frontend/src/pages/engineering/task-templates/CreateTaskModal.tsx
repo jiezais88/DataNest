@@ -13,18 +13,18 @@
 // defaultValue 预填；required 为空时前端拦截，后端兜底 7305。
 import {useCallback, useEffect, useState} from 'react';
 import {Select} from 'antd';
-import {getDataSources} from '../../../api/datasource';
-import {getDataSourceSchemas, getDataSourceTables} from '../../../api/engineering';
-import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '../../../api/metadata';
-import {previewDataSource} from '../../../api/preview';
-import {createTaskFromTemplate} from '../../../api/taskTemplate';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import {notify} from '../../../utils/notify';
-import type {DataSource} from '../../../types/datasource';
-import {DataSourceTypeEnum} from '../../../constants/datasource';
-import type {TaskTemplate, TemplatePlaceholder} from '../../../types/taskTemplate';
-import {TASK_TEMPLATE_TYPE_LABEL} from '../../../types/taskTemplate';
+import {getDataSources} from '@/api/datasource';
+import {getDataSourceSchemas, getDataSourceTables} from '@/api/engineering';
+import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '@/api/metadata';
+import {previewDataSource} from '@/api/preview';
+import {createTaskFromTemplate} from '@/api/taskTemplate';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {notify} from '@/utils/notify';
+import type {DataSource} from '@/types/datasource';
+import {DataSourceTypeEnum} from '@/constants/datasource';
+import type {TaskTemplate, TemplatePlaceholder} from '@/types/taskTemplate';
+import {TASK_TEMPLATE_TYPE_LABEL} from '@/types/taskTemplate';
 
 /** 解析模板占位符（configTemplate 非法 JSON 时按无占位符处理） */
 export function parseTemplatePlaceholders(configTemplate?: string): TemplatePlaceholder[] {

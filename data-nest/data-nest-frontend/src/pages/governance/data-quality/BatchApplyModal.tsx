@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import {listQualityTemplates, queryQualityJobs} from '../../../api/quality';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {listQualityTemplates, queryQualityJobs} from '@/api/quality';
 import {
     listMetadataColumns,
     listMetadataDatasourceIds,
@@ -9,11 +9,11 @@ import {
     listMetadataSchemas,
     listMetadataTables,
     listMetadataTablesWithoutSchema,
-} from '../../../api/metadata';
-import {isWithoutSchema} from '../../../constants/datasource';
-import {QUALITY_TYPE_LABEL} from '../../../types/quality';
-import type {QualityRuleTemplate, QualityRuleBatchCreateRequest, RuleBatchItem} from '../../../types/quality';
-import type {MetadataColumn, MetadataDatasource, MetadataTable} from '../../../types/metadata';
+} from '@/api/metadata';
+import {isWithoutSchema} from '@/constants/datasource';
+import {QUALITY_TYPE_LABEL} from '@/types/quality';
+import type {QualityRuleTemplate, QualityRuleBatchCreateRequest, RuleBatchItem} from '@/types/quality';
+import type {MetadataColumn, MetadataDatasource, MetadataTable} from '@/types/metadata';
 
 interface BatchApplyItem extends RuleBatchItem {
     tableName: string;

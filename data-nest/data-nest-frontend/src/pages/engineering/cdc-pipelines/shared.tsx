@@ -1,6 +1,6 @@
 // Sprint 8 F2：CDC 管道页面共用小组件——状态徽章、延迟展示（列表页 / 详情抽屉共用，就近放在页面目录）。
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import type {CdcPipelineStatus} from '../../../types/cdc';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import type {CdcPipelineStatus} from '@/types/cdc';
 
 /** 管道状态徽章 */
 export function CdcStatusBadge({status}: { status: CdcPipelineStatus }) {

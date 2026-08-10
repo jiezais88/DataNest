@@ -12,9 +12,9 @@ import {
     HiOutlineTag,
     HiOutlineTrash,
 } from 'react-icons/hi2';
-import DsIconButton from '../../components/DsIconButton';
-import type {AssetClassification} from '../../types/asset';
-import type {AssetBrowseQuery} from '../../types/asset';
+import DsIconButton from '@/components/DsIconButton';
+import type {AssetClassification} from '@/types/asset';
+import type {AssetBrowseQuery} from '@/types/asset';
 
 /** 树选中项：全部 / 未分类 / 数据域 / 主题（domain/topic 为分类名，对齐 browse 接口） */
 export interface AssetTreeSelection {

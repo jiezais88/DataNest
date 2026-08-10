@@ -3,12 +3,12 @@
 // Sprint 8 F1：新增「标签」（DC-06）与「热度」（DC-09，近 30 天访问）两列。
 import type {ColumnsType} from 'antd/es/table';
 import {HiOutlineFire} from 'react-icons/hi2';
-import DatabaseTypeIcon from '../../components/DatabaseTypeIcon';
-import DsStatusBadge from '../../components/DsStatusBadge';
-import QualityScoreBadge from '../../components/QualityScoreBadge';
-import {COL} from '../../constants/table';
-import {formatDateTime} from '../../utils/format';
-import type {AssetSearchItem} from '../../types/asset';
+import DatabaseTypeIcon from '@/components/DatabaseTypeIcon';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import {COL} from '@/constants/table';
+import {formatDateTime} from '@/utils/format';
+import type {AssetSearchItem} from '@/types/asset';
 
 /** 数据域/主题徽章：域 = accent，主题 = 灰（neutral），无则「—」 */
 function ClassificationBadges({domain, topic}: { domain?: string; topic?: string }) {

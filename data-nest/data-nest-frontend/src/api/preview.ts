@@ -1,5 +1,5 @@
 import request from './request';
-import type {Result} from '../types/common';
+import type {Result} from '@/types/common';
 
 export interface PreviewResult {
     columns: string[];

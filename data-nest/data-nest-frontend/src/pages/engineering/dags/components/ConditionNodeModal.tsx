@@ -4,9 +4,9 @@
 import {useEffect, useMemo, useState} from 'react';
 import {Select} from 'antd';
 import {HiOutlineVariable} from 'react-icons/hi2';
-import DsButton from '../../../../components/DsButton';
-import DsModal from '../../../../components/DsModal';
-import type {ConditionBranch, DagParameter, NodeType, UpstreamNodeInfo} from '../types';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import type {ConditionBranch, DagParameter, NodeType, UpstreamNodeInfo} from '@/pages/engineering/dags/types';
 
 interface ConditionNodeModalProps {
     open: boolean;

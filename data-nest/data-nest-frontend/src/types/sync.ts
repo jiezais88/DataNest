@@ -1,4 +1,4 @@
-import type {ExecutionStatus as AnyExecutionStatus, SyncMode, TaskTriggerType} from '../constants/task';
+import type {ExecutionStatus as AnyExecutionStatus, SyncMode, TaskTriggerType} from '@/constants/task';
 
 export type {SyncMode, TaskTriggerType as SyncTriggerType};
 

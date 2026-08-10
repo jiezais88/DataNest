@@ -1,6 +1,6 @@
 import {useNavigate} from 'react-router-dom';
 import {HiChevronRight} from 'react-icons/hi2';
-import {resolveBreadcrumb} from '../utils/breadcrumb';
+import {resolveBreadcrumb} from '@/utils/breadcrumb';
 
 type Props = {
     pathname: string;

@@ -2,9 +2,9 @@
 // 点击「执行」时若 DAG 存在参数则弹出：控件按参数类型驱动（DATE→日期选择 / NUMBER→数字 /
 // BOOLEAN→radio / STRING→文本），每项带默认值 hint；必填参数未填写禁止执行。
 import {useEffect, useState} from 'react';
-import DsButton from '../../../../components/DsButton';
-import DsModal from '../../../../components/DsModal';
-import type {DagParameter} from '../types';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import type {DagParameter} from '@/pages/engineering/dags/types';
 
 interface TriggerParamsModalProps {
     open: boolean;

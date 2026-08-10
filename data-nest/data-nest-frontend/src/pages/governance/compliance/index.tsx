@@ -14,13 +14,13 @@ import {
     HiOutlineShieldCheck,
     HiOutlineXCircle,
 } from 'react-icons/hi2';
-import {formatDateTime} from '../../../utils/format';
-import {downloadCsvBlob} from '../../../utils/download';
-import {COL} from '../../../constants/table';
-import {notify} from '../../../utils/notify';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {listMetadataDatasourceIds} from '../../../api/metadata';
+import {formatDateTime} from '@/utils/format';
+import {downloadCsvBlob} from '@/utils/download';
+import {COL} from '@/constants/table';
+import {notify} from '@/utils/notify';
+import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {listMetadataDatasourceIds} from '@/api/metadata';
 import {
     exportComplianceCheck,
     getComplianceCheckSummary,
@@ -28,23 +28,23 @@ import {
     pageComplianceCheckResults,
     runComplianceCheck,
     unignoreComplianceCheckResult,
-} from '../../../api/dataStandard';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsModal from '../../../components/DsModal';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import type {DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsToolbar from '../../../components/DsToolbar';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import Pagination from '../../../components/Pagination';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import type {MetadataDatasource} from '../../../types/metadata';
+} from '@/api/dataStandard';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsModal from '@/components/DsModal';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import type {DsStatusVariant} from '@/components/DsStatusBadge';
+import DsToolbar from '@/components/DsToolbar';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import Pagination from '@/components/Pagination';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import type {MetadataDatasource} from '@/types/metadata';
 import type {
     ComplianceCheckParams,
     ComplianceCheckResult,
     ComplianceCheckSummary,
-} from '../../../types/dataStandard';
+} from '@/types/dataStandard';
 
 /** 违规类型 -> 徽章变体（列表「违规类型」列） */
 const VIOLATION_VARIANT: Record<string, DsStatusVariant> = {

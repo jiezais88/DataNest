@@ -24,21 +24,21 @@ import {
 } from './api';
 import type {Dag, DagParameter, DagProject} from './types';
 import TriggerParamsModal from './components/TriggerParamsModal';
-import {useCanEdit} from '../../../hooks/useCanEdit';
-import ReferenceListModal from '../../../components/ReferenceListModal';
-import type {ApiError} from '../../../utils/error';
-import SearchInput from '../../../components/SearchInput';
-import Pagination from '../../../components/Pagination';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsToolbar from '../../../components/DsToolbar';
-import DsStatusBadge, {type DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import {executionStatusVariant} from '../../../utils/status';
-import {formatDateTime} from '../../../utils/format';
-import {COL} from '../../../constants/table';
-import {notify} from '../../../utils/notify';
+import {useCanEdit} from '@/hooks/useCanEdit';
+import ReferenceListModal from '@/components/ReferenceListModal';
+import type {ApiError} from '@/utils/error';
+import SearchInput from '@/components/SearchInput';
+import Pagination from '@/components/Pagination';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsToolbar from '@/components/DsToolbar';
+import DsStatusBadge, {type DsStatusVariant} from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import {executionStatusVariant} from '@/utils/status';
+import {formatDateTime} from '@/utils/format';
+import {COL} from '@/constants/table';
+import {notify} from '@/utils/notify';
 
 const STATUS_OPTIONS: { label: string; value: DsStatusVariant | '' }[] = [
     {label: '全部状态', value: ''},

@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
-import Drawer from '../../../components/Drawer';
-import DsButton from '../../../components/DsButton';
+import Drawer from '@/components/Drawer';
+import DsButton from '@/components/DsButton';
 import {
     listMetadataColumns,
     listMetadataDatabases,
@@ -8,13 +8,13 @@ import {
     listMetadataSchemas,
     listMetadataTables,
     listMetadataTablesWithoutSchema,
-} from '../../../api/metadata';
-import {isWithoutSchema} from '../../../constants/datasource';
-import type {MetadataColumn, MetadataTable, MetadataDatasource} from '../../../types/metadata';
-import {QUALITY_TYPE_OPTIONS} from '../../../types/quality';
-import type {QualityScriptTestResult, QualitySqlPreviewResult} from '../../../types/quality';
-import {listQualityTemplates, previewExecuteQualitySql, testQualityPythonScript} from '../../../api/quality';
-import type {QualityRule, QualityRuleCreateRequest, QualityRuleTemplate, QualityRuleType} from '../../../types/quality';
+} from '@/api/metadata';
+import {isWithoutSchema} from '@/constants/datasource';
+import type {MetadataColumn, MetadataTable, MetadataDatasource} from '@/types/metadata';
+import {QUALITY_TYPE_OPTIONS} from '@/types/quality';
+import type {QualityScriptTestResult, QualitySqlPreviewResult} from '@/types/quality';
+import {listQualityTemplates, previewExecuteQualitySql, testQualityPythonScript} from '@/api/quality';
+import type {QualityRule, QualityRuleCreateRequest, QualityRuleTemplate, QualityRuleType} from '@/types/quality';
 
 interface QualityRuleFormData {
     name: string;

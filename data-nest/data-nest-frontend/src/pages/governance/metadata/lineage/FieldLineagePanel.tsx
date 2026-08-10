@@ -15,12 +15,12 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Select, Spin, Tooltip} from 'antd';
-import {getLineageColumns} from '../../../../api/lineage';
-import {listMetadataColumns} from '../../../../api/metadata';
-import EmptyState from '../../../../components/EmptyState';
-import type {MetadataColumn} from '../../../../types/metadata';
-import type {LineageColumnLink} from '../../../../types/lineage';
-import {layoutWithDagre} from '../../../../utils/dagLayout';
+import {getLineageColumns} from '@/api/lineage';
+import {listMetadataColumns} from '@/api/metadata';
+import EmptyState from '@/components/EmptyState';
+import type {MetadataColumn} from '@/types/metadata';
+import type {LineageColumnLink} from '@/types/lineage';
+import {layoutWithDagre} from '@/utils/dagLayout';
 
 interface FieldLineageData {
     label: string;

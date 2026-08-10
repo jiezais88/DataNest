@@ -1,6 +1,6 @@
 import {createBrowserRouter} from 'react-router-dom';
-import LoginPage from '../pages/login';
-import Layout from '../components/Layout';
+import LoginPage from '@/pages/login';
+import Layout from '@/components/Layout';
 import {
     CollectHistoryRedirect,
     DagExecutionsRedirect,
@@ -11,33 +11,33 @@ import {
 } from './components';
 
 // 页面级 code-split（Phase 7-N）：除登录/布局外全部懒加载
-const HomePage = lazyPage(() => import('../pages/home'));
-const UsersPage = lazyPage(() => import('../pages/system/users'));
-const DataSourcesPage = lazyPage(() => import('../pages/engineering/datasources'));
-const CollectTasksPage = lazyPage(() => import('../pages/governance/collect-tasks'));
-const CollectHistoryGlobalPage = lazyPage(() => import('../pages/governance/collect-tasks/history-global'));
-const SyncJobsPage = lazyPage(() => import('../pages/engineering/sync-jobs'));
-const SyncJobHistoryGlobalPage = lazyPage(() => import('../pages/engineering/sync-jobs/history-global'));
-const MetadataPage = lazyPage(() => import('../pages/governance/metadata'));
-const LineageGraphPage = lazyPage(() => import('../pages/governance/metadata/lineage/LineageGraphPage'));
-const AlertCenterPage = lazyPage(() => import('../pages/system/alert-center/AlertCenterPage'));
-const DataStandardsPage = lazyPage(() => import('../pages/governance/data-standards'));
-const StandardCompliancePage = lazyPage(() => import('../pages/governance/compliance'));
-const DagsPage = lazyPage(() => import('../pages/engineering/dags'));
-const TaskTemplatesPage = lazyPage(() => import('../pages/engineering/task-templates'));
-const ProjectDagsPage = lazyPage(() => import('../pages/engineering/dags/project'));
-const DagExecutionsGlobalPage = lazyPage(() => import('../pages/engineering/dag-executions'));
-const QualityTemplatesPage = lazyPage(() => import('../pages/governance/quality-templates'));
-const DataQualityPage = lazyPage(() => import('../pages/governance/data-quality'));
-const QualityRulesPage = lazyPage(() => import('../pages/governance/quality-rules'));
-const QualityChecksPage = lazyPage(() => import('../pages/governance/quality-checks'));
-const QualityScoresPage = lazyPage(() => import('../pages/governance/quality-scores'));
-const AssetsPage = lazyPage(() => import('../pages/assets'));
-const AssetDetailPage = lazyPage(() => import('../pages/assets/detail'));
-const MyFavoritesPage = lazyPage(() => import('../pages/assets/favorites'));
-const MyFollowsPage = lazyPage(() => import('../pages/assets/follows'));
-const CdcPipelinesPage = lazyPage(() => import('../pages/engineering/cdc-pipelines'));
-const CdcPipelineWizardPage = lazyPage(() => import('../pages/engineering/cdc-pipelines/wizard'));
+const HomePage = lazyPage(() => import('@/pages/home'));
+const UsersPage = lazyPage(() => import('@/pages/system/users'));
+const DataSourcesPage = lazyPage(() => import('@/pages/engineering/datasources'));
+const CollectTasksPage = lazyPage(() => import('@/pages/governance/collect-tasks'));
+const CollectHistoryGlobalPage = lazyPage(() => import('@/pages/governance/collect-tasks/history-global'));
+const SyncJobsPage = lazyPage(() => import('@/pages/engineering/sync-jobs'));
+const SyncJobHistoryGlobalPage = lazyPage(() => import('@/pages/engineering/sync-jobs/history-global'));
+const MetadataPage = lazyPage(() => import('@/pages/governance/metadata'));
+const LineageGraphPage = lazyPage(() => import('@/pages/governance/metadata/lineage/LineageGraphPage'));
+const AlertCenterPage = lazyPage(() => import('@/pages/system/alert-center/AlertCenterPage'));
+const DataStandardsPage = lazyPage(() => import('@/pages/governance/data-standards'));
+const StandardCompliancePage = lazyPage(() => import('@/pages/governance/compliance'));
+const DagsPage = lazyPage(() => import('@/pages/engineering/dags'));
+const TaskTemplatesPage = lazyPage(() => import('@/pages/engineering/task-templates'));
+const ProjectDagsPage = lazyPage(() => import('@/pages/engineering/dags/project'));
+const DagExecutionsGlobalPage = lazyPage(() => import('@/pages/engineering/dag-executions'));
+const QualityTemplatesPage = lazyPage(() => import('@/pages/governance/quality-templates'));
+const DataQualityPage = lazyPage(() => import('@/pages/governance/data-quality'));
+const QualityRulesPage = lazyPage(() => import('@/pages/governance/quality-rules'));
+const QualityChecksPage = lazyPage(() => import('@/pages/governance/quality-checks'));
+const QualityScoresPage = lazyPage(() => import('@/pages/governance/quality-scores'));
+const AssetsPage = lazyPage(() => import('@/pages/assets'));
+const AssetDetailPage = lazyPage(() => import('@/pages/assets/detail'));
+const MyFavoritesPage = lazyPage(() => import('@/pages/assets/favorites'));
+const MyFollowsPage = lazyPage(() => import('@/pages/assets/follows'));
+const CdcPipelinesPage = lazyPage(() => import('@/pages/engineering/cdc-pipelines'));
+const CdcPipelineWizardPage = lazyPage(() => import('@/pages/engineering/cdc-pipelines/wizard'));
 
 export const router = createBrowserRouter([
     {

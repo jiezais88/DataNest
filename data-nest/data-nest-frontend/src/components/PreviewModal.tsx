@@ -1,4 +1,4 @@
-import type {PreviewResult} from '../api/preview';
+import type {PreviewResult} from '@/api/preview';
 import DsModal from './DsModal';
 import DsSpinner from './DsSpinner';
 

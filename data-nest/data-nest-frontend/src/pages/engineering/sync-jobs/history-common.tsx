@@ -1,12 +1,12 @@
 import {useCallback, useEffect, useState} from 'react';
 import {Tabs} from 'antd';
 import {Link} from 'react-router-dom';
-import type {SyncJobHistory, SyncJobLog} from '../../../types/sync';
-import {formatDateTime, formatExecutionDuration, formatThroughput} from '../../../utils/format';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import {executionStatusVariant} from '../../../utils/status';
+import type {SyncJobHistory, SyncJobLog} from '@/types/sync';
+import {formatDateTime, formatExecutionDuration, formatThroughput} from '@/utils/format';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import {executionStatusVariant} from '@/utils/status';
 import {formatSourceTable, formatTargetTable, statusLabel, triggerBadge} from './history-common-utils';
 
 interface HistoryDetailModalProps {

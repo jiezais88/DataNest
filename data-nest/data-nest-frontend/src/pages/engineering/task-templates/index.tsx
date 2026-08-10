@@ -13,18 +13,18 @@ import {
     HiOutlinePlay,
     HiOutlineTrash,
 } from 'react-icons/hi2';
-import {deleteTaskTemplate, queryTaskTemplates} from '../../../api/taskTemplate';
-import ConfirmDialog from '../../../components/ConfirmDialog';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import Pagination from '../../../components/Pagination';
-import {COL} from '../../../constants/table';
-import usePagedList from '../../../hooks/usePagedList';
-import {formatDateTime} from '../../../utils/format';
-import {notify} from '../../../utils/notify';
-import type {TaskTemplate, TaskTemplateType} from '../../../types/taskTemplate';
+import {deleteTaskTemplate, queryTaskTemplates} from '@/api/taskTemplate';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import Pagination from '@/components/Pagination';
+import {COL} from '@/constants/table';
+import usePagedList from '@/hooks/usePagedList';
+import {formatDateTime} from '@/utils/format';
+import {notify} from '@/utils/notify';
+import type {TaskTemplate, TaskTemplateType} from '@/types/taskTemplate';
 import CreateTaskModal, {parseTemplatePlaceholders} from './CreateTaskModal';
 import TemplateFormDrawer from './TemplateFormDrawer';
 import type {TemplateFormMode} from './TemplateFormDrawer';

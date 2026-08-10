@@ -2,11 +2,11 @@
 // 级联选择：先选数据域，再选其下主题；清空数据域 = 清除分类（后端两者皆空 = 清除）。
 import {useEffect, useMemo, useState} from 'react';
 import {Select} from 'antd';
-import {assignTableClassification} from '../../../api/asset';
-import DsButton from '../../../components/DsButton';
-import DsModal from '../../../components/DsModal';
-import {notify} from '../../../utils/notify';
-import type {AssetClassification} from '../../../types/asset';
+import {assignTableClassification} from '@/api/asset';
+import DsButton from '@/components/DsButton';
+import DsModal from '@/components/DsModal';
+import {notify} from '@/utils/notify';
+import type {AssetClassification} from '@/types/asset';
 
 interface AssignClassificationModalProps {
     open: boolean;

@@ -1,13 +1,13 @@
 // Sprint 7 F2：任务模板库 API（engineering TaskTemplateController，/engineering/task-templates/**）
 // 全部端点仅超管/工程师（后端 @SaCheckRole 兜底）。
 import request from './request';
-import type {PageResult, Result} from '../types/common';
+import type {PageResult, Result} from '@/types/common';
 import type {
     CreateTaskResult,
     TaskTemplate,
     TaskTemplateSaveRequest,
     TemplateCreateTaskRequest,
-} from '../types/taskTemplate';
+} from '@/types/taskTemplate';
 
 /** 模板分页列表（POST /page，对齐平台列表页约定；type 过滤走服务端） */
 export const queryTaskTemplates = (params: { type?: string; page: number; pageSize: number }) =>

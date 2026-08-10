@@ -1,10 +1,10 @@
 // DAG API：统一走全局 request 实例（token 注入、401 跳登录、业务错误提示都在拦截器里）。
 // 后端 /engineering/dev/* 与 /engineering/dag-executions 均返回 {code, message, data} 信封（Result），
 // 拦截器负责 code !== 200 时 reject；本层统一 .then(r => r.data) 拆信封，与老接口（sync.ts 等）用法一致。
-import request from '../../../api/request';
-import type {PageResult, Result} from '../../../types/common';
-import type {SyncJobLog} from '../../../types/sync';
-import type {AlertRuleDTO} from '../../../types/alert';
+import request from '@/api/request';
+import type {PageResult, Result} from '@/types/common';
+import type {SyncJobLog} from '@/types/sync';
+import type {AlertRuleDTO} from '@/types/alert';
 import type {
     Dag,
     DagAlertConfig,

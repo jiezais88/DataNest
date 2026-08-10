@@ -14,22 +14,22 @@ import {
     HiOutlineQueueList,
     HiOutlineShare,
 } from 'react-icons/hi2';
-import {getAssetClassifications, getAssetCollaboration, recordAssetView} from '../../../api/asset';
-import {getLineageGraph} from '../../../api/lineage';
-import {getMetadataTable} from '../../../api/metadata';
-import {getQualityScoreByTable} from '../../../api/quality';
-import DatabaseTypeIcon from '../../../components/DatabaseTypeIcon';
-import DsButton from '../../../components/DsButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import QualityScoreBadge from '../../../components/QualityScoreBadge';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {formatDateTime} from '../../../utils/format';
-import type {AssetClassification, AssetCollaboration} from '../../../types/asset';
-import type {MetadataTable} from '../../../types/metadata';
-import type {QualityScore} from '../../../types/quality';
-import AssignClassificationModal from '../modals/AssignClassificationModal';
-import AssignOwnerModal from '../modals/AssignOwnerModal';
+import {getAssetClassifications, getAssetCollaboration, recordAssetView} from '@/api/asset';
+import {getLineageGraph} from '@/api/lineage';
+import {getMetadataTable} from '@/api/metadata';
+import {getQualityScoreByTable} from '@/api/quality';
+import DatabaseTypeIcon from '@/components/DatabaseTypeIcon';
+import DsButton from '@/components/DsButton';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useHasRole} from '@/hooks/useHasRole';
+import {formatDateTime} from '@/utils/format';
+import type {AssetClassification, AssetCollaboration} from '@/types/asset';
+import type {MetadataTable} from '@/types/metadata';
+import type {QualityScore} from '@/types/quality';
+import AssignClassificationModal from '@/pages/assets/modals/AssignClassificationModal';
+import AssignOwnerModal from '@/pages/assets/modals/AssignOwnerModal';
 import AssetLineageTab from './AssetLineageTab';
 import CollaborationBar from './CollaborationBar';
 import ColumnsTab from './ColumnsTab';

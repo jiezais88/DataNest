@@ -16,24 +16,24 @@ import {
     assignTableClassification,
     listAssetTags,
     searchAssets,
-} from '../../api/asset';
-import {listMetadataDatasourceIds} from '../../api/metadata';
-import ConfirmDialog from '../../components/ConfirmDialog';
-import DsButton from '../../components/DsButton';
-import DsFilterSelect from '../../components/DsFilterSelect';
-import DsIconButton from '../../components/DsIconButton';
-import DsTableEmpty from '../../components/DsTableEmpty';
-import DsToolbar from '../../components/DsToolbar';
-import Pagination from '../../components/Pagination';
-import QualityScoreBadge from '../../components/QualityScoreBadge';
-import SearchInput from '../../components/SearchInput';
-import {GOVERNANCE_WRITE_ROLES} from '../../constants/roles';
-import {COL} from '../../constants/table';
-import usePagedList from '../../hooks/usePagedList';
-import {useHasRole} from '../../hooks/useHasRole';
-import {notify} from '../../utils/notify';
-import {QUALITY_HEALTH_OPTIONS} from '../../types/quality';
-import type {AssetBrowseQuery, AssetClassification, AssetClassificationTree, AssetSearchItem, AssetTag} from '../../types/asset';
+} from '@/api/asset';
+import {listMetadataDatasourceIds} from '@/api/metadata';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import DsButton from '@/components/DsButton';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsIconButton from '@/components/DsIconButton';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import DsToolbar from '@/components/DsToolbar';
+import Pagination from '@/components/Pagination';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import SearchInput from '@/components/SearchInput';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {COL} from '@/constants/table';
+import usePagedList from '@/hooks/usePagedList';
+import {useHasRole} from '@/hooks/useHasRole';
+import {notify} from '@/utils/notify';
+import {QUALITY_HEALTH_OPTIONS} from '@/types/quality';
+import type {AssetBrowseQuery, AssetClassification, AssetClassificationTree, AssetSearchItem, AssetTag} from '@/types/asset';
 import AssetTree, {ALL_SELECTION, selectionKey, selectionToQuery} from './AssetTree';
 import type {AssetTreeSelection} from './AssetTree';
 import {buildAssetColumns} from './assetColumns';

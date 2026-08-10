@@ -9,8 +9,8 @@
 //   （注意：后端要求请求体为 JSON 字符串，响应里是对象数组）
 // - 限流：rateLimitEnabled + readRateLimitMbps(MB/s) + writeRateLimitRowsPerSecond(行/s)，不启用/不填 = 不限
 import {useCallback, useEffect, useState} from 'react';
-import type {DataSource} from '../../../types/datasource';
-import {DataSourceTypeEnum} from '../../../constants/datasource';
+import type {DataSource} from '@/types/datasource';
+import {DataSourceTypeEnum} from '@/constants/datasource';
 import type {
     SourceTableDetail,
     SyncFieldMapping,
@@ -18,15 +18,15 @@ import type {
     SyncJobCreateRequest,
     SyncMode,
     SyncTriggerType,
-} from '../../../types/sync';
-import {SyncModeEnum, TaskTriggerTypeEnum} from '../../../constants/task';
-import {getDataSourceSchemas, getDataSourceTables} from '../../../api/engineering';
-import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '../../../api/metadata';
-import {previewDataSource} from '../../../api/preview';
-import Drawer from '../../../components/Drawer';
-import CronPicker from '../../../components/CronPicker';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
+} from '@/types/sync';
+import {SyncModeEnum, TaskTriggerTypeEnum} from '@/constants/task';
+import {getDataSourceSchemas, getDataSourceTables} from '@/api/engineering';
+import {listBuiltinDorisDatabases, listBuiltinDorisTables} from '@/api/metadata';
+import {previewDataSource} from '@/api/preview';
+import Drawer from '@/components/Drawer';
+import CronPicker from '@/components/CronPicker';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
 import {HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
 
 interface FormData {

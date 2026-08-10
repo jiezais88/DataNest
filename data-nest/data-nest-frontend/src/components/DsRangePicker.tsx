@@ -18,7 +18,7 @@ import dayjs, {Dayjs} from 'dayjs';
 import zhCNLocale from 'dayjs/locale/zh-cn';
 import {DatePicker} from 'antd';
 import datePickerZhCN from 'antd/es/date-picker/locale/zh_CN';
-import {formatDateTimeLocalInput} from '../utils/format';
+import {formatDateTimeLocalInput} from '@/utils/format';
 
 dayjs.locale(zhCNLocale);
 

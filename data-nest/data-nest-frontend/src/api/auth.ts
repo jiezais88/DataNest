@@ -1,5 +1,5 @@
 import request from './request';
-import type {PageResult, Result} from '../types/common';
+import type {PageResult, Result} from '@/types/common';
 
 export interface LoginParams {
     username: string;

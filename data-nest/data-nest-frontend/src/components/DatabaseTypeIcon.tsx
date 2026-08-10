@@ -1,5 +1,5 @@
-import type {DataSourceType} from '../constants/datasource';
-import {DataSourceTypeEnum} from '../constants/datasource';
+import type {DataSourceType} from '@/constants/datasource';
+import {DataSourceTypeEnum} from '@/constants/datasource';
 import {SiMysql, SiPostgresql} from 'react-icons/si';
 import {HiOutlineCircleStack} from 'react-icons/hi2';
 

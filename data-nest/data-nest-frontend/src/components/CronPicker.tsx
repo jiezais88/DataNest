@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
-import {describeCron, nextRunTimes} from '../utils/cron';
-import {formatDateTime} from '../utils/format';
+import {describeCron, nextRunTimes} from '@/utils/cron';
+import {formatDateTime} from '@/utils/format';
 
 interface CronPickerProps {
     value: string;

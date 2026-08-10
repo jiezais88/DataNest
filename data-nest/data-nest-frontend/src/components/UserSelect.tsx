@@ -3,8 +3,8 @@
 // 交互对齐 DagAlertConfigModal：antd Select multiple + 远程搜索，已选显示「用户名（邮箱）」标签。
 import {useEffect, useMemo, useState} from 'react';
 import {Select, Spin} from 'antd';
-import {getUsersWithEmail} from '../api/alert';
-import type {UserOption} from '../types/alert';
+import {getUsersWithEmail} from '@/api/alert';
+import type {UserOption} from '@/types/alert';
 
 interface UserSelectProps {
     value?: string[];

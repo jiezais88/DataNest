@@ -8,12 +8,12 @@ import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {HiOutlineAdjustmentsHorizontal, HiOutlineCalculator, HiOutlineEye} from 'react-icons/hi2';
-import {formatDateTime} from '../../../utils/format';
-import {COL} from '../../../constants/table';
-import {notify} from '../../../utils/notify';
-import {useHasRole} from '../../../hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '../../../constants/roles';
-import {listMetadataDatasourceIds} from '../../../api/metadata';
+import {formatDateTime} from '@/utils/format';
+import {COL} from '@/constants/table';
+import {notify} from '@/utils/notify';
+import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {listMetadataDatasourceIds} from '@/api/metadata';
 import {
     executeTableQualityRules,
     getQualityScoreConfig,
@@ -21,32 +21,32 @@ import {
     getTableQualityRuleResults,
     queryQualityScores,
     updateQualityScoreConfig,
-} from '../../../api/quality';
-import DsButton from '../../../components/DsButton';
-import DsIconButton from '../../../components/DsIconButton';
-import DsFilterSelect from '../../../components/DsFilterSelect';
-import DsModal from '../../../components/DsModal';
-import DsStatusBadge from '../../../components/DsStatusBadge';
-import DsToolbar from '../../../components/DsToolbar';
-import SearchInput from '../../../components/SearchInput';
-import type {DsStatusVariant} from '../../../components/DsStatusBadge';
-import DsTableEmpty from '../../../components/DsTableEmpty';
-import Pagination from '../../../components/Pagination';
-import QualityScoreBadge from '../../../components/QualityScoreBadge';
-import type {MetadataDatasource} from '../../../types/metadata';
+} from '@/api/quality';
+import DsButton from '@/components/DsButton';
+import DsIconButton from '@/components/DsIconButton';
+import DsFilterSelect from '@/components/DsFilterSelect';
+import DsModal from '@/components/DsModal';
+import DsStatusBadge from '@/components/DsStatusBadge';
+import DsToolbar from '@/components/DsToolbar';
+import SearchInput from '@/components/SearchInput';
+import type {DsStatusVariant} from '@/components/DsStatusBadge';
+import DsTableEmpty from '@/components/DsTableEmpty';
+import Pagination from '@/components/Pagination';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import type {MetadataDatasource} from '@/types/metadata';
 import {
     QUALITY_CHECK_LEVEL_LABEL,
     QUALITY_HEALTH_LABEL,
     QUALITY_HEALTH_OPTIONS,
     QUALITY_TYPE_LABEL,
-} from '../../../types/quality';
+} from '@/types/quality';
 import type {
     QualityCheckLevel,
     QualityHealthLevel,
     QualityScore,
     QualityScoreConfig,
     QualityTableRuleResult,
-} from '../../../types/quality';
+} from '@/types/quality';
 
 /** 健康度 -> 徽章变体（列表「健康度」列；未配置显示暂无） */
 const HEALTH_VARIANT: Record<QualityHealthLevel, DsStatusVariant> = {

@@ -1,5 +1,5 @@
-import {QUALITY_HEALTH_LABEL} from '../types/quality';
-import type {QualityHealthLevel} from '../types/quality';
+import {QUALITY_HEALTH_LABEL} from '@/types/quality';
+import type {QualityHealthLevel} from '@/types/quality';
 
 /**
  * 质量评分 + 健康度徽章（Sprint 6 NG8 单一出处）。

@@ -18,12 +18,12 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {Spin, Tooltip} from 'antd';
-import {getLineageGraph} from '../../../api/lineage';
-import DsButton from '../../../components/DsButton';
-import EmptyState from '../../../components/EmptyState';
-import QualityScoreBadge from '../../../components/QualityScoreBadge';
-import type {LineageEdgeDTO, LineageGraphDTO, LineageNodeDTO} from '../../../types/lineage';
-import {layoutWithDagre} from '../../../utils/dagLayout';
+import {getLineageGraph} from '@/api/lineage';
+import DsButton from '@/components/DsButton';
+import EmptyState from '@/components/EmptyState';
+import QualityScoreBadge from '@/components/QualityScoreBadge';
+import type {LineageEdgeDTO, LineageGraphDTO, LineageNodeDTO} from '@/types/lineage';
+import {layoutWithDagre} from '@/utils/dagLayout';
 
 interface LineageNodeData {
     name: string;

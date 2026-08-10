@@ -5,9 +5,9 @@ import {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Tooltip} from 'antd';
 import {HiOutlineBell, HiOutlinePlus, HiOutlineStar, HiOutlineTag, HiOutlineXMark, HiBell, HiStar} from 'react-icons/hi2';
-import {addTableTag, favoriteAsset, followAsset, removeTableTag, unfavoriteAsset, unfollowAsset} from '../../../api/asset';
-import {notify} from '../../../utils/notify';
-import type {AssetCollaboration} from '../../../types/asset';
+import {addTableTag, favoriteAsset, followAsset, removeTableTag, unfavoriteAsset, unfollowAsset} from '@/api/asset';
+import {notify} from '@/utils/notify';
+import type {AssetCollaboration} from '@/types/asset';
 
 interface CollaborationBarProps {
     tableId: string;

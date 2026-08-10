@@ -1,5 +1,5 @@
 import request from './request';
-import type {PageResult, Result} from '../types/common';
+import type {PageResult, Result} from '@/types/common';
 import type {
     DataSource,
     DataSourceCreateRequest,
@@ -7,7 +7,7 @@ import type {
     DataSourceUpdateRequest,
     TestConnectionRequest,
     TestConnectionResult,
-} from '../types/datasource';
+} from '@/types/datasource';
 
 export function getDataSources(params: DataSourceQueryParams) {
     return request.post<Result<PageResult<DataSource>>>('/engineering/datasources/page', params);

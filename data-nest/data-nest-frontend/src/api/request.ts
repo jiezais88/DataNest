@@ -1,6 +1,6 @@
 import axios, {type AxiosError, type AxiosRequestConfig, type AxiosResponse} from 'axios';
-import {notify} from '../utils/notify';
-import type {ApiError} from '../utils/error';
+import {notify} from '@/utils/notify';
+import type {ApiError} from '@/utils/error';
 
 declare module 'axios' {
     interface AxiosRequestConfig {
