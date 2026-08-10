@@ -11,6 +11,8 @@ public class CdcPipelineSaveRequest {
 
     @Schema(description = "管道名称（唯一）", example = "testdb 实时入湖")
     private String name;
+    @Schema(description = "管道描述（可空）", example = "同步订单库到 Iceberg 湖仓，供实时分析使用")
+    private String description;
 
     @Schema(description = "源数据源 ID", example = "2083088527209295874")
     private Long sourceDatasourceId;

@@ -347,7 +347,9 @@ Sprint 8 三大模块，均为 P0：
 |------|------|------|------|
 | POST | `/validate-source` | 预检源数据源（连通/binlog/权限） | 超管/工程师 |
 | GET | `/source-databases/{datasourceId}` | 源库列表（向导下拉） | 超管/工程师 |
-| POST | `/` | 创建管道（保存配置，不启动） | 超管/工程师 |
+| GET | `/source-tables/{datasourceId}?database=` | 源库表列表（表名 + 约估行数，向导勾选同步表；2026-08-10 前端联调确认新增） | 超管/工程师 |
+| GET | `/stats` | 管道统计（运行中/已停止/异常 + 已同步表总数，列表页统计卡；2026-08-10 用户确认新增） | 全角色 |
+| POST | `/` | 创建管道（保存配置，不启动；含 description 描述字段，V1.1.0） | 超管/工程师 |
 | GET | `/page` | 管道分页（状态/延迟/累计变更） | 超管/工程师/治理员/分析师 |
 | GET | `/{id}` | 管道详情 | 超管/工程师/治理员/分析师 |
 | PUT | `/{id}` | 编辑（仅 STOPPED 可编辑） | 超管/工程师 |
@@ -358,6 +360,7 @@ Sprint 8 三大模块，均为 P0：
 | GET | `/{id}/refresh-catalog` | 触发 Doris Iceberg Catalog REFRESH（表结构变更后） | 超管/工程师 |
 
 > 配套 internal 端点（realtime-api 契约）：`GET /realtime/internal/cdc/pipelines/by-datasource?datasourceId=`（engineering 删除数据源前置校验引用用，返回管道 id/name 列表；F2 实现落定 `/by-datasource` 路径，fail-closed）。
+> **前端联调补齐（2026-08-10）**：`/page` 列表行批量回填 `tables`（「源」列展示「orders 等 N 表」，一次 IN 查询防 N+1）；列表「启动时间」列以「更新时间」呈现（DTO 无启动时间字段，2026-08-10 确认）；列表分页用 GET（与 DAG 执行历史同例外的查询场景）。
 
 ### 5.3 质量报告（governance `QualityReportController`，`/quality/report`）
 

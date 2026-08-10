@@ -48,6 +48,8 @@ public class CdcPipeline {
 
     /** 管道名称（唯一） */
     private String name;
+    /** 管道描述（V1.1.0 补，可空） */
+    private String description;
 
     /** 源数据源 ID（engineering datasource_connection.id） */
     private Long sourceDatasourceId;

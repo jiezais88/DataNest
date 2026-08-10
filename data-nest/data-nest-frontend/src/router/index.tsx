@@ -36,6 +36,8 @@ const AssetsPage = lazyPage(() => import('../pages/assets'));
 const AssetDetailPage = lazyPage(() => import('../pages/assets/detail'));
 const MyFavoritesPage = lazyPage(() => import('../pages/assets/favorites'));
 const MyFollowsPage = lazyPage(() => import('../pages/assets/follows'));
+const CdcPipelinesPage = lazyPage(() => import('../pages/engineering/cdc-pipelines'));
+const CdcPipelineWizardPage = lazyPage(() => import('../pages/engineering/cdc-pipelines/wizard'));
 
 export const router = createBrowserRouter([
     {
@@ -79,6 +81,9 @@ export const router = createBrowserRouter([
             {index: true, element: <HomePage/>},
             {path: 'system/users', element: <UsersPage/>},
             {path: 'engineering/datasources', element: <DataSourcesPage/>},
+            {path: 'engineering/cdc-pipelines', element: <CdcPipelinesPage/>},
+            {path: 'engineering/cdc-pipelines/new', element: <CdcPipelineWizardPage/>},
+            {path: 'engineering/cdc-pipelines/:id/edit', element: <CdcPipelineWizardPage/>},
             {path: 'engineering/sync-jobs', element: <SyncJobsPage/>},
             {path: 'engineering/sync-jobs/:syncJobId/history', element: <SyncJobHistoryRedirect/>},
             {path: 'engineering/sync-job-history', element: <SyncJobHistoryGlobalPage/>},

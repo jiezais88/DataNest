@@ -19,7 +19,7 @@
 | Sprint 8 技术设计                        | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-技术文档.md`（v1.1，含 6 个 ADR D1~D6）                         |
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
 | F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` 15/15 通过（2026-08-10）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
-| F2 实时 CDC 管道（DI-04/RC-01）          | 🔄 后端完成 | 后端已实现 + 两轮全链路实测通过 + 评审修复完成（2026-08-10）：realtime 服务 + realtime-api + 独立库 + Flink 提交/停止(savepoint)/监控；前端 + E2E 未开始 |
+| F2 实时 CDC 管道（DI-04/RC-01）          | 🔄 前端完成 | 后端两轮实测通过（2026-08-10）；前端完成 + 联调调通 + Review 修复（2026-08-10）：列表页 + 4 步向导整页 + 日志抽屉 + 统计卡；后端小补 description/stats/source-tables/page 回填 tables；E2E 另一会话负责 |
 | F3 质量报告（DG-07 完整版）              | ⏳ 未开始 | 报告聚合接口 + 评分历史表 + 前端报告页                                                         |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
 | Sprint 8 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
@@ -196,14 +196,18 @@
 - [x] 重建 + 部署 + curl 自测 + 手工 E2E（test-mysql users → 管道 → initial 快照 3 行落湖 → Doris 可查 → 增量 insert 经 Iceberg 快照 + Doris REFRESH 可见 → savepoint 停止/恢复续传不丢不重 → 删除级联清理），施工代理与主会话各独立跑通一轮
 - [x] 代码评审（结论 With fixes，无 Critical）已修复回归：① **缺 MyBatis-Plus 分页拦截器**（selectPage 退化为全量返回，明确功能缺陷）→ 补 MyBatisPlusConfig；② start 并发重复提交 → CAS 占位（STOPPED/ERROR→RUNNING）；③ Flink REST RestClient 无超时（JM 半挂会卡死监控线程）→ connect 5s/read 10s；④ 指标查询失败误清 total_changes → -1 哨兵跳过回写；⑤ vertex 名称互斥分支丢 lag → Sink/Source 独立 if；另修：8000 参数码、stop 与监控竞态误判「外部停止」、state/metrics REST 合并为一次 /jobs/{id}、无变化跳过 DB 写、删死配置 commit-interval-ms。遗留 TODO：savepoint 文件物理清理（需 S3 客户端）、start 失败极端场景的孤儿作业补偿、UPSERT 主键列存在性预检
 
-**前端**
-- [ ] `Sidebar.tsx`：「数据工程」组新增「CDC 管道」（查看 ALL_ROLES，写按钮 ENGINEERING_WRITE_ROLES）
-- [ ] `router/index.tsx`：`/engineering/cdc-pipelines`
-- [ ] CDC 管道页：向导（4 步：基本信息/源/目标/确认启动）+ 列表（状态/延迟/变更数）+ 日志抽屉 + 启停/编辑/删除
-- [ ] `types/cdc.ts` + `api/cdc.ts`
+**前端**——✅ 已完成并联调调通（2026-08-10；E2E 由另一会话负责）
+- [x] `Sidebar.tsx`：「数据工程」组新增「CDC 管道」（菜单 ALL_ROLES，写按钮 ENGINEERING_WRITE_ROLES）
+- [x] `router/index.tsx`：`/engineering/cdc-pipelines` + `/new` + `/:id/edit`（向导整页路由，用户确认对齐原型）
+- [x] CDC 管道列表页：4 统计卡 + 状态 segmented + 关键词 + 表格（源列「orders 等 N 表」）+ RUNNING 5s 轮询 + 启停/编辑/日志/刷新Catalog/删除
+- [x] 日志抽屉（分页 + 刷新 + RUNNING 自动刷新 + 清屏）+ 4 步向导（预检 + 确认页）
+- [x] `types/cdc.ts` + `api/cdc.ts`
+- [x] 后端小补（用户确认）：`description` 字段（V1.1.0）+ `GET /stats` 统计端点 + `GET /source-tables` 源表列表 + page 批量回填 tables（防 N+1）；curl 自测通过
+- [x] 联调调通（截图逐屏验证）：向导新建（预检 4 项通过）→ 仅保存 → 列表 → 日志 → 启动（真实 Flink 作业 RUNNING）→ 停止（savepoint）→ 删除
+- [x] Code Review（With fixes）已修复：**Critical 仅增量残留 INITIAL 会真跑全量快照**（syncMode 联动 startupMode=LATEST_OFFSET + 防御校验）；Important：日志抽屉跨管道页码残留（applyQuery 重置）+ 管道状态快照失真（列表轮询联动）；Minor：轮询条件改 stats.running、预检失败禁「保存并启动」等
 
 **测试**
-- [ ] curl 自测 → 前端联调 → `e2e/sprint8/e2e/cdc-pipeline.spec.ts`
+- [ ] curl 自测 → 前端联调（✅ 已完成）→ `e2e/sprint8/e2e/cdc-pipeline.spec.ts`（另一会话负责）
 
 ---
 

@@ -7,12 +7,14 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.realtime.dto.CdcSourceValidateResult;
+import com.datanest.realtime.dto.CdcSourceTableDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -161,5 +163,31 @@ public class SourcePrecheckService {
             }
         }
         return databases;
+    }
+
+    /** 列出源库下的业务表（表名 + 约估行数，向导同步表勾选用；库不存在返回空列表） */
+    public List<CdcSourceTableDTO> listTables(Long datasourceId, String database) {
+        DataSourceInfo datasource = getDatasource(datasourceId);
+        try (Connection connection = openConnection(datasource);
+             PreparedStatement ps = connection.prepareStatement(
+                     "SELECT TABLE_NAME, COALESCE(TABLE_ROWS, 0) AS table_rows FROM information_schema.TABLES "
+                             + "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME")) {
+            ps.setString(1, database);
+            List<CdcSourceTableDTO> tables = new ArrayList<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    CdcSourceTableDTO dto = new CdcSourceTableDTO();
+                    dto.setTableName(rs.getString(1));
+                    dto.setTableRows(rs.getLong(2));
+                    tables.add(dto);
+                }
+            }
+            return tables;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.CDC_SOURCE_CONNECTION_FAILED,
+                    "源数据源连接失败: " + e.getMessage());
+        }
     }
 }

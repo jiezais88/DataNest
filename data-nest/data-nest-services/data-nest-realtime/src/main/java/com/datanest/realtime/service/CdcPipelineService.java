@@ -16,6 +16,7 @@ import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.realtime.dto.CdcPipelineDTO;
 import com.datanest.realtime.dto.CdcPipelineLogDTO;
 import com.datanest.realtime.dto.CdcPipelineSaveRequest;
+import com.datanest.realtime.dto.CdcPipelineStatsDTO;
 import com.datanest.realtime.dto.CdcSourceValidateResult;
 import com.datanest.realtime.dto.CdcTableMappingDTO;
 import com.datanest.realtime.entity.CdcPipeline;
@@ -31,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -114,6 +116,7 @@ public class CdcPipelineService {
         UpdateWrapper<CdcPipeline> update = new UpdateWrapper<CdcPipeline>()
                 .eq("id", id)
                 .set("name", entity.getName())
+                .set("description", entity.getDescription())
                 .set("source_datasource_id", entity.getSourceDatasourceId())
                 .set("source_database", entity.getSourceDatabase())
                 .set("target_database", entity.getTargetDatabase())
@@ -148,6 +151,22 @@ public class CdcPipelineService {
         pipelineMapper.deleteById(id);
     }
 
+    /** 管道统计（列表页顶部统计卡）：按状态分组计数 + 已同步表总数。 */
+    public CdcPipelineStatsDTO stats() {
+        Map<String, Long> byStatus = new HashMap<>();
+        for (Map<String, Object> row : pipelineMapper.selectMaps(new QueryWrapper<CdcPipeline>()
+                .select("status", "COUNT(*) AS cnt").groupBy("status"))) {
+            byStatus.put((String) row.get("status"), ((Number) row.get("cnt")).longValue());
+        }
+        CdcPipelineStatsDTO dto = new CdcPipelineStatsDTO();
+        dto.setRunning(byStatus.getOrDefault(CdcPipeline.STATUS_RUNNING, 0L));
+        dto.setStopped(byStatus.getOrDefault(CdcPipeline.STATUS_STOPPED, 0L));
+        dto.setError(byStatus.getOrDefault(CdcPipeline.STATUS_ERROR, 0L));
+        Long syncedTables = tableMapper.selectCount(null);
+        dto.setSyncedTables(syncedTables == null ? 0L : syncedTables);
+        return dto;
+    }
+
     /** 分页查询（status/keyword 过滤，id 倒序，批量回填数据源名） */
     public PageResult<CdcPipelineDTO> page(String status, String keyword, long page, long pageSize) {
         QueryWrapper<CdcPipeline> wrapper = new QueryWrapper<>();
@@ -162,7 +181,30 @@ public class CdcPipelineService {
 
         List<CdcPipelineDTO> records = result.getRecords().stream().map(this::toDTO).toList();
         fillDatasourceNames(records);
+        fillPageTables(records);
         return PageResult.of(records, result.getTotal(), page, pageSize);
+    }
+
+    /** 批量回填列表行的表映射（「源」列展示「orders 等 N 表」），一次 IN 查询避免逐行 N+1。 */
+    private void fillPageTables(List<CdcPipelineDTO> records) {
+        List<Long> ids = records.stream().map(CdcPipelineDTO::getId).toList();
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<Long, List<CdcPipelineTable>> byPipeline = tableMapper.selectList(
+                        new QueryWrapper<CdcPipelineTable>().in("pipeline_id", ids))
+                .stream().collect(Collectors.groupingBy(CdcPipelineTable::getPipelineId));
+        for (CdcPipelineDTO dto : records) {
+            dto.setTables((byPipeline.getOrDefault(dto.getId(), List.of()).stream()
+                    .map(t -> {
+                        CdcTableMappingDTO m = new CdcTableMappingDTO();
+                        m.setSourceTable(t.getSourceTable());
+                        m.setTargetTable(t.getTargetTable());
+                        m.setPrimaryKey(t.getPrimaryKey());
+                        return m;
+                    })
+                    .toList()));
+        }
     }
 
     /** 详情（含表映射 + 数据源名回填，降级 null） */
@@ -432,6 +474,7 @@ public class CdcPipelineService {
 
     private void applySaveRequest(CdcPipeline entity, CdcPipelineSaveRequest request) {
         entity.setName(request.getName().trim());
+        entity.setDescription(request.getDescription());
         entity.setSourceDatasourceId(request.getSourceDatasourceId());
         entity.setSourceDatabase(request.getSourceDatabase().trim());
         entity.setTargetDatabase(request.getTargetDatabase().trim());
@@ -473,6 +516,7 @@ public class CdcPipelineService {
         CdcPipelineDTO dto = new CdcPipelineDTO();
         dto.setId(entity.getId());
         dto.setName(entity.getName());
+        dto.setDescription(entity.getDescription());
         dto.setSourceDatasourceId(entity.getSourceDatasourceId());
         dto.setSourceDatabase(entity.getSourceDatabase());
         dto.setTargetDatabase(entity.getTargetDatabase());

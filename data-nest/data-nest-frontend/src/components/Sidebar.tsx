@@ -8,6 +8,7 @@ import {
     HiOutlineArrowsRightLeft,
     HiOutlineBell,
     HiOutlineBellAlert,
+    HiOutlineBolt,
     HiOutlineCheckBadge,
     HiOutlineCheckCircle,
     HiOutlineCircleStack,
@@ -47,6 +48,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 path: '/engineering/datasources',
                 icon: <HiOutlineServer size={18}/>,
                 roles: [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.GOVERNANCE_ADMIN]
+            },
+            {
+                label: 'CDC 管道',
+                path: '/engineering/cdc-pipelines',
+                icon: <HiOutlineBolt size={18}/>,
+                roles: ALL_ROLES
             },
             {
                 label: '批量数据同步任务',

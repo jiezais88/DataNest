@@ -7,6 +7,8 @@ import com.datanest.common.model.Result;
 import com.datanest.realtime.dto.CdcPipelineDTO;
 import com.datanest.realtime.dto.CdcPipelineLogDTO;
 import com.datanest.realtime.dto.CdcPipelineSaveRequest;
+import com.datanest.realtime.dto.CdcPipelineStatsDTO;
+import com.datanest.realtime.dto.CdcSourceTableDTO;
 import com.datanest.realtime.dto.CdcSourceValidateRequest;
 import com.datanest.realtime.dto.CdcSourceValidateResult;
 import com.datanest.realtime.service.CdcPipelineService;
@@ -52,11 +54,25 @@ public class CdcPipelineController {
         return Result.ok(precheckService.listDatabases(datasourceId));
     }
 
+    @Operation(summary = "源库表列表", description = "列出源库下全部业务表（表名 + 约估行数），供建管道勾选同步表")
+    @GetMapping("/source-tables/{datasourceId}")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    public Result<List<CdcSourceTableDTO>> listSourceTables(@Parameter(description = "源数据源 ID") @PathVariable Long datasourceId,
+                                                            @Parameter(description = "源库名") @RequestParam String database) {
+        return Result.ok(precheckService.listTables(datasourceId, database));
+    }
+
     @Operation(summary = "创建管道", description = "初始状态 STOPPED；UPSERT 模式每表必须配置主键")
     @PostMapping
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     public Result<CdcPipelineDTO> create(@RequestBody CdcPipelineSaveRequest request) {
         return Result.ok(pipelineService.create(request));
+    }
+
+    @Operation(summary = "管道统计", description = "运行中/已停止/异常计数 + 已同步表总数（列表页顶部统计卡）")
+    @GetMapping("/stats")
+    public Result<CdcPipelineStatsDTO> stats() {
+        return Result.ok(pipelineService.stats());
     }
 
     @Operation(summary = "管道分页", description = "按状态/名称关键字过滤，id 倒序")

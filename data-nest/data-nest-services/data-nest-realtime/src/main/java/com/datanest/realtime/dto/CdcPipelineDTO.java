@@ -15,6 +15,8 @@ public class CdcPipelineDTO {
 
     @Schema(description = "管道名称")
     private String name;
+    @Schema(description = "管道描述")
+    private String description;
 
     @Schema(description = "源数据源 ID", example = "2083088527209295874")
     private Long sourceDatasourceId;
