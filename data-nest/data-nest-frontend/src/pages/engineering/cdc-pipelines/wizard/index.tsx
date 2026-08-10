@@ -48,6 +48,24 @@ const DEFAULT_CHECKPOINT_SECONDS = 60;
 const DEFAULT_SCAN_CHUNK_SIZE = 8096;
 const DEFAULT_SCHEMA_CHANGE_BEHAVIOR = 'EVOLVE';
 
+/**
+ * Checkpoint 间隔档位化（2026-08-10）：裸秒数对业务用户不友好且间隔过小会产生大量湖仓小文件，
+ * 收敛为 3 档业务语义 + 自定义兜底；configJson 仍存 checkpointIntervalSeconds 秒数（后端校验 ≥3 不变）。
+ */
+const CHECKPOINT_TIER_CUSTOM = -1;
+const CHECKPOINT_TIER_OPTIONS = [
+    {value: 10, label: '实时（10 秒，湖仓提交频繁）'},
+    {value: DEFAULT_CHECKPOINT_SECONDS, label: '准实时（60 秒，默认推荐）'},
+    {value: 600, label: '低优先（10 分钟，小文件最少）'},
+    {value: CHECKPOINT_TIER_CUSTOM, label: '自定义秒数…'},
+];
+/** 确认页档位标签（非档位值显示自定义秒数） */
+const CHECKPOINT_TIER_SUMMARY: Record<number, string> = {
+    10: '实时（10 秒）',
+    [DEFAULT_CHECKPOINT_SECONDS]: '准实时（60 秒）',
+    600: '低优先（10 分钟）',
+};
+
 /** 表结构变更策略选项（CDC YAML schema.change.behavior） */
 const SCHEMA_CHANGE_BEHAVIOR_OPTIONS = [
     {value: 'EVOLVE', label: 'EVOLVE（默认，自动同步到湖仓表）'},
@@ -125,6 +143,8 @@ export default function CdcPipelineWizardPage() {
     // 高级配置（configJson：parallelism / checkpointIntervalSeconds / schemaChangeBehavior / scanChunkSize）
     const [parallelism, setParallelism] = useState(DEFAULT_PARALLELISM);
     const [checkpointIntervalSeconds, setCheckpointIntervalSeconds] = useState(DEFAULT_CHECKPOINT_SECONDS);
+    /** Checkpoint 是否走自定义秒数（false = 档位值；编辑回填非档位值时自动置 true） */
+    const [checkpointCustom, setCheckpointCustom] = useState(false);
     const [schemaChangeBehavior, setSchemaChangeBehavior] = useState(DEFAULT_SCHEMA_CHANGE_BEHAVIOR);
     const [scanChunkSize, setScanChunkSize] = useState(DEFAULT_SCAN_CHUNK_SIZE);
 
@@ -187,6 +207,8 @@ export default function CdcPipelineWizardPage() {
                         if (typeof cfg.parallelism === 'number') setParallelism(cfg.parallelism);
                         if (typeof cfg.checkpointIntervalSeconds === 'number') {
                             setCheckpointIntervalSeconds(cfg.checkpointIntervalSeconds);
+                            // 非档位值（历史自定义配置）回填为「自定义秒数」档，避免静默改值
+                            setCheckpointCustom(!(cfg.checkpointIntervalSeconds in CHECKPOINT_TIER_SUMMARY));
                         }
                         if (typeof cfg.schemaChangeBehavior === 'string') {
                             setSchemaChangeBehavior(cfg.schemaChangeBehavior);
@@ -698,7 +720,7 @@ export default function CdcPipelineWizardPage() {
                                           label="Append" hint="仅追加，不合并（适合日志 / 流水）"/>
                             </FormItem>
                             <FormItem label="高级配置（可选）"
-                                      hint="留默认即可：并行度过大对小表是额外开销；间隔过小会增加湖仓提交频率。">
+                                      hint="留默认即可：并行度过大对小表是额外开销；间隔越小数据越新鲜，但湖仓小文件越多。">
                                 <div className="grid grid-cols-2 gap-ds-3">
                                     <div>
                                         <div className="text-ds-tiny text-ds-text-muted mb-ds-1">
@@ -709,16 +731,35 @@ export default function CdcPipelineWizardPage() {
                                                value={parallelism}
                                                aria-label="并行度"
                                                onChange={(e) => setParallelism(Number(e.target.value))}/>
+                                        <div className="text-ds-tiny text-ds-warning mt-ds-1">
+                                            当前集群仅 1 个 Task Slot，并行度 &gt;1 作业将无法调度
+                                        </div>
                                     </div>
                                     <div>
                                         <div className="text-ds-tiny text-ds-text-muted mb-ds-1">
-                                            Checkpoint 间隔（秒，≥3，默认 {DEFAULT_CHECKPOINT_SECONDS}）
+                                            Checkpoint 间隔（数据新鲜度档位）
                                         </div>
-                                        <input type="number" className={INPUT_CLASS}
-                                               min={3} step={1}
-                                               value={checkpointIntervalSeconds}
-                                               aria-label="Checkpoint 间隔"
-                                               onChange={(e) => setCheckpointIntervalSeconds(Number(e.target.value))}/>
+                                        <Select
+                                            className="w-full"
+                                            value={checkpointCustom ? CHECKPOINT_TIER_CUSTOM : checkpointIntervalSeconds}
+                                            options={CHECKPOINT_TIER_OPTIONS}
+                                            aria-label="Checkpoint 间隔"
+                                            onChange={(v) => {
+                                                if (v === CHECKPOINT_TIER_CUSTOM) {
+                                                    setCheckpointCustom(true);
+                                                } else {
+                                                    setCheckpointCustom(false);
+                                                    setCheckpointIntervalSeconds(v);
+                                                }
+                                            }}
+                                        />
+                                        {checkpointCustom && (
+                                            <input type="number" className={`${INPUT_CLASS} mt-ds-2`}
+                                                   min={3} step={1}
+                                                   value={checkpointIntervalSeconds}
+                                                   aria-label="自定义 Checkpoint 间隔"
+                                                   onChange={(e) => setCheckpointIntervalSeconds(Number(e.target.value))}/>
+                                        )}
                                     </div>
                                     <div>
                                         <div className="text-ds-tiny text-ds-text-muted mb-ds-1">
@@ -790,8 +831,10 @@ export default function CdcPipelineWizardPage() {
                             <ConfirmRow label="并行度"
                                         value={parallelism === DEFAULT_PARALLELISM ? `默认（${DEFAULT_PARALLELISM}）` : String(parallelism)}/>
                             <ConfirmRow label="Checkpoint"
-                                        value={checkpointIntervalSeconds === DEFAULT_CHECKPOINT_SECONDS
-                                            ? `默认（${DEFAULT_CHECKPOINT_SECONDS} 秒）` : `${checkpointIntervalSeconds} 秒`}/>
+                                        value={checkpointIntervalSeconds === DEFAULT_CHECKPOINT_SECONDS && !checkpointCustom
+                                            ? `默认（${DEFAULT_CHECKPOINT_SECONDS} 秒）`
+                                            : CHECKPOINT_TIER_SUMMARY[checkpointIntervalSeconds]
+                                                ?? `${checkpointIntervalSeconds} 秒（自定义）`}/>
                             <ConfirmRow label="结构变更"
                                         value={schemaChangeBehavior === DEFAULT_SCHEMA_CHANGE_BEHAVIOR
                                             ? `默认（${DEFAULT_SCHEMA_CHANGE_BEHAVIOR}）` : schemaChangeBehavior}/>

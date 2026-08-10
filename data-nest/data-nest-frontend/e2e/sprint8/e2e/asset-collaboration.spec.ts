@@ -1,7 +1,7 @@
 import {expect, type Page, test} from '@playwright/test';
 import {API_BASE, Api} from '../../sprint6/helpers/api';
 import {gotoAs} from '../../sprint6/helpers/e2e';
-import {psqlGov, scalarGov} from '../../sprint7/helpers/db';
+import {psqlEng, psqlGov, scalarGov} from '../../sprint7/helpers/db';
 import {seedAll} from '../../sprint7/helpers/seed';
 import {ADMIN, DS_ID, T1_ID, T1_NAME, T2_ID, T2_NAME, TEST_USERS} from '../../sprint7/helpers/data';
 
@@ -366,7 +366,6 @@ test.describe('DC-09 热度排行', () => {
 });
 
 // ==================== 导航与权限 ====================
-
 test.describe('导航与权限', () => {
     test('全角色可见「我的收藏」「我的关注」菜单', async ({page}) => {
         for (const user of [TEST_USERS.engineer, TEST_USERS.analyst, TEST_USERS.govAdmin]) {
@@ -384,5 +383,85 @@ test.describe('导航与权限', () => {
         expect(Number(agg.viewCount30d)).toBeGreaterThanOrEqual(1);
         expect(Array.isArray(agg.tags)).toBe(true);
         await analyst.del(`/governance/assets/tables/${T2_ID}/favorite`);
+    });
+});
+
+
+// ==================== 删除语义与边界（F1 补充覆盖） ====================
+
+test.describe('删除语义与边界', () => {
+    /** 级联删除专用：临时数据源 + 临时元数据表（不与 T1~T5 冲突） */
+    const CASCADE_DS_ID = '9000080000000000098';
+    const CASCADE_TABLE_ID = '9000080000000000056';
+    const CASCADE_TAG = 'e2e_s8_级联';
+
+    function cleanCascade(): void {
+        psqlGov(`DELETE FROM asset_table_tag WHERE table_id = ${CASCADE_TABLE_ID}`);
+        psqlGov(`DELETE FROM asset_tag WHERE name = '${CASCADE_TAG}'`);
+        psqlGov(`DELETE FROM asset_favorite WHERE table_id = ${CASCADE_TABLE_ID}`);
+        psqlGov(`DELETE FROM asset_follow WHERE table_id = ${CASCADE_TABLE_ID}`);
+        psqlGov(`DELETE FROM asset_comment WHERE table_id = ${CASCADE_TABLE_ID}`);
+        psqlGov(`DELETE FROM asset_view_log WHERE table_id = ${CASCADE_TABLE_ID}`);
+        psqlGov(`DELETE FROM metadata_column WHERE table_id = ${CASCADE_TABLE_ID}`);
+        psqlGov(`DELETE FROM metadata_table WHERE id = ${CASCADE_TABLE_ID}`);
+        psqlEng(`DELETE FROM datasource_connection WHERE id = ${CASCADE_DS_ID}`);
+    }
+
+    test('删除数据源级联清理元数据表与协作数据（T4）', async () => {
+        cleanCascade();
+        // 临时数据源（假连接即可，仅走删除级联链路）+ 临时元数据表
+        psqlEng(`INSERT INTO datasource_connection
+                 (id, name, type, host, port, database_name, schema_name, username, encrypted_password, status, created_at, updated_at, auto_collect_on_save)
+                 VALUES (${CASCADE_DS_ID}, 'e2e_s8_cascade_ds', 'MYSQL', 'middleware-test-mysql', 3306, 'testdb', NULL, 'testuser', 'x', 'NORMAL', now(), now(), 0)`);
+        psqlGov(`INSERT INTO metadata_table
+                 (id, datasource_id, database_name, schema_name, table_name, table_comment, source_status, source_type, created_at, updated_at)
+                 VALUES (${CASCADE_TABLE_ID}, ${CASCADE_DS_ID}, 'testdb', NULL, 'e2e_s8_cascade_tbl', '级联删除验证表', 'ONLINE', 'EXTERNAL', now(), now())`);
+        // 打上全部协作数据：标签/收藏/关注/评论/热度
+        await analyst.post(`/governance/assets/tables/${CASCADE_TABLE_ID}/tags`, {tagName: CASCADE_TAG});
+        await analyst.post(`/governance/assets/tables/${CASCADE_TABLE_ID}/favorite`);
+        await analyst.post(`/governance/assets/tables/${CASCADE_TABLE_ID}/follow`);
+        await analyst.post(`/governance/assets/tables/${CASCADE_TABLE_ID}/comments`, {content: 'e2e_s8 级联评论'});
+        await analyst.post(`/governance/assets/tables/${CASCADE_TABLE_ID}/view`);
+
+        // 删除数据源（admin）→ 治理侧级联
+        await admin.del(`/engineering/datasources/${CASCADE_DS_ID}`);
+        expect(scalarGov(`SELECT COUNT(*) FROM metadata_table WHERE id = ${CASCADE_TABLE_ID}`)).toBe('0');
+        expect(scalarGov(`SELECT COUNT(*) FROM asset_favorite WHERE table_id = ${CASCADE_TABLE_ID}`)).toBe('0');
+        expect(scalarGov(`SELECT COUNT(*) FROM asset_follow WHERE table_id = ${CASCADE_TABLE_ID}`)).toBe('0');
+        expect(scalarGov(`SELECT COUNT(*) FROM asset_comment WHERE table_id = ${CASCADE_TABLE_ID}`)).toBe('0');
+        expect(scalarGov(`SELECT COUNT(*) FROM asset_view_log WHERE table_id = ${CASCADE_TABLE_ID}`)).toBe('0');
+        expect(scalarGov(`SELECT COUNT(*) FROM asset_table_tag WHERE table_id = ${CASCADE_TABLE_ID}`)).toBe('0');
+        // 孤儿标签物理删除
+        expect(scalarGov(`SELECT COUNT(*) FROM asset_tag WHERE name = '${CASCADE_TAG}'`)).toBe('0');
+        cleanCascade();
+    });
+
+    test('评论作者已注销兜底显示（T4：删用户保留评论）', async ({page}) => {
+        // 造一条 user_id 不存在的历史评论（模拟作者账号已删）
+        psqlGov(`INSERT INTO asset_comment (id, table_id, user_id, content, deleted, created_at)
+                 VALUES (9000080000000000071, ${T1_ID}, 999999999999, 'e2e_s8 已注销用户的历史评论', 0, NOW())`);
+        await gotoAs(page, TEST_USERS.analyst.username, TEST_USERS.analyst.password, `/asset-catalog/${T1_ID}?tab=comments`);
+        await expect(page.getByText('e2e_s8 已注销用户的历史评论')).toBeVisible();
+        await expect(page.getByLabel('评论').getByText('已注销', {exact: true})).toBeVisible();
+        psqlGov(`DELETE FROM asset_comment WHERE id = 9000080000000000071`);
+    });
+
+    test('评论分页（API 辅助：page/pageSize/total）', async () => {
+        // 清掉 T1 存量评论，造 12 条
+        psqlGov(`DELETE FROM asset_comment WHERE table_id = ${T1_ID}`);
+        for (let i = 1; i <= 12; i++) {
+            await analyst.post(`/governance/assets/tables/${T1_ID}/comments`, {content: `e2e_s8 分页评论 ${i}`});
+        }
+        const page1 = await analyst.get<{ records: any[]; total: number }>(
+            `/governance/assets/tables/${T1_ID}/comments?page=1&pageSize=10`);
+        expect(Number(page1.total)).toBe(12);
+        expect(page1.records.length).toBe(10);
+        const page2 = await analyst.get<{ records: any[]; total: number }>(
+            `/governance/assets/tables/${T1_ID}/comments?page=2&pageSize=10`);
+        expect(page2.records.length).toBe(2);
+        // 两页无重叠（DTO 主键字段为 commentId）
+        const ids1 = new Set(page1.records.map(r => String(r.commentId)));
+        for (const r of page2.records) expect(ids1.has(String(r.commentId))).toBe(false);
+        psqlGov(`DELETE FROM asset_comment WHERE table_id = ${T1_ID}`);
     });
 });

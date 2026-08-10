@@ -466,6 +466,13 @@ public class CdcPipelineService {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
                     "全量+增量模式启动位点固定为 INITIAL");
         }
+        // 反向拦截（2026-08-10 Sprint8 E2E 发现补齐）：仅增量 + INITIAL 是矛盾组合，
+        // Flink 会按 initial 真跑全量快照，静默违背「仅增量」意图（前端有联动+防御，API 侧兜底）
+        if (CdcPipeline.SYNC_MODE_INCREMENTAL_ONLY.equals(request.getSyncMode())
+                && CdcPipeline.STARTUP_MODE_INITIAL.equals(request.getStartupMode())) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "仅增量模式启动位点不允许 INITIAL，请选择 LATEST_OFFSET / EARLIEST_OFFSET");
+        }
         // 按源类型校验（同时兜底数据源存在性与类型白名单）：PG connector 无 earliest-offset，保存期拦截
         DataSourceInfo datasource = precheckService.getDatasource(request.getSourceDatasourceId());
         if (SourcePrecheckService.TYPE_POSTGRESQL.equalsIgnoreCase(datasource.getType())

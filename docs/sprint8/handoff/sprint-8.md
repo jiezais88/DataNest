@@ -18,8 +18,8 @@
 | Sprint 8 PRD                             | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-PRD.md`（v1.2，2026-08-09）                                     |
 | Sprint 8 技术设计                        | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-技术文档.md`（v1.1，含 6 个 ADR D1~D6）                         |
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
-| F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` 15/15 通过（2026-08-10）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
-| F2 实时 CDC 管道（DI-04/RC-01）          | ✅ 完成   | 后端两轮实测 + 前端完成 + Review 修复 + 联调调通（2026-08-10）；**源范围扩展：MySQL + PostgreSQL**（PG 全链路实测通过）；Oracle/SQLServer 决策等 Flink CDC 3.7.0（B7/B8）；E2E 另一会话负责 |
+| F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` **18/18** 通过（2026-08-10 测试会话补 3 用例：删数据源级联清理协作数据/评论「已注销」兜底/评论分页）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
+| F2 实时 CDC 管道（DI-04/RC-01）          | ✅ 完成   | 后端两轮实测 + 前端完成 + Review 修复 + 联调调通 + **E2E `cdc-pipeline.spec.ts` 23/23 通过**（2026-08-10 测试会话，含 MySQL savepoint 恢复/PG 全链路/8009 引用校验）；**源范围扩展：MySQL + PostgreSQL**（PG 全链路实测通过）；Oracle/SQLServer 决策等 Flink CDC 3.7.0（B7/B8）；E2E 发现并修复后端缺口：仅增量+INITIAL 矛盾组合未拦截（已补 8000 校验） |
 | F3 质量报告（DG-07 完整版）              | ⏳ 未开始 | 报告聚合接口 + 评分历史表 + 前端报告页                                                         |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
 | Sprint 8 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
@@ -71,6 +71,8 @@
 | 前端路径别名迁移（2026-08-10 用户明确要求）                        | `vite.config.ts` resolve.alias + `tsconfig.app.json` paths 双配置（`@` → `src`）；codemod 全量改写 115 文件 838 处 `../` 导入为 `@/`（含动态 import；同目录 `./` 保留；e2e 不动）；typecheck/build/lint 无新增问题，部署后 sprint8 E2E 回归 **15/15 通过**；约定已写入 `conventions-frontend.md` §2 |
 | 回归修复（2026-08-10）                                             | sprint7 `asset-catalog.spec.ts` 血缘回跳断言修复：`53065d6` 把血缘页「← 返回」改为带 `?tab=lineage`，Playwright glob 匹配含 query 串导致 `waitForURL` 超时（存量问题，非 F1 引入）；断言对齐新行为。最终回归 sprint7 26 + sprint8 15 + 其余共 **47/47 通过** |
 | F1 前端 Code Review 修复（2026-08-10，子代理 Review 结论 With fixes，无 Critical） | Important：① Long 计数字段（viewCount/refCount/viewCount30d/commentCount）TS 类型 number→string（后端 Long 全量序列化为 string，已 curl 实证）；② CSV 导出 blob 错误检出（业务异常 Result JSON 会被存成假 CSV）——收敛 `utils/download.ts` 的 `downloadCsvBlob`，收藏页 + 合规页一起换掉。Minor 顺手修：聚合未返回禁点收藏/关注 + 拆分 toggling 锁、`?tag=` 一次性消费 + 首屏双请求消除、评论发表回第 1 页/删空页回退。规范已回落 `conventions-frontend.md`。修复后复跑 sprint8 E2E **15/15 通过**（chip 跳转用例断言对齐 ?tag= 一次性消费新行为） |
+| F2 E2E（2026-08-10 测试会话，新增）                                    | `e2e/sprint8/e2e/cdc-pipeline.spec.ts`（23 用例；复用 sprint7 seed/用户，真实链路：test-mysql/test-postgres 专用 e2e_s8 源表 → Flink 作业 → Iceberg/MinIO → Doris datalake_catalog 断言；e2e_s8 前缀自播种自清理）；`asset-collaboration.spec.ts` 补 3 用例（级联删除/已注销/评论分页）达 18 用例；realtime `CdcPipelineService` 补「仅增量+INITIAL → 8000」校验；最终回归 sprint8 两规格连跑 **41/41 通过** |
+| F2 向导高级配置产品化（2026-08-10，用户确认）                          | Checkpoint 间隔**档位化**：实时（10 秒）/ 准实时（60 秒，默认推荐）/ 低优先（10 分钟）+ 自定义秒数兜底（历史非档位值编辑回填自动归「自定义」，不静默改值），configJson 仍存秒数后端不变；并行度输入下方标注 **1 slot 容量警示**（>1 无法调度）；确认页档位标签展示。E2E 已适配并复跑 41/41 通过 |
 | `docs/sprint8/DataNest-Sprint8-原型.html/css/js`（新增）| UI 原型：**单 HTML 多视图**（沿用 Sprint 7 范本），prototype-switch 切换 7 视图：数据资产（标签云 + 热门 Top10）、资产详情（标签/收藏/关注/评论/热度）、我的收藏、我的关注（表变更动态）、CDC 管道列表（含日志抽屉）、CDC 新建向导（4 步）、质量报告（**Dashboard 一屏版**：KPI×5 + 四档趋势 + 评分分布环图 + 数据源对比横向条 + 表评分趋势 + 问题清单 TOP5，无滚动）；视觉严格对齐真实 ds-* token + antd 组件结构（accent indigo #4f46e5、圆角 8/12/16px、表头 11px 大写、表格 10px 16px） |
 
 ### 代码现状核验要点（2026-08-09，影响落地路径）
@@ -211,8 +213,9 @@
 - [x] 联调调通（截图逐屏验证）：向导新建（预检 4 项通过）→ 仅保存 → 列表 → 日志 → 启动（真实 Flink 作业 RUNNING）→ 停止（savepoint）→ 删除
 - [x] Code Review（With fixes）已修复：**Critical 仅增量残留 INITIAL 会真跑全量快照**（syncMode 联动 startupMode=LATEST_OFFSET + 防御校验）；Important：日志抽屉跨管道页码残留（applyQuery 重置）+ 管道状态快照失真（列表轮询联动）；Minor：轮询条件改 stats.running、预检失败禁「保存并启动」等
 
-**测试**
-- [ ] curl 自测 → 前端联调（✅ 已完成）→ `e2e/sprint8/e2e/cdc-pipeline.spec.ts`（另一会话负责）
+**测试**——✅ 完成（2026-08-10 测试会话）
+- [x] curl 自测 → 前端联调 → `e2e/sprint8/e2e/cdc-pipeline.spec.ts` **23/23 通过**（预检/元数据/权限 1005/向导/列表/详情抽屉/启停/快照落湖/增量可见/日志抽屉/运行中保护 8003/savepoint 恢复不丢不重/编辑清 savepoint/删除级联+湖仓保留/仅增量 LATEST_OFFSET/PG 全链路含 update-delete/从最早禁用/8009 数据源引用校验/参数校验 8000~8002/stats 一致性）
+- [x] E2E 发现并已修复：后端创建/编辑管道未拦截「仅增量 + INITIAL」矛盾组合（前端有防御，API 可绕过）→ `CdcPipelineService` 校验补 8000（2026-08-10，用户确认后由测试会话修复）
 
 ---
 
