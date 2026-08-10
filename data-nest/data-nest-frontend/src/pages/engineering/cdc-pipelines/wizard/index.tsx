@@ -2,6 +2,8 @@
 // 新建 /engineering/cdc-pipelines/new；编辑 /engineering/cdc-pipelines/:id/edit（仅 STOPPED 可编辑，后端兜底）。
 // 源支持 MySQL（binlog/ROW 预检）与 PostgreSQL（wal_level=logical/复制权限预检，本期仅 public schema，无「从最早」位点）；
 // 目标 = Iceberg 湖仓（MinIO）→ Doris Iceberg Catalog 查询。
+// 布局：视口固定（h-[calc(100vh-9rem)]），左表单/右摘要双栏等高各自独立滚动；底部操作条通栏钉住。
+// 高级配置：并行度 / Checkpoint 间隔，经 configJson（parallelism / checkpointIntervalSeconds）下发，全默认则不传。
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {AutoComplete, Checkbox, Select, Spin} from 'antd';
@@ -34,22 +36,13 @@ import type {
     CdcTableMapping,
     CdcWriteMode,
 } from '../../../../types/cdc';
+import {STARTUP_MODE_LABEL, SYNC_MODE_LABEL, WRITE_MODE_LABEL} from '../constants';
 
 const STEPS = ['基本信息', '源配置', '目标配置', '确认启动'];
 
-const SYNC_MODE_LABEL: Record<CdcSyncMode, string> = {
-    FULL_AND_INCREMENT: '全量 + 增量',
-    INCREMENTAL_ONLY: '仅增量',
-};
-const STARTUP_MODE_LABEL: Record<CdcStartupMode, string> = {
-    INITIAL: '全量快照 + 增量',
-    LATEST_OFFSET: '从最新位点',
-    EARLIEST_OFFSET: '从最早位点',
-};
-const WRITE_MODE_LABEL: Record<CdcWriteMode, string> = {
-    UPSERT: 'Upsert（按主键）',
-    APPEND: 'Append（仅追加）',
-};
+/** 高级配置默认值：与默认值一致时不写入 configJson（后端走 Nacos 默认） */
+const DEFAULT_PARALLELISM = 1;
+const DEFAULT_CHECKPOINT_SECONDS = 60;
 
 /** 表单项容器 */
 function FormItem({label, required, hint, children}: {
@@ -118,6 +111,9 @@ export default function CdcPipelineWizardPage() {
     const [startupMode, setStartupMode] = useState<CdcStartupMode>('INITIAL');
     const [writeMode, setWriteMode] = useState<CdcWriteMode>('UPSERT');
     const [targetDatabase, setTargetDatabase] = useState('');
+    // 高级配置（configJson：parallelism / checkpointIntervalSeconds）
+    const [parallelism, setParallelism] = useState(DEFAULT_PARALLELISM);
+    const [checkpointIntervalSeconds, setCheckpointIntervalSeconds] = useState(DEFAULT_CHECKPOINT_SECONDS);
 
     // ============ 下拉数据 ============
     const [datasourceOptions, setDatasourceOptions] = useState<{ value: string; label: string }[]>([]);
@@ -155,7 +151,7 @@ export default function CdcPipelineWizardPage() {
             .catch(() => setTargetDbOptions([]));
     }, []);
 
-    // 编辑模式：加载详情预填
+    // 编辑模式：加载详情预填（含 configJson 高级配置回填；非法 JSON 忽略走默认）
     useEffect(() => {
         if (!isEdit || !id) return;
         setLoadingDetail(true);
@@ -172,6 +168,17 @@ export default function CdcPipelineWizardPage() {
                 setStartupMode(p.startupMode);
                 setWriteMode(p.writeMode);
                 setTargetDatabase(p.targetDatabase);
+                if (p.configJson) {
+                    try {
+                        const cfg = JSON.parse(p.configJson) as Record<string, unknown>;
+                        if (typeof cfg.parallelism === 'number') setParallelism(cfg.parallelism);
+                        if (typeof cfg.checkpointIntervalSeconds === 'number') {
+                            setCheckpointIntervalSeconds(cfg.checkpointIntervalSeconds);
+                        }
+                    } catch {
+                        // configJson 非法：忽略，保存时后端会重新校验
+                    }
+                }
             })
             .catch(() => {
                 // 拦截器已提示
@@ -264,6 +271,14 @@ export default function CdcPipelineWizardPage() {
                 notify.warning('Upsert 模式下每张表都必须配置主键列');
                 return false;
             }
+            if (!Number.isInteger(parallelism) || parallelism < 1 || parallelism > 8) {
+                notify.warning('并行度需为 1~8 的整数');
+                return false;
+            }
+            if (!Number.isInteger(checkpointIntervalSeconds) || checkpointIntervalSeconds < 3) {
+                notify.warning('Checkpoint 间隔需为不小于 3 的整数秒');
+                return false;
+            }
         }
         return true;
     };
@@ -294,21 +309,30 @@ export default function CdcPipelineWizardPage() {
     const allChecked = sourceTables.length > 0 && selectedTables.length === sourceTables.length;
 
     // ============ 提交 ============
-    const buildRequest = (): CdcPipelineSaveRequest => ({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        sourceDatasourceId: datasourceId,
-        sourceDatabase,
-        targetDatabase: targetDatabase.trim(),
-        syncMode,
-        startupMode,
-        writeMode,
-        tables: selectedTables.map(t => ({
-            sourceTable: t.sourceTable,
-            targetTable: t.targetTable?.trim() || t.sourceTable,
-            primaryKey: t.primaryKey?.trim() || undefined,
-        })),
-    });
+    const buildRequest = (): CdcPipelineSaveRequest => {
+        // 高级配置：仅非默认值写键；全默认则不传 configJson（后端走 Nacos 默认）
+        const advancedConfig: Record<string, number> = {};
+        if (parallelism !== DEFAULT_PARALLELISM) advancedConfig.parallelism = parallelism;
+        if (checkpointIntervalSeconds !== DEFAULT_CHECKPOINT_SECONDS) {
+            advancedConfig.checkpointIntervalSeconds = checkpointIntervalSeconds;
+        }
+        return {
+            name: name.trim(),
+            description: description.trim() || undefined,
+            sourceDatasourceId: datasourceId,
+            sourceDatabase,
+            targetDatabase: targetDatabase.trim(),
+            syncMode,
+            startupMode,
+            writeMode,
+            tables: selectedTables.map(t => ({
+                sourceTable: t.sourceTable,
+                targetTable: t.targetTable?.trim() || t.sourceTable,
+                primaryKey: t.primaryKey?.trim() || undefined,
+            })),
+            configJson: Object.keys(advancedConfig).length > 0 ? JSON.stringify(advancedConfig) : undefined,
+        };
+    };
 
     /** 仅保存（新建/编辑）→ 回列表 */
     const handleSaveOnly = async () => {
@@ -363,9 +387,9 @@ export default function CdcPipelineWizardPage() {
     }
 
     return (
-        <div className="flex flex-col">
+        <div className="h-[calc(100vh-9rem)] flex flex-col gap-ds-4 overflow-hidden">
             {/* 头部 */}
-            <div className="flex items-center justify-between mb-ds-5">
+            <div className="flex items-center justify-between flex-shrink-0">
                 <div>
                     <DsButton variant="secondary" className="mb-ds-3"
                               onClick={() => navigate('/engineering/cdc-pipelines')}>
@@ -381,9 +405,9 @@ export default function CdcPipelineWizardPage() {
                 </div>
             </div>
 
-            {/* 步骤条 */}
+            {/* 步骤条（顶部通栏） */}
             <div
-                className="flex items-center mb-ds-5 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-6 py-ds-4">
+                className="flex items-center flex-shrink-0 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-6 py-ds-4">
                 {STEPS.map((label, idx) => {
                     const num = idx + 1;
                     const done = num < step;
@@ -412,9 +436,9 @@ export default function CdcPipelineWizardPage() {
                 })}
             </div>
 
-            {/* 步骤内容：左侧步骤表单 + 右侧配置摘要栏 */}
-            <div className="flex items-start gap-ds-4 mb-ds-4">
-            <div className="flex-1 min-w-0 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-6">
+            {/* 步骤内容：左侧步骤表单 + 右侧摘要栏（双栏等高，各自独立滚动） */}
+            <div className="flex-1 min-h-0 flex gap-ds-4">
+            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-6">
                 {step === 1 && (
                     <div className="max-w-[560px]">
                         <FormItem label="管道名称" required hint="用于区分多个 CDC 管道，建议包含业务含义；平台内唯一。">
@@ -603,6 +627,31 @@ export default function CdcPipelineWizardPage() {
                             <RadioRow checked={writeMode === 'APPEND'} onChange={() => setWriteMode('APPEND')}
                                       label="Append" hint="仅追加，不合并（适合日志 / 流水）"/>
                         </FormItem>
+                        <FormItem label="高级配置（可选）"
+                                  hint="留默认即可：并行度过大对小表同步是额外开销；Checkpoint 间隔过小会增加湖仓提交频率。">
+                            <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 grid grid-cols-2 gap-ds-3">
+                                <div>
+                                    <div className="text-ds-tiny text-ds-text-muted mb-ds-1">
+                                        并行度（1~8，默认 {DEFAULT_PARALLELISM}）
+                                    </div>
+                                    <input type="number" className={INPUT_CLASS}
+                                           min={1} max={8} step={1}
+                                           value={parallelism}
+                                           aria-label="并行度"
+                                           onChange={(e) => setParallelism(Number(e.target.value))}/>
+                                </div>
+                                <div>
+                                    <div className="text-ds-tiny text-ds-text-muted mb-ds-1">
+                                        Checkpoint 间隔（秒，≥3，默认 {DEFAULT_CHECKPOINT_SECONDS}）
+                                    </div>
+                                    <input type="number" className={INPUT_CLASS}
+                                           min={3} step={1}
+                                           value={checkpointIntervalSeconds}
+                                           aria-label="Checkpoint 间隔"
+                                           onChange={(e) => setCheckpointIntervalSeconds(Number(e.target.value))}/>
+                                </div>
+                            </div>
+                        </FormItem>
                     </div>
                 )}
 
@@ -635,8 +684,8 @@ export default function CdcPipelineWizardPage() {
                 )}
             </div>
 
-            {/* 右侧摘要栏：实时显示当前已选配置 */}
-            <div className="w-[340px] flex-shrink-0 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-5">
+            {/* 右侧摘要栏：第 4 步预检结果置顶；其下配置摘要（实时）→ Doris 查询入口 → 配置说明 */}
+            <div className="w-[360px] flex-shrink-0 min-h-0 overflow-y-auto bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-5">
                 {step === 4 && (
                     <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 mb-ds-4">
                         <div className="flex items-center gap-ds-2 mb-ds-2 flex-wrap">
@@ -672,18 +721,40 @@ export default function CdcPipelineWizardPage() {
                 <ConfirmRow label="启动位点" value={STARTUP_MODE_LABEL[startupMode]}/>
                 <ConfirmRow label="目标库" value={targetDatabase || '—'} mono/>
                 <ConfirmRow label="写入模式" value={WRITE_MODE_LABEL[writeMode]}/>
+                <ConfirmRow label="并行度"
+                            value={parallelism === DEFAULT_PARALLELISM ? `默认（${DEFAULT_PARALLELISM}）` : String(parallelism)}/>
+                <ConfirmRow label="Checkpoint"
+                            value={checkpointIntervalSeconds === DEFAULT_CHECKPOINT_SECONDS
+                                ? `默认（${DEFAULT_CHECKPOINT_SECONDS} 秒）` : `${checkpointIntervalSeconds} 秒`}/>
                 <div className="mt-ds-4 pt-ds-3 border-t border-ds-border-subtle">
                     <div className="text-ds-tiny text-ds-text-muted mb-ds-1">Doris 查询入口</div>
                     <div className="text-ds-tiny font-mono text-ds-text-secondary break-all">
                         datalake_catalog.{targetDatabase || '<目标库>'}.{'<表名>'}
                     </div>
                 </div>
+                <div className="mt-ds-4 pt-ds-3 border-t border-ds-border-subtle">
+                    <div className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">配置说明</div>
+                    <div className="flex flex-col gap-ds-2">
+                        <p className="text-ds-tiny text-ds-text-muted">
+                            链路：MySQL Binlog / PostgreSQL WAL → Flink CDC 持续捕获变更 → Iceberg 湖仓（MinIO）→ Doris 经 Iceberg Catalog 直接查询。
+                        </p>
+                        <p className="text-ds-tiny text-ds-text-muted">
+                            同步模式：首次接入选「全量 + 增量」；目标表已有历史快照、只想追新增变更时选「仅增量」。
+                        </p>
+                        <p className="text-ds-tiny text-ds-text-muted">
+                            启动位点：仅增量模式下「从最新」只捕获启动后的变更；「从最早」回放 binlog 全部可用变更（PostgreSQL 源不支持）。
+                        </p>
+                        <p className="text-ds-tiny text-ds-text-muted">
+                            写入模式：有主键的业务表选 Upsert（按主键合并、可重放）；日志 / 流水类选 Append（仅追加）。
+                        </p>
+                    </div>
+                </div>
             </div>
             </div>
 
-            {/* 底部操作 */}
+            {/* 底部操作（通栏钉住） */}
             <div
-                className="flex items-center justify-between bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-6 py-ds-4">
+                className="flex items-center justify-between flex-shrink-0 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-6 py-ds-4">
                 <span className="text-ds-tiny text-ds-text-muted">
                     保存前将校验：源库连通性 / 增量日志开启（MySQL binlog、PG wal_level=logical）/ PG 复制权限
                 </span>

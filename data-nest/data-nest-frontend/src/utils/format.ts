@@ -61,6 +61,26 @@ function parseTime(value?: string): number | null {
     return Number.isNaN(ts) ? null : ts;
 }
 
+/**
+ * 运行时长（CDC 管道等常驻任务）：由启动时间到当前时刻静态计算一次
+ * （仅渲染时取值，不做定时刷新，页面上的时间不会跳动）。
+ * 格式：X 天 X 小时 / X 小时 X 分 / X 分；不足 1 分钟显示「<1 分」；空值/非法值/未来时间 -> "-"。
+ */
+export function formatRunningDuration(startedAt?: string): string {
+    const start = parseTime(startedAt);
+    if (start == null) return '-';
+    const ms = Date.now() - start;
+    if (ms < 0) return '-';
+    const totalMinutes = Math.floor(ms / 60000);
+    if (totalMinutes < 1) return '<1 分';
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    if (days > 0) return `${days} 天 ${hours} 小时`;
+    if (hours > 0) return `${hours} 小时 ${minutes} 分`;
+    return `${minutes} 分`;
+}
+
 /** 吞吐量：12345 -> "1.2 万行/秒"，0.5 -> "0.50 行/秒" */
 export function formatThroughput(value?: number | null): string {
     if (value === undefined || value === null) return '-';

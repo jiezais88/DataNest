@@ -87,8 +87,11 @@ public class CdcPipeline {
     /** 最近一次错误信息（截断 2000） */
     private String lastError;
 
-    /** 扩展配置 JSON（预留） */
+    /** 扩展配置 JSON（高级配置约定键：parallelism 1~8 / checkpointIntervalSeconds ≥3） */
     private String configJson;
+
+    /** 最近一次启动成功时间（stop 不清空，启动成功后写入；V1.2.0 补） */
+    private LocalDateTime startedAt;
 
     private Long createdBy;
 

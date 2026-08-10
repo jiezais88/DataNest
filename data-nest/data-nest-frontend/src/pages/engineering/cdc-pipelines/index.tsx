@@ -1,7 +1,7 @@
 // Sprint 8 F2：CDC 管道列表页（DI-04 管理 + 监控）。
 // MySQL Binlog / PostgreSQL WAL → Flink CDC → Iceberg 湖仓（MinIO）→ Doris 外部表。
-// 读四角色可见；写操作（新建/编辑/启停/刷 catalog/删除）仅超管+数据工程师。
-// 有 RUNNING 管道时列表与统计卡每 5s 轮询（延迟/累计变更由后端监控回写）。
+// 读四角色可见；写操作（新建/编辑/启停/刷 catalog/删除）仅超管+数据工程师；详情按钮全角色可见。
+// 不做定时轮询：统计卡与列表只在操作成功后或手动点「刷新」时重拉（运行时长由 startedAt 静态计算）。
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
@@ -9,6 +9,7 @@ import {
     HiOutlineArrowPath,
     HiOutlineBolt,
     HiOutlineDocumentText,
+    HiOutlineEye,
     HiOutlinePause,
     HiOutlinePencilSquare,
     HiOutlinePlay,
@@ -27,7 +28,6 @@ import {
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import DsButton from '../../../components/DsButton';
 import DsIconButton from '../../../components/DsIconButton';
-import DsStatusBadge from '../../../components/DsStatusBadge';
 import DsTableEmpty from '../../../components/DsTableEmpty';
 import DsToolbar from '../../../components/DsToolbar';
 import Pagination from '../../../components/Pagination';
@@ -36,11 +36,12 @@ import {ENGINEERING_WRITE_ROLES} from '../../../constants/roles';
 import {COL} from '../../../constants/table';
 import usePagedList from '../../../hooks/usePagedList';
 import {useHasRole} from '../../../hooks/useHasRole';
-import {usePollingWhile} from '../../../hooks/usePollingWhile';
-import {formatDateTime} from '../../../utils/format';
+import {formatDateTime, formatRunningDuration} from '../../../utils/format';
 import {notify} from '../../../utils/notify';
 import type {CdcPipeline, CdcPipelineQuery, CdcPipelineStats, CdcPipelineStatus} from '../../../types/cdc';
 import CdcLogDrawer from './CdcLogDrawer';
+import CdcPipelineDetailDrawer from './CdcPipelineDetailDrawer';
+import {CdcStatusBadge, LagValue} from './shared';
 
 const INITIAL_QUERY: CdcPipelineQuery = {status: ''};
 
@@ -50,27 +51,6 @@ const STATUS_TABS: { value: CdcPipelineStatus | ''; label: string }[] = [
     {value: 'STOPPED', label: '已停止'},
     {value: 'ERROR', label: '异常'},
 ];
-
-function statusBadge(status: CdcPipelineStatus) {
-    if (status === 'RUNNING') return <DsStatusBadge variant="running" label="运行中"/>;
-    if (status === 'ERROR') return <DsStatusBadge variant="danger" label="异常"/>;
-    return <DsStatusBadge variant="pending" label="已停止"/>;
-}
-
-/** 延迟格式化：≤30s 正常色，>30s 标红（PRD §6.6.2，考虑 Iceberg commit + Doris 刷新延迟放宽） */
-function LagValue({seconds}: { seconds?: number }) {
-    if (seconds == null || seconds < 0) return <span className="text-ds-small text-ds-text-muted">—</span>;
-    const text = seconds < 60
-        ? `${seconds} 秒`
-        : seconds < 3600
-            ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
-            : `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分`;
-    return (
-        <span className={`text-ds-small ${seconds > 30 ? 'text-ds-danger font-semibold' : 'text-ds-success'}`}>
-            {text}
-        </span>
-    );
-}
 
 /** 顶部统计卡（对齐原型 cdc-mini-strip） */
 function StatCard({icon, iconClass, label, value}: {
@@ -116,16 +96,8 @@ export default function CdcPipelinesPage() {
         loadStats();
     }, [loadStats]);
 
-    // 有运行中管道时轮询列表 + 统计（延迟/累计变更由后端监控轮询回写）；
-    // 条件用全量统计的 running 计数而非当前页 list，RUNNING 管道在其它页时统计卡也能刷新
-    const hasRunning = Number(stats?.running ?? 0) > 0;
-    const pollTick = useCallback(() => {
-        reload();
-        loadStats();
-    }, [reload, loadStats]);
-    usePollingWhile(hasRunning, pollTick, {interval: 5000, timeout: 1800000});
-
     // ============ 操作 ============
+    const [detailId, setDetailId] = useState<string | null>(null);
     const [logTarget, setLogTarget] = useState<CdcPipeline | null>(null);
     const [stopTarget, setStopTarget] = useState<CdcPipeline | null>(null);
     const [stopLoading, setStopLoading] = useState(false);
@@ -226,7 +198,7 @@ export default function CdcPipelinesPage() {
             {
                 title: '源',
                 key: 'source',
-                width: 240,
+                width: 220,
                 ellipsis: true,
                 render: (_: unknown, r: CdcPipeline) => {
                     const tables = r.tables ?? [];
@@ -257,14 +229,14 @@ export default function CdcPipelinesPage() {
                 width: COL.STATUS,
                 render: (v: CdcPipelineStatus, r: CdcPipeline) => (
                     <Tooltip title={v === 'ERROR' ? r.lastError : undefined}>
-                        <span>{statusBadge(v)}</span>
+                        <span><CdcStatusBadge status={v}/></span>
                     </Tooltip>
                 ),
             },
             {
                 title: '当前延迟',
                 dataIndex: 'currentLagSeconds',
-                width: 110,
+                width: COL.COUNT_NORMAL,
                 render: (v?: number) => <LagValue seconds={v}/>,
             },
             {
@@ -278,23 +250,77 @@ export default function CdcPipelinesPage() {
                 ),
             },
             {
-                title: '更新时间',
+                // 运行时长：仅 RUNNING 有值，由 startedAt 到当前时间静态计算（无轮询，不跳动）
+                title: '运行时长',
+                dataIndex: 'startedAt',
+                width: 110,
+                render: (v: string | undefined, r: CdcPipeline) => (
+                    r.status === 'RUNNING' && v ? (
+                        <span className="text-ds-small text-ds-text-secondary whitespace-nowrap"
+                              title={`启动时间：${formatDateTime(v)}`}>
+                            {formatRunningDuration(v)}
+                        </span>
+                    ) : (
+                        <span className="text-ds-small text-ds-text-muted">—</span>
+                    )
+                ),
+            },
+            {
+                title: '创建人',
+                dataIndex: 'createdByName',
+                width: COL.USERNAME,
+                ellipsis: true,
+                render: (v?: string) => (
+                    <span className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+                ),
+            },
+            {
+                title: '创建时间',
+                dataIndex: 'createdAt',
+                width: COL.DATETIME_COMPACT,
+                render: (v?: string) => (
+                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                        {formatDateTime(v)}
+                    </span>
+                ),
+            },
+            {
+                title: '修改人',
+                dataIndex: 'updatedByName',
+                width: COL.USERNAME,
+                ellipsis: true,
+                render: (v?: string) => (
+                    <span className="text-ds-small text-ds-text-secondary">{v || '—'}</span>
+                ),
+            },
+            {
+                title: '修改时间',
                 dataIndex: 'updatedAt',
                 width: COL.DATETIME_COMPACT,
-                render: (v?: string, r?: CdcPipeline) => (
-                    <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
-                        {formatDateTime(v || r?.createdAt)}
-                    </span>
+                render: (v?: string) => (
+                    v ? (
+                        <span className="text-ds-small text-ds-text-secondary whitespace-nowrap">
+                            {formatDateTime(v)}
+                        </span>
+                    ) : (
+                        <span className="text-ds-small text-ds-text-muted">—</span>
+                    )
                 ),
             },
         ];
         const action = {
             title: '操作',
             key: 'action',
-            width: COL.OPERATION_5,
+            width: 240,
             fixed: 'right' as const,
             render: (_: unknown, r: CdcPipeline) => (
                 <div className="flex items-center gap-ds-1">
+                    <Tooltip title="详情">
+                        <DsIconButton tone="accent" aria-label={`详情 ${r.name}`}
+                                      onClick={() => setDetailId(r.id)}>
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     {canWrite && r.status === 'RUNNING' && (
                         <Tooltip title="停止（保存 savepoint）">
                             <DsIconButton tone="default" aria-label={`停止 ${r.name}`}
@@ -395,6 +421,14 @@ export default function CdcPipelinesPage() {
                     <DsToolbar
                         extra={(
                             <>
+                                <Tooltip title="刷新列表与统计">
+                                    <span>
+                                        <DsButton variant="secondary" onClick={afterMutation} disabled={loading}>
+                                            <HiOutlineArrowPath size={14}/>
+                                            刷新
+                                        </DsButton>
+                                    </span>
+                                </Tooltip>
                                 <DsButton onClick={handleSearch} disabled={loading}>
                                     {loading ? '查询中...' : '查询'}
                                 </DsButton>
@@ -435,7 +469,7 @@ export default function CdcPipelinesPage() {
                     dataSource={list}
                     loading={loading}
                     pagination={false}
-                    scroll={{x: 1280}}
+                    scroll={{x: 1720}}
                     className="prototype-table prototype-table-flush"
                     locale={{
                         emptyText: (
@@ -461,7 +495,10 @@ export default function CdcPipelinesPage() {
                 )}
             </div>
 
-            {/* 运行日志抽屉（pipeline 优先取列表轮询后的最新行，状态徽章/自动刷新条件随之更新） */}
+            {/* 详情抽屉（打开时按 id 拉最新详情） */}
+            <CdcPipelineDetailDrawer pipelineId={detailId} onClose={() => setDetailId(null)}/>
+
+            {/* 运行日志抽屉（pipeline 优先取列表刷新后的最新行，状态徽章随之更新） */}
             <CdcLogDrawer pipeline={list.find(p => p.id === logTarget?.id) ?? logTarget}
                           onClose={() => setLogTarget(null)}/>
 

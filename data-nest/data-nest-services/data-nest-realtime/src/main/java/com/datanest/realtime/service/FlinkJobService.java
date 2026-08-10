@@ -68,12 +68,14 @@ public class FlinkJobService {
     /**
      * 提交 CDC YAML 管道到 Flink Session 集群。
      *
-     * @param yaml          CDC YAML 管道定义
-     * @param savepointPath 非空时从该 savepoint 恢复（不丢不重）
+     * @param yaml                         CDC YAML 管道定义
+     * @param savepointPath                非空时从该 savepoint 恢复（不丢不重）
+     * @param checkpointIntervalMsOverride 非空时覆盖 Nacos 默认 checkpoint 间隔（configJson 高级配置，
+     *                                     毫秒）。composer 不消费 YAML pipeline 段的任意键，只能走提交侧配置
      * @return Flink 作业 ID
      * @throws Exception YAML 解析/组装/提交失败（调用方统一 catch 落 ERROR）
      */
-    public String submit(String yaml, String savepointPath) throws Exception {
+    public String submit(String yaml, String savepointPath, Long checkpointIntervalMsOverride) throws Exception {
         // Flink 远程提交配置（Session 集群，官方配置 key：execution.target / remote.address / remote.port）
         org.apache.flink.configuration.Configuration flinkConfig = new org.apache.flink.configuration.Configuration();
         flinkConfig.setString("execution.target", "remote");
@@ -82,9 +84,10 @@ public class FlinkJobService {
         // RestClusterClient 连接集群需要 rest.address/rest.port
         flinkConfig.setString("rest.address", jobmanagerHost);
         flinkConfig.setString("rest.port", jobmanagerPort);
-        // savepoint 目录 per-job 覆盖 + checkpoint 间隔
+        // savepoint 目录 per-job 覆盖 + checkpoint 间隔（configJson 高级配置优先于 Nacos 默认）
         flinkConfig.setString("state.savepoints.dir", SAVEPOINT_DIR);
-        flinkConfig.setString("execution.checkpointing.interval", String.valueOf(checkpointIntervalMs));
+        flinkConfig.setString("execution.checkpointing.interval",
+                String.valueOf(checkpointIntervalMsOverride != null ? checkpointIntervalMsOverride : checkpointIntervalMs));
         // 有 savepoint 时优先恢复（配置变更后 savepoint_path 已清空，不会误用旧状态）。
         // Flink 2.x 已移除 SavepointRestoreSettings 类，恢复配置走 execution.savepoint.* 配置键
         if (savepointPath != null && !savepointPath.isBlank()) {

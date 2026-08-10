@@ -43,10 +43,16 @@ export interface CdcPipeline {
     /** 累计写入变更条数（Long 序列化为 string） */
     totalChanges?: string;
     lastError?: string;
+    /** 高级配置 JSON，约定键：parallelism（1~8）、checkpointIntervalSeconds（≥3）；缺键走 Nacos 默认 */
     configJson?: string;
     tables?: CdcTableMapping[];
+    /** 最近一次启动成功时间（ISO；stop 不清，编辑不影响） */
+    startedAt?: string;
     createdBy?: string;
     updatedBy?: string;
+    /** 创建人/修改人显示名（跨域回填，失败缺省） */
+    createdByName?: string;
+    updatedByName?: string;
     createdAt?: string;
     updatedAt?: string;
 }

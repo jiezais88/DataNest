@@ -26,6 +26,7 @@ import com.datanest.realtime.mapper.CdcPipelineLogMapper;
 import com.datanest.realtime.mapper.CdcPipelineMapper;
 import com.datanest.realtime.mapper.CdcPipelineTableMapper;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
+import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * CDC 管道核心服务：CRUD + 启停（Flink 作业提交 / cancel-with-savepoint）+ 日志 + Doris catalog 刷新。
@@ -64,6 +66,7 @@ public class CdcPipelineService {
     private final SourcePrecheckService precheckService;
     private final DorisCatalogService dorisCatalogService;
     private final EngineeringDatasourceApi engineeringDatasourceApi;
+    private final SystemUserApi systemUserApi;
 
     public CdcPipelineService(CdcPipelineMapper pipelineMapper,
                               CdcPipelineTableMapper tableMapper,
@@ -72,7 +75,8 @@ public class CdcPipelineService {
                               FlinkJobService flinkJobService,
                               SourcePrecheckService precheckService,
                               DorisCatalogService dorisCatalogService,
-                              EngineeringDatasourceApi engineeringDatasourceApi) {
+                              EngineeringDatasourceApi engineeringDatasourceApi,
+                              SystemUserApi systemUserApi) {
         this.pipelineMapper = pipelineMapper;
         this.tableMapper = tableMapper;
         this.logMapper = logMapper;
@@ -81,6 +85,7 @@ public class CdcPipelineService {
         this.precheckService = precheckService;
         this.dorisCatalogService = dorisCatalogService;
         this.engineeringDatasourceApi = engineeringDatasourceApi;
+        this.systemUserApi = systemUserApi;
     }
 
     /** 创建管道（初始 STOPPED） */
@@ -182,6 +187,7 @@ public class CdcPipelineService {
         List<CdcPipelineDTO> records = result.getRecords().stream().map(this::toDTO).toList();
         fillDatasourceNames(records);
         fillPageTables(records);
+        fillUserNames(records);
         return PageResult.of(records, result.getTotal(), page, pageSize);
     }
 
@@ -207,7 +213,7 @@ public class CdcPipelineService {
         }
     }
 
-    /** 详情（含表映射 + 数据源名回填，降级 null） */
+    /** 详情（含表映射 + 数据源名/用户名回填，降级 null） */
     public CdcPipelineDTO detail(Long id) {
         CdcPipeline entity = getPipeline(id);
         CdcPipelineDTO dto = toDTO(entity);
@@ -218,6 +224,7 @@ public class CdcPipelineService {
             return info == null ? null : info.getName();
         }, null);
         dto.setSourceDatasourceName(datasourceName);
+        fillUserNames(List.of(dto));
         return dto;
     }
 
@@ -275,13 +282,22 @@ public class CdcPipelineService {
         }
 
         try {
-            String flinkJobId = flinkJobService.submit(yaml, restoreFromSavepoint ? savepointPath : null);
+            // checkpoint 间隔高级配置（秒→毫秒）经提交侧 flinkConfig 下发：
+            // FlinkPipelineComposer.compose 只消费 YAML pipeline 段固定键（name/parallelism 等），
+            // execution.checkpointing.interval 写进 YAML 不生效（3.6.0-2.2 源码 + 实测确认）
+            CdcYamlBuilder.AdvancedConfig advanced = CdcYamlBuilder.parseAdvancedConfig(entity.getConfigJson());
+            Long checkpointIntervalMsOverride = advanced.checkpointIntervalSeconds() == null
+                    ? null : advanced.checkpointIntervalSeconds() * 1000L;
+            String flinkJobId = flinkJobService.submit(yaml,
+                    restoreFromSavepoint ? savepointPath : null, checkpointIntervalMsOverride);
             // UpdateWrapper 显式 set：updateById 忽略 null 字段，last_error 清不掉
+            // started_at = 最近一次启动成功时间（stop 不清空；仅在提交成功后写入，失败置 ERROR 不动它）
             UpdateWrapper<CdcPipeline> update = new UpdateWrapper<CdcPipeline>()
                     .eq("id", id)
                     .set("flink_job_id", flinkJobId)
                     .set("status", CdcPipeline.STATUS_RUNNING)
                     .set("last_error", null)
+                    .set("started_at", LocalDateTime.now())
                     .set("updated_by", currentUserId())
                     .set("updated_at", LocalDateTime.now());
             pipelineMapper.update(null, update);
@@ -466,6 +482,16 @@ public class CdcPipelineService {
         if (request.getTables() == null || request.getTables().isEmpty()) {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID, "表映射不能为空");
         }
+        // 高级配置（configJson 约定键）解析与范围校验：非法 JSON/非整数在 parseAdvancedConfig 内抛 8000
+        CdcYamlBuilder.AdvancedConfig advanced = CdcYamlBuilder.parseAdvancedConfig(request.getConfigJson());
+        if (advanced.parallelism() != null && (advanced.parallelism() < 1 || advanced.parallelism() > 8)) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "高级配置 parallelism 取值范围为 1~8: " + advanced.parallelism());
+        }
+        if (advanced.checkpointIntervalSeconds() != null && advanced.checkpointIntervalSeconds() < 3) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "高级配置 checkpointIntervalSeconds 最小为 3 秒: " + advanced.checkpointIntervalSeconds());
+        }
         for (CdcTableMappingDTO table : request.getTables()) {
             if (table.getSourceTable() == null || table.getSourceTable().isBlank()) {
                 throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID, "源表名不能为空");
@@ -538,6 +564,7 @@ public class CdcPipelineService {
         dto.setTotalChanges(entity.getTotalChanges());
         dto.setLastError(entity.getLastError());
         dto.setConfigJson(entity.getConfigJson());
+        dto.setStartedAt(entity.getStartedAt());
         dto.setCreatedBy(entity.getCreatedBy());
         dto.setUpdatedBy(entity.getUpdatedBy());
         dto.setCreatedAt(entity.getCreatedAt());
@@ -567,6 +594,29 @@ public class CdcPipelineService {
                     .collect(Collectors.toMap(DataSourceInfo::getId, DataSourceInfo::getName, (a, b) -> a));
         }, Map.of());
         records.forEach(dto -> dto.setSourceDatasourceName(nameMap.get(dto.getSourceDatasourceId())));
+    }
+
+    /**
+     * 批量回填创建人/更新人用户名（system usernames 批量端点，一次查询避免逐行 N+1；
+     * 失败降级空 Map，名称列为 null 不阻断）。
+     */
+    private void fillUserNames(List<CdcPipelineDTO> records) {
+        List<Long> userIds = records.stream()
+                .flatMap(dto -> Stream.of(dto.getCreatedBy(), dto.getUpdatedBy()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> usernameMap = RemoteCalls.execute("system.usernames", () -> {
+            Result<Map<Long, String>> result = systemUserApi.usernames(userIds);
+            return result == null || result.data() == null ? Map.<Long, String>of() : result.data();
+        }, Map.of());
+        records.forEach(dto -> {
+            dto.setCreatedByName(usernameMap.get(dto.getCreatedBy()));
+            dto.setUpdatedByName(usernameMap.get(dto.getUpdatedBy()));
+        });
     }
 
     private Long currentUserId() {

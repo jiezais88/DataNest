@@ -57,8 +57,11 @@ public class CdcPipelineDTO {
     @Schema(description = "最近一次错误信息")
     private String lastError;
 
-    @Schema(description = "扩展配置 JSON")
+    @Schema(description = "扩展配置 JSON（高级配置约定键：parallelism 1~8 / checkpointIntervalSeconds ≥3）")
     private String configJson;
+
+    @Schema(description = "最近一次启动成功时间（RUNNING 时前端据此算运行时长）")
+    private LocalDateTime startedAt;
 
     @Schema(description = "表级映射列表")
     private List<CdcTableMappingDTO> tables;
@@ -66,8 +69,14 @@ public class CdcPipelineDTO {
     @Schema(description = "创建人 ID", example = "1234567890123456789")
     private Long createdBy;
 
+    @Schema(description = "创建人用户名（跨域回填，失败为 null）")
+    private String createdByName;
+
     @Schema(description = "更新人 ID", example = "1234567890123456789")
     private Long updatedBy;
+
+    @Schema(description = "更新人用户名（跨域回填，失败为 null）")
+    private String updatedByName;
 
     @Schema(description = "创建时间")
     private LocalDateTime createdAt;

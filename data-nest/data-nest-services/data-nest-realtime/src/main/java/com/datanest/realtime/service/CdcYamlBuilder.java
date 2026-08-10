@@ -1,5 +1,7 @@
 package com.datanest.realtime.service;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.realtime.entity.CdcPipeline;
@@ -24,6 +26,43 @@ import java.util.stream.Collectors;
  */
 @Component
 public class CdcYamlBuilder {
+
+    /** configJson 高级配置约定键：作业并行度（1~8） */
+    public static final String CONFIG_KEY_PARALLELISM = "parallelism";
+    /** configJson 高级配置约定键：checkpoint 间隔秒（≥3，下发时 ×1000 转毫秒） */
+    public static final String CONFIG_KEY_CHECKPOINT_INTERVAL_SECONDS = "checkpointIntervalSeconds";
+
+    /** 高级配置解析结果（configJson 约定键；null = 缺键走默认） */
+    public record AdvancedConfig(Integer parallelism, Integer checkpointIntervalSeconds) {
+    }
+
+    /**
+     * 解析 configJson 高级配置键（fastjson2，项目统一 JSON 库）。
+     * 空/缺键返回对应字段 null；非法 JSON、键值非整数时抛 8000 参数错误（不向上抛 500）。
+     */
+    public static AdvancedConfig parseAdvancedConfig(String configJson) {
+        if (configJson == null || configJson.isBlank()) {
+            return new AdvancedConfig(null, null);
+        }
+        JSONObject json;
+        try {
+            json = JSON.parseObject(configJson);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "configJson 不是合法 JSON: " + e.getMessage());
+        }
+        if (json == null) {
+            return new AdvancedConfig(null, null);
+        }
+        try {
+            return new AdvancedConfig(
+                    json.getInteger(CONFIG_KEY_PARALLELISM),
+                    json.getInteger(CONFIG_KEY_CHECKPOINT_INTERVAL_SECONDS));
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
+                    "configJson 高级配置键必须为整数（parallelism / checkpointIntervalSeconds）: " + e.getMessage());
+        }
+    }
 
     /** Iceberg warehouse（s3a://datalake/warehouse） */
     @Value("${datanest.realtime.iceberg.warehouse}")
@@ -93,7 +132,13 @@ public class CdcYamlBuilder {
 
         yaml.append("pipeline:\n");
         yaml.append("  name: ").append(quote("cdc-pipeline-" + pipeline.getId() + "-" + pipeline.getName())).append('\n');
-        yaml.append("  parallelism: ").append(parallelism).append('\n');
+        // 高级配置（configJson）覆盖 Nacos 默认值；保存期 validateSaveRequest 已校验范围。
+        // 注意：checkpointIntervalSeconds 不在此下发——FlinkPipelineComposer.compose 只消费 pipeline 段的
+        // name/parallelism 等固定键，任意键（如 execution.checkpointing.interval）不会并入作业配置（3.6.0-2.2
+        // 源码确认 + 实测 interval 不生效），checkpoint 间隔改由 FlinkJobService 提交侧 flinkConfig 覆盖。
+        AdvancedConfig advanced = parseAdvancedConfig(pipeline.getConfigJson());
+        yaml.append("  parallelism: ")
+                .append(advanced.parallelism() != null ? advanced.parallelism() : parallelism).append('\n');
         return yaml.toString();
     }
 

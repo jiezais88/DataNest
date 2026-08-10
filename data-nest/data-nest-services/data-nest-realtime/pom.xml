@@ -41,6 +41,18 @@
             <artifactId>data-nest-engineering-api</artifactId>
         </dependency>
 
+        <!-- 跨域 Feign 契约：创建人/更新人用户名回填（system） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
+        </dependency>
+
+        <!-- fastjson2：configJson 高级配置解析（项目统一 JSON 库） -->
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
