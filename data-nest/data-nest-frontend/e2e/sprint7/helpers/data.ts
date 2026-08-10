@@ -113,6 +113,19 @@ export const TPL_SRC_JOB_ID = '9000070000000000071';
 export const TPL_SRC_JOB_NAME = 'e2e_s7_tpl_source_sync';
 export const TPL_SRC_TABLE = 'e2e_s7_src_orders';
 
+/** 模板一键创建下拉选用的「真实可连」数据源（2026-08-10 下拉化后，源库/源表/增量字段需真实连库拉取）。
+ * 环境存量 mysql 数据源：middleware-test-mysql:3306/testdb，testdb 下有 orders/users/products 等真实表。
+ * 注意 e2e_s7_mysql_ds（DS_ID）密码为假连不上，仅 F1 元数据引用用。 */
+export const REAL_DS_ID = '2083088527209295874';
+export const REAL_DS_NAME = 'mysql';
+export const REAL_DB_NAME = 'testdb';
+export const REAL_SRC_TABLE = 'orders';
+export const REAL_INCR_FIELD = 'created_at';
+/** Doris 目标库/表（真实存在，目标表下拉可选中） */
+export const DORIS_TARGET_DB = 'datanest';
+export const DORIS_TARGET_TABLE = 'test_target_orders_cleaned';
+export const DORIS_COLLECT_DB = 'testdb';
+
 // ==================== F1 开发自测残留（用户确认清理后重建，seed 时幂等清除） ====================
 
 /** 残留分类 ID（交易域/订单/用户域） */

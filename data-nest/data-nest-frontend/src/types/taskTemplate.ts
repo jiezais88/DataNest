@@ -8,13 +8,25 @@ export const TASK_TEMPLATE_TYPE_LABEL: Record<TaskTemplateType, string> = {
     COLLECT: '采集任务',
 };
 
-/** config_template JSON 中的占位符定义（B4 定稿结构） */
+/** config_template JSON 中的占位符定义（B4 定稿结构，2026-08-10 扩展下拉类型） */
 export interface TemplatePlaceholder {
     key: string;
     label: string;
     required?: boolean;
-    /** TEXT（缺省）/ DATASOURCE（数据源下拉，值为数据源 ID 字符串） */
-    valueType?: 'TEXT' | 'DATASOURCE';
+    /**
+     * 渲染控件类型：
+     * - TEXT（缺省）：文本框
+     * - DATASOURCE：数据源下拉（值为数据源 ID 字符串）
+     * - SOURCE_DATABASE：源库/Schema 下拉（依赖数据源；有模式 PG/Oracle/SQLServer 提交时
+     *   source_db=数据源库名 + source_schema=选中 Schema，无模式两者同值）
+     * - SOURCE_TABLE：源表下拉（依赖数据源 + 源库/Schema）
+     * - INCREMENTAL_FIELD：增量字段下拉（依赖源表，取源表列）
+     * - TARGET_DATABASE：Doris 目标库下拉
+     * - TARGET_TABLE：Doris 目标表下拉（依赖目标库）
+     * - SCOPE：采集库/Schema 下拉（依赖数据源，单选）
+     */
+    valueType?: 'TEXT' | 'DATASOURCE' | 'SOURCE_DATABASE' | 'SOURCE_TABLE'
+        | 'INCREMENTAL_FIELD' | 'TARGET_DATABASE' | 'TARGET_TABLE' | 'SCOPE';
     defaultValue?: string;
 }
 

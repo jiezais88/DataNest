@@ -5,11 +5,17 @@ import {psqlEng, psqlGov} from '../helpers/db';
 import {cleanupTaskTemplateFixtures, seedAll} from '../helpers/seed';
 import {
     TEST_USERS,
-    DS_NAME,
     TPL_FULL_SYNC_NAME,
     TPL_INCR_SYNC_NAME,
     TPL_COLLECT_NAME,
     TPL_SRC_JOB_NAME,
+    REAL_DS_NAME,
+    REAL_DB_NAME,
+    REAL_SRC_TABLE,
+    REAL_INCR_FIELD,
+    DORIS_TARGET_DB,
+    DORIS_TARGET_TABLE,
+    DORIS_COLLECT_DB, REAL_DS_ID,
 } from '../helpers/data';
 
 /**
@@ -45,6 +51,13 @@ function formDrawer(page: Page) {
 /** antd 通知断言 */
 function notice(page: Page, text: string | RegExp) {
     return page.locator('.ant-message-notice').filter({hasText: text}).first();
+}
+
+/** 在弹窗内按「占位符 key」定位字段块（label 含 {key}），再点开其 Select 选值 */
+async function selectPlaceholder(page: Page, dialog: ReturnType<typeof createDialog>, key: string, optionText: string) {
+    const field = dialog.locator('div').filter({hasText: `{${key}}`}).last();
+    await field.locator('.ant-select').click();
+    await page.locator('.ant-select-dropdown .ant-select-item', {hasText: optionText}).last().click();
 }
 
 test.describe.configure({mode: 'serial'});
@@ -135,9 +148,11 @@ test.describe('一键创建任务', () => {
         const dialog = createDialog(page);
         await expect(dialog).toBeVisible();
 
-        // 占位符表单渲染（5 个：源数据源下拉 + 源库/源表/目标库/目标表文本）
+        // 占位符表单渲染（5 个：数据源/源库/源表/目标库/目标表 全部 Select 下拉）
         await expect(dialog.getByText('（{source_datasource}）')).toBeVisible();
+        await expect(dialog.getByText('（{source_db}）')).toBeVisible();
         await expect(dialog.getByText('（{source_table}）')).toBeVisible();
+        await expect(dialog.getByText('（{target_db}）')).toBeVisible();
         await expect(dialog.getByText('（{target_table}）')).toBeVisible();
 
         // 前端必填校验：任务名称空 → 拦截
@@ -149,47 +164,48 @@ test.describe('一键创建任务', () => {
         await dialog.getByRole('button', {name: '生成任务'}).click();
         await expect(notice(page, /请填写「源数据源」/)).toBeVisible();
 
-        // 填全：数据源下拉选 e2e_s7_mysql_ds + 4 个文本占位符
-        await dialog.locator('.ant-select').first().click();
-        await page.locator('.ant-select-dropdown .ant-select-item', {hasText: DS_NAME}).first().click();
-        const textInputs = dialog.locator('input.font-mono');
-        await textInputs.nth(0).fill('testdb'); // source_db
-        await textInputs.nth(1).fill('e2e_s7_src_orders'); // source_table
-        await textInputs.nth(2).fill('dwd'); // target_db
-        await textInputs.nth(3).fill('e2e_s7_tgt_full'); // target_table
+        // 级联填全：真实数据源 mysql → testdb → orders → Doris datanest → 已有目标表
+        await selectPlaceholder(page, dialog, 'source_datasource', REAL_DS_NAME);
+        await expect(notice(page, /请填写「源库名」/)).not.toBeVisible();
+        await selectPlaceholder(page, dialog, 'source_db', REAL_DB_NAME);
+        await selectPlaceholder(page, dialog, 'source_table', REAL_SRC_TABLE);
+        await selectPlaceholder(page, dialog, 'target_db', DORIS_TARGET_DB);
+        await selectPlaceholder(page, dialog, 'target_table', DORIS_TARGET_TABLE);
         await dialog.getByRole('button', {name: '生成任务'}).click();
         await expect(notice(page, /已创建同步任务/)).toBeVisible();
 
-        // DB 辅助验证：sync_job 落库且占位符已替换为填写值
+        // DB 辅助验证：sync_job 落库且占位符已替换为填写值（含无模式 source_schema 同值）
         const name = psqlEng(`SELECT name FROM sync_job WHERE name = 'e2e_s7_task_full_sync'`);
         expect(name).toBe('e2e_s7_task_full_sync');
         const targetTable = psqlEng(`SELECT target_table FROM sync_job WHERE name = 'e2e_s7_task_full_sync'`);
-        expect(targetTable).toBe('e2e_s7_tgt_full');
+        expect(targetTable).toBe(DORIS_TARGET_TABLE);
+        const sourceDb = psqlEng(`SELECT source_database FROM sync_job WHERE name = 'e2e_s7_task_full_sync'`);
+        expect(sourceDb).toBe(REAL_DB_NAME);
+        const sourceSchema = psqlEng(`SELECT source_schema FROM sync_job WHERE name = 'e2e_s7_task_full_sync'`);
+        expect(sourceSchema).toBe(REAL_DB_NAME); // 无模式 MySQL：库名=Schema 同值
         const sourceDs = psqlEng(`SELECT source_datasource_id FROM sync_job WHERE name = 'e2e_s7_task_full_sync'`);
-        expect(sourceDs).not.toContain('{source_datasource}');
+        expect(sourceDs).toBe(REAL_DS_ID);
     });
 
-    test('SYNC 增量同步：schedule_cron 默认值预填 + cron 落库', async ({page}) => {
+    test('SYNC 增量同步：schedule_cron 默认值预填 + 增量字段下拉 + cron 落库', async ({page}) => {
         await gotoAs(page, TEST_USERS.engineer.username, TEST_USERS.engineer.password,
             '/engineering/task-templates');
         await tplRow(page, TPL_INCR_SYNC_NAME).getByLabel('一键创建').click();
         const dialog = createDialog(page);
         await expect(dialog).toBeVisible();
 
-        // schedule_cron 非必填带默认值 0 0 2 * * ?（预填）
+        // schedule_cron 非必填带默认值 0 0 2 * * ?（Text 占位符预填）
         const cronInput = dialog.locator('input.font-mono').last();
         await expect(cronInput).toHaveValue('0 0 2 * * ?');
 
+        // 级联填全：数据源 → 源库 → 源表 → 增量字段（源表列下拉）→ 目标库 → 目标表
         await dialog.getByPlaceholder('如：dwd_orders 每日同步').fill('e2e_s7_task_incr_sync');
-        await dialog.locator('.ant-select').first().click();
-        await page.locator('.ant-select-dropdown .ant-select-item', {hasText: DS_NAME}).first().click();
-        const textInputs = dialog.locator('input.font-mono');
-        // 顺序：source_db / source_table / incremental_field / target_db / target_table / schedule_cron(已预填)
-        await textInputs.nth(0).fill('testdb');
-        await textInputs.nth(1).fill('e2e_s7_src_orders');
-        await textInputs.nth(2).fill('updated_at');
-        await textInputs.nth(3).fill('dwd');
-        await textInputs.nth(4).fill('e2e_s7_tgt_incr');
+        await selectPlaceholder(page, dialog, 'source_datasource', REAL_DS_NAME);
+        await selectPlaceholder(page, dialog, 'source_db', REAL_DB_NAME);
+        await selectPlaceholder(page, dialog, 'source_table', REAL_SRC_TABLE);
+        await selectPlaceholder(page, dialog, 'incremental_field', REAL_INCR_FIELD);
+        await selectPlaceholder(page, dialog, 'target_db', DORIS_TARGET_DB);
+        await selectPlaceholder(page, dialog, 'target_table', DORIS_TARGET_TABLE);
         await dialog.getByRole('button', {name: '生成任务'}).click();
         await expect(notice(page, /已创建同步任务/)).toBeVisible();
 
@@ -197,20 +213,21 @@ test.describe('一键创建任务', () => {
         expect(cron).toBe('0 0 2 * * ?');
         const mode = psqlEng(`SELECT sync_mode FROM sync_job WHERE name = 'e2e_s7_task_incr_sync'`);
         expect(mode).toBe('INCREMENTAL');
+        const incrField = psqlEng(`SELECT incremental_field FROM sync_job WHERE name = 'e2e_s7_task_incr_sync'`);
+        expect(incrField).toBe(REAL_INCR_FIELD);
     });
 
-    test('COLLECT 元数据全量采集：跨服务落 collect_task', async ({page}) => {
+    test('COLLECT 元数据全量采集：scope 下拉单选 + 跨服务落 collect_task', async ({page}) => {
         await gotoAs(page, TEST_USERS.engineer.username, TEST_USERS.engineer.password,
             '/engineering/task-templates');
         await tplRow(page, TPL_COLLECT_NAME).getByLabel('一键创建').click();
         const dialog = createDialog(page);
         await expect(dialog).toBeVisible();
 
+        // 数据源 → 采集库/Schema（SCOPE 下拉单选）
         await dialog.getByPlaceholder('如：dwd_orders 每日同步').fill('e2e_s7_task_collect');
-        await dialog.locator('.ant-select').first().click();
-        await page.locator('.ant-select-dropdown .ant-select-item', {hasText: DS_NAME}).first().click();
-        // 采集范围 scope（文本占位符）
-        await dialog.locator('input.font-mono').first().fill('testdb');
+        await selectPlaceholder(page, dialog, 'datasource', REAL_DS_NAME);
+        await selectPlaceholder(page, dialog, 'scope', DORIS_COLLECT_DB);
         await dialog.getByRole('button', {name: '生成任务'}).click();
         await expect(notice(page, /已创建采集任务/)).toBeVisible();
 
