@@ -234,6 +234,16 @@ docker compose up -d --no-deps app-engineering app-worker
 - **批次告警**：按任务 `alert_level` 过滤，一个批次一条 `alert_history`（命中多规则聚合进 `summary`），合并一条邮件；单规则批次 jobName 是「规则名（表名）」。
 - **共享单规则质量 job `maxInstanceNum=1`**：快速连续触发多个单规则执行会被 server 静默丢弃。
 
+### 实时 CDC（Sprint 8，M0 2026-08-09 已验证）
+
+> 细节见 gotchas §一。独立 Flink 2.2.1 Session 集群 + MinIO + Iceberg，app-realtime 经 REST 提交（`flink-cdc.sh -t remote` / `FlinkPipelineComposer.ofRemoteCluster`）。
+
+- **依赖矩阵已固化**：集群用自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`），预置 7 个 jar（`flink-cdc-dist/common/flink2-compat/两 connector:3.6.0-2.2` + `mysql-connector-j:8.0.33` + `flink-shaded-hadoop-2-uber` + `flink-s3-fs-hadoop:2.2.1`）；**`flink-s3-fs-hadoop` 只能放 lib 不能放 plugins/**。
+- **`classloader.resolve-order: parent-first` 必须写集群 config.yaml**（`-D` 不生效），否则 iceberg 双 classloader → `HadoopCatalog cannot be cast to Catalog`。
+- **S3A 配置**：凭据用容器环境变量 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`；endpoint 用 `core-site.xml` + `HADOOP_CONF_DIR`（`s3.*`/`hadoop.*` 前缀均不透传）。
+- **禁开 unaligned checkpoint**（与 CDC partitioner 冲突）；`pekko.ask.timeout` ≥120s；宿主 8081 被 nacos 占用，Flink JM 映射 18081。
+- **Doris Iceberg catalog 的 `s3.endpoint` 用宿主侧 `http://192.168.119.1:9000`**（VMnet8），不能写容器名。
+
 ## 7. 代码与提交约定
 
 - **代码 Review 目的（2026-08-07 起）**：Review 开发的功能时聚焦三点——① **与当前架构融洽**（不破坏模块边界、依赖方向、服务间调用规则）；② **业务实现正确**（符合 PRD/技术文档语义，边界与异常路径处理到位）；③ **实现高效**（无过度设计、无 N+1/循环远程调用、无不必要的资源开销）。

@@ -157,6 +157,93 @@ services:
       - datanest-net
 
   # ============================================
+  # MinIO — 对象存储（Sprint 8 实时 CDC：Iceberg 湖仓数据 + 元数据）
+  # 端口: 9000 (S3 API) / 9001 (Console)
+  # 账号: datanest / datanest123（对齐 shared-minio.yaml 设计）
+  # ============================================
+  middleware-minio:
+    # 版本锁定：RELEASE.2025-09-07T16-13-09Z（2026-08-09 实测的 minio/minio:latest 实际版本，固化避免漂移）
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: datanest-middleware-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: datanest
+      MINIO_ROOT_PASSWORD: datanest123
+      TZ: Asia/Shanghai
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      # minio/minio 官方镜像不含 curl/mc，用 bash /dev/tcp 探测 S3 端口
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000' 2>/dev/null || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Flink 2.2.1 Session 集群 — Sprint 8 实时 CDC 作业执行引擎
+  # JobManager (REST 8081) + TaskManager (1 slot)
+  # 自定义镜像（docker/flink/Dockerfile）预置 CDC 3.6.0-2.2 全部运行时 jar + MinIO S3 配置
+  # ============================================
+  middleware-flink-jobmanager:
+    build: ./docker/flink
+    image: datanest-flink:2.2.1
+    container_name: datanest-middleware-flink-jobmanager
+    command: jobmanager
+    environment:
+      - TZ=Asia/Shanghai
+      - JOB_MANAGER_RPC_ADDRESS=middleware-flink-jobmanager
+      - |-
+        FLINK_PROPERTIES=jobmanager.memory.process.size:1600m
+        pekko.ask.timeout: 120s
+        execution.checkpointing.interval: 30s
+      # MinIO S3 凭据（flink-s3-fs-hadoop 的 S3A 从环境变量读凭据）
+      - AWS_ACCESS_KEY_ID=datanest
+      - AWS_SECRET_ACCESS_KEY=datanest123
+    ports:
+      # 宿主 18081 -> 容器 8081（宿主 8081 已被 nacos 占用）；容器内网访问仍走 middleware-flink-jobmanager:8081
+      - "18081:8081"   # REST + Web UI
+    volumes:
+      - flink-data:/opt/flink/data
+      - flink-checkpoints:/opt/flink/checkpoints
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8081/overview > /dev/null || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+    networks:
+      - datanest-net
+
+  middleware-flink-taskmanager:
+    build: ./docker/flink
+    image: datanest-flink:2.2.1
+    container_name: datanest-middleware-flink-taskmanager
+    command: taskmanager
+    environment:
+      - TZ=Asia/Shanghai
+      - JOB_MANAGER_RPC_ADDRESS=middleware-flink-jobmanager
+      - |-
+        FLINK_PROPERTIES=taskmanager.memory.process.size:1728m
+        taskmanager.numberOfTaskSlots:1
+        pekko.ask.timeout: 120s
+      # MinIO S3 凭据（flink-s3-fs-hadoop 的 S3A 从环境变量读凭据）
+      - AWS_ACCESS_KEY_ID=datanest
+      - AWS_SECRET_ACCESS_KEY=datanest123
+    depends_on:
+      middleware-flink-jobmanager:
+        condition: service_healthy
+    volumes:
+      - flink-data:/opt/flink/data
+      - flink-checkpoints:/opt/flink/checkpoints
+    networks:
+      - datanest-net
+
+  # ============================================
   # Test MySQL 8.0 — 数据源 E2E 测试目标库
   # ============================================
   middleware-test-mysql:
@@ -648,6 +735,11 @@ volumes:
   redisdata:
   test-mysql-data:
   test-postgres-data:
+  # Sprint 8 实时 CDC：Iceberg 湖仓数据 + 元数据
+  minio-data:
+  # Sprint 8 实时 CDC：Flink 作业数据与 checkpoint
+  flink-data:
+  flink-checkpoints:
   # test-oracle-data:  # Sprint 5 临时注释：Oracle 服务已停用
   # PowerJob server 持久化（日志/H2 本地库等）
   powerjob-server-data:

@@ -261,7 +261,7 @@ Sprint 8 新增/调整导航：
 
 ### 6.6 实时 CDC 管道（DI-04 / RC-01 / RC-03 部分）
 
-> **架构说明（用户确认架构级新增）**：本期新增 **realtime-service**（`data-nest-realtime`，容器 `app-realtime`），内嵌 Flink CDC MiniCluster，独立于现有 7 服务注册 Nacos、走 Gateway `/api/realtime/**`。独立新库 `datanest_realtime` 持有 cdc_pipeline/执行记录等表（第 5 个业务库，独立 Flyway）。目标落点为 **Doris + Iceberg 湖仓层**：CDC 数据先入 Iceberg 湖仓表（**Hadoop Catalog**，元数据随数据文件落 MinIO），再通过 Doris 外部表（`Iceberg Catalog`）查询，严格对齐规格文档 §17 与模块七的「CDC 入湖」语义。基础设施需新增 **MinIO**（对象存储 + Iceberg 元数据/数据文件）；Iceberg 本身以内嵌库形式存在于 realtime-service 的 Flink 作业中，非独立服务。
+> **架构说明（用户确认架构级新增）**：本期新增 **realtime-service**（`data-nest-realtime`，容器 `app-realtime`），作为 **独立 Flink Session 集群**（JobManager + TaskManager，容器 `middleware-flink-jobmanager` / `middleware-flink-taskmanager`）的客户端，经 REST API 提交/停止 CDC 作业；realtime-service 独立于现有 7 服务注册 Nacos、走 Gateway `/api/realtime/**`。独立新库 `datanest_realtime` 持有 cdc_pipeline/执行记录等表（第 5 个业务库，独立 Flyway）。目标落点为 **Doris + Iceberg 湖仓层**：CDC 数据先入 Iceberg 湖仓表（**Hadoop Catalog**，元数据随数据文件落 MinIO），再通过 Doris 外部表（`Iceberg Catalog`）查询，严格对齐规格文档 §17 与模块七的「CDC 入湖」语义。基础设施需新增 **MinIO**（对象存储 + Iceberg 元数据/数据文件）+ **Flink 集群**；Iceberg 本身是**表格式 + connector 依赖库**（随作业跑在 Flink TaskManager），非独立服务。
 
 #### 6.6.1 CDC 管道配置向导
 
@@ -293,7 +293,7 @@ Sprint 8 新增/调整导航：
 **向导约束**：
 - **源**：本期支持 **MySQL**（binlog 开启校验；Flink CDC 连接器生态内 PG/Oracle 留作后续，规格 DI-04 要求至少 MySQL CDC）。
 - **目标**：CDC 数据先入 **Iceberg 湖仓表**（Hadoop Catalog，数据文件 + 元数据文件存储于内置 MinIO，无需额外元数据库），再通过 **Doris Iceberg External Catalog** 查询，对齐规格文档模块七「CDC 入湖」语义。
-- **基础设施**：本期新增 **MinIO** 容器（对象存储）+ Iceberg 表格式（Flink CDC 内嵌 Iceberg Sink）。
+- **基础设施**：本期新增 **MinIO** 容器（对象存储）+ **Flink 集群**（JobManager+TaskManager）+ Iceberg 表格式（Flink CDC Iceberg Sink connector 随作业运行）。
 - **全量 + 增量**：默认启动先做一次全量快照，再持续捕获增量变更；`仅增量` 需表已存在快照。
 - **校验**：保存前校验源数据源连通性、binlog 是否开启、MinIO 可写、目标库可访问；失败给出明确错误。
 
@@ -426,7 +426,7 @@ Sprint 8 新增/调整导航：
 
 | #  | 风险                               | 影响         | 对策                                                                        |
 |----|------------------------------------|--------------|-----------------------------------------------------------------------------|
-| R1 | Flink CDC + Iceberg + MinIO 引入较重（新服务/新容器/新存储组件） | 部署成本高 | 内嵌 Flink MiniCluster + MinIO 容器；按需启停（无管道可停）；Iceberg 用 Hadoop Catalog（元数据落 MinIO），不新增元数据库 |
+| R1 | Flink CDC + Iceberg + MinIO 引入较重（新服务/新容器/新存储组件） | 部署成本高 | 独立 Flink 集群（JobManager+TaskManager，单 TaskManager 小内存）+ MinIO 容器；按需启停（无管道可停 Flink 集群）；Iceberg 用 Hadoop Catalog（元数据落 MinIO），不新增元数据库 |
 | R2 | 源库 binlog 未开启 / 权限不足      | 管道建不起来 | 创建前预检 binlog 状态与权限；测试库（middleware-test-mysql）确保开启 binlog |
 | R3 | CDC 全量阶段耗时长 / Iceberg 快照提交频率高 | 首启慢 / 小文件多 | 全量走批式拉取（对齐 Addax）；增量可调 snapshot commit interval；全量进度展示 |
 | R4 | Iceberg 快照 + Doris 刷新引入额外延迟 | 端到端延迟变大 | 端到端延迟放宽至 30 秒（含 Iceberg commit + Doris metadata refresh）；可调刷新间隔 |
@@ -459,7 +459,7 @@ Sprint 8 新增/调整导航：
 | 表变更动态       | `collect_change_detail`（ADDED/DELETED/MODIFIED_TABLE）已有采集变更明细                                 | 关注表与变更明细关联查询生成「我的关注」动态列表                                                       |
 | 评论             | 无评论实体                                                                                              | 新增 `asset_comment` 表（table_id/user_id/content）；详情页评论页签                                        |
 | 热度             | 无访问埋点；`AssetSearchItemDTO` 无热度字段                                                             | 新增热度表/字段（访问计数按天聚合）；`POST /assets/tables/{id}/view` 埋点；浏览 `sort=hot`             |
-| CDC 管道         | 无 realtime 服务；数据源管理在 engineering（含连接/解密）；批量同步目标 Doris 语义已有                    | **新增 realtime-service + Flink CDC MiniCluster + MinIO + Iceberg**；`cdc_pipeline` 表存于独立新库 `datanest_realtime`（第 5 个业务库，独立 Flyway）；源/目标/映射/状态/位点；向导与监控接口 |
+| CDC 管道         | 无 realtime 服务；数据源管理在 engineering（含连接/解密）；批量同步目标 Doris 语义已有                    | **新增 realtime-service + 独立 Flink 集群 + MinIO + Iceberg**；`cdc_pipeline` 表存于独立新库 `datanest_realtime`（第 5 个业务库，独立 Flyway）；源/目标/映射/状态/位点；向导与监控接口 |
 | 质量报告         | `quality_check_batch` / `quality_check_detail`（四档 result_level）/ `quality_score`（仅最新）/ 质量任务模型 | 新增聚合查询接口（KPI/四档趋势/评分趋势/问题清单/导出）；评分趋势依赖**新增评分历史表**（T3）        |
 | 质量任务筛选     | `QualityCheckQueryService.listBatches` 已按 job/trigger_type/status 过滤                                 | 报告按质量任务维度聚合时复用质量任务列表；库维度需元数据 `database_name` 关联                          |
 
@@ -480,13 +480,14 @@ Sprint 8 新增/调整导航：
 | 决策点             | 结论（2026-08-09 用户确认）                                                            |
 |--------------------|---------------------------------------------------------------------------------------|
 | Sprint 8 主题边界  | 严格按规格文档 §15 路线图映射：实际 S8 = 路线图 S9 = **资产目录深化 + 实时 CDC 管道** |
-| 实时 CDC 处置      | **并入本期，架构级新增**：新增 realtime-service + Flink CDC MiniCluster，完整实现 CDC 管道 |
+| 实时 CDC 处置      | **并入本期，架构级新增**：新增 realtime-service + 独立 Flink CDC 集群（Session），完整实现 CDC 管道 |
+| Flink 部署形态（2026-08-09 补充确认） | **独立 Flink Session 集群**（JobManager + TaskManager 容器），realtime-service 不内嵌 Flink、经 REST 提交作业（对齐生产标准，故障恢复可做到不丢不重） |
 | 质量报告 DG-07     | **完整版**：多维（表/库/数据源/任务）+ 时间趋势（四档分布、评分趋势）+ 问题清单 + CSV 导出 |
 | T1 CDC 目标落点    | **Doris + Iceberg 湖仓层**：新增 MinIO + Iceberg（**Hadoop Catalog**，元数据随数据落 MinIO，避免额外元数据库），CDC 先入湖再 Doris 外部表查询 |
 | T2 realtime 数据存储 | **独立新库 `datanest_realtime`**（第 5 个业务库，独立 Flyway）                             |
 | T3 评分趋势数据     | **新增 `quality_score_history`**：批次结束写快照，存量从 check_detail 补算               |
 | T4 删除语义         | **表删除级联清理**标签/收藏/关注/评论；**用户删除保留评论**（标记"已注销"）、删收藏/关注 |
-| B1 Flink 版本       | **Flink 2.0.x + CDC 3.4.x**（官方支持 Java 21，匹配项目 JDK 21）；容器内验证依赖，阻塞则降级 1.20+3.3 |
+| B1 Flink 版本       | **Flink 2.2.1 + CDC 3.6.0**（2026-08-09 修订：官方配对 + 支持 Java 21，匹配项目 JDK 21；原案 Flink 2.0+3.4 官方兼容矩阵不覆盖）；容器内验证依赖，阻塞则降级 1.20+3.3 |
 | B2 Doris 版本       | 实测 **doris-4.0.7-rc02**，Multi-Catalog 可用，支持 Iceberg Catalog（≥1.2 满足）          |
 | B4 评论「已注销」   | **前端批量回填用户名，查无显示「已注销」**（零后端改动）                                |
 
@@ -496,3 +497,5 @@ Sprint 8 新增/调整导航：
 > - v1.0 (2026-08-09)：初始版本。基于规格文档 §15 路线图映射（实际 S8=路线图 S9）与用户确认的范围（资产目录深化 + 实时 CDC 管道 + 质量报告完整版）编写；复用点经代码核验。
 > - v1.1 (2026-08-09)：用户交互确认 T1~T4 决策后更新——T1 落点确认为 Doris + Iceberg 湖仓层（新增 MinIO + Iceberg 基础设施）、T2 确认为独立新库 datanest_realtime、T3 确认为新增 quality_score_history、T4 确认为表删除级联清理 + 用户删除保留评论历史。
 > - v1.2 (2026-08-09)：技术确认补充——T1 细化 Iceberg 用 **Hadoop Catalog**（元数据随数据落 MinIO，避免额外元数据库）；B1 Flink 2.0.x + CDC 3.4.x（Java 21）定稿；B2 实测 Doris **4.0.7-rc02**（Multi-Catalog 可用）；B4 评论「已注销」走前端批量回填查无兜底。
+> - v1.3 (2026-08-09)：**B1 版本组合修订**——经官方发布公告/Releases 核实，Flink CDC 3.4 仅官方支持 Flink 1.19/1.20，原案 Flink 2.0 + CDC 3.4 非官方配对；经用户确认改用 **Flink 2.2.1 + Flink CDC 3.6.0**（CDC 3.6 官方支持 Flink 2.2.x + JDK 11+，匹配项目 JDK 21）。
+> - v1.4 (2026-08-09)：**Flink 部署形态修订**——经用户确认，**内嵌 MiniCluster 改为独立 Flink Session 集群**（新增 JobManager + TaskManager 容器，realtime-service 仅经 REST 提交作业）。理由：资源隔离 / JobManager 独立保证 checkpoint 故障恢复（NAC-2）/ Flink Web UI 可观测 / TaskManager 独立扩缩容。本期新增基础设施容器 = **MinIO + Flink 集群**。

@@ -11,7 +11,7 @@
 Sprint 8 三大模块，均为 P0：
 
 1. **资产目录深化**（DC-06 数据标签 / DC-07 收藏与关注 / DC-08 评论与讨论 / DC-09 热度排行）：复用 governance 扩展，新增 6 张协作表，不新建服务。
-2. **实时 CDC 管道**（DI-04 / RC-01）：**架构级新增** `data-nest-realtime` 服务 + 内嵌 Flink MiniCluster + MinIO 对象存储 + Iceberg 湖仓表，MySQL Binlog → Iceberg → Doris 外部表查询。
+2. **实时 CDC 管道**（DI-04 / RC-01）：**架构级新增** `data-nest-realtime` 服务 + **独立 Flink Session 集群**（JobManager+TaskManager）+ MinIO 对象存储 + Iceberg 湖仓表，MySQL Binlog → Iceberg → Doris 外部表查询。
 3. **质量报告**（DG-07 完整版）：复用 governance 质量数据底座，新增评分历史表 + 报告聚合接口（KPI / 四档趋势 / 评分趋势 / 问题清单 / CSV 导出）。
 
 > **落点声明（用户 2026-08-09 确认）**：CDC 目标为 **Doris + Iceberg 湖仓层**（先入湖再 Doris 外部表，严格对齐规格 D17/模块七），本期新增 MinIO + Iceberg 基础设施；realtime 独立第 5 个业务库 `datanest_realtime`；质量评分趋势新增 `quality_score_history`；删除语义为表删除级联清理 + 用户删除保留评论历史。
@@ -22,23 +22,23 @@ Sprint 8 三大模块，均为 P0：
 
 > 本节记录本 Sprint 与用户确认 / 基于代码核验 / 技术调研的技术决策。后续实现必须严格遵循，如需变更需重新确认。
 
-### D-D1：Flink 技术栈 → Flink 2.0.x + Flink CDC 3.4.x（匹配 Java 21）
+### D-D1：Flink 技术栈 → Flink 2.2.x + Flink CDC 3.6.x（官方配对 + 匹配 Java 21）
 
-项目统一 JDK 21。Flink 版本兼容性调研结论：
+项目统一 JDK 21。Flink 版本兼容性调研结论（**2026-08-09 按官方发布公告/Releases 核实后修订**）：
 
-| 组合 | Java 21 支持 | 说明 |
-|------|--------------|------|
-| Flink 1.20 | ✗ 未正式认证（官方支持 8/11/17） | 若用需容器内降级 JVM，破坏项目统一基线 |
-| **Flink 2.0.x** | ✓ **官方支持**（2025-03-24 发布，默认推荐 Java 17、支持 21） | 与项目 JDK 21 匹配 |
-| Flink CDC 3.4.x | 随 Flink 2.0 运行 | 2025-05-16 发布，**新增 Iceberg Sink 连接器**，支持 schema 演进/批流一体 |
+| 组合 | 官方兼容声明 | Java 21 支持 | 说明 |
+|------|--------------|--------------|------|
+| Flink 1.20 + CDC 3.4 | ✅（CDC 3.4 官方支持 Flink 1.19/1.20） | ✗（Flink 1.20 官方支持 8/11/17） | 需容器内降级 JVM，破坏项目统一基线 |
+| Flink 2.0 + CDC 3.4（原案） | ✗（CDC 3.4 发布公告仅声明 1.19/1.20，**未覆盖 Flink 2.0**） | ✓ | 官方兼容矩阵不覆盖，兼容性需赌实测 |
+| **Flink 2.2.1 + CDC 3.6.0** | ✅（CDC 3.6 官方支持 Flink 1.20/2.2，2026-03-31 发布） | ✓（JDK 11+，含 21） | **本方案**：官方配对 + 项目 JDK 21 匹配 |
 
-- **选型（2026-08-09 用户确认定稿）**：Flink 2.0.x + Flink CDC 3.4.x，`realtime-service` 以 Flink 依赖内嵌运行。
-- **运行形态**：内嵌 Flink MiniCluster（JVM 本地模式，`flink-runtime` 本地提交），不部署独立 Flink 集群/TaskManager 容器——对齐 PRD R1「内嵌 MiniCluster 降低部署成本」。
-- **风险兜底**：Flink 2.0 是新大版本，与 CDC 3.4 / Iceberg 依赖存在兼容不确定性，实现时在容器内跑最小示例验证（§8 B1）；若阻塞，降级 Flink 1.20 + Flink CDC 3.3（容器 JVM 降 17，其余不变）。
+- **选型（2026-08-09 重新确认定稿，替换原 Flink 2.0 + CDC 3.4 案）**：**Flink 2.2.1**（2.2.x 最新 patch）+ **Flink CDC 3.6.0**（connector 坐标为 **`3.6.0-2.2`**，Flink 2.2 专属后缀）。配套依赖（**M0 已实测 Maven Central 锁定**）：`flink-cdc-pipeline-connector-mysql:3.6.0-2.2`（shaded 自包含，含 flink-connector-mysql-cdc + debezium；**不含 MySQL JDBC 驱动**，需手动带 `mysql-connector-j:8.0.33`——CDC 文档推荐的 8.0.27 已从 central 下架）、`flink-cdc-pipeline-connector-iceberg:3.6.0-2.2`（shaded 自包含，含 iceberg core + FlinkCatalog + S3FileIO/AWS SDK；**不含 Hadoop FileSystem**）。**不需要单独 `iceberg-flink-runtime-2.0`**（connector 已自带 Flink runtime 集成）；**若 warehouse 用 `s3a://` 协议**需补 `flink-shaded-hadoop-2-uber:2.8.3-10.0`（Hadoop FileSystem + S3A），若用 S3FileIO（`s3://`）则免——M0 验证时确定协议选型。
+- **运行形态（2026-08-09 修订，替换原内嵌 MiniCluster 案）**：**独立 Flink 集群**——新增 `middleware-flink-jobmanager` / `middleware-flink-taskmanager` 容器（Flink 2.2.1 发行版，Session 模式），`app-realtime` 作为**客户端**经 Flink REST API（JobManager 8081）提交/停止作业（`FlinkPipelineComposer.ofRemoteCluster`，对齐 CDC CLI `-t remote` Session 形态）。理由：资源隔离（Flink 任务不占业务 JVM）、JobManager 独立保证 checkpoint 故障恢复（NAC-2 不丢不重）、Flink Web UI 可观测、TaskManager 可独立扩缩容。本期新增基础设施容器：**MinIO + Flink 集群（JobManager+TaskManager）**。
+- **风险兜底**：Flink 2.2 / CDC 3.6 均较新，实现时在容器内跑最小示例验证（§8 B1）；若阻塞，降级 Flink 1.20 + Flink CDC 3.3（容器 JVM 降 17，其余不变）。
 
-### D-D2：realtime-service 边界 → 独立服务 + 内嵌 MiniCluster + 独立新库 `datanest_realtime`
+### D-D2：realtime-service 边界 → 独立服务 + 独立 Flink 集群 + 独立新库 `datanest_realtime`
 
-- **服务**：新增 `data-nest-realtime`（Spring Boot 4，容器 `app-realtime`），内嵌 Flink MiniCluster，注册 Nacos，对外走 Gateway `/api/realtime/**`，容器间 Feign 遵循 `*-api` 契约 + `X-Internal-Token`。
+- **服务**：新增 `data-nest-realtime`（Spring Boot 4，容器 `app-realtime`，**不内嵌 Flink**，仅作为集群客户端），注册 Nacos，对外走 Gateway `/api/realtime/**`，容器间 Feign 遵循 `*-api` 契约 + `X-Internal-Token`。
 - **数据存储（用户确认 T2）**：**独立第 5 个业务库 `datanest_realtime`**（middleware-postgres 同实例），独立 Flyway，持有 `cdc_pipeline` / `cdc_pipeline_table` / `cdc_pipeline_log`。
 - **源连接**：经 engineering 既有内部端点 `GET /engineering/internal/datasources/{id}`（返回全字段含 `encryptedPassword`）读取，Feign 消费方配 fallback，fail-closed（管道创建/启动必须拿到源连接）。
 - **无库服务注意**：realtime 是**有库服务**（持 datanest_realtime），需复制 `FlywayConfig`（对齐 governance）。
@@ -48,7 +48,7 @@ Sprint 8 三大模块，均为 P0：
 严格对齐规格模块七「CDC 入湖」（用户确认 T1）：
 
 ```
-业务 MySQL ──Flink CDC 3.4（全量 Snapshot + 增量 Binlog）──▶ Iceberg 湖仓表
+业务 MySQL ──Flink CDC 3.6（全量 Snapshot + 增量 Binlog）──▶ Iceberg 湖仓表
                                                               （Hadoop Catalog, warehouse = s3a://datalake/warehouse, 存储于 MinIO）
                                                                 │
                                                     Doris Iceberg Catalog（Multi-Catalog）
@@ -56,7 +56,7 @@ Sprint 8 三大模块，均为 P0：
                                                      平台查询 / 质量 / 报表
 ```
 
-- **Iceberg 部署形态（2026-08-09 用户确认）**：Iceberg 是**表格式 + 内嵌依赖库，不是独立服务**——写入端以 `flink-cdc-pipeline-connector-iceberg` Jar 内嵌在 realtime-service 的 Flink 作业里；存储端数据文件 + 元数据文件全部落 MinIO；读取端由 Doris 内置 Iceberg 格式支持。**本期新增的独立基础设施容器只有 MinIO**。
+- **Iceberg 部署形态（2026-08-09 用户确认）**：Iceberg 是**表格式 + 依赖库，不是独立服务**——写入端以 `flink-cdc-pipeline-connector-iceberg` Jar 随作业提交到独立 Flink 集群（TaskManager 执行）；存储端数据文件 + 元数据文件全部落 MinIO；读取端由 Doris 内置 Iceberg 格式支持。**本期新增的独立基础设施容器：MinIO + Flink 集群（JobManager + TaskManager）**。
 - **Iceberg Catalog 选型**：**Hadoop Catalog**（warehouse 指向 MinIO S3），元数据文件（snapshot/metadata/manifest）随数据文件一起存 MinIO，**无需额外元数据库**——避免第 6 个业务库，且 Doris Iceberg Catalog 原生支持 `warehouse` + `s3.*` 属性对接。
 - **全量+增量**：Flink CDC MySQL source 默认 `scan.startup.mode = initial`（先快照后 binlog）；`仅增量` 时 `scan.startup.mode = latest-offset`（需目标湖仓表已存在）。
 - **Doris 侧**：一次性建 Iceberg Catalog（DDL 见 §7.2），平台内湖仓表经外部表对平台透明可见。
@@ -280,7 +280,7 @@ Sprint 8 三大模块，均为 P0：
 ```
 创建（向导）→ 预检 → 保存（仅配置）
                 ↓ 启动
-           提交 Flink 作业（内嵌 MiniCluster 本地提交）
+      提交 Flink 作业（app-realtime 经 REST 提交到独立 Flink Session 集群）
                 ↓
          全量 Snapshot（initial）→ 增量 Binlog → Iceberg Sink（checkpoint 周期 commit）
                 ↓
@@ -290,7 +290,7 @@ Sprint 8 三大模块，均为 P0：
 ```
 
 1. **预检**：源数据源连通性（Feign 读连接信息 + JDBC 探测）、binlog 开启（`SHOW VARIABLES LIKE 'log_bin'`）、目标 MinIO/Iceberg 可写、主键字段存在。
-2. **启动**：按 `cdc_pipeline` + `cdc_pipeline_table` 组装 Flink CDC YAML Pipeline（source: mysql → sink: iceberg），内嵌 MiniCluster 提交，回填 `flink_job_id`、置 RUNNING。
+2. **启动**：按 `cdc_pipeline` + `cdc_pipeline_table` 组装 Flink CDC YAML Pipeline（source: mysql → sink: iceberg），经 `FlinkPipelineComposer.ofRemoteCluster` 提交到独立 Flink Session 集群（REST 8081），回填 `flink_job_id`、置 RUNNING。
 3. **监控**：作业内定期上报延迟（binlog 位点 - 当前时间）/累计变更 → 回写 `current_lag_seconds`/`total_changes`（realtime 服务内轮询，不依赖外部指标系统）。
 4. **停止**：cancel Flink 作业 → 置 STOPPED、清 `flink_job_id`。
 5. **删除校验（PRD §7）**：运行中删除需先停止确认；删除数据源时 engineering 前置校验仍有管道引用（经 realtime-api 查询）。
@@ -395,9 +395,10 @@ Sprint 8 三大模块，均为 P0：
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `datanest.realtime.flink.parallelism` | 1 | 内嵌 MiniCluster 并行度（单机小规模） |
+| `datanest.realtime.flink.jobmanager-url` | `http://middleware-flink-jobmanager:8081` | 独立 Flink Session 集群 REST 地址 |
+| `datanest.realtime.flink.parallelism` | 1 | 作业并行度（提交参数） |
 | `datanest.realtime.flink.checkpoint-interval-ms` | 30000 | Checkpoint 间隔（Iceberg 提交频率） |
-| `datanest.realtime.flink.memory-mb` | 1024 | 单作业 JVM 内存上限 |
+| `datanest.realtime.flink.additional-jars` | `flink-cdc-pipeline-connector-mysql/iceberg:3.6.0-2.2` 等 | 提交作业时附加的 CDC/驱动 jar（M0 已锁定精确版本） |
 | `datanest.realtime.iceberg.warehouse` | `s3a://datalake/warehouse` | Iceberg warehouse（MinIO S3） |
 | `datanest.realtime.iceberg.catalog-name` | `datalake_catalog` | Hadoop Catalog 名 |
 | `datanest.realtime.iceberg.commit-interval-ms` | 60000 | Iceberg commit 间隔（快照频率） |
@@ -421,12 +422,14 @@ Sprint 8 三大模块，均为 P0：
 
 ```yaml
 middleware-minio:
-  image: minio/minio:latest
+  # 版本锁定：RELEASE.2025-09-07T16-13-09Z（2026-08-09 实测的 minio/minio:latest 实际版本，固化避免漂移）
+  image: minio/minio:RELEASE.2025-09-07T16-13-09Z
   container_name: datanest-middleware-minio
   command: server /data --console-address ":9001"
   environment:
     MINIO_ROOT_USER: datanest
     MINIO_ROOT_PASSWORD: datanest123
+    TZ: Asia/Shanghai
   ports:
     - "9000:9000"
     - "9001:9001"
@@ -434,30 +437,51 @@ middleware-minio:
     - minio-data:/data
   networks: [datanest-net]
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    # minio/minio 官方镜像不含 curl/mc，用 bash /dev/tcp 探测 S3 端口
+    test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9000' 2>/dev/null || exit 1"]
     interval: 10s
     timeout: 5s
     retries: 10
 ```
 
-**新增 `app-realtime` 容器**：`docker/realtime.Dockerfile`（基于 JDK 21，引入 Flink/CDC/Iceberg 依赖包），`PG_DATABASE=datanest_realtime`，`NACOS_HOST/...`、`MINIO_*` 环境变量，healthcheck 端口 8089，依赖 middleware-nacos/minio/postgres/engineering。
+**新增 `middleware-flink-jobmanager` / `middleware-flink-taskmanager` 容器（Flink 2.2.1 Session 集群）**：基于自定义镜像 `datanest-flink:2.2.1`（`docker/flink/Dockerfile`，**M0 实测验证通过**），JobManager 暴露宿主 18081→容器 8081（REST + Web UI，宿主 8081 被 nacos 占用），Session 模式（TaskManager 数量 1，1 slot）。
+
+**自定义镜像预置内容（M0 实测锁定的完整依赖矩阵，缺一不可）**：
+- `flink-cdc-dist` / `flink-cdc-common` / `flink-cdc-flink2-compat` / `flink-cdc-pipeline-connector-mysql` / `flink-cdc-pipeline-connector-iceberg`：均 **`3.6.0-2.2`** → `/opt/flink/lib/`
+- `mysql-connector-j:8.0.33` → `/opt/flink/lib/`（CDC 文档推荐 8.0.27 已从 central 下架）
+- `flink-shaded-hadoop-2-uber:2.8.3-10.0` → `/opt/flink/lib/`（Hadoop FileSystem，iceberg HadoopCatalog 必需）
+- `flink-s3-fs-hadoop:2.2.1` → `/opt/flink/lib/`（S3AFileSystem 实现；**必须放 lib 而非 plugins/**，否则作业看不到 S3A 类且 delegration token provider 重复注册）
+- `core-site.xml`（fs.s3a.endpoint/path-style）→ `/opt/flink/conf/` + `HADOOP_CONF_DIR=/opt/flink/conf`（S3A endpoint 唯一生效途径；iceberg `hadoop.*` catalog 前缀不透传）
+- `config.yaml` 追加：`s3.*`（access-key/secret-key/endpoint/path-style）+ **`classloader.resolve-order: parent-first`**（必配，否则 connector 在 lib 与 pipeline.jars 双加载 → `HadoopCatalog cannot be cast to Catalog`）
+- 容器环境变量：`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`（S3A 凭据；`s3.*` 配置不映射时凭据从这里读）
+
+**M0 已知坑（均已在镜像中固化解决）**：
+1. **`-Dclassloader.resolve-order` 作业参数不生效**，必须写集群 config.yaml
+2. **`execution.checkpointing.unaligned.enabled` 与 CDC 自定义 partitioner 冲突**（JobInitializationException），不要开
+3. **首次提交 `pekko.ask.timeout` 需加大到 120s**（SchemaOperator RPC 到协调器超时）
+4. 端口映射后 Doris 访问 MinIO 需用宿主侧地址 `http://192.168.119.1:9000`（VMnet8），不能用容器名
+
+**新增 `app-realtime` 容器**：`docker/realtime.Dockerfile`（基于 JDK 21，**不内嵌 Flink**，仅含 CDC YAML 组装 + 集群客户端依赖 + 业务依赖），`PG_DATABASE=datanest_realtime`，`NACOS_HOST/...`、`MINIO_*`、`FLINK_JM_URL` 环境变量，healthcheck 端口 8089，依赖 middleware-nacos/minio/flink-jobmanager/postgres/engineering。
 
 **PostgreSQL 新库**：middleware-postgres 启动后创建 `datanest_realtime`（init 脚本或手工 `CREATE DATABASE`）。
 
 **Doris 建 Iceberg Catalog（一次性，手工执行）**：
 
 ```sql
--- Doris 侧（root 执行）
+-- Doris 侧（root 执行；M0 已实测通过）
+-- 注意：s3.endpoint 必须用 Doris 主机可路由到的宿主侧地址（192.168.119.1=VMnet8 宿主接口），
+--       不能写容器名 middleware-minio（Doris 不在 datanest-net）
 CREATE CATALOG datalake_catalog PROPERTIES (
   'type' = 'iceberg',
   'iceberg.catalog.type' = 'hadoop',
   'warehouse' = 's3a://datalake/warehouse',
-  's3.endpoint' = 'http://middleware-minio:9000',
+  's3.endpoint' = 'http://192.168.119.1:9000',
   's3.access_key' = 'datanest',
   's3.secret_key' = 'datanest123',
-  's3.region' = 'us-east-1'
+  's3.region' = 'us-east-1',
+  's3.path_style_access' = 'true'
 );
--- 平台查询：SELECT * FROM datalake_catalog.dwd.orders LIMIT 10;
+-- 平台查询：SELECT * FROM datalake_catalog.testdb.users LIMIT 10;（M0 返回 3 行含实时增量）
 ```
 
 ---
@@ -466,8 +490,8 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 
 | # | 事项 | 说明 | 状态 |
 |---|------|------|------|
-| B1 | Flink 2.0 + CDC 3.4 + Iceberg 依赖兼容 | ✅ 已定稿（2026-08-09 用户确认）：按 Flink 2.0.x + CDC 3.4.x 实现；容器内跑最小示例验证 `flink-cdc-pipeline-connector-mysql` / `flink-cdc-pipeline-connector-iceberg` 与 Flink 2.0.x、Java 21 兼容；若阻塞降级 Flink 1.20 + CDC 3.3（JVM 降 17） | 明确（实现时验证） |
-| B2 | Doris 版本 Iceberg Catalog 支持 | ✅ 已确认：**doris-4.0.7-rc02**（2026-08-09 实测 `SHOW CATALOGS` 正常，Multi-Catalog 可用）；建 `CREATE CATALOG ... TYPE=iceberg` + `s3.*` 属性对接 MinIO | 明确（≥1.2 满足） |
+| B1 | Flink 2.2 + CDC 3.6 + Iceberg 依赖兼容 | ✅ **已通过（M0 实测）**：Flink 2.2.1 + CDC 3.6.0（connector `3.6.0-2.2`）；`flink-cdc.sh -t remote` 提交到独立 Session 集群，MySQL→Iceberg 链路 RUNNING，含全量+增量；依赖矩阵完整锁定（见 §7.2）；若阻塞降级 Flink 1.20 + CDC 3.3（JVM 降 17，未触发） | ✅ 已通过 |
+| B2 | Doris 版本 Iceberg Catalog 支持 | ✅ **已通过（M0 实测）**：Doris 建 `datalake_catalog`（TYPE=iceberg, hadoop catalog, s3a warehouse）后 `SHOW TABLES FROM datalake_catalog.testdb` 可见 `users` 表，`SELECT` 返回 3 行（含实时增量）；`s3.endpoint` 用 `192.168.119.1:9000`（宿主 VMnet8） | ✅ 已通过 |
 | B3 | 存量评分历史补算 | V1.5.0 不做迁移内补算；需一次性 job 从 `quality_check_detail` 补写 `quality_score_history`（复用 ScoreCalculator 算法），补算范围与触发方式待定 | 待实现 |
 | B4 | 删除用户时评论保留语义 | ✅ 已定稿（2026-08-09 用户确认）：**前端查用户名批量回填，user_id 查无显示「已注销」**——评论列表经 `SystemUserApi.usernames` 批量回填作者名，查无（用户已物理删）回退「已注销」，零后端改动 | 明确 |
 | B5 | 评论阈值字段回填 | `quality_check_detail` 无阈值字段（阈值存 `quality_rule.warning_threshold/severe_threshold`），问题清单需按 `rule_id` 回填，历史 rule 已删则阈值缺省 | 明确（按 rule_id 回填） |
@@ -478,7 +502,7 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 
 ### 后端
 
-- [ ] **realtime 服务（新模块）**：`data-nest-realtime` 骨架（pom/application.yml/FlywayConfig）+ 独立库 `datanest_realtime`；`CdcPipelineService` + `CdcPipelineController`（§5.2）；Flink CDC YAML 作业组装与内嵌 MiniCluster 提交/停止/监控；`cdc_pipeline` 三表 entity/mapper；`CdcPipelineApi` Feign 契约（internal 端点）
+- [ ] **realtime 服务（新模块）**：`data-nest-realtime` 骨架（pom/application.yml/FlywayConfig）+ 独立库 `datanest_realtime`；`CdcPipelineService` + `CdcPipelineController`（§5.2）；Flink CDC YAML 作业组装与**经 REST 提交到独立 Flink Session 集群**（`FlinkPipelineComposer.ofRemoteCluster`）的启停/监控；`cdc_pipeline` 三表 entity/mapper；`CdcPipelineApi` Feign 契约（internal 端点）
 - [ ] **governance 资产协作**：Flyway `V1.4.0`（§3.1）；`AssetTag/AssetTableTag/AssetFavorite/AssetFollow/AssetComment/AssetViewLog` entity/mapper；`AssetCollaborationService`（打标签/收藏/关注/评论/热度/我的收藏/我的关注）+ Controller 扩展（§5.1）；`browse`/`search` 补 `tags`/`sort=hot`
 - [ ] **governance 质量报告**：Flyway `V1.5.0`（§3.2）；`QualityScoreHistory` entity/mapper；`ScoreCalculator` 批次结束写历史快照；`QualityReportService` + `QualityReportController`（§5.3）；CSV 导出（BOM）；存量补算脚本
 - [ ] **task-core / common**：`ErrorCode` 新增（§9.1）；realtime-api 契约 DTO
@@ -496,8 +520,8 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 
 ### 部署与验证
 
-- [ ] docker-compose 加 MinIO + app-realtime + datanest_realtime 库；Doris `CREATE CATALOG`（§7.2）
-- [ ] 容器内验证 Flink 2.0 + CDC 3.4 + Iceberg 依赖（B1）
+- [x] docker-compose 加 MinIO + Flink 集群（JobManager+TaskManager）+ app-realtime + datanest_realtime 库；Doris `CREATE CATALOG`（§7.2）——✅ MinIO/Flink 集群/Doris catalog 已在 M0 完成并验证；app-realtime + datanest_realtime 库待 F2
+- [x] 容器内验证 Flink 2.2 + CDC 3.6 + Iceberg 依赖（B1）——✅ M0 已通过（MySQL→Iceberg→Doris 全链路）
 - [ ] 手工 CDC 管道 E2E：test-mysql 建表 → 管道创建启动 → 湖仓表出现 → Doris 外部表可查 → 变更秒级可见
 - [ ] 质量报告 E2E：跑一批质量检查 → 报告 KPI/趋势/问题清单/导出
 
@@ -544,3 +568,7 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 > **版本记录**
 > - v1.0 (2026-08-09)：初始版本。基于 PRD v1.1 与代码核验编写；6 个 ADR（Flink 选型 / realtime 边界 / 入湖链路 / 资产协作模型 / 热度埋点 / 质量报告聚合）；迁移脚本 V1.4.0/V1.5.0/datanest_realtime V1.0.0；部署新增 MinIO + app-realtime；B1/B2 依赖兼容待容器验证。
 > - v1.1 (2026-08-09)：用户交互确认后更新——B1 Flink 2.0.x + CDC 3.4.x 定稿；B2 实测 Doris **4.0.7-rc02**（Multi-Catalog 可用）确认支持 Iceberg Catalog；B4 评论「已注销」走前端批量回填查无兜底（零后端改动）；补充 Iceberg 部署形态说明（非独立服务，内嵌库 + MinIO + Doris 内置）。
+> - v1.2 (2026-08-09)：**B1 版本组合修订**——经官方发布公告/Releases 核实，Flink CDC 3.4 仅官方支持 Flink 1.19/1.20（未覆盖 2.0），原案 Flink 2.0 + CDC 3.4 非官方配对；经用户确认改用 **Flink 2.2.1 + Flink CDC 3.6.0**（官方配对 + JDK 21 匹配），配套依赖矩阵（`flink-cdc-pipeline-connector-mysql/iceberg:3.6.0` + `iceberg-flink-runtime-2.0:1.10.x` + `mysql-connector-java:8.0.27` + `flink-shaded-hadoop-2-uber`）同步更新（§1 D-D1 / §8 B1 / §9）。
+> - v1.3 (2026-08-09)：**Flink 部署形态修订**——经用户确认，**内嵌 MiniCluster 改为独立 Flink Session 集群**（新增 `middleware-flink-jobmanager` / `middleware-flink-taskmanager` 容器，`app-realtime` 不内嵌 Flink、仅经 REST 提交作业，`FlinkPipelineComposer.ofRemoteCluster`）。理由：资源隔离 / JobManager 独立保证 checkpoint 故障恢复（NAC-2 不丢不重）/ Flink Web UI 可观测 / TaskManager 独立扩缩容。同步更新 D-D1 运行形态、D-D2 服务边界、§4.2 生命周期、§7 配置与部署、§8 B1、§9 实现清单。本期新增基础设施容器变为 **MinIO + Flink 集群**。
+> - v1.4 (2026-08-09)：**依赖坐标实测锁定**——Flink CDC 3.6 的 connector Maven 坐标为 **`3.6.0-2.2`**（Flink 2.2 专属后缀，非 `3.6.0`）；mysql/iceberg connector 均为 **shaded 自包含 jar**（iceberg 含 core + FlinkCatalog + S3FileIO，无需单独 `iceberg-flink-runtime-2.0`），mysql 缺 JDBC 驱动需补 `mysql-connector-java:8.0.27`，`s3a://` 协议需补 `flink-shaded-hadoop-2-uber`。同步更新 D-D1 配套依赖、§7.1 additional-jars、§7.2 集群 lib、§8 B1（§1 D-D1 / §8 B1）。
+> - v1.5 (2026-08-09)：**M0 环境预研完成（B1/B2/B6 全部实测通过）**——`flink-cdc.sh -t remote` 提交到独立 Flink Session 集群跑通 **MySQL(testdb.users) → Iceberg(Hadoop Catalog/MinIO S3A) → Doris Iceberg Catalog 查询**全链路，含实时增量。实战结论固化：① 集群 lib 需预置 **dist/common/flink2-compat/两 connector/mysql 驱动/flink-shaded-hadoop/flink-s3-fs-hadoop** 共 7 个 jar（自定义镜像 `datanest-flink:2.2.1`，`docker/flink/Dockerfile`）；② **`classloader.resolve-order=parent-first`** 必配（否则 iceberg 双 classloader 冲突）；③ `flink-s3-fs-hadoop` 放 **lib 非 plugins**（plugins 会 delegration provider 重复注册 + 作业看不到 S3A）；④ S3A endpoint 用 **core-site.xml + HADOOP_CONF_DIR**，凭据用容器环境变量（`s3.*`/`hadoop.*` 前缀均不透传）；⑤ 禁开 `execution.checkpointing.unaligned`（与 CDC partitioner 冲突）；⑥ `pekko.ask.timeout=120s`；⑦ Doris 建 catalog 的 `s3.endpoint` 用宿主侧 `192.168.119.1:9000`（VMnet8）。更新 §7.2、§8 B1/B2/B6、§9（M0 完成项）。
