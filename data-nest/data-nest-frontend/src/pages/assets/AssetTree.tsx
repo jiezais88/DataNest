@@ -1,7 +1,9 @@
 // Sprint 7 F1：资产分类树（数据资产首页用）
 // 结构：全部资产（置顶）→ 数据域（可展开）→ 主题（缩进叶子）→ 未分类（垫底）。
 // 节点带表数计数徽章（后端 /assets/classifications 返回）；editable 时 hover 显示改名/删除。
+// UX（2026-08-10 方案 A+B）：节点名称双行布局（主名 + 级别说明），长名 truncate 且 hover Tooltip 显示完整名。
 import {useState} from 'react';
+import {Tooltip} from 'antd';
 import {
     HiChevronRight,
     HiOutlineFolderOpen,
@@ -91,7 +93,7 @@ export default function AssetTree({
     };
 
     const rowClass = (active: boolean) =>
-        `group flex items-center gap-ds-2 w-full px-ds-3 py-[7px] rounded-ds-sm text-ds-small cursor-pointer relative transition-colors ${
+        `group flex items-center gap-ds-2 w-full px-ds-3 py-[5px] rounded-ds-sm text-ds-small cursor-pointer relative transition-colors ${
             active ? 'bg-ds-accent-light text-ds-accent font-semibold' : 'text-ds-text-secondary hover:bg-ds-bg-hover'
         }`;
 
@@ -99,6 +101,16 @@ export default function AssetTree({
         active ? (
             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-ds-accent rounded-full"/>
         ) : null;
+
+    /** 节点名称双行块（方案 A+B）：主名 truncate + hover Tooltip 完整名，副行级别说明 */
+    const nameBlock = (name: string, sub: string) => (
+        <span className="flex-1 min-w-0 flex flex-col justify-center gap-[1px]">
+            <Tooltip title={name} mouseEnterDelay={0.3}>
+                <span className="block truncate text-left leading-tight">{name}</span>
+            </Tooltip>
+            <span className="block truncate text-left leading-tight text-ds-tiny text-ds-text-muted">{sub}</span>
+        </span>
+    );
 
     /** 计数徽章：active 时 accent 实心白字，否则灰底（对齐原型 tree-count） */
     const countBadge = (count: number | undefined, active: boolean) =>
@@ -148,7 +160,7 @@ export default function AssetTree({
                     onClick={() => onSelect(ALL_SELECTION)}>
                 {activeBar(selectedKey === 'all')}
                 <HiOutlineSparkles size={15} className="flex-shrink-0"/>
-                <span className="truncate flex-1 text-left">全部资产</span>
+                {nameBlock('全部资产', '全部数据表')}
                 {countBadge(allCount, selectedKey === 'all')}
             </button>
 
@@ -171,7 +183,7 @@ export default function AssetTree({
                                 }}
                             />
                             <HiOutlineFolderOpen size={15} className="flex-shrink-0"/>
-                            <span className="truncate flex-1">{domain.name}</span>
+                            {nameBlock(domain.name, '数据域')}
                             {editActions(domain)}
                             {countBadge(domain.tableCount, selectedKey === domainKey)}
                         </div>
@@ -189,7 +201,7 @@ export default function AssetTree({
                                              })}>
                                             {activeBar(selectedKey === topicKey)}
                                             <HiOutlineTag size={14} className="flex-shrink-0"/>
-                                            <span className="truncate flex-1">{topic.name}</span>
+                                            {nameBlock(topic.name, '主题')}
                                             {editActions(topic, domain)}
                                             {countBadge(topic.tableCount, selectedKey === topicKey)}
                                         </div>
@@ -207,7 +219,7 @@ export default function AssetTree({
                         onClick={() => onSelect({type: 'uncategorized'})}>
                     {activeBar(selectedKey === 'uncategorized')}
                     <HiOutlineTag size={15} className="flex-shrink-0"/>
-                    <span className="truncate flex-1 text-left">未分类</span>
+                    {nameBlock('未分类', '未归入分类')}
                     {countBadge(uncategorizedCount, selectedKey === 'uncategorized')}
                 </button>
             )}

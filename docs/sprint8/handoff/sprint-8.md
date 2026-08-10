@@ -1,6 +1,6 @@
 # Sprint 8 Handoff
 
-> **更新时间**：2026-08-09 | **阶段**：规划/设计完成（PRD v1.2 + 技术文档 v1.1 + UI 原型完成）→ 待实现
+> **更新时间**：2026-08-10 | **阶段**：F1 后端完成（curl 自测通过）→ F1 前端待开发
 > **Sprint 主题**：资产目录深化 + 实时 CDC 管道 + 质量报告（三大模块均为 P0）
 
 ## 1. Sprint 目标
@@ -18,7 +18,7 @@
 | Sprint 8 PRD                             | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-PRD.md`（v1.2，2026-08-09）                                     |
 | Sprint 8 技术设计                        | ✅ 完成   | `docs/sprint8/DataNest-Sprint8-技术文档.md`（v1.1，含 6 个 ADR D1~D6）                         |
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
-| F1 资产目录深化（DC-06~09）              | ⏳ 未开始 | 后端 + 前端 + E2E                                                                              |
+| F1 资产目录深化（DC-06~09）              | 🔄 后端完成 | 后端已实现并 curl 自测通过（2026-08-10）：V1.4.0 六表 + 协作 16 端点 + browse/search 回填；前端 + E2E 未开始 |
 | F2 实时 CDC 管道（DI-04/RC-01）          | ⏳ 未开始 | 架构级新增 realtime-service + MinIO + Iceberg + **独立 Flink 集群**（JobManager+TaskManager）  |
 | F3 质量报告（DG-07 完整版）              | ⏳ 未开始 | 报告聚合接口 + 评分历史表 + 前端报告页                                                         |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
@@ -60,6 +60,7 @@
 | `docs/sprint8/DataNest-Sprint8-PRD.md`（新增）                   | Sprint 8 产品文档 v1.0 → v1.1（T1~T4 交互确认）→ v1.2（B1/B2/B4 + Hadoop Catalog 口径统一）→ **v1.3（B1 版本组合修订：Flink 2.2.1 + CDC 3.6.0）**。对齐 Sprint7 PRD 范本，13 章 |
 | `docs/sprint8/DataNest-Sprint8-技术文档.md`（新增）               | Sprint 8 技术设计文档 v1.0 → v1.1（B1/B2/B4 定稿 + Iceberg 部署形态说明）→ **v1.2（B1 版本组合修订：Flink 2.2.1 + CDC 3.6.0）→ v1.3（部署形态修订：内嵌 MiniCluster → 独立 Flink Session 集群）→ v1.4（依赖坐标锁定）→ v1.5（M0 完成：B1/B2/B6 实测通过 + 已知坑固化）**。10 章，含 6 个 ADR、迁移脚本规划、接口设计、部署方案 |
 | `docs/sprint8/handoff/sprint-8.md`（新增）                        | 本 Handoff                                                                                       |
+| F1 后端代码（2026-08-10，新增/修改）                              | governance：V1.4.0 迁移脚本 + 协作 6 实体/Mapper + `AssetCollaborationService` + 9 个 DTO；`AssetCatalogController` 扩展 16 端点、`AssetCatalogService`（tags 回填/tag 筛选/sort=hot，`backfill`/`toItemDTO` 转 public 复用）；删除钩子（`MetadataWriteService.remove`/`InternalDatasourceService.cascadeDelete`）；common `ErrorCode` 4021~4024；技术文档 v1.6 回落（collaboration 端点/comment 补字段/tag 传名） |
 | `docs/sprint8/DataNest-Sprint8-原型.html/css/js`（新增）| UI 原型：**单 HTML 多视图**（沿用 Sprint 7 范本），prototype-switch 切换 7 视图：数据资产（标签云 + 热门 Top10）、资产详情（标签/收藏/关注/评论/热度）、我的收藏、我的关注（表变更动态）、CDC 管道列表（含日志抽屉）、CDC 新建向导（4 步）、质量报告（**Dashboard 一屏版**：KPI×5 + 四档趋势 + 评分分布环图 + 数据源对比横向条 + 表评分趋势 + 问题清单 TOP5，无滚动）；视觉严格对齐真实 ds-* token + antd 组件结构（accent indigo #4f46e5、圆角 8/12/16px、表头 11px 大写、表格 10px 16px） |
 
 ### 代码现状核验要点（2026-08-09，影响落地路径）
@@ -118,13 +119,13 @@
 **范围**：数据标签 / 收藏与关注（含变更动态）/ 评论与讨论 / 热度排行。
 **块内依赖**：governance Flyway V1.4.0 → governance 服务（协作 6 表 entity/mapper + AssetCollaborationService）→ 前端 4 处（详情页扩展 + 我的收藏/关注 2 页 + 首页热度）→ 联调。
 
-**后端**
-- [ ] Flyway `V1.4.0`（governance）：asset_tag / asset_table_tag / asset_favorite / asset_follow / asset_comment / asset_view_log（§3.1，updated_at 无默认值）
-- [ ] common：`ErrorCode` 4021~4024
-- [ ] governance `AssetCollaborationService`：打标签（复用字典）/收藏/关注（uk 幂等）/评论（软删 deleted）/热度埋点（按天 upsert）；「我的收藏」「我的关注」（关注页含 collect_change_detail 变更动态）分页
-- [ ] `AssetCatalogController` 扩展 13 端点（§5.1）；`browse` 补 `tag` 筛选 + `sort=hot`；`search`/`browse` 回填 `tags`
-- [ ] 删除校验：删表级联清理协作数据（metadata_table 删除钩子）
-- [ ] 重建 governance + 部署 + curl 自测
+**后端**——✅ 已完成并 curl 自测通过（2026-08-10）
+- [x] Flyway `V1.4.0`（governance）：asset_tag / asset_table_tag / asset_favorite / asset_follow / asset_comment / asset_view_log（§3.1，updated_at 无默认值）——已应用；`asset_comment` 按用户确认补 `deleted_by`/`deleted_at`
+- [x] common：`ErrorCode` 4021~4024
+- [x] governance `AssetCollaborationService`：打标签（复用字典）/收藏/关注（uk 幂等）/评论（软删 deleted）/热度埋点（按天 upsert）；「我的收藏」「我的关注」（关注页含 collect_change_detail 变更动态）分页
+- [x] `AssetCatalogController` 扩展 **16 端点**（§5.1 十五个 + 用户确认新增 `GET /tables/{tableId}/collaboration` 聚合端点）；`browse` 补 `tag` 筛选（**传标签名**）+ `sort=hot`；`search`/`browse` 回填 `tags`
+- [x] 删除校验：删表级联清理协作数据（`MetadataWriteService.remove` + `InternalDatasourceService.cascadeDelete` 两处钩子）
+- [x] 重建 governance + 部署 + curl 自测（25 项断言全过：标签 CRUD/幂等/标签云/筛选、收藏/关注幂等与分页、评论发布/软删/4022/4024、热度埋点/hot-tables/sort=hot、search 回填 tags、孤儿标签物理删）
 
 **前端**
 - [ ] `Sidebar.tsx`：「数据资产」组新增「我的收藏」「我的关注」（ALL_ROLES）

@@ -1,6 +1,6 @@
 # Sprint 8：资产目录深化 + 实时 CDC 管道 + 质量报告——技术设计文档
 
-> **版本**：v1.0 | **日期**：2026-08-09 | **作者**：后端
+> **版本**：v1.6 | **日期**：2026-08-10 | **作者**：后端
 > **关联**：`DataNest-Sprint8-PRD.md`（v1.1）
 > **技术决策**：本 Sprint 范围经 2 轮用户确认（主题边界 + T1~T4 架构决策，见 PRD §13），再经代码现状核验与技术选型调研确定 6 个关键技术决策（D1~D6），见 §1 ADR。涉及架构级新增（realtime-service + MinIO + Iceberg），实现前需先在容器环境验证 Flink/CDC/Iceberg 依赖兼容（§8 B1）。
 
@@ -174,6 +174,7 @@ Sprint 8 三大模块，均为 P0：
 | user_id | BIGINT | 评论人 |
 | content | VARCHAR(2000) | 评论内容 |
 | deleted | SMALLINT DEFAULT 0 | 软删标记（用户删除/表删除置 1，保留历史） |
+| deleted_by / deleted_at | - | 删除人/删除时间（作者自删与治理员/超管删均记录；2026-08-10 用户确认补字段） |
 | created_by / created_at | - | 审计 |
 
 > 索引：`idx(table_id, id DESC)`（倒序分页）、`idx(user_id)`；`table_id` 删除级联物理删；用户删除保留记录（deleted=1）。
@@ -321,6 +322,7 @@ Sprint 8 三大模块，均为 P0：
 | GET | `/tables/{tableId}/tags` | 某表标签列表 | 全角色 |
 | POST | `/tables/{tableId}/tags` | 打标签（body: {tagName}） | 全角色 |
 | DELETE | `/tables/{tableId}/tags/{tagId}` | 删表标签绑定 | 全角色 |
+| GET | `/tables/{tableId}/collaboration` | 详情页协作状态聚合（tags + favorited/followed + viewCount30d + commentCount；2026-08-10 用户确认新增，详情页头部一次拉取） | 全角色 |
 | POST | `/tables/{tableId}/favorite` | 收藏 | 全角色 |
 | DELETE | `/tables/{tableId}/favorite` | 取消收藏 | 全角色 |
 | GET | `/my-favorites` | 我的收藏（分页） | 全角色 |
@@ -333,7 +335,7 @@ Sprint 8 三大模块，均为 P0：
 | POST | `/tables/{tableId}/view` | 热度埋点（幂等，防抖） | 全角色 |
 | GET | `/hot-tables` | 热门数据表 Top N（30 天热度） | 全角色 |
 
-> **`browse` 扩展**：新增可选 `tag`（按标签筛选）、`sort=hot`（热度降序）；`search`/`browse` 返回 `tags`（表标签名数组）。
+> **`browse` 扩展**：新增可选 `tag`（按标签筛选，**传标签名**，2026-08-10 用户确认）、`sort=hot`（热度降序）；`search`/`browse` 返回 `tags`（表标签名数组）。
 
 ### 5.2 CDC 管道（realtime `CdcPipelineController`，`/cdc/pipelines`）
 
@@ -572,3 +574,4 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 > - v1.3 (2026-08-09)：**Flink 部署形态修订**——经用户确认，**内嵌 MiniCluster 改为独立 Flink Session 集群**（新增 `middleware-flink-jobmanager` / `middleware-flink-taskmanager` 容器，`app-realtime` 不内嵌 Flink、仅经 REST 提交作业，`FlinkPipelineComposer.ofRemoteCluster`）。理由：资源隔离 / JobManager 独立保证 checkpoint 故障恢复（NAC-2 不丢不重）/ Flink Web UI 可观测 / TaskManager 独立扩缩容。同步更新 D-D1 运行形态、D-D2 服务边界、§4.2 生命周期、§7 配置与部署、§8 B1、§9 实现清单。本期新增基础设施容器变为 **MinIO + Flink 集群**。
 > - v1.4 (2026-08-09)：**依赖坐标实测锁定**——Flink CDC 3.6 的 connector Maven 坐标为 **`3.6.0-2.2`**（Flink 2.2 专属后缀，非 `3.6.0`）；mysql/iceberg connector 均为 **shaded 自包含 jar**（iceberg 含 core + FlinkCatalog + S3FileIO，无需单独 `iceberg-flink-runtime-2.0`），mysql 缺 JDBC 驱动需补 `mysql-connector-java:8.0.27`，`s3a://` 协议需补 `flink-shaded-hadoop-2-uber`。同步更新 D-D1 配套依赖、§7.1 additional-jars、§7.2 集群 lib、§8 B1（§1 D-D1 / §8 B1）。
 > - v1.5 (2026-08-09)：**M0 环境预研完成（B1/B2/B6 全部实测通过）**——`flink-cdc.sh -t remote` 提交到独立 Flink Session 集群跑通 **MySQL(testdb.users) → Iceberg(Hadoop Catalog/MinIO S3A) → Doris Iceberg Catalog 查询**全链路，含实时增量。实战结论固化：① 集群 lib 需预置 **dist/common/flink2-compat/两 connector/mysql 驱动/flink-shaded-hadoop/flink-s3-fs-hadoop** 共 7 个 jar（自定义镜像 `datanest-flink:2.2.1`，`docker/flink/Dockerfile`）；② **`classloader.resolve-order=parent-first`** 必配（否则 iceberg 双 classloader 冲突）；③ `flink-s3-fs-hadoop` 放 **lib 非 plugins**（plugins 会 delegration provider 重复注册 + 作业看不到 S3A）；④ S3A endpoint 用 **core-site.xml + HADOOP_CONF_DIR**，凭据用容器环境变量（`s3.*`/`hadoop.*` 前缀均不透传）；⑤ 禁开 `execution.checkpointing.unaligned`（与 CDC partitioner 冲突）；⑥ `pekko.ask.timeout=120s`；⑦ Doris 建 catalog 的 `s3.endpoint` 用宿主侧 `192.168.119.1:9000`（VMnet8）。更新 §7.2、§8 B1/B2/B6、§9（M0 完成项）。
+> - v1.6 (2026-08-10)：**F1 实现阶段确认回落**——① §5.1 新增第 16 个端点 `GET /tables/{tableId}/collaboration`（详情页协作状态聚合：tags/favorited/followed/viewCount30d/commentCount，原文档 15 端点未覆盖按钮初始态下发）；② §3.1 `asset_comment` 补 `deleted_by`/`deleted_at` 两列（对齐 §4.1「治理员/超管删记录删除人」语义）；③ `browse` 的 `tag` 筛选明确**传标签名**。以上均经用户确认。

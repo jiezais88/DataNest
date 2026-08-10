@@ -117,6 +117,8 @@ function LineageGraphPageInner() {
     const tableNameParam = searchParams.get('tableName') || '';
     /** 来源页：asset-catalog = 从资产详情页「查看完整血缘」进入，返回到资产详情而非元数据管理 */
     const fromParam = searchParams.get('from') || '';
+    /** 返回后要落到的详情页 tab（资产详情从「血缘图谱」页签进入时带回 lineage，避免停回默认「基础信息」tab） */
+    const backTabParam = searchParams.get('tab') || '';
 
     const [tableId, setTableId] = useState(tableIdParam);
     const [tableName, setTableName] = useState(tableNameParam);
@@ -292,7 +294,9 @@ function LineageGraphPageInner() {
         // 从资产详情页进入 → 返回资产详情；否则回来源表的元数据「血缘图谱」tab（不做血缘内逐级回退）
         const originId = originTableIdRef.current;
         if (fromParam === 'asset-catalog' && originId) {
-            navigate(`/asset-catalog/${originId}`);
+            // 从资产详情「血缘图谱」页签进入：返回时落到该表详情的血缘图谱 tab（而非默认基础信息）
+            const tabSuffix = backTabParam ? `?tab=${encodeURIComponent(backTabParam)}` : '';
+            navigate(`/asset-catalog/${originId}${tabSuffix}`);
         } else if (originId) {
             navigate(`/governance/metadata?tableId=${originId}&tab=lineage`);
         } else {

@@ -55,6 +55,12 @@ public class AssetSearchItemDTO {
     @Schema(description = "相关度得分（仅搜索接口返回；表名命中 100、注释 60、字段 40、负责人 20，表名前缀命中加成）")
     private Integer score;
 
+    @Schema(description = "表标签名数组（Sprint 8 DC-06，搜索/浏览回填；无标签为空数组）")
+    private java.util.List<String> tags;
+
+    @Schema(description = "最近 30 天访问数（Sprint 8 DC-09，仅热门排行/热度排序场景回填，其余为 null）")
+    private Long viewCount;
+
     @Schema(description = "更新时间（ISO 8601）")
     private LocalDateTime updatedAt;
 }

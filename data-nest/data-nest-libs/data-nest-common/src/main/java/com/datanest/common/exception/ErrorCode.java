@@ -39,6 +39,12 @@ public enum ErrorCode {
     CLASSIFICATION_IN_USE(4009, "分类仍被元数据表引用，请先解除分配"),
     CLASSIFICATION_PARENT_INVALID(4010, "父分类非法（主题必须挂在数据域下）"),
 
+    // Asset collaboration errors — Sprint 8 资产目录深化（DC-06~09）
+    ASSET_TAG_NOT_FOUND(4021, "标签不存在"),
+    ASSET_COMMENT_NOT_FOUND(4022, "评论不存在"),
+    ASSET_COMMENT_DELETE_FORBIDDEN(4023, "无权限删除他人评论"),
+    ASSET_COLLABORATION_INVALID(4024, "资产协作数据校验失败"),
+
     // Data standard errors (5xxx)
     NAMING_STANDARD_NOT_FOUND(5001, "命名规范不存在"),
     NAMING_STANDARD_NAME_EXISTS(5002, "命名规范名称已存在"),

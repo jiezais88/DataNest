@@ -199,7 +199,7 @@ function AssetLineageTabInner({tableId, fullName}: AssetLineageTabProps) {
                 <DsButton
                     variant="secondary"
                     onClick={() => navigate(
-                        `/governance/metadata/lineage?tableId=${tableId}&tableName=${encodeURIComponent(fullName)}&from=asset-catalog`,
+                        `/governance/metadata/lineage?tableId=${tableId}&tableName=${encodeURIComponent(fullName)}&from=asset-catalog&tab=lineage`,
                     )}
                 >
                     查看完整血缘图谱

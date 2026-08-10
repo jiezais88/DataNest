@@ -3,7 +3,7 @@
 // 不新建聚合接口：基础信息/字段用元数据 API，血缘用 getLineageGraph，质量用评分 API，
 // 页签懒加载（antd Tabs 默认首个激活页签才挂载，切到才拉取）。
 import {useCallback, useEffect, useState} from 'react';
-import {useNavigate, useParams} from 'react-router-dom';
+import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {Spin, Tabs, Tooltip} from 'antd';
 import {
     HiOutlineCheckCircle,
@@ -105,12 +105,17 @@ function StatCard({icon, iconClass, label, value}: {
 export default function AssetDetailPage() {
     const {tableId = ''} = useParams();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
     const [table, setTable] = useState<MetadataTable | null>(null);
     const [score, setScore] = useState<QualityScore | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('basic');
+    // 初始 tab：优先 URL ?tab=（血缘图谱 → 查看完整血缘 → 返回时回到血缘图谱 tab）
+    const [activeTab, setActiveTab] = useState(() => {
+        const t = searchParams.get('tab');
+        return t === 'lineage' ? 'lineage' : 'basic';
+    });
     /** 直接上游/下游表数（指标卡，取自血缘 graph depth=1 的边） */
     const [lineageStats, setLineageStats] = useState<{ up: number; down: number } | null>(null);
 
@@ -244,7 +249,11 @@ export default function AssetDetailPage() {
                 className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-4 pb-ds-4 flex-shrink-0">
                 <Tabs
                     activeKey={activeTab}
-                    onChange={setActiveTab}
+                    onChange={(key) => {
+                        setActiveTab(key);
+                        // 手动切换 tab 同步到 URL（?tab=），返回/刷新保持一致
+                        setSearchParams({tab: key}, {replace: true});
+                    }}
                     items={[
                         {
                             key: 'basic',

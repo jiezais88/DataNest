@@ -22,6 +22,7 @@ import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
+import com.datanest.governance.service.AssetCollaborationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,7 @@ public class InternalDatasourceService {
     private final QualityRuleMapper qualityRuleMapper;
     private final LineageRecordMapper lineageRecordMapper;
     private final SchedulerService schedulerService;
+    private final AssetCollaborationService assetCollaborationService;
 
     public InternalDatasourceService(CollectTaskMapper collectTaskMapper,
                                      MetadataTableMapper metadataTableMapper,
@@ -61,7 +63,8 @@ public class InternalDatasourceService {
                                      QualityScoreMapper qualityScoreMapper,
                                      QualityRuleMapper qualityRuleMapper,
                                      LineageRecordMapper lineageRecordMapper,
-                                     SchedulerService schedulerService) {
+                                     SchedulerService schedulerService,
+                                     AssetCollaborationService assetCollaborationService) {
         this.collectTaskMapper = collectTaskMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
@@ -70,6 +73,7 @@ public class InternalDatasourceService {
         this.qualityRuleMapper = qualityRuleMapper;
         this.lineageRecordMapper = lineageRecordMapper;
         this.schedulerService = schedulerService;
+        this.assetCollaborationService = assetCollaborationService;
     }
 
     /**
@@ -106,12 +110,14 @@ public class InternalDatasourceService {
     /**
      * 级联删除数据源的治理域数据（本地事务，对齐原 engineering DataSourceService.delete 的顺序）：
      * metadata_column（按 tableIds）→ metadata_table → compliance_check_result → quality_score。
+     * Sprint 8 F1：metadata_table 删除前顺带级联清理协作数据（标签绑定/收藏/关注/评论/热度，PRD §7 T4）。
      */
     @Transactional
     public void cascadeDelete(Long datasourceId) {
         List<Long> tableIds = metadataTableMapper.selectIdsByDatasourceId(datasourceId);
         if (!tableIds.isEmpty()) {
             metadataColumnMapper.deleteByTableIds(tableIds);
+            assetCollaborationService.deleteByTableIds(tableIds);
         }
         metadataTableMapper.deleteByDatasourceId(datasourceId);
 

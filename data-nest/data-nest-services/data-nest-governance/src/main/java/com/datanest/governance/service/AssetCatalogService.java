@@ -22,8 +22,13 @@ import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.task.core.dto.QualityScoreDTO;
 import com.datanest.governance.entity.AssetClassification;
+import com.datanest.governance.entity.AssetTableTag;
+import com.datanest.governance.entity.AssetTag;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.mapper.AssetClassificationMapper;
+import com.datanest.governance.mapper.AssetTableTagMapper;
+import com.datanest.governance.mapper.AssetTagMapper;
+import com.datanest.governance.mapper.AssetViewLogMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.service.QualityScoreService;
@@ -35,6 +40,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -75,6 +81,9 @@ public class AssetCatalogService {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final AssetClassificationMapper classificationMapper;
+    private final AssetTagMapper assetTagMapper;
+    private final AssetTableTagMapper assetTableTagMapper;
+    private final AssetViewLogMapper assetViewLogMapper;
     private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
     private final QualityScoreService qualityScoreService;
@@ -86,12 +95,18 @@ public class AssetCatalogService {
     public AssetCatalogService(MetadataTableMapper metadataTableMapper,
                                MetadataColumnMapper metadataColumnMapper,
                                AssetClassificationMapper classificationMapper,
+                               AssetTagMapper assetTagMapper,
+                               AssetTableTagMapper assetTableTagMapper,
+                               AssetViewLogMapper assetViewLogMapper,
                                EngineeringDatasourceApi datasourceApi,
                                SystemUserApi systemUserApi,
                                QualityScoreService qualityScoreService) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.classificationMapper = classificationMapper;
+        this.assetTagMapper = assetTagMapper;
+        this.assetTableTagMapper = assetTableTagMapper;
+        this.assetViewLogMapper = assetViewLogMapper;
         this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
         this.qualityScoreService = qualityScoreService;
@@ -101,7 +116,7 @@ public class AssetCatalogService {
 
     /**
      * 多维资产搜索：表名/注释/字段名/负责人模糊匹配，按相关度排序，回填质量分与分类。
-     * 标签维度本期预留（无标签表，PRD §6.2）。
+     * Sprint 8 F1 起回填标签名数组（tags，DC-06）。
      * 可选过滤：datasourceId 按数据源收窄；healthLevel 按健康度收窄（经 quality_score 反查表 ID）。
      */
     public List<AssetSearchItemDTO> search(String keyword, Long datasourceId, String healthLevel) {
@@ -357,10 +372,11 @@ public class AssetCatalogService {
     /**
      * 分类浏览：按数据域/主题/数据源/健康度筛选 ONLINE 表分页返回，回填质量分与负责人名。
      * uncategorized=true 时查未分类（data_domain 为空）的表；sort=score 按质量分降序（内存排序，封顶 1000）。
+     * Sprint 8 F1：新增 tag 按标签名筛选（2026-08-10 用户确认传标签名）；sort=hot 按最近 30 天热度降序（DC-09）。
      */
     public PageResult<AssetSearchItemDTO> browse(String domain, String topic, Long datasourceId,
                                                  String healthLevel, boolean uncategorized, String sort,
-                                                 int page, int pageSize) {
+                                                 String tag, int page, int pageSize) {
         // 健康度筛选：质量分在另一张表，先反查表 ID 集合再拼 IN（无命中直接返回空页）
         List<Long> healthTableIds = null;
         if (healthLevel != null && !healthLevel.isBlank()) {
@@ -369,9 +385,20 @@ public class AssetCatalogService {
                 return new PageResult<>(List.of(), 0, page, pageSize);
             }
         }
+        // 标签筛选：按标签名反查绑定表 ID 集合再拼 IN（无命中直接返回空页）
+        List<Long> tagTableIds = null;
+        if (tag != null && !tag.isBlank()) {
+            tagTableIds = findTableIdsByTagName(tag.trim());
+            if (tagTableIds.isEmpty()) {
+                return new PageResult<>(List.of(), 0, page, pageSize);
+            }
+        }
         QueryWrapper<MetadataTable> wrapper = buildBrowseWrapper(domain, topic, datasourceId, uncategorized);
         if (healthTableIds != null) {
             wrapper.in("id", healthTableIds);
+        }
+        if (tagTableIds != null) {
+            wrapper.in("id", tagTableIds);
         }
 
         if ("score".equalsIgnoreCase(sort)) {
@@ -389,6 +416,26 @@ public class AssetCatalogService {
             return new PageResult<>(new ArrayList<>(items.subList(from, to)), items.size(), page, pageSize);
         }
 
+        if ("hot".equalsIgnoreCase(sort)) {
+            // 热度在 asset_view_log，先拉全量（封顶）回填后按最近 30 天访问数降序内存排序再手工分页
+            List<MetadataTable> all = metadataTableMapper.selectList(
+                    wrapper.orderByAsc("table_name").last("LIMIT " + MAX_BROWSABLE_ROWS));
+            List<AssetSearchItemDTO> items = all.stream()
+                    .map(t -> toItemDTO(t, null))
+                    .collect(Collectors.toCollection(ArrayList::new));
+            backfill(items);
+            Map<Long, Long> viewCountMap = viewCountMap30d(
+                    items.stream().map(AssetSearchItemDTO::getTableId).toList());
+            for (AssetSearchItemDTO item : items) {
+                item.setViewCount(viewCountMap.getOrDefault(item.getTableId(), 0L));
+            }
+            items.sort(Comparator.comparing(AssetSearchItemDTO::getViewCount,
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+            int from = Math.min((page - 1) * pageSize, items.size());
+            int to = Math.min(from + pageSize, items.size());
+            return new PageResult<>(new ArrayList<>(items.subList(from, to)), items.size(), page, pageSize);
+        }
+
         wrapper.orderByAsc("table_name");
         IPage<MetadataTable> mpPage = metadataTableMapper.selectPage(new Page<>(page, pageSize), wrapper);
         List<AssetSearchItemDTO> items = mpPage.getRecords().stream()
@@ -396,6 +443,31 @@ public class AssetCatalogService {
                 .collect(Collectors.toCollection(ArrayList::new));
         backfill(items);
         return new PageResult<>(items, mpPage.getTotal(), mpPage.getCurrent(), mpPage.getSize());
+    }
+
+    /** 按标签名反查绑定的表 ID 集合（browse 的 tag 筛选）；标签不存在或无绑定返回空列表。 */
+    private List<Long> findTableIdsByTagName(String tagName) {
+        AssetTag tag = assetTagMapper.selectOne(new QueryWrapper<AssetTag>()
+                .eq("name", tagName).last("limit 1"));
+        if (tag == null) {
+            return List.of();
+        }
+        return assetTableTagMapper.selectList(new QueryWrapper<AssetTableTag>()
+                        .select("table_id").eq("tag_id", tag.getId()))
+                .stream().map(AssetTableTag::getTableId).toList();
+    }
+
+    /** 批量聚合最近 30 天访问数（tableId → viewCount），sort=hot 排序用。 */
+    private Map<Long, Long> viewCountMap30d(List<Long> tableIds) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Long> map = new HashMap<>();
+        for (Map<String, Object> row : assetViewLogMapper.sumViewCountByTableIds(
+                tableIds, LocalDate.now().minusDays(30))) {
+            map.put(((Number) row.get("table_id")).longValue(), ((Number) row.get("view_count")).longValue());
+        }
+        return map;
     }
 
     private QueryWrapper<MetadataTable> buildBrowseWrapper(String domain, String topic,
@@ -518,8 +590,8 @@ public class AssetCatalogService {
 
     // ==================== private ====================
 
-    /** 批量回填：质量分/健康度（mapByTableIds 一次 IN 查询）+ 负责人名 + 数据源名称/类型（browse 无 join 时补齐）。 */
-    private void backfill(List<AssetSearchItemDTO> items) {
+    /** 批量回填：质量分/健康度（mapByTableIds 一次 IN 查询）+ 负责人名 + 数据源名称/类型 + 标签名数组（Sprint 8 DC-06）。 */
+    public void backfill(List<? extends AssetSearchItemDTO> items) {
         if (items.isEmpty()) {
             return;
         }
@@ -527,6 +599,7 @@ public class AssetCatalogService {
         Map<Long, QualityScoreDTO> scoreMap = qualityScoreService.mapByTableIds(tableIds);
         Map<Long, String> usernameMap = usernames(
                 items.stream().map(AssetSearchItemDTO::getOwnerUserId).filter(Objects::nonNull).toList());
+        Map<Long, List<String>> tagMap = tagNamesByTableIds(tableIds);
         List<Long> dsIds = items.stream().map(AssetSearchItemDTO::getDatasourceId)
                 .filter(Objects::nonNull).distinct().toList();
         // 经 engineering 服务 Feign 批量回填数据源名/类型；失败经 RemoteCalls 降级为空 Map（名称列退化），不阻断搜索
@@ -552,10 +625,24 @@ public class AssetCatalogService {
                 item.setDatasourceName(ds.getName());
                 item.setDatasourceType(ds.getType());
             }
+            item.setTags(tagMap.getOrDefault(item.getTableId(), List.of()));
         }
     }
 
-    private AssetSearchItemDTO toItemDTO(MetadataTable t, Integer score) {
+    /** 批量查表标签名（tableId → 标签名数组，按标签名排序），backfill 回填用（避免 N+1）。 */
+    private Map<Long, List<String>> tagNamesByTableIds(List<Long> tableIds) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<String>> map = new HashMap<>();
+        for (Map<String, Object> row : assetTableTagMapper.selectTagRowsByTableIds(tableIds)) {
+            map.computeIfAbsent(((Number) row.get("table_id")).longValue(), k -> new ArrayList<>())
+                    .add((String) row.get("tag_name"));
+        }
+        return map;
+    }
+
+    public AssetSearchItemDTO toItemDTO(MetadataTable t, Integer score) {
         AssetSearchItemDTO dto = new AssetSearchItemDTO();
         dto.setTableId(t.getId());
         dto.setTableName(t.getTableName());

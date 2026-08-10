@@ -15,6 +15,7 @@ import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.mapper.LineageRecordMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
+import com.datanest.governance.service.AssetCollaborationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -42,13 +43,16 @@ public class MetadataWriteService {
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final LineageRecordMapper lineageRecordMapper;
+    private final AssetCollaborationService assetCollaborationService;
 
     public MetadataWriteService(MetadataTableMapper metadataTableMapper,
                                 MetadataColumnMapper metadataColumnMapper,
-                                LineageRecordMapper lineageRecordMapper) {
+                                LineageRecordMapper lineageRecordMapper,
+                                AssetCollaborationService assetCollaborationService) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.lineageRecordMapper = lineageRecordMapper;
+        this.assetCollaborationService = assetCollaborationService;
     }
 
     /**
@@ -107,6 +111,7 @@ public class MetadataWriteService {
     /**
      * 表存在时从元数据移除（DROP TABLE 场景：先删列再删表）；不存在则静默跳过。
      * 对齐原 MetadataRegistrationService.removeIfExists 语义。
+     * Sprint 8 F1：表删除级联清理协作数据（标签绑定/收藏/关注/评论/热度，PRD §7 T4）。
      */
     @Transactional(rollbackFor = Exception.class)
     public void remove(MetadataRemoveRequest request) {
@@ -117,6 +122,7 @@ public class MetadataWriteService {
         }
         metadataColumnMapper.delete(new QueryWrapper<MetadataColumn>().eq("table_id", table.getId()));
         metadataTableMapper.deleteById(table.getId());
+        assetCollaborationService.deleteByTableIds(List.of(table.getId()));
         logger.info("删除 BUILTIN_DORIS 元数据: db={}, table={}", request.getDatabaseName(), request.getTableName());
     }
 

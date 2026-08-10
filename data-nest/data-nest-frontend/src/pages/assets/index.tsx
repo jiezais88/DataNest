@@ -40,10 +40,62 @@ import type {ClassificationFormState} from './modals/ClassificationFormModal';
 
 const SEARCH_LIMIT = 200;
 
+// 左侧分类树可拖拽宽度（方案 C）：范围 + 持久化到 localStorage
+const TREE_MIN_W = 220;
+const TREE_MAX_W = 420;
+const TREE_DEFAULT_W = 320;
+const TREE_WIDTH_KEY = 'asset-catalog.treeWidth';
+
 export default function AssetsPage() {
     const navigate = useNavigate();
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
     const openDetail = useCallback((tableId: string) => navigate(`/asset-catalog/${tableId}`), [navigate]);
+
+    // ============ 分类树宽度（可拖拽调宽，持久化） ============
+    const [treeWidth, setTreeWidth] = useState<number>(() => {
+        try {
+            // 仅当用户主动拖拽过（localStorage 已存该 key）才采用其偏好宽度；
+            // 未设置过/值为旧默认时用当前 TREE_DEFAULT_W，保证默认宽度更新后对已访问用户也生效
+            const raw = localStorage.getItem(TREE_WIDTH_KEY);
+            if (raw != null) {
+                const w = Number(raw);
+                if (Number.isFinite(w) && w >= TREE_MIN_W && w <= TREE_MAX_W) return w;
+            }
+        } catch {
+            // 读取失败用默认宽度
+        }
+        return TREE_DEFAULT_W;
+    });
+    const treeResizeRef = useRef<{startX: number; startW: number} | null>(null);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(TREE_WIDTH_KEY, String(treeWidth));
+        } catch {
+            // 写入失败（隐私模式等）忽略
+        }
+    }, [treeWidth]);
+
+    const startTreeResize = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        treeResizeRef.current = {startX: e.clientX, startW: treeWidth};
+        const onMove = (ev: MouseEvent) => {
+            const ref = treeResizeRef.current;
+            if (!ref) return;
+            const w = Math.min(TREE_MAX_W, Math.max(TREE_MIN_W, ref.startW + (ev.clientX - ref.startX)));
+            setTreeWidth(w);
+        };
+        const onUp = () => {
+            treeResizeRef.current = null;
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        // 拖拽期间禁用文本选中，避免选中页面内容
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
 
     // ============ 分类树 ============
     const [treeData, setTreeData] = useState<AssetClassificationTree | null>(null);
@@ -296,18 +348,29 @@ export default function AssetsPage() {
             </div>
 
             <div className="flex-1 min-h-0 flex gap-ds-4">
-                {/* 左：分类树（治理员可编辑）；固定高度，树内独立滚动 */}
-                <div
-                    className="w-[260px] flex-shrink-0 min-h-0 overflow-y-auto bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle">
-                    <AssetTree
-                        tree={tree}
-                        selectedKey={isSearch ? '' : selectionKey(selection)}
-                        onSelect={handleTreeSelect}
-                        allCount={treeData?.totalCount}
-                        uncategorizedCount={treeData?.uncategorizedCount}
-                        editable={canWrite}
-                        onEdit={handleEditClassification}
-                        onDelete={setDeleting}
+                {/* 左：分类树（治理员可编辑）；可拖拽调宽，树内独立滚动 */}
+                <div className="flex flex-shrink-0 min-h-0">
+                    <div
+                        style={{width: treeWidth}}
+                        className="flex-shrink-0 min-h-0 overflow-y-auto bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle">
+                        <AssetTree
+                            tree={tree}
+                            selectedKey={isSearch ? '' : selectionKey(selection)}
+                            onSelect={handleTreeSelect}
+                            allCount={treeData?.totalCount}
+                            uncategorizedCount={treeData?.uncategorizedCount}
+                            editable={canWrite}
+                            onEdit={handleEditClassification}
+                            onDelete={setDeleting}
+                        />
+                    </div>
+                    {/* 拖拽手柄：拉宽/收窄分类树 */}
+                    <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        title="拖拽调整分类树宽度"
+                        onMouseDown={startTreeResize}
+                        className="ml-1 w-[6px] flex-shrink-0 cursor-col-resize select-none rounded-full bg-ds-bg-hover hover:bg-ds-accent transition-colors"
                     />
                 </div>
 
