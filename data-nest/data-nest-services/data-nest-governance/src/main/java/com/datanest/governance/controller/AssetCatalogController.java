@@ -24,11 +24,11 @@ import com.datanest.governance.service.AssetCollaborationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -193,22 +193,22 @@ public class AssetCatalogController {
         return Result.ok(assetCollaborationService.myFavorites(keyword, datasourceId, healthLevel, page, pageSize));
     }
 
-    @Operation(summary = "导出我的收藏 CSV", description = "与列表同一套筛选条件，导出全部匹配记录（UTF-8 BOM）")
+    @Operation(summary = "导出我的收藏 CSV", description = "与列表同一套筛选条件，导出全部匹配记录（UTF-8 BOM）；直写响应流")
     @GetMapping("/my-favorites/export")
-    public ResponseEntity<byte[]> exportMyFavorites(@Parameter(description = "关键词（表名/注释模糊）") @RequestParam(required = false) String keyword,
-                                                    @Parameter(description = "数据源 ID") @RequestParam(required = false) Long datasourceId,
-                                                    @Parameter(description = "健康度（EXCELLENT/GOOD/WARNING/BAD）") @RequestParam(required = false) String healthLevel) {
-        String csv = assetCollaborationService.exportMyFavorites(keyword, datasourceId, healthLevel);
-        // 产品化文件名：DataNest-我的收藏-日期.csv；ASCII 兜底 + RFC5987 中文编码（对齐合规导出）
+    public void exportMyFavorites(@Parameter(description = "关键词（表名/注释模糊）") @RequestParam(required = false) String keyword,
+                                  @Parameter(description = "数据源 ID") @RequestParam(required = false) Long datasourceId,
+                                  @Parameter(description = "健康度（EXCELLENT/GOOD/WARNING/BAD）") @RequestParam(required = false) String healthLevel,
+                                  HttpServletResponse response) throws IOException {
+        // 产品化文件名：DataNest-我的收藏-日期.csv；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String filename = "DataNest-我的收藏-" + date + ".csv";
         String asciiFilename = "DataNest-my-favorites-" + date + ".csv";
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
-                                + URLEncoder.encode(filename, StandardCharsets.UTF_8))
-                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(csv.getBytes(StandardCharsets.UTF_8));
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
+                        + URLEncoder.encode(filename, StandardCharsets.UTF_8));
+        response.setContentType("text/csv;charset=UTF-8");
+        assetCollaborationService.exportMyFavorites(keyword, datasourceId, healthLevel,
+                response.getOutputStream());
     }
 
     @Operation(summary = "关注", description = "uk 幂等，重复关注不报错")

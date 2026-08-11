@@ -32,6 +32,7 @@ const DataQualityPage = lazyPage(() => import('@/pages/governance/data-quality')
 const QualityRulesPage = lazyPage(() => import('@/pages/governance/quality-rules'));
 const QualityChecksPage = lazyPage(() => import('@/pages/governance/quality-checks'));
 const QualityScoresPage = lazyPage(() => import('@/pages/governance/quality-scores'));
+const QualityReportPage = lazyPage(() => import('@/pages/governance/quality-report'));
 const AssetsPage = lazyPage(() => import('@/pages/assets'));
 const AssetDetailPage = lazyPage(() => import('@/pages/assets/detail'));
 const MyFavoritesPage = lazyPage(() => import('@/pages/assets/favorites'));
@@ -105,6 +106,7 @@ export const router = createBrowserRouter([
             {path: 'governance/quality-rules', element: <QualityRulesPage/>},
             {path: 'governance/quality-checks', element: <QualityChecksPage/>},
             {path: 'governance/quality-scores', element: <QualityScoresPage/>},
+            {path: 'governance/quality-report', element: <QualityReportPage/>},
             {path: 'asset-catalog', element: <AssetsPage/>},
             {path: 'asset-catalog/favorites', element: <MyFavoritesPage/>},
             {path: 'asset-catalog/follows', element: <MyFollowsPage/>},

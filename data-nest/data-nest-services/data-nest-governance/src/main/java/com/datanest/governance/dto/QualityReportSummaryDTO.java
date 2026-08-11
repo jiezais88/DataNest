@@ -20,4 +20,10 @@ public class QualityReportSummaryDTO {
 
     @Schema(description = "通过率（PASS 明细数 / 有效明细数，排除 UNAVAILABLE；0-100，无有效明细为 null）")
     private BigDecimal passRate;
+
+    @Schema(description = "待处理问题：SEVERE 明细数")
+    private Long severeCount;
+
+    @Schema(description = "待处理问题：WARNING 明细数")
+    private Long warningCount;
 }

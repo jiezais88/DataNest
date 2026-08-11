@@ -14,7 +14,7 @@ import java.util.Map;
 public interface QualityCheckDetailMapper extends BaseMapper<QualityCheckDetail> {
 
     /**
-     * Sprint 8 F3：质量报告 KPI 聚合（一条 SQL 出明细数/批次数/通过数/有效数）。
+     * Sprint 8 F3：质量报告 KPI 聚合（一条 SQL 出明细数/批次数/通过数/有效数/待处理问题数）。
      * 注意别名用下划线小写：PostgreSQL 会把未加引号的驼峰别名折叠成小写，导致 map key 取不到值。
      */
     @Select("""
@@ -22,7 +22,9 @@ public interface QualityCheckDetailMapper extends BaseMapper<QualityCheckDetail>
             SELECT COUNT(*) AS detail_count,
                    COUNT(DISTINCT batch_id) AS batch_count,
                    SUM(CASE WHEN result_level = 'PASS' THEN 1 ELSE 0 END) AS pass_count,
-                   SUM(CASE WHEN result_level != 'UNAVAILABLE' THEN 1 ELSE 0 END) AS valid_count
+                   SUM(CASE WHEN result_level != 'UNAVAILABLE' THEN 1 ELSE 0 END) AS valid_count,
+                   SUM(CASE WHEN result_level = 'SEVERE' THEN 1 ELSE 0 END) AS severe_count,
+                   SUM(CASE WHEN result_level = 'WARNING' THEN 1 ELSE 0 END) AS warning_count
             FROM quality_check_detail
             WHERE created_at &gt;= #{start} AND created_at &lt;= #{end}
             <if test="tableIds != null">

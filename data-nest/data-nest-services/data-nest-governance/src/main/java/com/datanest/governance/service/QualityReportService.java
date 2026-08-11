@@ -13,9 +13,11 @@ import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.governance.dto.QualityIssueItemDTO;
 import com.datanest.governance.dto.QualityLevelTrendPointDTO;
+import com.datanest.governance.dto.DatasourceScoreComparisonDTO;
 import com.datanest.governance.dto.QualityReportOptionsDTO;
 import com.datanest.governance.dto.QualityReportRequest;
 import com.datanest.governance.dto.QualityReportSummaryDTO;
+import com.datanest.governance.dto.QualityScoreDistributionDTO;
 import com.datanest.governance.dto.QualityScoreTrendPointDTO;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.entity.QualityCheckDetail;
@@ -29,9 +31,13 @@ import com.datanest.governance.mapper.QualityJobMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityScoreHistoryMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
+import com.datanest.governance.util.CsvExportHelper;
+import org.apache.commons.csv.CSVPrinter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -136,6 +142,8 @@ public class QualityReportService {
         if (filter.emptyResult) {
             dto.setBatchCount(0L);
             dto.setDetailCount(0L);
+            dto.setSevereCount(0L);
+            dto.setWarningCount(0L);
             return dto;
         }
         Map<String, Object> row = detailMapper.selectReportSummary(range[0], range[1], filter.tableIds,
@@ -147,25 +155,19 @@ public class QualityReportService {
         dto.setDetailCount(detailCount);
         dto.setPassRate(validCount == 0 ? null
                 : BigDecimal.valueOf(passCount * 100.0 / validCount).setScale(2, RoundingMode.HALF_UP));
+        // 待处理问题计数（KPI 第 5 卡，2026-08-11 前端联调确认补齐）
+        dto.setSevereCount(number(row, "severe_count"));
+        dto.setWarningCount(number(row, "warning_count"));
 
-        // 平均评分：范围内表当前最新评分均值（quality_score 当前值，与时间无关）；
-        // 按质量任务筛选时收窄到该任务规则覆盖的表（quality_rule 反查，2026-08-11 用户确认口径）
-        List<Long> avgTableIds = filter.tableIds;
-        Long jobId = request == null ? null : request.getJobId();
-        if (jobId != null) {
-            List<Long> jobTableIds = ruleMapper.selectObjs(new QueryWrapper<QualityRule>()
-                            .select("DISTINCT table_id").eq("job_id", jobId))
-                    .stream().filter(Objects::nonNull).map(o -> ((Number) o).longValue()).toList();
-            avgTableIds = filter.tableIds == null ? jobTableIds
-                    : filter.tableIds.stream().filter(jobTableIds::contains).toList();
-            if (avgTableIds.isEmpty()) {
-                return dto;
-            }
+        // 平均评分：范围内 ONLINE 表当前最新评分均值（quality_score 当前值，与时间无关）；
+        // 筛选口径（数据源/库/质量任务）统一走 resolveScoreScopeTableIds（2026-08-11 Review 口径统一：
+        // 三处评分聚合都只统计 ONLINE 表，OFFLINE 残留评分不计）
+        List<Long> avgScope = resolveScoreScopeTableIds(request);
+        if (avgScope != null && avgScope.isEmpty()) {
+            return dto;
         }
         QueryWrapper<QualityScore> scoreWrapper = new QueryWrapper<QualityScore>().select("score");
-        if (avgTableIds != null) {
-            scoreWrapper.in("table_id", avgTableIds);
-        }
+        applyOnlineScoreScope(scoreWrapper, avgScope);
         List<QualityScore> scores = scoreMapper.selectList(scoreWrapper);
         if (!scores.isEmpty()) {
             BigDecimal sum = scores.stream().map(QualityScore::getScore)
@@ -173,6 +175,129 @@ public class QualityReportService {
             dto.setAvgScore(sum.divide(BigDecimal.valueOf(scores.size()), 2, RoundingMode.HALF_UP));
         }
         return dto;
+    }
+
+    /** 评分查询统一收窄到 ONLINE 表（scope 非空时已是 ONLINE 集合；null 时用子查询限定 ONLINE）。 */
+    private void applyOnlineScoreScope(QueryWrapper<QualityScore> wrapper, List<Long> scope) {
+        if (scope != null) {
+            wrapper.in("table_id", scope);
+        } else {
+            wrapper.inSql("table_id", "SELECT id FROM metadata_table WHERE source_status = 'ONLINE'");
+        }
+    }
+
+    // ==================== 表评分分布（环图） ====================
+
+    /**
+     * 表评分分布：范围内 ONLINE 表的当前最新评分按健康度计数 + 无评分表数（2026-08-11 前端联调确认新增）。
+     * 与时间无关（当前评分）；筛选口径对齐平均评分（数据源/库/质量任务收窄）。
+     */
+    public QualityScoreDistributionDTO scoreDistribution(QualityReportRequest request) {
+        List<Long> scope = resolveScoreScopeTableIds(request);
+        QualityScoreDistributionDTO dto = new QualityScoreDistributionDTO();
+        if (scope != null && scope.isEmpty()) {
+            // 有筛选条件但无命中表：全零
+            dto.setExcellentCount(0L);
+            dto.setGoodCount(0L);
+            dto.setWarningCount(0L);
+            dto.setBadCount(0L);
+            dto.setNoScoreCount(0L);
+            dto.setTotalTables(0L);
+            return dto;
+        }
+        QueryWrapper<MetadataTable> totalWrapper = new QueryWrapper<MetadataTable>()
+                .eq("source_status", "ONLINE");
+        if (scope != null) {
+            totalWrapper.in("id", scope);
+        }
+        Long total = metadataTableMapper.selectCount(totalWrapper);
+        long totalTables = total == null ? 0L : total;
+
+        QueryWrapper<QualityScore> scoreWrapper = new QueryWrapper<QualityScore>()
+                .select("health_level", "COUNT(*) AS cnt")
+                .groupBy("health_level");
+        applyOnlineScoreScope(scoreWrapper, scope);
+        Map<String, Long> byLevel = new HashMap<>();
+        for (Map<String, Object> row : scoreMapper.selectMaps(scoreWrapper)) {
+            Object level = row.get("health_level");
+            if (level != null) {
+                byLevel.put((String) level, ((Number) row.get("cnt")).longValue());
+            }
+        }
+        long excellent = byLevel.getOrDefault("EXCELLENT", 0L);
+        long good = byLevel.getOrDefault("GOOD", 0L);
+        long warning = byLevel.getOrDefault("WARNING", 0L);
+        long bad = byLevel.getOrDefault("BAD", 0L);
+        dto.setExcellentCount(excellent);
+        dto.setGoodCount(good);
+        dto.setWarningCount(warning);
+        dto.setBadCount(bad);
+        dto.setTotalTables(totalTables);
+        dto.setNoScoreCount(Math.max(0, totalTables - excellent - good - warning - bad));
+        return dto;
+    }
+
+    // ==================== 数据源质量对比 ====================
+
+    /** 数据源质量对比：按数据源分组平均评分（当前最新评分 ⋈ ONLINE 表），按均分降序，回填数据源名。 */
+    public List<DatasourceScoreComparisonDTO> datasourceComparison(QualityReportRequest request) {
+        List<Long> scope = resolveScoreScopeTableIds(request);
+        if (scope != null && scope.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = scoreMapper.selectDatasourceScoreComparison(scope);
+        List<Long> dsIds = rows.stream()
+                .map(row -> ((Number) row.get("datasource_id")).longValue()).toList();
+        Map<Long, String> names = datasourceNames(dsIds);
+        return rows.stream().map(row -> {
+            DatasourceScoreComparisonDTO dto = new DatasourceScoreComparisonDTO();
+            Long dsId = ((Number) row.get("datasource_id")).longValue();
+            dto.setDatasourceId(dsId);
+            dto.setDatasourceName(names.getOrDefault(dsId, "数据源 " + dsId));
+            Object avg = row.get("avg_score");
+            if (avg != null) {
+                dto.setAvgScore(new BigDecimal(avg.toString()).setScale(1, RoundingMode.HALF_UP));
+            }
+            dto.setTableCount(((Number) row.get("table_count")).longValue());
+            return dto;
+        }).toList();
+    }
+
+    /**
+     * 评分口径的表范围（数据源/库筛选 + 质量任务规则覆盖表收窄，统一只含 ONLINE 表；
+     * null = 不按表过滤（调用方用 ONLINE 子查询兜底），空列表 = 有筛选条件但无命中）。
+     */
+    private List<Long> resolveScoreScopeTableIds(QualityReportRequest request) {
+        Long datasourceId = request == null ? null : request.getDatasourceId();
+        String databaseName = request == null || request.getDatabaseName() == null
+                || request.getDatabaseName().isBlank() ? null : request.getDatabaseName().trim();
+        Long jobId = request == null ? null : request.getJobId();
+        List<Long> tableIds = null;
+        if (datasourceId != null || databaseName != null) {
+            QueryWrapper<MetadataTable> wrapper = new QueryWrapper<MetadataTable>().select("id")
+                    .eq("source_status", "ONLINE");
+            if (datasourceId != null) {
+                wrapper.eq("datasource_id", datasourceId);
+            }
+            if (databaseName != null) {
+                wrapper.eq("database_name", databaseName);
+            }
+            tableIds = metadataTableMapper.selectList(wrapper)
+                    .stream().map(MetadataTable::getId).toList();
+        }
+        if (jobId != null) {
+            List<Long> jobTableIds = ruleMapper.selectObjs(new QueryWrapper<QualityRule>()
+                            .select("DISTINCT table_id").eq("job_id", jobId))
+                    .stream().filter(Objects::nonNull).map(o -> ((Number) o).longValue()).toList();
+            // 任务覆盖表同样只保留 ONLINE（OFFLINE 残留评分不计入评分口径）
+            List<Long> onlineJobTableIds = jobTableIds.isEmpty() ? List.of()
+                    : metadataTableMapper.selectList(new QueryWrapper<MetadataTable>().select("id")
+                                    .eq("source_status", "ONLINE").in("id", jobTableIds))
+                            .stream().map(MetadataTable::getId).toList();
+            tableIds = tableIds == null ? onlineJobTableIds
+                    : tableIds.stream().filter(onlineJobTableIds::contains).toList();
+        }
+        return tableIds;
     }
 
     // ==================== 四档分布趋势 ====================
@@ -295,10 +420,12 @@ public class QualityReportService {
     /**
      * 导出 CSV（UTF-8 with BOM，兼容 Excel；复用 Sprint 6 合规导出经验）：
      * 汇总 KPI + 当前筛选的问题清单全量（上限 MAX_EXPORT_ROWS 截断）。
+     * 直写响应流（Controller 返回 void）：数据全部算完再开始写，
+     * 写流前的参数/查询异常（4221/4222）仍由全局异常处理器返回 JSON 错误。
      */
-    public String export(QualityReportRequest request) {
+    public void export(QualityReportRequest request, OutputStream out) {
         try {
-            return doExport(request);
+            doExport(request, out);
         } catch (BusinessException e) {
             // 参数类错误（4221）原样抛出，不包成导出失败
             throw e;
@@ -307,7 +434,7 @@ public class QualityReportService {
         }
     }
 
-    private String doExport(QualityReportRequest request) {
+    private void doExport(QualityReportRequest request, OutputStream out) throws IOException {
         QualityReportSummaryDTO summary = summary(request);
         LocalDateTime[] range = resolveRange(request);
         FilterTables filter = resolveTableIds(request);
@@ -326,32 +453,31 @@ public class QualityReportService {
         }
         List<QualityIssueItemDTO> issues = toIssueItems(details);
 
-        StringBuilder sb = new StringBuilder("\uFEFF");
-        sb.append("质量报告,").append(CSV_TIME_FORMATTER.format(range[0])).append(" ~ ")
-                .append(CSV_TIME_FORMATTER.format(range[1])).append('\n');
-        sb.append("检查批次数,规则明细数,平均评分,通过率(%)\n");
-        sb.append(summary.getBatchCount()).append(',')
-                .append(summary.getDetailCount()).append(',')
-                .append(summary.getAvgScore() == null ? "" : summary.getAvgScore()).append(',')
-                .append(summary.getPassRate() == null ? "" : summary.getPassRate()).append('\n');
-        sb.append('\n');
-        sb.append("问题清单（WARNING/SEVERE）\n");
-        sb.append("表,规则,类型,结果指标,结果值,阈值,级别,检查时间\n");
+        // CSVPrinter 负责转义/引号；BOM 与公式注入防护由 CsvExportHelper 统一处理（只 flush 不 close）
+        CSVPrinter printer = CsvExportHelper.printer(out);
+        printer.printRecord("质量报告",
+                CSV_TIME_FORMATTER.format(range[0]) + " ~ " + CSV_TIME_FORMATTER.format(range[1]));
+        printer.printRecord("检查批次数", "规则明细数", "平均评分", "通过率(%)");
+        printer.printRecord(summary.getBatchCount(), summary.getDetailCount(),
+                summary.getAvgScore() == null ? "" : summary.getAvgScore(),
+                summary.getPassRate() == null ? "" : summary.getPassRate());
+        printer.printRecord();
+        printer.printRecord("问题清单（WARNING/SEVERE）");
+        printer.printRecord("表", "规则", "类型", "结果指标", "结果值", "阈值", "级别", "检查时间");
         for (QualityIssueItemDTO item : issues) {
-            sb.append(esc(item.getTableName())).append(',')
-                    .append(esc(item.getRuleName())).append(',')
-                    .append(esc(item.getRuleType())).append(',')
-                    .append(esc(item.getResultMetric())).append(',')
-                    .append(item.getResultValue() == null ? "" : item.getResultValue()).append(',')
-                    .append(item.getThreshold() == null ? "" : item.getThreshold()).append(',')
-                    .append(esc(item.getResultLevel())).append(',')
-                    .append(item.getCheckedAt() == null ? "" : CSV_TIME_FORMATTER.format(item.getCheckedAt()))
-                    .append('\n');
+            printer.printRecord(CsvExportHelper.safe(item.getTableName()),
+                    CsvExportHelper.safe(item.getRuleName()),
+                    CsvExportHelper.safe(item.getRuleType()),
+                    CsvExportHelper.safe(item.getResultMetric()),
+                    item.getResultValue() == null ? "" : item.getResultValue(),
+                    item.getThreshold() == null ? "" : item.getThreshold(),
+                    CsvExportHelper.safe(item.getResultLevel()),
+                    item.getCheckedAt() == null ? "" : CSV_TIME_FORMATTER.format(item.getCheckedAt()));
         }
         if (truncated) {
-            sb.append("# 问题清单超过 ").append(MAX_EXPORT_ROWS).append(" 行，已截断\n");
+            printer.printRecord("# 问题清单超过 " + MAX_EXPORT_ROWS + " 行，已截断");
         }
-        return sb.toString();
+        printer.flush();
     }
 
     // ==================== 存量评分历史补算 ====================
@@ -489,16 +615,6 @@ public class QualityReportService {
         return table.getTableName();
     }
 
-    /** CSV 单元格转义：含逗号/引号/换行时加双引号并内层引号双写（对齐合规/收藏导出 esc）。 */
-    private String esc(String value) {
-        if (value == null) {
-            return "";
-        }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
-            return '"' + value.replace("\"", "\"\"") + '"';
-        }
-        return value;
-    }
 
     /** 表筛选结果：tableIds null = 不按表过滤；emptyResult = 有筛选条件但无命中（短路空结果）。 */
     private record FilterTables(List<Long> tableIds, boolean emptyResult) {

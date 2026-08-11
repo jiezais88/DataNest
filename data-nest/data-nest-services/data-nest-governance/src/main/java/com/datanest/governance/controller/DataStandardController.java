@@ -16,12 +16,12 @@ import com.datanest.governance.service.ComplianceCheckService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -177,18 +177,17 @@ public class DataStandardController {
     @Operation(summary = "导出合规检查结果 CSV")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/compliance-check/export")
-    public ResponseEntity<byte[]> exportComplianceCheck(@RequestBody ComplianceCheckRequest request) {
-        String csv = complianceCheckService.export(request);
-        // 产品化文件名：DataNest-标准合规检查-日期.csv；ASCII 兜底 + RFC5987 中文编码
+    public void exportComplianceCheck(@RequestBody ComplianceCheckRequest request,
+                                      HttpServletResponse response) throws IOException {
+        // 产品化文件名：DataNest-标准合规检查-日期.csv；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String filename = "DataNest-标准合规检查-" + date + ".csv";
         String asciiFilename = "DataNest-compliance-check-" + date + ".csv";
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
-                                + java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8))
-                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(csv.getBytes(StandardCharsets.UTF_8));
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
+                        + java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8));
+        response.setContentType("text/csv;charset=UTF-8");
+        complianceCheckService.export(request, response.getOutputStream());
     }
 
     private Long currentUserId() {

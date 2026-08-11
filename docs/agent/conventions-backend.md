@@ -103,6 +103,7 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - 微服务 `context-path` 分别为 `/system`、`/engineering`、`/governance`、`/alert`（worker `/worker`、job `/job` 无对外 Controller），Controller 路径不要重复写前缀。
 - **列表接口**：当前代码实现多为 `POST /{resource}/page`（如 `/api/engineering/datasources/page`、`/api/engineering/sync-jobs/page`），请求体带 keyword + 筛选 + 分页；新增/详情/删除仍用 RESTful 方法表达。
 - 工程侧 Controller 前缀：数据源/同步任务为 `/engineering/*`，DAG/项目管理为 `/dev/*`，执行历史为 `/dag-executions`；网关已配置 StripPrefix，前端统一以 `/api/engineering/...` 调用。
+- **CSV 导出统一规范（2026-08-11 起）**：导出端点一律 `void` 返回 + 直写 `HttpServletResponse` 响应流，**禁止** `ResponseEntity<byte[]>` 内存拼装返回。写法：Controller 设 `Content-Disposition`（ASCII 兜底名 + RFC5987 中文名）与 `Content-Type: text/csv;charset=UTF-8`，然后把 `response.getOutputStream()` 传给 Service；Service 用 **Commons CSV**（`org.apache.commons:commons-csv`，统一经 `governance/util/CsvExportHelper.printer(out)` 创建 `CSVPrinter`：自动带 UTF-8 BOM、转义/引号规则由框架负责、记录分隔符 `\n`）逐条 `printRecord` 写，只 flush 不 close（流由容器管理）；先把数据查完再开始写流，写流前的业务异常（参数/查询失败）仍由全局异常处理器返回 JSON 错误。**字符串单元格必须过 `CsvExportHelper.safe()`**（公式注入防护：首字符 `= + - @` 前置单引号；Number 类型不需要）。现有范例：质量报告 `QualityReportController.export`、我的收藏 `AssetCatalogController.exportMyFavorites`、合规检查 `DataStandardController.exportComplianceCheck`。
 
 ## 9. 服务间调用规范（微服务化后）
 

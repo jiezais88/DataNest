@@ -8,21 +8,23 @@ import com.datanest.governance.dto.QualityIssueItemDTO;
 import com.datanest.governance.dto.QualityLevelTrendPointDTO;
 import com.datanest.governance.dto.QualityReportOptionsDTO;
 import com.datanest.governance.dto.QualityReportRequest;
+import com.datanest.governance.dto.DatasourceScoreComparisonDTO;
 import com.datanest.governance.dto.QualityReportSummaryDTO;
+import com.datanest.governance.dto.QualityScoreDistributionDTO;
 import com.datanest.governance.dto.QualityScoreTrendPointDTO;
 import com.datanest.governance.service.QualityReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -53,10 +55,20 @@ public class QualityReportController {
         return Result.ok(qualityReportService.options(datasourceId));
     }
 
-    @Operation(summary = "KPI 汇总", description = "检查批次数 / 规则明细数 / 平均评分（当前最新）/ 通过率（排除 UNAVAILABLE）")
+    @Operation(summary = "KPI 汇总", description = "检查批次数 / 规则明细数 / 平均评分（当前最新）/ 通过率（排除 UNAVAILABLE）/ 待处理问题（SEVERE+WARNING 计数）")
     @PostMapping("/summary")
     public Result<QualityReportSummaryDTO> summary(@RequestBody(required = false) QualityReportRequest request) {
         return Result.ok(qualityReportService.summary(request));
+    }
+    @Operation(summary = "表评分分布", description = "范围内 ONLINE 表当前评分按健康度计数 + 无评分表数（环图），与时间无关")
+    @PostMapping("/score-distribution")
+    public Result<QualityScoreDistributionDTO> scoreDistribution(@RequestBody(required = false) QualityReportRequest request) {
+        return Result.ok(qualityReportService.scoreDistribution(request));
+    }
+    @Operation(summary = "数据源质量对比", description = "按数据源分组平均评分（当前最新评分 ⋈ ONLINE 表），均分降序")
+    @PostMapping("/datasource-comparison")
+    public Result<List<DatasourceScoreComparisonDTO>> datasourceComparison(@RequestBody(required = false) QualityReportRequest request) {
+        return Result.ok(qualityReportService.datasourceComparison(request));
     }
 
     @Operation(summary = "四档分布趋势", description = "按天聚合 PASS/WARNING/SEVERE/UNAVAILABLE 明细数")
@@ -77,21 +89,20 @@ public class QualityReportController {
         return Result.ok(qualityReportService.issues(request));
     }
 
-    @Operation(summary = "导出 CSV", description = "汇总 KPI + 当前筛选问题清单全量（UTF-8 BOM，超 5000 行截断）")
+    @Operation(summary = "导出 CSV", description = "汇总 KPI + 当前筛选问题清单全量（UTF-8 BOM，超 5000 行截断）；直写响应流")
     @PostMapping("/export")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
-    public ResponseEntity<byte[]> export(@RequestBody(required = false) QualityReportRequest request) {
-        String csv = qualityReportService.export(request);
-        // 产品化文件名：DataNest-质量报告-日期.csv；ASCII 兜底 + RFC5987 中文编码（对齐合规/收藏导出）
+    public void export(@RequestBody(required = false) QualityReportRequest request,
+                       HttpServletResponse response) throws IOException {
+        // 产品化文件名：DataNest-质量报告-日期.csv；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String filename = "DataNest-质量报告-" + date + ".csv";
         String asciiFilename = "DataNest-quality-report-" + date + ".csv";
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
-                                + URLEncoder.encode(filename, StandardCharsets.UTF_8))
-                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(csv.getBytes(StandardCharsets.UTF_8));
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
+                        + URLEncoder.encode(filename, StandardCharsets.UTF_8));
+        response.setContentType("text/csv;charset=UTF-8");
+        qualityReportService.export(request, response.getOutputStream());
     }
 
     @Operation(summary = "存量评分历史补算", description = "为有当前评分但无历史快照的表补写首次快照（幂等），返回补写条数")

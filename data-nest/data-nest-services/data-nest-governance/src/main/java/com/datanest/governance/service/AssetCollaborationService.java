@@ -37,12 +37,16 @@ import com.datanest.governance.mapper.AssetViewLogMapper;
 import com.datanest.governance.mapper.CollectChangeDetailMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.system.api.SystemUserApi;
+import com.datanest.governance.util.CsvExportHelper;
+import org.apache.commons.csv.CSVPrinter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -280,7 +284,8 @@ public class AssetCollaborationService {
      * 导出我的收藏 CSV（UTF-8 with BOM，兼容 Excel；复用 Sprint 6 合规导出经验）。
      * 与列表同一套筛选条件，导出全部匹配记录（不分页，个人收藏量级小；上限 MAX_EXPORT_ROWS 兜底截断）。
      */
-    public String exportMyFavorites(String keyword, Long datasourceId, String healthLevel) {
+    public void exportMyFavorites(String keyword, Long datasourceId, String healthLevel,
+                                  OutputStream out) throws IOException {
         List<Long> matchedTableIds = assetCatalogService.matchTableIds(keyword, datasourceId, healthLevel);
         List<AssetFavorite> favorites;
         if (matchedTableIds != null && matchedTableIds.isEmpty()) {
@@ -298,34 +303,24 @@ public class AssetCollaborationService {
             favorites = favorites.subList(0, MAX_EXPORT_ROWS);
         }
         List<AssetFavoriteItemDTO> items = buildFavoriteItems(favorites);
-        StringBuilder sb = new StringBuilder("\uFEFF");
-        sb.append("表名,注释,数据源,库名,数据域,主题,负责人,质量评分,近30天热度,收藏时间\n");
+        // CSVPrinter 负责转义/引号；BOM 与公式注入防护由 CsvExportHelper 统一处理（只 flush 不 close）
+        CSVPrinter printer = CsvExportHelper.printer(out);
+        printer.printRecord("表名", "注释", "数据源", "库名", "数据域", "主题", "负责人", "质量评分", "近30天热度", "收藏时间");
         for (AssetFavoriteItemDTO item : items) {
-            sb.append(esc(item.getTableName())).append(',')
-                    .append(esc(item.getTableComment())).append(',')
-                    .append(esc(item.getDatasourceName())).append(',')
-                    .append(esc(item.getDatabaseName())).append(',')
-                    .append(esc(item.getDataDomain())).append(',')
-                    .append(esc(item.getDataTopic())).append(',')
-                    .append(esc(item.getOwnerName())).append(',')
-                    .append(item.getQualityScore() == null ? "" : item.getQualityScore()).append(',')
-                    .append(item.getViewCount() == null ? "" : item.getViewCount()).append(',')
-                    .append(item.getFavoritedAt() == null ? "" : item.getFavoritedAt().toString())
-                    .append('\n');
+            printer.printRecord(CsvExportHelper.safe(item.getTableName()),
+                    CsvExportHelper.safe(item.getTableComment()),
+                    CsvExportHelper.safe(item.getDatasourceName()),
+                    CsvExportHelper.safe(item.getDatabaseName()),
+                    CsvExportHelper.safe(item.getDataDomain()),
+                    CsvExportHelper.safe(item.getDataTopic()),
+                    CsvExportHelper.safe(item.getOwnerName()),
+                    item.getQualityScore() == null ? "" : item.getQualityScore(),
+                    item.getViewCount() == null ? "" : item.getViewCount(),
+                    item.getFavoritedAt() == null ? "" : item.getFavoritedAt().toString());
         }
-        return sb.toString();
+        printer.flush();
     }
 
-    /** CSV 单元格转义：含逗号/引号/换行时加双引号并内层引号双写（对齐 ComplianceCheckService.esc）。 */
-    private String esc(String value) {
-        if (value == null) {
-            return "";
-        }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
-            return '"' + value.replace("\"", "\"\"") + '"';
-        }
-        return value;
-    }
 
     /** 关注（uk 幂等，重复关注不报错）。 */
     public void follow(Long tableId) {

@@ -10,6 +10,7 @@ import {
     HiOutlineBellAlert,
     HiOutlineBolt,
     HiOutlineCheckBadge,
+    HiOutlineChartBar,
     HiOutlineCheckCircle,
     HiOutlineCircleStack,
     HiOutlineClipboardDocumentCheck,
@@ -152,6 +153,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: '质量评分',
                 path: '/governance/quality-scores',
                 icon: <HiOutlineCheckCircle size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: '质量报告',
+                path: '/governance/quality-report',
+                icon: <HiOutlineChartBar size={18}/>,
                 roles: ALL_ROLES
             },
         ],

@@ -81,7 +81,7 @@ Sprint 8 三大模块，均为 P0：
 
 - **评分趋势（用户确认 T3）**：新增 `quality_score_history`，**每次检查批次结束**由 `ScoreCalculator` 写一条该表评分快照（score / health_level / 四档规则数 / last_checked_at）；存量数据从 `quality_check_detail` 补算一次（写首次快照）。趋势图读历史表，避免每次报告现算。
 - **报告聚合接口**：governance 本地 SQL 聚合（quality_check_batch / quality_check_detail / quality_score / quality_score_history / metadata_table / metadata_column），不跨服务；数据源/库维度经 `metadata_table.datasource_id` 与 `database_name` 本地过滤，数据源名经 engineering-api 批量回填。
-- **CSV 导出**：复用 Sprint 6 合规导出经验（UTF-8 BOM + 流式写），`POST /quality/report/export`，治理员/超管权限。
+- **CSV 导出**：复用 Sprint 6 合规导出经验（UTF-8 BOM + 流式写），`POST /quality/report/export`，治理员/超管权限。**2026-08-11 规范化（用户确认）**：全部导出端点统一 void + 响应流写法；引入 **Apache Commons CSV 1.14.1** 作为统一导出框架（调研结论：EasyExcel 2025-09 已归档停维护，Apache Fesod 需拖入 POI 依赖树对纯 CSV 过重）；字符串单元格统一经 `CsvExportHelper.safe()` 做公式注入防护（首字符 `=+-@` 前置单引号）。规范详见 `docs/agent/conventions-backend.md` §8。
 
 ---
 
@@ -367,7 +367,9 @@ Sprint 8 三大模块，均为 P0：
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
 | POST | `/options` | 筛选联动选项（数据源/库/质量任务） | 全角色 |
-| POST | `/summary` | KPI 汇总 | 全角色 |
+| POST | `/summary` | KPI 汇总（批次/明细/平均评分/通过率 + 待处理问题 severe/warning 计数，2026-08-11 前端联调补齐） | 全角色 |
+| POST | `/score-distribution` | 表评分分布（范围内 ONLINE 表按健康度计数 + 无评分表数；环图，2026-08-11 前端联调新增） | 全角色 |
+| POST | `/datasource-comparison` | 数据源质量对比（按数据源分组平均评分 ⋈ ONLINE 表，均分降序；2026-08-11 前端联调新增） | 全角色 |
 | POST | `/level-trend` | 四档分布趋势（按天） | 全角色 |
 | POST | `/score-trend` | 表评分趋势（按表 + 时间范围） | 全角色 |
 | POST | `/issues` | 问题清单分页 | 全角色 |
@@ -375,6 +377,7 @@ Sprint 8 三大模块，均为 P0：
 | POST | `/backfill-score-history` | 存量评分历史补算（幂等，返回补写条数；2026-08-11 用户确认手工触发，B3 落定） | 治理员/超管 |
 
 > 请求体统一 `QualityReportRequest`：`datasourceId / databaseName / jobId / startTime / endTime / tableId(评分趋势) / page/pageSize(问题清单)`；时间用 ISO String（Feign 约束对齐）。
+> **评分口径（2026-08-11 Review 统一）**：平均评分 / 评分分布 / 数据源对比三处**只统计 ONLINE 表**（OFFLINE 残留评分不计；`resolveScoreScopeTableIds` 统一收窄 + `applyOnlineScoreScope` 子查询兜底无筛选场景）。
 
 ---
 
@@ -585,3 +588,4 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 > - v1.6 (2026-08-10)：**F1 实现阶段确认回落**——① §5.1 新增第 16 个端点 `GET /tables/{tableId}/collaboration`（详情页协作状态聚合：tags/favorited/followed/viewCount30d/commentCount，原文档 15 端点未覆盖按钮初始态下发）；② §3.1 `asset_comment` 补 `deleted_by`/`deleted_at` 两列（对齐 §4.1「治理员/超管删记录删除人」语义）；③ `browse` 的 `tag` 筛选明确**传标签名**。以上均经用户确认。
 > - v1.7 (2026-08-10)：**F2 实现完成回落（含实测偏差修正）**——① §3.3 `startup_mode` 注释按 Flink 语义修正（INITIAL/LATEST_OFFSET/EARLIEST_OFFSET，用户确认）+ 补 `savepoint_path` 列（stop-with-savepoint 续传，用户确认）+ `write_mode` 注记（CDC 3.6.0-2.2 iceberg sink 无 upsert 选项，YAML 不下发）；② §4.2 预检按实现改 4 项、停止改 cancel-with-savepoint、监控改 realtime 轮询 `/jobs/{id}` 一次取 state+vertices、启动加 CAS 防并发重复提交；③ §5.2 internal 端点落定 `/by-datasource`；④ §7.1 删死配置 `commit-interval-ms`；⑤ §9.1 补 8000 参数校验码。F2 经两轮验证（施工代理全链路 + 主会话独立冒烟）：initial 快照/增量/savepoint 恢复续传/8009 删除保护均实测通过；F2 评审（With fixes）问题已全部修复（分页拦截器/start CAS/REST 超时/指标 -1 哨兵/vertex 匹配顺序等）。
 > - v1.8 (2026-08-11)：**F3 实现完成回落**——① B3 存量补算落定手工触发端点 `POST /quality/report/backfill-score-history`（用户确认，§5.3 补第 7 端点）；② §4.3 平均评分口径确认：按质量任务筛选时收窄到该任务当前规则覆盖的表（用户确认）；③ F3 评审（Yes）后修复：export 异常包 4222（4221 参数错误原样透传）、score-trend 校验表存在（4221，对齐 §9.1）、BOM 改显式 `\uFEFF` 转义防编辑器剥离。记录不改：补算端点并发不幂等（手工端点风险低）、pageSize 无上限（项目既有惯例）、inSql 子查询两处重复、export 内 resolveRange 算两遍。
+> - v1.9 (2026-08-11)：**导出规范化（用户确认）**——① 全部导出端点统一 void + `HttpServletResponse` 响应流（质量报告/我的收藏/合规检查）；② 导出框架调研选型：**Apache Commons CSV 1.14.1**（EasyExcel 已归档、Fesod 对纯 CSV 过重），三个导出迁移 CSVPrinter + `CsvExportHelper` 收口（BOM + 公式注入统一防护 `safe()`），规范落 `conventions-backend.md` §8。

@@ -23,11 +23,15 @@ import com.datanest.governance.mapper.FieldTypeStandardMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.NamingStandardMapper;
+import com.datanest.governance.util.CsvExportHelper;
+import org.apache.commons.csv.CSVPrinter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -343,22 +347,22 @@ public class ComplianceCheckService {
      * Sprint6 新增：导出问题清单 CSV（UTF-8 with BOM，兼容 Excel）。
      * 默认导出未忽略的问题（与 page 的「默认排除已忽略」语义一致）。
      */
-    public String export(ComplianceCheckRequest request) {
+    public void export(ComplianceCheckRequest request, OutputStream out) throws IOException {
         List<ComplianceCheckResult> list = queryByRange(request, 0);
-        StringBuilder sb = new StringBuilder("\uFEFF");
-        sb.append("对象路径,对象类型,违规类型,实际值,期望值,适用规范,检查时间,是否忽略\n");
+        // CSVPrinter 负责转义/引号；BOM 与公式注入防护由 CsvExportHelper 统一处理（只 flush 不 close）
+        CSVPrinter printer = CsvExportHelper.printer(out);
+        printer.printRecord("对象路径", "对象类型", "违规类型", "实际值", "期望值", "适用规范", "检查时间", "是否忽略");
         for (ComplianceCheckResult r : list) {
-            sb.append(esc(r.getObjectPath())).append(',')
-                    .append(esc(r.getObjectType())).append(',')
-                    .append(esc(r.getViolationType())).append(',')
-                    .append(esc(r.getActualValue())).append(',')
-                    .append(esc(r.getExpectedValue())).append(',')
-                    .append(esc(applicableNames(r))).append(',')
-                    .append(r.getCheckedAt() == null ? "" : r.getCheckedAt().toString()).append(',')
-                    .append(Integer.valueOf(1).equals(r.getIgnored()) ? "是" : "否")
-                    .append('\n');
+            printer.printRecord(CsvExportHelper.safe(r.getObjectPath()),
+                    CsvExportHelper.safe(r.getObjectType()),
+                    CsvExportHelper.safe(r.getViolationType()),
+                    CsvExportHelper.safe(r.getActualValue()),
+                    CsvExportHelper.safe(r.getExpectedValue()),
+                    CsvExportHelper.safe(applicableNames(r)),
+                    r.getCheckedAt() == null ? "" : r.getCheckedAt().toString(),
+                    Integer.valueOf(1).equals(r.getIgnored()) ? "是" : "否");
         }
-        return sb.toString();
+        printer.flush();
     }
 
     private List<ComplianceCheckResult> queryByRange(ComplianceCheckRequest request, Integer ignored) {
@@ -623,13 +627,6 @@ public class ComplianceCheckService {
                 .collect(Collectors.joining(";"));
     }
 
-    private String esc(String v) {
-        if (v == null) {
-            return "";
-        }
-        String s = v.replace("\"", "\"\"");
-        return s.contains(",") || s.contains("\"") || s.contains("\n") ? "\"" + s + "\"" : s;
-    }
 
     private boolean isBlank(String s) {
         return s == null || s.isBlank();
