@@ -6,7 +6,7 @@
 
 | 层/组件 | 选型/版本 | 说明 |
 |---------|-----------|------|
-| JDK | 21 | LTS，使用 Record、Pattern 等新特性 |
+| JDK | 25 | LTS（2026-08-11 由 21 升级；Record、Pattern 等新特性） |
 | Spring Boot | 4.0.7 | 配套 Spring Framework 7 |
 | Spring Cloud | 2025.1.2 | Gateway + Nacos 服务发现 |
 | Spring Cloud Alibaba | 2025.1.0.0 | Nacos Config / Discovery |

@@ -13,6 +13,7 @@ services:
   middleware-mysql:
     image: mysql:8.0
     container_name: datanest-middleware-mysql
+    restart: unless-stopped
     command: --default-time-zone=+08:00
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -42,6 +43,7 @@ services:
   middleware-nacos:
     image: nacos/nacos-server:v3.1.1
     container_name: datanest-middleware-nacos
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -72,11 +74,14 @@ services:
       middleware-mysql:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -s http://localhost:8848/nacos/v1/ns/operator/metrics | grep -q 'UP'" ]
+      # Nacos 3.x 无 readiness 端点（旧 console health 已 410），metrics 报 UP 时 gRPC/鉴权可能未就绪；
+      # 用登录探针做功能性就绪检查（能签发 token = HTTP + 存储 + 鉴权子系统就绪）；
+      # start_period 拉长到 180s + 30 次重试（总窗口约 8 分钟），覆盖慢机器冷启动
+      test: [ "CMD-SHELL", "curl -s -X POST http://localhost:8848/nacos/v1/auth/users/login -d 'username=nacos&password=nacos' | grep -q accessToken || exit 1" ]
       interval: 10s
       timeout: 5s
-      retries: 15
-      start_period: 60s
+      retries: 30
+      start_period: 180s
     networks:
       - datanest-net
 
@@ -89,6 +94,7 @@ services:
   middleware-powerjob:
     image: powerjob/powerjob-server:5.1.2
     container_name: datanest-middleware-powerjob
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JVMOPTIONS=-Xmx512m
@@ -117,6 +123,7 @@ services:
   middleware-postgres:
     image: postgres:16-alpine
     container_name: datanest-middleware-postgres
+    restart: unless-stopped
     command: postgres -c timezone=Asia/Shanghai
     environment:
       POSTGRES_USER: datanest
@@ -141,6 +148,7 @@ services:
   middleware-redis:
     image: redis:7-alpine
     container_name: datanest-middleware-redis
+    restart: unless-stopped
     command: redis-server --appendonly yes --appendfsync everysec
     environment:
       TZ: Asia/Shanghai
@@ -165,6 +173,7 @@ services:
     # 版本锁定：RELEASE.2025-09-07T16-13-09Z（2026-08-09 实测的 minio/minio:latest 实际版本，固化避免漂移）
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: datanest-middleware-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: datanest
@@ -193,6 +202,7 @@ services:
     build: ./docker/flink
     image: datanest-flink:2.2.1
     container_name: datanest-middleware-flink-jobmanager
+    restart: unless-stopped
     command: jobmanager
     environment:
       - TZ=Asia/Shanghai
@@ -224,6 +234,7 @@ services:
     build: ./docker/flink
     image: datanest-flink:2.2.1
     container_name: datanest-middleware-flink-taskmanager
+    restart: unless-stopped
     command: taskmanager
     environment:
       - TZ=Asia/Shanghai
@@ -251,6 +262,7 @@ services:
   middleware-test-mysql:
     image: mysql:8.0
     container_name: datanest-middleware-test-mysql
+    restart: unless-stopped
     command: --default-time-zone=+08:00
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -278,6 +290,7 @@ services:
   middleware-test-postgres:
     image: postgres:16-alpine
     container_name: datanest-middleware-test-postgres
+    restart: unless-stopped
     command: postgres -c timezone=Asia/Shanghai -c wal_level=logical -c max_replication_slots=8 -c max_wal_senders=8
     environment:
       POSTGRES_USER: postgres
@@ -322,7 +335,7 @@ services:
         condition: service_healthy
     networks:
       - datanest-net
-    restart: "no"
+    restart: on-failure
 
   # ============================================
   # Test Oracle 23ai Free — 数据源 E2E 测试目标库
@@ -397,6 +410,7 @@ services:
       context: .
       dockerfile: docker/gateway.Dockerfile
     container_name: datanest-app-gateway
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -413,8 +427,6 @@ services:
         condition: service_healthy
       middleware-nacos-init:
         condition: service_completed_successfully
-      middleware-postgres:
-        condition: service_healthy
       middleware-redis:
         condition: service_healthy
     healthcheck:
@@ -434,6 +446,7 @@ services:
       context: .
       dockerfile: docker/system.Dockerfile
     container_name: datanest-app-system
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -475,6 +488,7 @@ services:
       context: .
       dockerfile: docker/alert.Dockerfile
     container_name: datanest-app-alert
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -525,6 +539,7 @@ services:
       context: .
       dockerfile: docker/realtime.Dockerfile
     container_name: datanest-app-realtime
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -573,6 +588,7 @@ services:
       context: .
       dockerfile: docker/engineering.Dockerfile
     container_name: datanest-app-engineering
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -600,10 +616,6 @@ services:
         condition: service_healthy
       middleware-redis:
         condition: service_healthy
-      middleware-test-mysql:
-        condition: service_healthy
-      middleware-test-postgres:
-        condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8082" ]
       interval: 10s
@@ -621,6 +633,7 @@ services:
       context: .
       dockerfile: docker/governance.Dockerfile
     container_name: datanest-app-governance
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -661,6 +674,7 @@ services:
       context: .
       dockerfile: docker/worker.Dockerfile
     container_name: datanest-app-worker
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -681,9 +695,7 @@ services:
         condition: service_healthy
       middleware-redis:
         condition: service_healthy
-      middleware-test-mysql:
-        condition: service_healthy
-      middleware-test-postgres:
+      middleware-powerjob:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8085" ]
@@ -704,6 +716,7 @@ services:
       context: .
       dockerfile: docker/job.Dockerfile
     container_name: datanest-app-job
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
@@ -724,6 +737,8 @@ services:
         condition: service_healthy
       middleware-redis:
         condition: service_healthy
+      middleware-powerjob:
+        condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "nc -z localhost 8086" ]
       interval: 10s
@@ -739,6 +754,7 @@ services:
   mailhog:
     image: mailhog/mailhog:v1.0.1
     container_name: datanest-mailhog
+    restart: unless-stopped
     ports:
       - "1025:1025"
       - "8025:8025"
@@ -754,20 +770,13 @@ services:
       context: ./data-nest-frontend
       dockerfile: Dockerfile
     container_name: datanest-app-frontend
+    restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
     ports:
       - "3000:80"
     depends_on:
       app-gateway:
-        condition: service_healthy
-      app-engineering:
-        condition: service_healthy
-      app-governance:
-        condition: service_healthy
-      app-worker:
-        condition: service_healthy
-      app-job:
         condition: service_healthy
     networks:
       - datanest-net

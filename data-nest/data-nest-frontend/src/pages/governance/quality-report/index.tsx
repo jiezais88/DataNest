@@ -1,6 +1,6 @@
-// Sprint 8 F3：质量报告 Dashboard（DG-07 完整版）。
-// 一屏总览：KPI×5 + 四档分布趋势 + 表评分分布环图 + 数据源对比 + 表评分趋势 + 问题清单 TOP5。
-// 筛选草稿 → 「生成报告」统一应用；查看全角色，导出治理员/超管（后端 1005 兜底）。
+// Sprint 8 F3：质量报告 Dashboard（DG-07 完整版，2026-08-11 产品化重排）。
+// 三区结构：KPI×5（现在怎么样）→ 趋势区（四档分布 + 平均评分，均聚合口径）→ 结构/行动区（评分分布 + 数据源对比 + 问题清单）。
+// 筛选草稿 → 「查询」统一应用；数据源↔库双向联动、任务随数据源联动；查看全角色，导出治理员/超管（后端 1005 兜底）。
 import {useCallback, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
@@ -19,7 +19,6 @@ import {
     getQualityScoreDistribution,
     getQualityScoreTrend,
 } from '@/api/quality-report';
-import {queryQualityScores} from '@/api/quality';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
 import DsFilterSelect from '@/components/DsFilterSelect';
@@ -104,7 +103,7 @@ export default function QualityReportPage() {
     const navigate = useNavigate();
     const canExport = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
-    // ============ 筛选（草稿 → 生成报告时应用） ============
+    // ============ 筛选（草稿 → 查询时应用） ============
     const [datasourceId, setDatasourceId] = useState('');
     const [databaseName, setDatabaseName] = useState('');
     const [jobId, setJobId] = useState('');
@@ -115,22 +114,47 @@ export default function QualityReportPage() {
     const [dsOptions, setDsOptions] = useState<{ value: string; label: string }[]>([]);
     const [dbOptions, setDbOptions] = useState<{ value: string; label: string }[]>([]);
     const [jobOptions, setJobOptions] = useState<{ value: string; label: string }[]>([]);
+    /** 库 → 数据源映射（选库反向联动数据源用） */
+    const [dbPairs, setDbPairs] = useState<{ name: string; datasourceId?: string }[]>([]);
 
-    // 选项加载（库随数据源联动）
+    // 选项加载（库/任务随数据源联动）
     useEffect(() => {
         getQualityReportOptions(datasourceId || undefined)
             .then(res => {
                 setDsOptions([{value: '', label: '全部数据源'},
                     ...(res?.datasources ?? []).map(d => ({value: String(d.id), label: d.name || `数据源 ${d.id}`}))]);
+                const pairs = res?.databases ?? [];
+                setDbPairs(pairs);
                 setDbOptions([{value: '', label: '全部库'},
-                    ...(res?.databases ?? []).map(db => ({value: db, label: db}))]);
-                setJobOptions([{value: '', label: '全部质量任务'},
-                    ...(res?.jobs ?? []).map(j => ({value: String(j.id), label: j.name || `任务 ${j.id}`}))]);
+                    ...pairs.map(db => ({value: db.name, label: db.name}))]);
+                const jobs = res?.jobs ?? [];
+                // 选了数据源但无关联任务时给空态提示，避免下拉空白误以为不可选
+                setJobOptions([{value: '', label: datasourceId && jobs.length === 0 ? '该数据源下暂无任务' : '全部质量任务'},
+                    ...jobs.map(j => ({value: String(j.id), label: j.name || `任务 ${j.id}`}))]);
             })
             .catch(() => {
                 // 拦截器已提示
             });
     }, [datasourceId]);
+
+    /** 选手动改数据源：清空下游（库/任务） */
+    const handleDatasourceChange = (v: string) => {
+        setDatasourceId(v);
+        setDatabaseName('');
+        setJobId('');
+    };
+
+    /** 选库：反向联动带出所属数据源（不清库本身）；任务随数据源收窄故清空 */
+    const handleDatabaseChange = (v: string) => {
+        setDatabaseName(v);
+        setJobId('');
+        if (v) {
+            const pair = dbPairs.find(p => p.name === v);
+            if (pair?.datasourceId != null && pair.datasourceId !== datasourceId) {
+                setDatasourceId(pair.datasourceId);
+            }
+        }
+    };
 
     // ============ 报告数据 ============
     const [summary, setSummary] = useState<QualityReportSummary | null>(null);
@@ -139,9 +163,6 @@ export default function QualityReportPage() {
     const [comparison, setComparison] = useState<DatasourceScoreComparison[]>([]);
     const [scoreTrend, setScoreTrend] = useState<QualityScoreTrendPoint[]>([]);
     const [loading, setLoading] = useState(false);
-    /** 表评分趋势选中表（评分页拉候选） */
-    const [trendTableId, setTrendTableId] = useState('');
-    const [tableOptions, setTableOptions] = useState<{ value: string; label: string }[]>([]);
 
     const buildRequest = useCallback((): QualityReportRequest => {
         const range = rangeKey === 'custom'
@@ -158,7 +179,7 @@ export default function QualityReportPage() {
     /** 已应用筛选（初始最近 30 天）：全部数据以它为准，草稿改动不触发刷新（PRD §6.7 生成报告语义） */
     const [appliedRequest, setAppliedRequest] = useState<QualityReportRequest>(() => rangeToIso(30));
 
-    /** 生成报告：自定义范围校验 → 应用草稿 */
+    /** 查询：自定义范围校验 → 应用草稿（只刷新面板，不做任何历史计算） */
     const handleGenerate = () => {
         if (rangeKey === 'custom' && (!customFrom || !customTo)) {
             notify.warning('请选择自定义起止时间');
@@ -167,7 +188,7 @@ export default function QualityReportPage() {
         setAppliedRequest(buildRequest());
     };
 
-    // KPI + 三图：仅随已应用筛选加载
+    // KPI + 趋势区 + 结构区：仅随已应用筛选加载
     useEffect(() => {
         setLoading(true);
         Promise.all([
@@ -175,39 +196,18 @@ export default function QualityReportPage() {
             getQualityLevelTrend(appliedRequest).then(r => setLevelTrend(r ?? [])),
             getQualityScoreDistribution(appliedRequest).then(r => setDistribution(r ?? null)),
             getDatasourceComparison(appliedRequest).then(r => setComparison(r ?? [])),
+            getQualityScoreTrend(appliedRequest).then(r => setScoreTrend(r ?? [])),
         ]).catch(() => {
             // 拦截器已提示
         }).finally(() => setLoading(false));
     }, [appliedRequest]);
 
-    // 表评分趋势候选表（有评分的表，按当前评分）
-    useEffect(() => {
-        queryQualityScores({page: 1, pageSize: 100})
-            .then(res => {
-                const records = res.data?.records ?? [];
-                setTableOptions(records.map(s => ({
-                    value: String(s.tableId),
-                    label: `${s.tableName}（${s.score ?? '—'}）`,
-                })));
-                if (records.length > 0) setTrendTableId(prev => prev || String(records[0].tableId));
-            })
-            .catch(() => setTableOptions([]));
-    }, []);
-
-    // 评分趋势随表 + 已应用筛选联动
-    useEffect(() => {
-        if (!trendTableId) return;
-        getQualityScoreTrend({...appliedRequest, tableId: trendTableId})
-            .then(r => setScoreTrend(r ?? []))
-            .catch(() => setScoreTrend([]));
-    }, [trendTableId, appliedRequest]);
-
-    // ============ 问题清单（TOP5 + 全部抽屉） ============
+    // ============ 问题清单（TOP6 + 全部抽屉；行 flex-1 拉伸填满卡片，任何视口高度都不留白/不滚动） ============
     const [topIssues, setTopIssues] = useState<{ list: QualityIssueItem[]; total: number }>({list: [], total: 0});
     const [issuesOpen, setIssuesOpen] = useState(false);
 
     useEffect(() => {
-        getQualityIssues({...appliedRequest, page: 1, pageSize: 5})
+        getQualityIssues({...appliedRequest, page: 1, pageSize: 6})
             .then(r => setTopIssues({list: r?.records ?? [], total: Number(r?.total ?? 0)}))
             .catch(() => setTopIssues({list: [], total: 0}));
     }, [appliedRequest]);
@@ -259,16 +259,14 @@ export default function QualityReportPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-ds-2 flex-wrap">
-                    <DsFilterSelect value={datasourceId} onChange={(v) => {
-                        setDatasourceId(v);
-                        setDatabaseName('');
-                    }} aria-label="按数据源筛选" options={dsOptions}/>
-                    <DsFilterSelect value={databaseName} onChange={setDatabaseName} aria-label="按库筛选"
-                                    options={dbOptions}/>
+                    <DsFilterSelect value={datasourceId} onChange={handleDatasourceChange}
+                                    aria-label="按数据源筛选" options={dsOptions} className="w-[160px]"/>
+                    <DsFilterSelect value={databaseName} onChange={handleDatabaseChange} aria-label="按库筛选"
+                                    options={dbOptions} className="w-[160px]"/>
                     <DsFilterSelect value={jobId} onChange={setJobId} aria-label="按质量任务筛选"
-                                    options={jobOptions}/>
+                                    options={jobOptions} className="w-[180px]"/>
                     <DsFilterSelect value={rangeKey} onChange={setRangeKey} aria-label="时间范围"
-                                    options={RANGE_OPTIONS}/>
+                                    options={RANGE_OPTIONS} className="w-[140px]"/>
                     {rangeKey === 'custom' && (
                         <DsRangePicker from={customFrom} to={customTo}
                                        onChange={(f, t) => {
@@ -283,7 +281,7 @@ export default function QualityReportPage() {
                         </DsButton>
                     )}
                     <DsButton onClick={handleGenerate} disabled={loading}>
-                        {loading ? '生成中...' : '生成报告'}
+                        {loading ? '查询中...' : '查询'}
                     </DsButton>
                 </div>
             </div>
@@ -302,11 +300,18 @@ export default function QualityReportPage() {
                          danger={Number(summary?.severeCount ?? 0) > 0}/>
             </div>
 
-            {/* 行 2：四档趋势 + 评分分布 + 数据源对比 */}
+            {/* 趋势区：四档分布趋势 + 平均评分趋势（均为聚合口径） */}
             <div className="flex gap-ds-4 mb-ds-4 flex-shrink-0" style={{height: '240px'}}>
                 <ChartCard title="四档分布趋势" sub="按天聚合的四档检查明细" className="flex-[1.4]">
                     <LevelTrendChart data={levelTrend}/>
                 </ChartCard>
+                <ChartCard title="平均评分趋势" sub="按天聚合范围内表评分" className="flex-1">
+                    <ScoreTrendChart data={scoreTrend}/>
+                </ChartCard>
+            </div>
+
+            {/* 结构/行动区：评分分布 + 数据源对比 + 问题清单 */}
+            <div className="flex-1 min-h-0 flex gap-ds-4">
                 <ChartCard title="表评分分布"
                            sub={distribution ? `${distribution.totalTables ?? 0} 张表` : undefined}
                            className="flex-1">
@@ -314,18 +319,6 @@ export default function QualityReportPage() {
                 </ChartCard>
                 <ChartCard title="数据源质量对比" sub="平均评分" className="flex-1">
                     <ComparisonBars data={comparison}/>
-                </ChartCard>
-            </div>
-
-            {/* 行 3：表评分趋势 + 问题清单 */}
-            <div className="flex-1 min-h-0 flex gap-ds-4">
-                <ChartCard title="表评分趋势" sub="历史评分" className="flex-1"
-                           action={(
-                               <DsFilterSelect value={trendTableId} onChange={setTrendTableId}
-                                               aria-label="选择表查看评分趋势" options={tableOptions}
-                                               className="min-w-[180px]"/>
-                           )}>
-                    <ScoreTrendChart data={scoreTrend}/>
                 </ChartCard>
                 <ChartCard title="问题清单" sub="严重 / 警告明细" className="flex-[1.25]"
                            action={(
@@ -339,11 +332,11 @@ export default function QualityReportPage() {
                     {topIssues.list.length === 0 ? (
                         <DsTableEmpty description="范围内暂无待处理问题"/>
                     ) : (
-                        <div className="h-full overflow-y-auto">
+                        <div className="h-full overflow-y-auto flex flex-col">
                             {topIssues.list.map(issue => (
                                 <button key={issue.detailId} type="button"
                                         onClick={() => navigate(`/asset-catalog/${issue.tableId}?tab=quality`)}
-                                        className="w-full flex items-center gap-ds-3 py-ds-2 border-b border-ds-border-subtle last:border-b-0 text-left hover:bg-ds-bg-hover transition-colors">
+                                        className="w-full flex-1 min-h-[36px] flex items-center gap-ds-3 py-[6px] border-b border-ds-border-subtle last:border-b-0 text-left hover:bg-ds-bg-hover transition-colors">
                                     <span className="font-mono text-ds-small text-ds-accent w-36 truncate"
                                           title={issue.tableName}>
                                         {issue.tableName}

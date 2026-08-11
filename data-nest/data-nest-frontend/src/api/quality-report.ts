@@ -29,7 +29,7 @@ export const getQualityReportSummary = (data: QualityReportRequest) =>
 export const getQualityLevelTrend = (data: QualityReportRequest) =>
     request.post<Result<QualityLevelTrendPoint[]>>(`${BASE}/level-trend`, data).then(r => r.data);
 
-/** 表评分趋势（tableId 必填；缺表/表已删后端 4221——页面按空态处理，跳过全局错误提示） */
+/** 评分趋势（tableId 空 = 按天聚合平均评分；非空 = 单表历史。单表缺表/表已删后端 4221——按空态处理，跳过全局错误提示） */
 export const getQualityScoreTrend = (data: QualityReportRequest) =>
     request.post<Result<QualityScoreTrendPoint[]>>(`${BASE}/score-trend`, data, {skipErrorMessage: true}).then(r => r.data);
 

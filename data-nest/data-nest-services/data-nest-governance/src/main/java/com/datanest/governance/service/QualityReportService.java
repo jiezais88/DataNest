@@ -43,6 +43,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -115,15 +116,29 @@ public class QualityReportService {
         }).toList());
 
         QueryWrapper<MetadataTable> dbWrapper = new QueryWrapper<MetadataTable>()
-                .select("DISTINCT database_name").isNotNull("database_name");
+                .select("DISTINCT database_name", "datasource_id").isNotNull("database_name");
         if (datasourceId != null) {
             dbWrapper.eq("datasource_id", datasourceId);
         }
-        dto.setDatabases(metadataTableMapper.selectObjs(dbWrapper)
-                .stream().filter(Objects::nonNull).map(String::valueOf).sorted().toList());
+        dto.setDatabases(metadataTableMapper.selectMaps(dbWrapper).stream()
+                .map(row -> {
+                    QualityReportOptionsDTO.DatabaseOption option = new QualityReportOptionsDTO.DatabaseOption();
+                    option.setName(String.valueOf(row.get("database_name")));
+                    Object dsId = row.get("datasource_id");
+                    option.setDatasourceId(dsId == null ? null : ((Number) dsId).longValue());
+                    return option;
+                })
+                .sorted(Comparator.comparing(QualityReportOptionsDTO.DatabaseOption::getName))
+                .toList());
 
-        dto.setJobs(jobMapper.selectList(new QueryWrapper<QualityJob>()
-                        .select("id", "name").orderByAsc("name"))
+        // 质量任务随数据源联动：只列规则覆盖该数据源表的任务（经 quality_rule → metadata_table 反查）
+        QueryWrapper<QualityJob> jobWrapper = new QueryWrapper<QualityJob>()
+                .select("id", "name").orderByAsc("name");
+        if (datasourceId != null) {
+            jobWrapper.inSql("id", "SELECT DISTINCT job_id FROM quality_rule WHERE table_id IN "
+                    + "(SELECT id FROM metadata_table WHERE datasource_id = " + datasourceId + ")");
+        }
+        dto.setJobs(jobMapper.selectList(jobWrapper)
                 .stream().map(j -> {
                     QualityReportOptionsDTO.Option option = new QualityReportOptionsDTO.Option();
                     option.setId(j.getId());
@@ -321,29 +336,61 @@ public class QualityReportService {
                 }).toList();
     }
 
-    // ==================== 表评分趋势 ====================
+    // ==================== 评分趋势 ====================
 
+    /**
+     * 评分趋势：tableId 为空 = 聚合模式（按天 AVG(score)，口径对齐评分聚合：ONLINE 表 + 数据源/库/任务收窄）；
+     * tableId 非空 = 单表模式（该表评分历史序列，保留兼容）。
+     */
     public List<QualityScoreTrendPointDTO> scoreTrend(QualityReportRequest request) {
-        if (request == null || request.getTableId() == null) {
-            throw new BusinessException(ErrorCode.QUALITY_REPORT_PARAM_INVALID, "评分趋势必须指定表（tableId）");
-        }
-        if (metadataTableMapper.selectById(request.getTableId()) == null) {
-            throw new BusinessException(ErrorCode.QUALITY_REPORT_PARAM_INVALID,
-                    "表不存在：" + request.getTableId());
-        }
         LocalDateTime[] range = resolveRange(request);
-        return scoreHistoryMapper.selectList(new QueryWrapper<QualityScoreHistory>()
-                        .eq("table_id", request.getTableId())
-                        .ge("checked_at", range[0])
-                        .le("checked_at", range[1])
-                        .orderByAsc("checked_at"))
-                .stream().map(h -> {
-                    QualityScoreTrendPointDTO point = new QualityScoreTrendPointDTO();
-                    point.setCheckedAt(h.getCheckedAt());
-                    point.setScore(h.getScore());
-                    point.setHealthLevel(h.getHealthLevel());
-                    return point;
-                }).toList();
+        if (request != null && request.getTableId() != null) {
+            if (metadataTableMapper.selectById(request.getTableId()) == null) {
+                throw new BusinessException(ErrorCode.QUALITY_REPORT_PARAM_INVALID,
+                        "表不存在：" + request.getTableId());
+            }
+            return scoreHistoryMapper.selectList(new QueryWrapper<QualityScoreHistory>()
+                            .eq("table_id", request.getTableId())
+                            .ge("checked_at", range[0])
+                            .le("checked_at", range[1])
+                            .orderByAsc("checked_at"))
+                    .stream().map(h -> {
+                        QualityScoreTrendPointDTO point = new QualityScoreTrendPointDTO();
+                        point.setCheckedAt(h.getCheckedAt());
+                        point.setScore(h.getScore());
+                        point.setHealthLevel(h.getHealthLevel());
+                        return point;
+                    }).toList();
+        }
+        // 聚合模式：按天平均评分（报告定位是聚合视图，单表趋势归资产详情页）
+        List<Long> scope = resolveScoreScopeTableIds(request);
+        if (scope != null && scope.isEmpty()) {
+            return List.of();
+        }
+        QueryWrapper<QualityScoreHistory> wrapper = new QueryWrapper<QualityScoreHistory>()
+                .select("CAST(checked_at AS DATE) AS day",
+                        "AVG(score) AS avg_score",
+                        "COUNT(DISTINCT table_id) AS table_count")
+                .ge("checked_at", range[0])
+                .le("checked_at", range[1])
+                .groupBy("CAST(checked_at AS DATE)")
+                .orderByAsc("CAST(checked_at AS DATE)");
+        if (scope != null) {
+            wrapper.in("table_id", scope);
+        } else {
+            wrapper.inSql("table_id", "SELECT id FROM metadata_table WHERE source_status = 'ONLINE'");
+        }
+        return scoreHistoryMapper.selectMaps(wrapper).stream().map(row -> {
+            QualityScoreTrendPointDTO point = new QualityScoreTrendPointDTO();
+            point.setDay(String.valueOf(row.get("day")));
+            Object avg = row.get("avg_score");
+            if (avg != null) {
+                point.setAvgScore(new BigDecimal(avg.toString()).setScale(2, RoundingMode.HALF_UP));
+            }
+            Object count = row.get("table_count");
+            point.setTableCount(count == null ? 0L : ((Number) count).longValue());
+            return point;
+        }).toList();
     }
 
     // ==================== 问题清单 ====================

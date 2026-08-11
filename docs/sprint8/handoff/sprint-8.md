@@ -20,7 +20,7 @@
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
 | F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` **18/18** 通过（2026-08-10 测试会话补 3 用例：删数据源级联清理协作数据/评论「已注销」兜底/评论分页）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
 | F2 实时 CDC 管道（DI-04/RC-01）          | ✅ 完成   | 后端两轮实测 + 前端完成 + Review 修复 + 联调调通 + **E2E `cdc-pipeline.spec.ts` 23/23 通过**（2026-08-10 测试会话，含 MySQL savepoint 恢复/PG 全链路/8009 引用校验）；**源范围扩展：MySQL + PostgreSQL**（PG 全链路实测通过）；Oracle/SQLServer 决策等 Flink CDC 3.7.0（B7/B8）；E2E 发现并修复后端缺口：仅增量+INITIAL 矛盾组合未拦截（已补 8000 校验） |
-| F3 质量报告（DG-07 完整版）              | 🔄 前端完成 | 后端已实现 + curl 自测通过 + 评审（Yes）修复完成（2026-08-11）：V1.5.0 评分历史表 + ScoreCalculator 写快照 + 报告 7 端点 + CSV 导出；2026-08-11 前端完成（Dashboard 一屏版）+ 后端补 3 端点（score-distribution/datasource-comparison/summary 问题计数）+ Review 修复（评分 ONLINE 口径统一 + 草稿/应用模型） |
+| F3 质量报告（DG-07 完整版）              | 🔄 前端完成 | 后端已实现 + curl 自测通过 + 评审（Yes）修复完成（2026-08-11）：V1.5.0 评分历史表 + ScoreCalculator 写快照 + 报告 7 端点 + CSV 导出；2026-08-11 前端完成（Dashboard 一屏版）+ 后端补 3 端点（score-distribution/datasource-comparison/summary 问题计数）+ Review 修复（评分 ONLINE 口径统一 + 草稿/应用模型）；**2026-08-11 产品化重排**（用户确认）：三区布局（趋势区=四档+平均评分聚合 / 结构行动区=环图+数据源对比+问题清单 TOP6）、score-trend 聚合模式（tableId 可选）、筛选双向联动（库带数据源/任务随数据源+空态提示/下拉固定宽度防漂移）、「生成报告」改名「查询」；技术文档 v1.10 已回落 |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
 | Sprint 8 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
 

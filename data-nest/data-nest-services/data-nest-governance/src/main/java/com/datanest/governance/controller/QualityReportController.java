@@ -49,7 +49,7 @@ public class QualityReportController {
         this.qualityReportService = qualityReportService;
     }
 
-    @Operation(summary = "筛选联动选项", description = "数据源（含内置 Doris）/ 库（随数据源联动）/ 质量任务")
+    @Operation(summary = "筛选联动选项", description = "数据源（含内置 Doris）/ 库（随数据源联动，带所属数据源供反向联动）/ 质量任务（随数据源联动）")
     @PostMapping("/options")
     public Result<QualityReportOptionsDTO> options(@Parameter(description = "数据源 ID（库列表联动用）") @RequestParam(required = false) Long datasourceId) {
         return Result.ok(qualityReportService.options(datasourceId));
@@ -77,7 +77,7 @@ public class QualityReportController {
         return Result.ok(qualityReportService.levelTrend(request));
     }
 
-    @Operation(summary = "表评分趋势", description = "按 tableId + 时间范围取评分历史序列（quality_score_history）")
+    @Operation(summary = "评分趋势", description = "tableId 为空 = 聚合模式（按天 AVG 评分，ONLINE 表口径）；非空 = 单表评分历史序列（quality_score_history）")
     @PostMapping("/score-trend")
     public Result<List<QualityScoreTrendPointDTO>> scoreTrend(@RequestBody QualityReportRequest request) {
         return Result.ok(qualityReportService.scoreTrend(request));

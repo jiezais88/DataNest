@@ -5,6 +5,14 @@
 # ============================================
 
 spring:
+  # 优雅停机（Boot 4 默认已开启，显式声明便于运维感知）：配合容器 restart 策略，
+  # recreate/重启时进行中请求有界收尾（每阶段 15s）
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  threads:
+    virtual:
+      # 虚拟线程（JDK 25 + Boot 4；JEP 491 后 synchronized 不再 pin 载体线程）
+      enabled: true
   jackson:
     default-property-inclusion: non_null
     date-format: yyyy-MM-dd HH:mm:ss

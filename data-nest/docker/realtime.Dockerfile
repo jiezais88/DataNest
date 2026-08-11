@@ -5,13 +5,13 @@
 # ============================================
 
 # Stage 1: 解出分层 jar
-FROM eclipse-temurin:21-jre-alpine AS builder
+FROM eclipse-temurin:25-jre-alpine AS builder
 WORKDIR /build
 COPY data-nest-services/data-nest-realtime/target/data-nest-realtime-1.0.0-SNAPSHOT.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract
 
 # Stage 2: 运行镜像
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 # netcat 供健康检查 / 等待依赖使用
 RUN apk add --no-cache netcat-openbsd

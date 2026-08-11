@@ -1,7 +1,7 @@
 // Sprint 8 F3：质量报告类型（对齐后端 governance QualityReportController DTO）
 // 注意：计数/ID 字段后端 Long 序列化为 string；avgScore/passRate 为 BigDecimal（JSON number）。
 
-/** 统一筛选请求（数据源/库/质量任务/时间范围 + 评分趋势表 + 问题清单分页） */
+/** 统一筛选请求（数据源/库/质量任务/时间范围 + 评分趋势单表模式 + 问题清单分页） */
 export interface QualityReportRequest {
     /** 数据源 ID（-1 = 内置 Doris） */
     datasourceId?: string;
@@ -11,7 +11,7 @@ export interface QualityReportRequest {
     /** ISO 8601；空默认最近 30 天 / 当前时间 */
     startTime?: string;
     endTime?: string;
-    /** 表 ID（评分趋势必填） */
+    /** 表 ID（可选；传了走单表模式，空 = 按天聚合平均评分） */
     tableId?: string;
     page?: number;
     pageSize?: number;
@@ -20,7 +20,9 @@ export interface QualityReportRequest {
 /** 筛选联动选项 */
 export interface QualityReportOptions {
     datasources?: { id: string; name?: string }[];
-    databases?: string[];
+    /** 库（带所属数据源，供选库反向联动数据源） */
+    databases?: { name: string; datasourceId?: string }[];
+    /** 质量任务（随数据源联动） */
     jobs?: { id: string; name?: string }[];
 }
 
@@ -43,11 +45,20 @@ export interface QualityLevelTrendPoint {
     unavailableCount?: string;
 }
 
-/** 表评分趋势点 */
+/** 评分趋势点（聚合模式：day + avgScore + tableCount；单表模式：checkedAt + score + healthLevel） */
 export interface QualityScoreTrendPoint {
-    checkedAt: string;
+    /** 单表模式：批次结束时间 */
+    checkedAt?: string;
+    /** 单表模式：0-100 评分 */
     score?: number;
+    /** 单表模式：健康度 */
     healthLevel?: string;
+    /** 聚合模式：日期 yyyy-MM-dd */
+    day?: string;
+    /** 聚合模式：当天平均评分 */
+    avgScore?: number;
+    /** 聚合模式：当天有快照的表数（Long→string） */
+    tableCount?: string;
 }
 
 /** 表评分分布（环图；计数为 Long→string） */

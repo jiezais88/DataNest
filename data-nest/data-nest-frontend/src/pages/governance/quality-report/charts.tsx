@@ -194,12 +194,14 @@ export function ComparisonBars({data}: { data: DatasourceScoreComparison[] }) {
     );
 }
 
-/** 表评分趋势（面积折线） */
+/** 评分趋势（面积折线；聚合模式按天 avgScore，单表模式按批次 score） */
 export function ScoreTrendChart({data}: { data: QualityScoreTrendPoint[] }) {
     if (data.length === 0) {
-        return <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">该表范围内暂无评分历史</div>;
+        return <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无评分历史</div>;
     }
-    const values = data.map(p => p.score ?? 0);
+    const pointValue = (p: QualityScoreTrendPoint) => Number(p.avgScore ?? p.score ?? 0);
+    const pointDay = (p: QualityScoreTrendPoint) => p.day ?? (p.checkedAt || '').slice(0, 10);
+    const values = data.map(pointValue);
     const scale = computeScale(data.length, 100);
     const line = toPath(values, scale);
     const area = `${line} L${scale.x(data.length - 1).toFixed(1)},${scale.y(0)} L${scale.x(0).toFixed(1)},${scale.y(0)} Z`;
@@ -215,9 +217,9 @@ export function ScoreTrendChart({data}: { data: QualityScoreTrendPoint[] }) {
             <path d={area} fill="url(#scoreAreaGrad)"/>
             <path d={line} fill="none" stroke={ACCENT} strokeWidth={2}/>
             {data.map((p, i) => (
-                <circle key={i} cx={scale.x(i)} cy={scale.y(p.score ?? 0)} r={3} fill={ACCENT}/>
+                <circle key={i} cx={scale.x(i)} cy={scale.y(pointValue(p))} r={3} fill={ACCENT}/>
             ))}
-            <XAxis days={data.map(p => (p.checkedAt || '').slice(0, 10))} scale={scale}/>
+            <XAxis days={data.map(pointDay)} scale={scale}/>
         </svg>
     );
 }

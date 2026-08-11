@@ -24,6 +24,12 @@ spring:
             loggerLevel: basic
       circuitbreaker:
         enabled: true
+      httpclient:
+        hc5:
+          # Apache HttpClient 5 连接池（feign-hc5 依赖经各 api 模块传递）：
+          # 替代默认无池的 JDK HttpURLConnection，服务间调用复用 TCP 连接
+          enabled: true
+          time-to-live: 900
 resilience4j:
   circuitbreaker:
     configs:
