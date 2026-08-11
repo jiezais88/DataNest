@@ -5,8 +5,10 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.realtime.dto.CdcClusterInfoDTO;
+import com.datanest.realtime.dto.CdcPipelineCheckpointsDTO;
 import com.datanest.realtime.dto.CdcPipelineDTO;
 import com.datanest.realtime.dto.CdcPipelineLogDTO;
+import com.datanest.realtime.dto.CdcPipelineMetricsDTO;
 import com.datanest.realtime.dto.CdcPipelineSaveRequest;
 import com.datanest.realtime.dto.CdcPipelineStatsDTO;
 import com.datanest.realtime.dto.CdcSourceTableDTO;
@@ -109,6 +111,19 @@ public class CdcPipelineController {
         return Result.ok(pipelineService.detail(id));
     }
 
+    @Operation(summary = "管道实时 KPI", description = "当前延迟/吞吐/累计变更/作业重启次数；非运行中返回最后已知值 + live=false（Sprint 9 F1 运行监控）")
+    @GetMapping("/{id}/metrics/current")
+    public Result<CdcPipelineMetricsDTO.Current> metricsCurrent(@Parameter(description = "管道 ID") @PathVariable Long id) {
+        return Result.ok(pipelineService.metricsCurrent(id));
+    }
+
+    @Operation(summary = "管道指标趋势", description = "延迟/吞吐趋势折线数据；range 1h/6h 原始分钟点、24h 按 5 分钟桶、7d 按小时桶聚合（Sprint 9 F1 运行监控）")
+    @GetMapping("/{id}/metrics/trend")
+    public Result<CdcPipelineMetricsDTO.Trend> metricsTrend(@Parameter(description = "管道 ID") @PathVariable Long id,
+                                                            @Parameter(description = "时间范围 1h/6h/24h/7d，默认 24h") @RequestParam(required = false) String range) {
+        return Result.ok(pipelineService.metricsTrend(id, range));
+    }
+
     @Operation(summary = "编辑管道", description = "仅停止状态可编辑；全量替换表映射并清空 savepoint（下次启动从头跑）")
     @PutMapping("/{id}")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
@@ -137,6 +152,26 @@ public class CdcPipelineController {
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     public Result<CdcPipelineDTO> stop(@Parameter(description = "管道 ID") @PathVariable Long id) {
         return Result.ok(pipelineService.stop(id));
+    }
+
+    @Operation(summary = "强制停止管道", description = "作业已丢失时降级路径：跳过 savepoint 直接置 STOPPED（未保存位点，下次启动按启动位点重新同步）；非运行中幂等返回当前状态（Sprint 9 F2）")
+    @PostMapping("/{id}/force-stop")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    public Result<CdcPipelineDTO> forceStop(@Parameter(description = "管道 ID") @PathVariable Long id) {
+        return Result.ok(pipelineService.forceStop(id));
+    }
+
+    @Operation(summary = "管道 checkpoint 历史/健康度", description = "实时转发 Flink REST（不落库）：健康度三卡 + 最近 20 条历史 + 最近 savepoint 路径；作业不可达返回 reachable=false（Sprint 9 F2 检查点页签）")
+    @GetMapping("/{id}/checkpoints")
+    public Result<CdcPipelineCheckpointsDTO.Checkpoints> checkpoints(@Parameter(description = "管道 ID") @PathVariable Long id) {
+        return Result.ok(pipelineService.checkpoints(id));
+    }
+
+    @Operation(summary = "手动触发 savepoint", description = "仅运行中管道可触发；成功回写 savepoint_path（替换时清理旧文件），失败抛 8010（Sprint 9 F2）")
+    @PostMapping("/{id}/savepoints")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    public Result<CdcPipelineCheckpointsDTO.SavepointResult> triggerSavepoint(@Parameter(description = "管道 ID") @PathVariable Long id) {
+        return Result.ok(pipelineService.triggerSavepoint(id));
     }
 
     @Operation(summary = "管道运行日志", description = "创建/启停/状态变更/延迟告警，id 倒序分页")

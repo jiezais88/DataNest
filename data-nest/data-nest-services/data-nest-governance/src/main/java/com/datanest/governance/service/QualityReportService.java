@@ -31,9 +31,10 @@ import com.datanest.governance.mapper.QualityJobMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityScoreHistoryMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
-import com.datanest.governance.util.CsvExportHelper;
 import com.datanest.governance.util.ExportLabels;
-import org.apache.commons.csv.CSVPrinter;
+import com.datanest.governance.util.XlsxExportHelper;
+import org.apache.poi.xssf.streaming.SXSSFSheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -42,7 +43,6 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -73,8 +73,6 @@ public class QualityReportService {
     private static final int MAX_EXPORT_ROWS = 5000;
     private static final long BUILTIN_DORIS_DATASOURCE_ID = -1L;
     private static final String BUILTIN_DORIS_NAME = "Doris 数仓";
-    /** 导出时间格式统一走 CsvExportHelper.TIME_FORMATTER（yyyy-MM-dd HH:mm:ss） */
-    private static final DateTimeFormatter CSV_TIME_FORMATTER = CsvExportHelper.TIME_FORMATTER;
 
     private final QualityCheckDetailMapper detailMapper;
     private final QualityScoreMapper scoreMapper;
@@ -464,10 +462,10 @@ public class QualityReportService {
         }).toList();
     }
 
-    // ==================== CSV 导出 ====================
+    // ==================== Excel 导出 ====================
 
     /**
-     * 导出 CSV（UTF-8 with BOM，兼容 Excel；复用 Sprint 6 合规导出经验）：
+     * 导出 xlsx（2026-08-11 起取代 CSV，列宽自适应；复用统一规范 CsvExportHelper→XlsxExportHelper）：
      * 汇总 KPI + 当前筛选的问题清单全量（上限 MAX_EXPORT_ROWS 截断）。
      * 直写响应流（Controller 返回 void）：数据全部算完再开始写，
      * 写流前的参数/查询异常（4221/4222）仍由全局异常处理器返回 JSON 错误。
@@ -502,31 +500,43 @@ public class QualityReportService {
         }
         List<QualityIssueItemDTO> issues = toIssueItems(details);
 
-        // CSVPrinter 负责转义/引号；BOM 与公式注入防护由 CsvExportHelper 统一处理（只 flush 不 close）
-        CSVPrinter printer = CsvExportHelper.printer(out);
-        printer.printRecord("质量报告",
-                CSV_TIME_FORMATTER.format(range[0]) + " ~ " + CSV_TIME_FORMATTER.format(range[1]));
-        printer.printRecord("检查批次数", "规则明细数", "平均评分", "通过率(%)");
-        printer.printRecord(summary.getBatchCount(), summary.getDetailCount(),
-                summary.getAvgScore() == null ? "" : summary.getAvgScore(),
-                summary.getPassRate() == null ? "" : summary.getPassRate());
-        printer.printRecord();
-        printer.printRecord("问题清单（严重/警告）");
-        printer.printRecord("表", "规则", "类型", "结果指标", "结果值", "阈值", "级别", "检查时间");
-        for (QualityIssueItemDTO item : issues) {
-            printer.printRecord(CsvExportHelper.safe(item.getTableName()),
-                    CsvExportHelper.safe(item.getRuleName()),
-                    CsvExportHelper.safe(ExportLabels.qualityRuleType(item.getRuleType())),
-                    CsvExportHelper.safe(item.getResultMetric()),
-                    item.getResultValue() == null ? "" : item.getResultValue(),
-                    item.getThreshold() == null ? "" : item.getThreshold(),
-                    CsvExportHelper.safe(ExportLabels.resultLevel(item.getResultLevel())),
-                    CsvExportHelper.time(item.getCheckedAt()));
+        // xlsx 流式写出：列宽按内容估算，中文枚举经 ExportLabels，时间统一 yyyy-MM-dd HH:mm:ss
+        try (SXSSFWorkbook wb = XlsxExportHelper.workbook()) {
+            SXSSFSheet sheet = wb.createSheet("质量报告");
+            int[] widths = new int[8];
+            int rowIdx = 0;
+            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of("质量报告",
+                    XlsxExportHelper.time(range[0]) + " ~ " + XlsxExportHelper.time(range[1])), widths);
+            XlsxExportHelper.writeRow(sheet, rowIdx++,
+                    List.of("检查批次数", "规则明细数", "平均评分", "通过率(%)"), widths);
+            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+                    summary.getBatchCount() == null ? "" : summary.getBatchCount(),
+                    summary.getDetailCount() == null ? "" : summary.getDetailCount(),
+                    summary.getAvgScore() == null ? "" : summary.getAvgScore(),
+                    summary.getPassRate() == null ? "" : summary.getPassRate()), widths);
+            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(), widths);
+            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of("问题清单（严重/警告）"), widths);
+            XlsxExportHelper.writeRow(sheet, rowIdx++,
+                    List.of("表", "规则", "类型", "结果指标", "结果值", "阈值", "级别", "检查时间"), widths);
+            for (QualityIssueItemDTO item : issues) {
+                XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+                        str(item.getTableName()), str(item.getRuleName()),
+                        str(ExportLabels.qualityRuleType(item.getRuleType())), str(item.getResultMetric()),
+                        item.getResultValue() == null ? "" : item.getResultValue(),
+                        item.getThreshold() == null ? "" : item.getThreshold(),
+                        str(ExportLabels.resultLevel(item.getResultLevel())),
+                        XlsxExportHelper.time(item.getCheckedAt())), widths);
+            }
+            if (truncated) {
+                XlsxExportHelper.writeRow(sheet, rowIdx, List.of("# 问题清单超过 " + MAX_EXPORT_ROWS + " 行，已截断"), widths);
+            }
+            XlsxExportHelper.applyColumnWidths(sheet, widths);
+            XlsxExportHelper.write(wb, out);
         }
-        if (truncated) {
-            printer.printRecord("# 问题清单超过 " + MAX_EXPORT_ROWS + " 行，已截断");
-        }
-        printer.flush();
+    }
+
+    private static String str(String value) {
+        return value == null ? "" : value;
     }
 
     // ==================== 存量评分历史补算 ====================

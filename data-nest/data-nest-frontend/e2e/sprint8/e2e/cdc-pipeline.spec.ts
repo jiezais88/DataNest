@@ -425,6 +425,11 @@ test.describe('D. 运行生命周期', () => {
         mysqlT(`INSERT INTO ${T_MAIN} (username, amount) VALUES ('incr_d', 400), ('incr_e', 500)`);
         mainRows += 2;
         await expectLakeCount(engineer, mainPipelineId, T_MAIN, mainRows);
+        // Doris catalog 自动刷新（app-job 每 30s 条件刷新）：不手动调 refresh-catalog 也应自动可见
+        mysqlT(`INSERT INTO ${T_MAIN} (username, amount) VALUES ('auto_refresh_g', 700)`);
+        mainRows += 1;
+        await expect.poll(() => lakeCount(T_MAIN), {timeout: 150_000, intervals: [10_000]})
+            .toBe(mainRows);
         // 监控回写（5s 轮询）：累计变更 ≥ 基线；currentEmitEventTimeLag 只在源有事件流时存在，
         // 空闲窗口查不到会跳过回写 → 每轮补一行保持事件流，直到 lag 非空
         await expect.poll(async () => {
@@ -647,6 +652,10 @@ test.describe('F. PostgreSQL 源', () => {
 
         await engineer.post(`/realtime/cdc/pipelines/${id}/stop`);
         await engineer.del(`/realtime/cdc/pipelines/${id}`);
+        // 删除级联清理 PG 复制槽（2026-08-11 E2E 发现槽泄漏打满 max_wal_senders 致新作业无法启动）
+        await expect.poll(() =>
+                pgT(`SELECT COUNT(*) FROM pg_replication_slots WHERE slot_name = 'datanest_cdc_${id}'`),
+            {timeout: 15_000, intervals: [1_000]}).toBe('0');
     });
 
     test('向导 UI：PG 源仅增量时「从最早」位点禁用 + 后端 8000 兜底', async ({page}) => {

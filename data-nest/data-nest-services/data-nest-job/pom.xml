@@ -35,6 +35,12 @@
             <artifactId>data-nest-governance-api</artifactId>
         </dependency>
 
+        <!-- DataNest Realtime API（Doris 湖仓 catalog 定时自动刷新走 Feign） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-realtime-api</artifactId>
+        </dependency>
+
         <!-- Feign lb:// 服务发现调用必需 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

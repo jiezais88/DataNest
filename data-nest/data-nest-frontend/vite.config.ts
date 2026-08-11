@@ -1,11 +1,31 @@
 /// <reference types="node" />
 import {fileURLToPath, URL} from 'node:url'
 import {defineConfig, loadEnv} from 'vite'
+import type {Plugin} from 'vite'
 import react from '@vitejs/plugin-react'
 import {visualizer} from 'rollup-plugin-visualizer'
 import viteCompression from 'vite-plugin-compression'
 
 const isAnalyze = process.env.ANALYZE === 'true'
+
+// 构建时向产物写入 version.json（运行时版本轮询用，见 src/components/VersionChecker.tsx）。
+// generateBundle 是 build 专属钩子，dev 不触发，因此本地开发不受影响。
+// version 用构建时刻的毫秒时间戳（36 进制），保证每次部署唯一。
+function versionJsonPlugin(): Plugin {
+    return {
+        name: 'version-json',
+        generateBundle() {
+            this.emitFile({
+                type: 'asset',
+                fileName: 'version.json',
+                source: JSON.stringify({
+                    version: Date.now().toString(36),
+                    buildTime: new Date().toISOString(),
+                }),
+            });
+        },
+    };
+}
 
 export default defineConfig(({mode}) => {
     // /api 代理目标可在 .env.development 或同名环境变量中覆盖（默认本机后端）
@@ -19,6 +39,7 @@ export default defineConfig(({mode}) => {
         },
         plugins: [
             react(),
+            versionJsonPlugin(),
             // 预压缩 .br（nginx brotli_static 直接吐，压缩率比 gzip 高 ~15-20%；nginx 需启用 ngx_brotli）。
             // 现代浏览器（2015+）均支持 brotli，gzip 冗余，删掉以减小 dist 磁盘体积；nginx brotli_static
             // 不支持时会回退到 gzip_static（gzip on 仍开启），网络传输无损失。

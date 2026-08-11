@@ -89,19 +89,19 @@ public class QualityReportController {
         return Result.ok(qualityReportService.issues(request));
     }
 
-    @Operation(summary = "导出 CSV", description = "汇总 KPI + 当前筛选问题清单全量（UTF-8 BOM，超 5000 行截断）；直写响应流")
+    @Operation(summary = "导出 Excel", description = "汇总 KPI + 当前筛选问题清单全量（xlsx 列宽自适应，超 5000 行截断）；直写响应流")
     @PostMapping("/export")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     public void export(@RequestBody(required = false) QualityReportRequest request,
                        HttpServletResponse response) throws IOException {
-        // 产品化文件名：DataNest-质量报告-日期.csv；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
+        // 产品化文件名：DataNest-质量报告-日期.xlsx；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String filename = "DataNest-质量报告-" + date + ".csv";
-        String asciiFilename = "DataNest-quality-report-" + date + ".csv";
+        String filename = "DataNest-质量报告-" + date + ".xlsx";
+        String asciiFilename = "DataNest-quality-report-" + date + ".xlsx";
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
                         + URLEncoder.encode(filename, StandardCharsets.UTF_8));
-        response.setContentType("text/csv;charset=UTF-8");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         qualityReportService.export(request, response.getOutputStream());
     }
 

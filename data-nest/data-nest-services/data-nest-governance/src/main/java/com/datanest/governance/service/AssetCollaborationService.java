@@ -37,8 +37,9 @@ import com.datanest.governance.mapper.AssetViewLogMapper;
 import com.datanest.governance.mapper.CollectChangeDetailMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.system.api.SystemUserApi;
-import com.datanest.governance.util.CsvExportHelper;
-import org.apache.commons.csv.CSVPrinter;
+import com.datanest.governance.util.XlsxExportHelper;
+import org.apache.poi.xssf.streaming.SXSSFSheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
@@ -303,22 +304,29 @@ public class AssetCollaborationService {
             favorites = favorites.subList(0, MAX_EXPORT_ROWS);
         }
         List<AssetFavoriteItemDTO> items = buildFavoriteItems(favorites);
-        // CSVPrinter 负责转义/引号；BOM 与公式注入防护由 CsvExportHelper 统一处理（只 flush 不 close）
-        CSVPrinter printer = CsvExportHelper.printer(out);
-        printer.printRecord("表名", "注释", "数据源", "库名", "数据域", "主题", "负责人", "质量评分", "近30天热度", "收藏时间");
-        for (AssetFavoriteItemDTO item : items) {
-            printer.printRecord(CsvExportHelper.safe(item.getTableName()),
-                    CsvExportHelper.safe(item.getTableComment()),
-                    CsvExportHelper.safe(item.getDatasourceName()),
-                    CsvExportHelper.safe(item.getDatabaseName()),
-                    CsvExportHelper.safe(item.getDataDomain()),
-                    CsvExportHelper.safe(item.getDataTopic()),
-                    CsvExportHelper.safe(item.getOwnerName()),
-                    item.getQualityScore() == null ? "" : item.getQualityScore(),
-                    item.getViewCount() == null ? "" : item.getViewCount(),
-                    CsvExportHelper.time(item.getFavoritedAt()));
+        // xlsx 流式写出（XlsxExportHelper：列宽按内容估算，时间统一 yyyy-MM-dd HH:mm:ss）
+        try (SXSSFWorkbook wb = XlsxExportHelper.workbook()) {
+            SXSSFSheet sheet = wb.createSheet("我的收藏");
+            int[] widths = new int[10];
+            int rowIdx = 0;
+            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+                    "表名", "注释", "数据源", "库名", "数据域", "主题", "负责人", "质量评分", "近30天热度", "收藏时间"), widths);
+            for (AssetFavoriteItemDTO item : items) {
+                XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+                        str(item.getTableName()), str(item.getTableComment()), str(item.getDatasourceName()),
+                        str(item.getDatabaseName()), str(item.getDataDomain()), str(item.getDataTopic()),
+                        str(item.getOwnerName()),
+                        item.getQualityScore() == null ? "" : item.getQualityScore(),
+                        item.getViewCount() == null ? "" : item.getViewCount(),
+                        XlsxExportHelper.time(item.getFavoritedAt())), widths);
+            }
+            XlsxExportHelper.applyColumnWidths(sheet, widths);
+            XlsxExportHelper.write(wb, out);
         }
-        printer.flush();
+    }
+
+    private static String str(String value) {
+        return value == null ? "" : value;
     }
 
 

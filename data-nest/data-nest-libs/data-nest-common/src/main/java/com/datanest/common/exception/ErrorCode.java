@@ -145,6 +145,8 @@ public enum ErrorCode {
     CDC_PIPELINE_START_FAILED(8007, "管道启动失败"),
     CDC_PIPELINE_STOP_FAILED(8008, "管道停止失败"),
     CDC_DATASOURCE_REFERENCED(8009, "数据源已被 CDC 管道引用，请先删除管道"),
+    CDC_SAVEPOINT_TRIGGER_FAILED(8010, "savepoint 触发失败或超时"),
+    CDC_PIPELINE_NOT_RUNNING(8011, "管道未在运行中，无法执行该操作"),
 
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),

@@ -163,10 +163,12 @@
             <artifactId>commons-pool2</artifactId>
         </dependency>
 
-        <!-- Commons CSV（导出统一框架，Sprint 8 F3 起；配合 CsvExportHelper 使用） -->
+        <!-- Apache POI（xlsx 导出统一框架，2026-08-11 起取代 Commons CSV；poi-ooxml 默认带 lite schemas，
+             不引 poi-ooxml-full 全量 schema 包；配合 XlsxExportHelper 使用） -->
         <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-csv</artifactId>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
         </dependency>
 
         <!-- Lombok -->

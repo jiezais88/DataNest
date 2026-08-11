@@ -42,6 +42,11 @@
             <groupId>com.datanest</groupId>
             <artifactId>data-nest-governance-api</artifactId>
         </dependency>
+        <!-- Sprint 9 F3：CDC 管道对象名反查/可选对象下拉（realtime 内部端点） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-realtime-api</artifactId>
+        </dependency>
 
         <!-- Spring Boot -->
         <dependency>

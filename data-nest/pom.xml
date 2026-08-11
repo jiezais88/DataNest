@@ -40,6 +40,8 @@
         <springdoc.version>3.0.2</springdoc.version>
         <!-- 与 springdoc 3.0.2 传递引入的 swagger-annotations 版本对齐（task-core 等共享模块编译注解用） -->
         <swagger-annotations.version>2.2.43</swagger-annotations.version>
+        <!-- MinIO Java Client（Sprint 9 F2：savepoint 文件物理清理；Maven Central 8.5.17 为 8.x 最新稳定版） -->
+        <minio.version>8.5.17</minio.version>
     </properties>
 
     <dependencyManagement>
@@ -221,6 +223,13 @@
                 <groupId>com.datanest</groupId>
                 <artifactId>data-nest-realtime</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- MinIO Java Client（Sprint 9 F2：savepoint 文件物理清理） -->
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

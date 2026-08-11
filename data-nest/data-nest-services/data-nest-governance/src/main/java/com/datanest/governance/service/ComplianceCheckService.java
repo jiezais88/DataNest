@@ -23,9 +23,10 @@ import com.datanest.governance.mapper.FieldTypeStandardMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.NamingStandardMapper;
-import com.datanest.governance.util.CsvExportHelper;
+import com.datanest.governance.util.XlsxExportHelper;
 import com.datanest.governance.util.ExportLabels;
-import org.apache.commons.csv.CSVPrinter;
+import org.apache.poi.xssf.streaming.SXSSFSheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -345,25 +346,29 @@ public class ComplianceCheckService {
     }
 
     /**
-     * Sprint6 新增：导出问题清单 CSV（UTF-8 with BOM，兼容 Excel）。
+     * 导出问题清单 xlsx（2026-08-11 起取代 CSV，列宽自适应）。
      * 默认导出未忽略的问题（与 page 的「默认排除已忽略」语义一致）。
      */
     public void export(ComplianceCheckRequest request, OutputStream out) throws IOException {
         List<ComplianceCheckResult> list = queryByRange(request, 0);
-        // CSVPrinter 负责转义/引号；BOM 与公式注入防护由 CsvExportHelper 统一处理（只 flush 不 close）
-        CSVPrinter printer = CsvExportHelper.printer(out);
-        printer.printRecord("对象路径", "对象类型", "违规类型", "实际值", "期望值", "适用规范", "检查时间", "是否忽略");
-        for (ComplianceCheckResult r : list) {
-            printer.printRecord(CsvExportHelper.safe(r.getObjectPath()),
-                    CsvExportHelper.safe(ExportLabels.complianceObjectType(r.getObjectType())),
-                    CsvExportHelper.safe(ExportLabels.complianceViolationType(r.getViolationType())),
-                    CsvExportHelper.safe(r.getActualValue()),
-                    CsvExportHelper.safe(r.getExpectedValue()),
-                    CsvExportHelper.safe(applicableNames(r)),
-                    CsvExportHelper.time(r.getCheckedAt()),
-                    Integer.valueOf(1).equals(r.getIgnored()) ? "是" : "否");
+        try (SXSSFWorkbook wb = XlsxExportHelper.workbook()) {
+            SXSSFSheet sheet = wb.createSheet("标准合规检查");
+            int[] widths = new int[8];
+            int rowIdx = 0;
+            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+                    "对象路径", "对象类型", "违规类型", "实际值", "期望值", "适用规范", "检查时间", "是否忽略"), widths);
+            for (ComplianceCheckResult r : list) {
+                XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+                        str(r.getObjectPath()),
+                        str(ExportLabels.complianceObjectType(r.getObjectType())),
+                        str(ExportLabels.complianceViolationType(r.getViolationType())),
+                        str(r.getActualValue()), str(r.getExpectedValue()), str(applicableNames(r)),
+                        XlsxExportHelper.time(r.getCheckedAt()),
+                        Integer.valueOf(1).equals(r.getIgnored()) ? "是" : "否"), widths);
+            }
+            XlsxExportHelper.applyColumnWidths(sheet, widths);
+            XlsxExportHelper.write(wb, out);
         }
-        printer.flush();
     }
 
     private List<ComplianceCheckResult> queryByRange(ComplianceCheckRequest request, Integer ignored) {
@@ -626,6 +631,10 @@ public class ComplianceCheckService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.joining(";"));
+    }
+
+    private static String str(String value) {
+        return value == null ? "" : value;
     }
 
 

@@ -357,7 +357,7 @@ export default function AssetsPage() {
 
     // ============ 列 ============
     const columns = useMemo(() => {
-        const base = buildAssetColumns(openDetail);
+        const base = buildAssetColumns(openDetail, handleTagSelect);
         if (!canWrite) return base;
         return [
             ...base,
@@ -393,7 +393,7 @@ export default function AssetsPage() {
                 ),
             },
         ];
-    }, [openDetail, canWrite, isClassified, isSearch]);
+    }, [openDetail, canWrite, isClassified, isSearch, handleTagSelect]);
 
     const tableData = isSearch ? searchList : browseList;
     const loading = isSearch ? searchLoading : browseLoading;

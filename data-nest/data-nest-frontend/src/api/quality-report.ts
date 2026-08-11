@@ -45,6 +45,6 @@ export const getDatasourceComparison = (data: QualityReportRequest) =>
 export const getQualityIssues = (data: QualityReportRequest) =>
     request.post<Result<PageResult<QualityIssueItem>>>(`${BASE}/issues`, data).then(r => r.data);
 
-/** 导出 CSV（流式响应；用 downloadCsvBlob 做错误检出后触发下载） */
+/** 导出 Excel（流式响应；用 downloadExportBlob 做错误检出后触发下载） */
 export const exportQualityReport = (data: QualityReportRequest) =>
     request.post<Blob>(`${BASE}/export`, data, {responseType: 'blob'});

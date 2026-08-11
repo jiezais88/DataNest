@@ -54,7 +54,9 @@
 ### D-D5：流处理告警 → realtime 依赖 alert-api 上报 + app-alert 扩展 CDC_PIPELINE 对象
 
 - **对象类型**：common `AlertConstants` 新增 `OBJECT_TYPE_CDC_PIPELINE = "CDC_PIPELINE"` + `DISPLAY_CDC_PIPELINE = "CDC 管道"`；alert 库 Flyway 放宽 `alert_rule.object_type` CHECK（V1.1.0）；`AlertRuleService.validate()` 白名单（现 451~455 行四类型 if）同步加分支。
-- **告警类型**：`alert_history.alert_type`/`trigger_conditions` 无 DB CHECK（varchar(16)，已核验），新增两个常量即可：`ALERT_LAG_EXCEEDED = "LAG_EXCEEDED"`（延迟超阈值）、`ALERT_EXTERNAL_STOP = "EXTERNAL_STOP"`（外部停止）；作业失败复用现有 `ALERT_FAILURE`。`AlertFiringService` 的 `displayObjectType`/`displayAlertType`/`buildObjectUrl` 三个 switch 同步加分支（URL → `http://localhost:3000/engineering/cdc-pipelines`，管道详情是抽屉无独立路由，链到列表页）。
+- **告警类型**：新增两个常量即可：`ALERT_LAG_EXCEEDED = "LAG_EXCEEDED"`（延迟超阈值）、`ALERT_EXTERNAL_STOP = "EXTERNAL_STOP"`（外部停止）；作业失败复用现有 `ALERT_FAILURE`。
+  **⚠️ 文档修正（2026-08-11 实施核验）**：`alert_history.alert_type` 实际有 DB CHECK（baseline `alert_history_alert_type_check` 仅 FAILURE/TIMEOUT/SUCCESS），并非「无 CHECK」——V1.1.0 脚本必须**同时放宽 alert_history.alert_type CHECK**（加 LAG_EXCEEDED/EXTERNAL_STOP），否则新告警类型写历史会被数据库拒绝（用户已确认一并放宽并修正本文档）。`trigger_conditions` 为 varchar 无 CHECK。
+  `AlertFiringService` 的 `displayObjectType`/`displayAlertType`/`buildObjectUrl` 三个 switch 同步加分支（URL → `http://localhost:3000/engineering/cdc-pipelines`，管道详情是抽屉无独立路由，链到列表页）。
 - **触发点**（`CdcMonitorService`，经 alert-api `AlertApi.fire` + common `RemoteCalls.execute` 降级，fail-open 不阻断监控主流程）：
   - 作业 FAILED（`onJobFailed`）→ `fire("CDC_PIPELINE", id, "FAILURE", lastError)`；
   - 延迟超阈值（沿用 `lagWarnedPipelineIds` 去重语义：首次越阈触发一次，恢复复位）→ `fire(..., "LAG_EXCEEDED", "当前延迟 Xs，阈值 Ys")`；
@@ -93,7 +95,7 @@ alert 域（datanest_alert 库）
 | 库 | 脚本 | 内容 |
 |----|------|------|
 | `datanest_realtime`（现最高 V1.2.0） | `V1.3.0__cdc_metric_minute.sql` | 新增指标历史表 |
-| `datanest_alert`（现最高 V1.0.0） | `V1.1.0__alert_cdc_pipeline_object.sql` | 放宽 alert_rule.object_type CHECK |
+| `datanest_alert`（现最高 V1.0.0） | `V1.1.0__alert_cdc_pipeline_object.sql` | 放宽 alert_rule.object_type CHECK（+CDC_PIPELINE）与 alert_history.alert_type CHECK（+LAG_EXCEEDED/EXTERNAL_STOP，文档修正见 D-D5） |
 
 > 沿用紧凑单行风格；新表无 `updated_at`（upsert 覆盖写，非业务更新语义）；id 用 `bigint` + 实体 `@TableId(IdType.ASSIGN_ID)`（对齐 cdc_pipeline_log 现有惯例）。
 
@@ -117,12 +119,18 @@ CREATE INDEX IF NOT EXISTS idx_cdc_metric_minute_minute_at ON public.cdc_metric_
 ### 3.2 alert `V1.1.0__alert_cdc_pipeline_object.sql`
 
 ```sql
+-- ① 放宽 alert_rule.object_type CHECK，新增 CDC_PIPELINE
 ALTER TABLE public.alert_rule DROP CONSTRAINT alert_rule_object_type_check;
 ALTER TABLE public.alert_rule ADD CONSTRAINT alert_rule_object_type_check CHECK (((object_type)::text = ANY ((ARRAY['DAG'::character varying, 'SYNC_JOB'::character varying, 'COLLECT_TASK'::character varying, 'QUALITY'::character varying, 'CDC_PIPELINE'::character varying])::text[])));
 COMMENT ON COLUMN public.alert_rule.object_type IS '对象类型：DAG / SYNC_JOB / COLLECT_TASK / QUALITY / CDC_PIPELINE';
+
+-- ② 放宽 alert_history.alert_type CHECK（文档修正：baseline 实际有 CHECK，需一并放宽，否则 LAG_EXCEEDED/EXTERNAL_STOP 写历史被拒）
+ALTER TABLE public.alert_history DROP CONSTRAINT alert_history_alert_type_check;
+ALTER TABLE public.alert_history ADD CONSTRAINT alert_history_alert_type_check CHECK (((alert_type)::text = ANY ((ARRAY['FAILURE'::character varying, 'TIMEOUT'::character varying, 'SUCCESS'::character varying, 'LAG_EXCEEDED'::character varying, 'EXTERNAL_STOP'::character varying])::text[])));
+COMMENT ON COLUMN public.alert_history.alert_type IS '告警类型：FAILURE / TIMEOUT / SUCCESS / LAG_EXCEEDED / EXTERNAL_STOP';
 ```
 
-> `alert_rule_object.object_type` 与 `alert_history.object_type/alert_type` 均无 CHECK（baseline 已核验），无需迁移。
+> `alert_rule_object.object_type` 无 CHECK（baseline 已核验），无需迁移。
 
 ---
 
@@ -296,7 +304,7 @@ datanest:
 
 ### 后端
 
-- [ ] **realtime 库** `V1.3.0__cdc_metric_minute.sql`；**alert 库** `V1.1.0__alert_cdc_pipeline_object.sql`
+- [ ] **realtime 库** `V1.3.0__cdc_metric_minute.sql`；**alert 库** `V1.1.0__alert_cdc_pipeline_object.sql`（**双 CHECK**：alert_rule.object_type + alert_history.alert_type，见 D-D5 修正）
 - [ ] `CdcMonitorService`：throughput/numRestarts 提取（double 解析）+ 内存累加器 + 404 计数归并 + 三个告警触发点（AlertApi.fire + RemoteCalls）
 - [ ] `MetricSnapshotWriter`（分钟 upsert）+ `MetricRetentionCleaner`（每日清理）
 - [ ] `FlinkJobService`：`getJobMetrics`（job-level）/ `getCheckpoints` / `triggerSavepoint`（kebab-case）+ 抽 `pollSavepointResult` 公共轮询

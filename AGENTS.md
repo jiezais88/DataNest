@@ -204,7 +204,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **触发链路全部经 Feign**（`/alert/internal/**`）：排查告警问题先看 app-alert 日志，再看调用方的 Feign 异常。
 - **`/internal/**` 端点由 common `InternalTokenFilter` 校验 `X-Internal-Token`**（空则放行），Feign 侧拦截器自动加头。
 - **新服务三件套**：Feign `lb://` 必须引 `spring-cloud-starter-loadbalancer`；必须显式声明 `spring-boot-starter-validation`；启动类 scanBasePackages 只追加 `com.datanest.common.internal`。
-- **`alert_rule.object_type` 有 DB CHECK 约束**：新增对象类型需同步改约束 + `AlertRuleService.validate()` 白名单。
+- **`alert_rule.object_type` 有 DB CHECK 约束**：新增对象类型需同步改约束 + `AlertRuleService.validate()` 白名单。**Sprint 9（2026-08-11）**：已含 CDC_PIPELINE；**`alert_history.alert_type` 也有 DB CHECK**（FAILURE/TIMEOUT/SUCCESS + Sprint 9 增 LAG_EXCEEDED/EXTERNAL_STOP），新增告警类型必须一并放宽（V1.1.0 已做）。
 - **告警跨域数据经 Feign 反查**（对象名/收件人），远端失败降级空值不阻断发送；**遗留**：`selectHistoryPage` 跨表 LEFT JOIN 拆库前必须改 Feign 反查。
 
 ### DAG / 条件节点
@@ -251,6 +251,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - **S3A 配置**：凭据用容器环境变量 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`；endpoint 用 `core-site.xml` + `HADOOP_CONF_DIR`（`s3.*`/`hadoop.*` 前缀均不透传）。
 - **禁开 unaligned checkpoint**（与 CDC partitioner 冲突）；`pekko.ask.timeout` ≥120s；宿主 8081 被 nacos 占用，Flink JM 映射 18081。
 - **Flink 2.2 REST 差异**：无 `/jobs/{id}/vertices` 子资源（vertices 内嵌 `/jobs/{id}`）；stop-with-savepoint body `{"drain":false,"targetDirectory":"s3a://datalake/savepoints"}`（无 formatType）；无 `SavepointRestoreSettings` 类（恢复走 `execution.savepoint.path` 配置键）；CDC 3.6 iceberg sink 无 upsert 选项。
+- **Sprint 9 实时 CDC 深化（2026-08-11 已实施并实测）**：① 指标历史表 `cdc_metric_minute`（分钟降采样，`MetricSnapshotWriter` 60s flush upsert + `MetricRetentionCleaner` 每日 03:40 清理 30 天；**严禁 5s 轮询直写**）；② 新端点 `metrics/current`、`metrics/trend`（1h/6h 分钟点、24h 5 分钟桶、7d 小时桶）、`checkpoints`（实时转发不落库）、`savepoints`（手动触发）、`force-stop`（作业丢失降级，CAS 更新）；③ 监控 404 连续 N 轮（`not-found-threshold` 默认 3）归并外部停止；④ 告警对象类型 CDC_PIPELINE（FAILURE/LAG_EXCEEDED/EXTERNAL_STOP，realtime→alert 上报 fail-open + alert→realtime names 反查）；⑤ **Flink REST 新坑**：vertex per-second 指标是 **double**（Long.parseLong 会丢，需 double 解析路径）；手动 savepoint 触发 body 是 **kebab-case**（`{"target-directory":...,"cancel-job":false}`），与 stop 的 camelCase 不同；取消作业用 `PATCH /jobs/{id}` body `{"mode":"cancel"}`（POST /cancel 404）；⑥ MinIO Java Client 8.5.17 清理 savepoint 文件（`RemoveObjectsArgs.objects()` 需 `Iterable<DeleteObject>`，路径 `s3a://bucket/savepoints/xxx` 解析 bucket+前缀）；⑦ 错误码 8010/8011（savepoint 触发失败/管道非运行中）。
 - **Doris Iceberg catalog 的 `s3.endpoint` 用宿主侧 `http://192.168.119.1:9000`**（VMnet8），不能写容器名；湖仓新数据/新表需 `REFRESH CATALOG/TABLE` 后 Doris 可见（realtime 有 refresh-catalog 端点）。
 - **PG 源（2026-08-10 已全链路实测）**：镜像已加 `flink-cdc-pipeline-connector-postgres`（PG 驱动由 connector 内置 42.7.3，**不要再向 lib 单放 postgresql 驱动 jar**）；**oracle connector 与 postgres connector 不能同时放 lib**（同名 base 类 + shaded/未 shade Hikari 冲突，oracle 已移至 `docker/flink/lib-oracle-pending/`）；**PG 表必须 REPLICA IDENTITY FULL**（否则 UPDATE/DELETE 事件 before=null → NPE 毒消息无限重启）；PG 无 earliest-offset 位点；本期仅 public schema；复制权限检查用 `pg_roles.rolreplication OR rolsuper`（`pg_has_role(...,'replication')` 非法）。
 

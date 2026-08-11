@@ -16,6 +16,7 @@ import {App as AntdApp, ConfigProvider} from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import {router} from './router';
 import MessageBridge from './components/MessageBridge';
+import VersionChecker from './components/VersionChecker';
 import './styles/tokens.css';
 
 // 给 antd DatePicker 显式补中文月份短名（"1月"~"12月"）。
@@ -82,6 +83,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         >
             <AntdApp>
                 <MessageBridge/>
+                <VersionChecker/>
                 <RouterProvider router={router}/>
             </AntdApp>
         </ConfigProvider>

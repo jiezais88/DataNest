@@ -34,6 +34,9 @@ public class JobRegistrar implements ApplicationRunner {
     @Value("${datanest.job.quality-auto-trigger-reconcile.cron:0 0/10 * * * ?}")
     private String qualityAutoTriggerReconcileCron;
 
+    @Value("${datanest.job.doris-catalog-auto-refresh.cron:0/30 * * * * ?}")
+    private String dorisCatalogAutoRefreshCron;
+
     private final SchedulerClient schedulerClient;
 
     public JobRegistrar(SchedulerClient schedulerClient) {
@@ -67,6 +70,9 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("qualityCheckHistoryCleanupHandler", "0 30 4 * * ?");
         // Sprint 8 F1：资产热度记录清理（默认每天凌晨 4 点 40 分，保留 90 天）
         platformJobs.put("assetViewLogCleanupHandler", "0 40 4 * * ?");
+        // Sprint 8 验收反馈（2026-08-11）：Doris 湖仓 catalog 自动刷新（默认每 30s；
+        // realtime 侧仅存在 RUNNING 管道时才真正 REFRESH，无运行管道不空转）
+        platformJobs.put("dorisCatalogAutoRefreshHandler", dorisCatalogAutoRefreshCron);
         // 微服务化阶段 2：质量自动触发漏触发对账补发（默认每 10 分钟，窗口 2 小时）
         platformJobs.put("qualityAutoTriggerReconcileHandler", qualityAutoTriggerReconcileCron);
 
@@ -99,6 +105,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "standardComplianceCheckHandler" -> "标准合规定时扫描";
             case "qualityCheckHistoryCleanupHandler" -> "质量检查历史清理";
             case "assetViewLogCleanupHandler" -> "资产热度记录清理";
+            case "dorisCatalogAutoRefreshHandler" -> "Doris 湖仓 catalog 自动刷新";
             case "qualityAutoTriggerReconcileHandler" -> "质量自动触发对账补发";
             default -> handlerName;
         };

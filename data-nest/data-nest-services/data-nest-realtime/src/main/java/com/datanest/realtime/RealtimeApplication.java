@@ -18,8 +18,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @EnableDiscoveryClient
 @SpringBootApplication(scanBasePackages = {"com.datanest.realtime", "com.datanest.common.internal",
-        "com.datanest.engineering.api", "com.datanest.system.api"})
-@EnableFeignClients(basePackages = {"com.datanest.engineering.api", "com.datanest.system.api"})
+        "com.datanest.engineering.api", "com.datanest.system.api", "com.datanest.alert.api"})
+@EnableFeignClients(basePackages = {"com.datanest.engineering.api", "com.datanest.system.api",
+        "com.datanest.alert.api"})
 @EnableScheduling // CDC 管道运行状态监控轮询（CdcMonitorService）
 @MapperScan("com.datanest.realtime.mapper")
 public class RealtimeApplication {

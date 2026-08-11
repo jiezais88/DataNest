@@ -163,6 +163,9 @@ public class AlertFiringService {
                     "http://localhost:3000/governance/collect-tasks/" + objectId;
             case AlertConstants.OBJECT_TYPE_QUALITY ->
                     "http://localhost:3000/governance/data-quality/jobs/" + objectId;
+            // Sprint 9 F3：CDC 管道详情是抽屉无独立路由，链到列表页
+            case AlertConstants.OBJECT_TYPE_CDC_PIPELINE ->
+                    "http://localhost:3000/engineering/cdc-pipelines";
             default -> null;
         };
     }
@@ -173,6 +176,7 @@ public class AlertFiringService {
             case AlertConstants.OBJECT_TYPE_SYNC_JOB -> AlertConstants.DISPLAY_SYNC_JOB;
             case AlertConstants.OBJECT_TYPE_COLLECT_TASK -> AlertConstants.DISPLAY_COLLECT_TASK;
             case AlertConstants.OBJECT_TYPE_QUALITY -> AlertConstants.DISPLAY_QUALITY;
+            case AlertConstants.OBJECT_TYPE_CDC_PIPELINE -> AlertConstants.DISPLAY_CDC_PIPELINE;
             default -> objectType;
         };
     }
@@ -182,6 +186,8 @@ public class AlertFiringService {
             case AlertConstants.ALERT_FAILURE -> "执行失败";
             case AlertConstants.ALERT_TIMEOUT -> "执行超时";
             case AlertConstants.ALERT_SUCCESS -> "执行成功";
+            case AlertConstants.ALERT_LAG_EXCEEDED -> "延迟超阈值";
+            case AlertConstants.ALERT_EXTERNAL_STOP -> "外部停止";
             default -> alertType;
         };
     }

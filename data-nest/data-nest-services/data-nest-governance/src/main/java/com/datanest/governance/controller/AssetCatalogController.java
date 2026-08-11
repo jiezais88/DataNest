@@ -199,14 +199,14 @@ public class AssetCatalogController {
                                   @Parameter(description = "数据源 ID") @RequestParam(required = false) Long datasourceId,
                                   @Parameter(description = "健康度（EXCELLENT/GOOD/WARNING/BAD）") @RequestParam(required = false) String healthLevel,
                                   HttpServletResponse response) throws IOException {
-        // 产品化文件名：DataNest-我的收藏-日期.csv；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
+        // 产品化文件名：DataNest-我的收藏-日期.xlsx；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String filename = "DataNest-我的收藏-" + date + ".csv";
-        String asciiFilename = "DataNest-my-favorites-" + date + ".csv";
+        String filename = "DataNest-我的收藏-" + date + ".xlsx";
+        String asciiFilename = "DataNest-my-favorites-" + date + ".xlsx";
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
                         + URLEncoder.encode(filename, StandardCharsets.UTF_8));
-        response.setContentType("text/csv;charset=UTF-8");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         assetCollaborationService.exportMyFavorites(keyword, datasourceId, healthLevel,
                 response.getOutputStream());
     }

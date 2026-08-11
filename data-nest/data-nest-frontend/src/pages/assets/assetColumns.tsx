@@ -21,18 +21,30 @@ function ClassificationBadges({domain, topic}: { domain?: string; topic?: string
     );
 }
 
-/** 标签列：最多展示 2 个，超出折叠 +N（title 悬浮全量） */
-function TagBadges({tags}: { tags?: string[] }) {
+/** 标签列：最多展示 2 个，超出折叠 +N（title 悬浮全量）；onTagClick 非空时 chip 可点（按该标签筛选） */
+function TagBadges({tags, onTagClick}: { tags?: string[]; onTagClick?: (tag: string) => void }) {
     if (!tags || tags.length === 0) return <span className="text-ds-small text-ds-text-muted">—</span>;
     const shown = tags.slice(0, 2);
     const rest = tags.length - shown.length;
     return (
         <span className="flex items-center gap-ds-1 flex-wrap" title={tags.join('、')}>
             {shown.map(name => (
-                <span key={name}
-                      className="inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge bg-ds-accent-light text-ds-accent whitespace-nowrap">
-                    {name}
-                </span>
+                onTagClick ? (
+                    <button key={name} type="button" title={`按标签「${name}」筛选`}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge bg-ds-accent-light text-ds-accent whitespace-nowrap hover:underline"
+                            // 行点击是进详情，chip 点击是筛选，阻止冒泡
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onTagClick(name);
+                            }}>
+                        {name}
+                    </button>
+                ) : (
+                    <span key={name}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge bg-ds-accent-light text-ds-accent whitespace-nowrap">
+                        {name}
+                    </span>
+                )
             ))}
             {rest > 0 && <span className="text-ds-tiny text-ds-text-muted">+{rest}</span>}
         </span>
@@ -50,7 +62,8 @@ function HotValue({value}: { value?: string }) {
     );
 }
 
-export function buildAssetColumns(openDetail: (tableId: string) => void): ColumnsType<AssetSearchItem> {
+export function buildAssetColumns(openDetail: (tableId: string) => void,
+                                  onTagClick?: (tag: string) => void): ColumnsType<AssetSearchItem> {
     return [
         {
             title: '表名',
@@ -110,7 +123,7 @@ export function buildAssetColumns(openDetail: (tableId: string) => void): Column
             title: '标签',
             dataIndex: 'tags',
             width: 130,
-            render: (v?: string[]) => <TagBadges tags={v}/>,
+            render: (v?: string[]) => <TagBadges tags={v} onTagClick={onTagClick}/>,
         },
         {
             title: '负责人',

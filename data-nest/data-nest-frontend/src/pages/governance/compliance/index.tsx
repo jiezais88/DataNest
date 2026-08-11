@@ -15,7 +15,7 @@ import {
     HiOutlineXCircle,
 } from 'react-icons/hi2';
 import {formatDateTime} from '@/utils/format';
-import {downloadCsvBlob} from '@/utils/download';
+import {downloadExportBlob} from '@/utils/download';
 import {COL} from '@/constants/table';
 import {notify} from '@/utils/notify';
 import {useHasRole} from '@/hooks/useHasRole';
@@ -282,8 +282,8 @@ export default function StandardCompliancePage() {
     const handleExport = async () => {
         try {
             const blob = await exportComplianceCheck(buildRangeParams());
-            // blob 错误检出在 downloadCsvBlob 内（业务异常返回 Result JSON，不能当 CSV 存盘）
-            if (await downloadCsvBlob(blob, `compliance_check_${Date.now()}.csv`)) {
+            // blob 错误检出在 downloadExportBlob 内（业务异常返回 Result JSON，不能当导出文件存盘）
+            if (await downloadExportBlob(blob, `compliance_check_${Date.now()}.xlsx`)) {
                 notify.success('问题清单已导出');
             }
         } catch {

@@ -17,6 +17,7 @@ import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringObjectApi;
 import com.datanest.governance.api.GovernanceObjectApi;
+import com.datanest.realtime.api.CdcPipelineApi;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,9 @@ public class AlertRuleService {
     private static final Logger logger = LoggerFactory.getLogger(AlertRuleService.class);
 
     private static final Set<String> SUPPORTED_TRIGGERS =
-            Set.of(AlertConstants.ALERT_FAILURE, AlertConstants.ALERT_TIMEOUT, AlertConstants.ALERT_SUCCESS);
+            Set.of(AlertConstants.ALERT_FAILURE, AlertConstants.ALERT_TIMEOUT, AlertConstants.ALERT_SUCCESS,
+                    // Sprint 9 F3：CDC 管道触发条件（延迟超阈值 / 外部停止）
+                    AlertConstants.ALERT_LAG_EXCEEDED, AlertConstants.ALERT_EXTERNAL_STOP);
 
     private final AlertRuleMapper alertRuleMapper;
     private final AlertRuleUserMapper alertRuleUserMapper;
@@ -50,6 +53,8 @@ public class AlertRuleService {
     private final EngineeringObjectApi engineeringObjectApi;
     private final GovernanceObjectApi governanceObjectApi;
     private final SystemUserApi systemUserApi;
+    /** Sprint 9 F3：CDC 管道对象名反查/可选对象下拉（realtime 内部端点） */
+    private final CdcPipelineApi cdcPipelineApi;
 
     public AlertRuleService(AlertRuleMapper alertRuleMapper,
                             AlertRuleUserMapper alertRuleUserMapper,
@@ -57,7 +62,8 @@ public class AlertRuleService {
                             AlertHistoryMapper alertHistoryMapper,
                             EngineeringObjectApi engineeringObjectApi,
                             GovernanceObjectApi governanceObjectApi,
-                            SystemUserApi systemUserApi) {
+                            SystemUserApi systemUserApi,
+                            CdcPipelineApi cdcPipelineApi) {
         this.alertRuleMapper = alertRuleMapper;
         this.alertRuleUserMapper = alertRuleUserMapper;
         this.alertRuleObjectMapper = alertRuleObjectMapper;
@@ -65,6 +71,7 @@ public class AlertRuleService {
         this.engineeringObjectApi = engineeringObjectApi;
         this.governanceObjectApi = governanceObjectApi;
         this.systemUserApi = systemUserApi;
+        this.cdcPipelineApi = cdcPipelineApi;
     }
 
     // ==================== CRUD ====================
@@ -223,6 +230,17 @@ public class AlertRuleService {
                 List<com.datanest.governance.api.dto.ObjectOptionDTO> options =
                         result == null || result.data() == null ? Collections.emptyList() : result.data();
                 return options.stream().map(this::toOption).toList();
+            }, Collections.emptyList());
+        }
+        if (AlertConstants.OBJECT_TYPE_CDC_PIPELINE.equals(type)) {
+            // Sprint 9 F3：CDC 管道对象下拉走 realtime 内部端点（ids 为空返回全部管道；fail-open 降级空列表）
+            return RemoteCalls.execute("realtime.cdc.options", () -> {
+                Result<Map<Long, String>> result = cdcPipelineApi.names(null);
+                Map<Long, String> data = result == null || result.data() == null
+                        ? Collections.emptyMap() : result.data();
+                return data.entrySet().stream()
+                        .map(e -> new AlertObjectOptionDTO(e.getKey(), e.getValue(), null))
+                        .toList();
             }, Collections.emptyList());
         }
         throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "对象类型非法: " + objectType);
@@ -452,7 +470,8 @@ public class AlertRuleService {
         if (!AlertConstants.OBJECT_TYPE_DAG.equals(objectType)
                 && !AlertConstants.OBJECT_TYPE_SYNC_JOB.equals(objectType)
                 && !AlertConstants.OBJECT_TYPE_COLLECT_TASK.equals(objectType)
-                && !AlertConstants.OBJECT_TYPE_QUALITY.equals(objectType)) {
+                && !AlertConstants.OBJECT_TYPE_QUALITY.equals(objectType)
+                && !AlertConstants.OBJECT_TYPE_CDC_PIPELINE.equals(objectType)) {
             throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "对象类型非法: " + dto.getObjectType());
         }
         if (dto.getObjectIds() == null || dto.getObjectIds().isEmpty()) {
@@ -465,6 +484,13 @@ public class AlertRuleService {
             if (!SUPPORTED_TRIGGERS.contains(trigger)) {
                 throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID, "非法触发条件: " + trigger);
             }
+        }
+        // Sprint 9 F3：延迟超阈值/外部停止仅适用 CDC 管道对象（防其它对象配无意义组合）
+        if (!AlertConstants.OBJECT_TYPE_CDC_PIPELINE.equals(objectType)
+                && (dto.getTriggerConditions().contains(AlertConstants.ALERT_LAG_EXCEEDED)
+                || dto.getTriggerConditions().contains(AlertConstants.ALERT_EXTERNAL_STOP))) {
+            throw new BusinessException(ErrorCode.ALERT_RULE_OBJECT_INVALID,
+                    "触发条件「延迟超阈值/外部停止」仅适用于 CDC 管道对象");
         }
         if (dto.getTriggerConditions().contains(AlertConstants.ALERT_TIMEOUT)
                 && (dto.getTimeoutMinutes() == null || dto.getTimeoutMinutes() <= 0)) {
@@ -586,6 +612,11 @@ public class AlertRuleService {
                 request.setObjectType(objectType);
                 request.setIds(ids);
                 Result<Map<Long, String>> result = governanceObjectApi.names(request);
+                return result != null && result.data() != null ? result.data() : Collections.<Long, String>emptyMap();
+            }
+            if (AlertConstants.OBJECT_TYPE_CDC_PIPELINE.equals(objectType)) {
+                // Sprint 9 F3：CDC 管道对象名反查走 realtime（fail-open：降级空 Map 不阻断）
+                Result<Map<Long, String>> result = cdcPipelineApi.names(ids);
                 return result != null && result.data() != null ? result.data() : Collections.<Long, String>emptyMap();
             }
             return Collections.<Long, String>emptyMap();

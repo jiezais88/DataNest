@@ -12,6 +12,7 @@ import {
     POWERJOB_HANDLER_COMPLIANCE,
 } from '../helpers/data';
 import {psql, rows, scalar} from '../helpers/db';
+import {parseXlsxRows, xlsxText} from '../../sprint8/helpers/xlsx';
 import {waitFor} from '../helpers/poll';
 import {gotoAs} from '../helpers/e2e';
 import {ensureTestUsers, seedCompliance} from '../helpers/seed';
@@ -268,8 +269,8 @@ test.describe('Sprint 6 标准合规检查（判定 + UI + 忽略 + 权限 + 定
 
     // ==================== E. 导出 ====================
 
-    test('E1 导出问题清单 CSV 含表头与不合规行', async () => {
-        // 导出接口返回 text/csv 二进制，Api.raw 只解析 JSON，这里用 playwright 原生 fetch 拿文本
+    test('E1 导出问题清单 xlsx 含表头与不合规行', async () => {
+        // 导出接口返回 xlsx 二进制，Api.raw 只解析 JSON，这里用 playwright 原生 fetch 拿字节
         const ctx = await pwRequest.newContext();
         const login = await ctx.post(`${API_BASE}/system/auth/login`, {
             data: {username: ADMIN.username, password: ADMIN.password},
@@ -282,9 +283,9 @@ test.describe('Sprint 6 标准合规检查（判定 + UI + 忽略 + 权限 + 定
             }),
         });
         expect(res.ok()).toBeTruthy();
-        const csv = await res.text();
+        const csv = xlsxText(parseXlsxRows(await res.body()));
         await ctx.dispose();
-        // CSV 含 UTF-8 BOM + 表头 + 不合规行
+        // xlsx 表头 + 不合规行
         expect(csv).toContain('对象路径,对象类型,违规类型,实际值,期望值,适用规范,检查时间,是否忽略');
         expect(csv).toContain(fullObjectPath('.order_no'));
         expect(csv).toContain('varchar');

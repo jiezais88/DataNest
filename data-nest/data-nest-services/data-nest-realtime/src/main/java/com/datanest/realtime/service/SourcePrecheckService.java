@@ -294,11 +294,15 @@ public class SourcePrecheckService {
         return tables;
     }
 
-    /** PG：仅 public schema 的 BASE TABLE + pg_class.reltuples 约估行数（未 ANALYZE 为 -1，按 0 计） */
+    /**
+     * PG：仅 public schema 的 BASE TABLE + pg_class.reltuples 约估行数（未 ANALYZE 为 -1，按 0 计）
+     * + relreplident（Sprint 9 遗留 TODO ④：未开 REPLICA IDENTITY FULL 的表给警示，能检则检）。
+     */
     private List<CdcSourceTableDTO> listPostgresTables(Connection connection) throws Exception {
         List<CdcSourceTableDTO> tables = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT t.table_name, GREATEST(COALESCE(c.reltuples, 0), 0)::bigint AS table_rows "
+                "SELECT t.table_name, GREATEST(COALESCE(c.reltuples, 0), 0)::bigint AS table_rows, "
+                        + "c.relreplident AS replident "
                         + "FROM information_schema.tables t "
                         + "LEFT JOIN pg_class c ON c.relname = t.table_name "
                         + "AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.table_schema) "
@@ -309,6 +313,9 @@ public class SourcePrecheckService {
                     CdcSourceTableDTO dto = new CdcSourceTableDTO();
                     dto.setTableName(rs.getString(1));
                     dto.setTableRows(rs.getLong(2));
+                    // pg_class.relreplident：f=full / d=default(主键) / n=nothing / i=index；
+                    // Flink CDC PG connector 的 update/delete 需要 FULL 完整旧值，未开 FULL 的表前端给警示
+                    dto.setReplicaIdentityFull("f".equals(rs.getString(3)));
                     tables.add(dto);
                 }
             }

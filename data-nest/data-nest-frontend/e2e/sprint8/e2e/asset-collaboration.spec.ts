@@ -2,6 +2,7 @@ import {expect, type Page, test} from '@playwright/test';
 import {API_BASE, Api} from '../../sprint6/helpers/api';
 import {gotoAs} from '../../sprint6/helpers/e2e';
 import {psqlEng, psqlGov, scalarGov} from '../../sprint7/helpers/db';
+import {parseXlsxRows, xlsxText} from '../helpers/xlsx';
 import {seedAll} from '../../sprint7/helpers/seed';
 import {ADMIN, DS_ID, T1_ID, T1_NAME, T2_ID, T2_NAME, TEST_USERS} from '../../sprint7/helpers/data';
 
@@ -235,14 +236,13 @@ test.describe('DC-07 收藏与关注', () => {
         const byDs = await analyst.get<{ total: number }>(
             `/governance/assets/my-favorites?datasourceId=${DS_ID}`);
         expect(Number(byDs.total)).toBe(1);
-        // 导出 CSV（BOM + 表头 + 数据行）
+        // 导出 xlsx（表头 + 数据行 + 时间格式）
         const res = await analyst.ctx.fetch(`${API_BASE}/governance/assets/my-favorites/export`, {
             headers: {Authorization: analyst.token!},
         });
         expect(res.status()).toBe(200);
-        expect(res.headers()['content-type']).toContain('text/csv');
-        const body = await res.text();
-        expect(body.charCodeAt(0)).toBe(0xFEFF);
+        expect(res.headers()['content-type']).toContain('spreadsheetml');
+        const body = xlsxText(parseXlsxRows(await res.body()));
         expect(body).toContain('表名,注释,数据源');
         // 时间格式约定（2026-08-11 用户确认）：yyyy-MM-dd HH:mm:ss，禁止 ISO 带 T
         expect(body).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);

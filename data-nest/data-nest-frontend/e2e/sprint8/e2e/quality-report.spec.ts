@@ -2,6 +2,7 @@ import {expect, type Locator, type Page, test} from '@playwright/test';
 import {API_BASE, Api} from '../../sprint6/helpers/api';
 import {gotoAs} from '../../sprint6/helpers/e2e';
 import {psqlGov, scalarGov} from '../../sprint7/helpers/db';
+import {parseXlsxRows, xlsxText} from '../helpers/xlsx';
 import {seedAll} from '../../sprint7/helpers/seed';
 import {ADMIN, DS_ID, T1_ID, T2_ID, T3_ID, T4_ID, TEST_USERS} from '../../sprint7/helpers/data';
 
@@ -301,36 +302,37 @@ test.describe('D. 问题清单', () => {
 // ==================== E. CSV 导出与权限 ====================
 
 test.describe('E. CSV 导出与权限', () => {
-    test('治理员导出：BOM + 汇总段 + 问题清单全量 + 公式注入防护', async () => {
+    test('治理员导出：xlsx 列宽自适应 + 汇总段 + 问题清单全量 + 全中文枚举', async () => {
         const res = await gov.ctx.fetch(`${API_BASE}/governance/quality/report/export`, {
             method: 'POST',
             headers: {Authorization: gov.token!, 'Content-Type': 'application/json'},
             data: JSON.stringify(dsRange()),
         });
         expect(res.status()).toBe(200);
-        expect(res.headers()['content-type']).toContain('text/csv');
-        const body = await res.text();
-        expect(body.charCodeAt(0)).toBe(0xFEFF);
-        expect(body).toContain('检查批次数,规则明细数,平均评分,通过率(%)');
-        expect(body).toContain('问题清单（严重/警告）');
-        expect(body).toContain('表,规则,类型,结果指标,结果值,阈值,级别,检查时间');
-        expect(body).toContain('testdb.e2e_s7_trade_orders');
+        expect(res.headers()['content-type']).toContain('spreadsheetml');
+        const text = xlsxText(parseXlsxRows(await res.body()));
+        expect(text).toContain('质量报告');
+        expect(text).toContain('检查批次数,规则明细数,平均评分,通过率(%)');
+        expect(text).toContain('问题清单（严重/警告）');
+        expect(text).toContain('表,规则,类型,结果指标,结果值,阈值,级别,检查时间');
+        expect(text).toContain('testdb.e2e_s7_trade_orders');
         // 13 条问题全量导出（无截断标记）
-        expect(body).toContain('e2e_s8_问题规则_12');
-        expect(body).toContain('e2e_s7_金额范围');
-        expect(body).not.toContain('已截断');
-        // 枚举值中文化（2026-08-11 用户要求）：类型/级别不出现英文枚举
-        expect(body).toContain('完整性');
-        expect(body).toContain('严重');
-        expect(body).toContain('警告');
-        expect(body).not.toContain('COMPLETENESS');
-        expect(body).not.toContain('SEVERE');
-        expect(body).not.toContain('WARNING');
-        // 公式注入防护：= 开头被前置单引号
-        expect(body).toContain("'=HYPERLINK");
-        // 时间格式约定（2026-08-11 用户确认）：yyyy-MM-dd HH:mm:ss，禁止 ISO 带 T
-        expect(body).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
-        expect(body).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}/);
+        expect(text).toContain('e2e_s8_问题规则_12');
+        expect(text).toContain('e2e_s7_金额范围');
+        expect(text).not.toContain('已截断');
+        // 枚举值中文化（2026-08-11）：类型/级别不出现英文枚举
+        expect(text).toContain('完整性');
+        expect(text).toContain('严重');
+        expect(text).toContain('警告');
+        expect(text).not.toContain('COMPLETENESS');
+        expect(text).not.toContain('SEVERE');
+        expect(text).not.toContain('WARNING');
+        // xlsx 字符串单元格天然无公式注入面：= 开头原样存储（无 CSV 时代的前置单引号）
+        expect(text).toContain('=HYPERLINK');
+        expect(text).not.toContain("'=HYPERLINK");
+        // 时间格式约定：yyyy-MM-dd HH:mm:ss，禁止 ISO 带 T
+        expect(text).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+        expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}/);
     });
 
     test('分析师/工程师导出与补算被 1005 拦截；读接口四角色可用', async () => {
@@ -434,7 +436,7 @@ test.describe('F. 页面主链路', () => {
         const downloadPromise = page.waitForEvent('download');
         await page.getByRole('button', {name: '导出', exact: true}).click();
         const download = await downloadPromise;
-        expect(download.suggestedFilename()).toMatch(/DataNest-质量报告-.*\.csv/);
+        expect(download.suggestedFilename()).toMatch(/DataNest-质量报告-.*\.xlsx/);
         await expect(notice(page, '质量报告已导出')).toBeVisible();
 
         await gotoAs(page, TEST_USERS.analyst.username, TEST_USERS.analyst.password, '/governance/quality-report');

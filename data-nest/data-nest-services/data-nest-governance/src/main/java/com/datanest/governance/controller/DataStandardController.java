@@ -179,14 +179,14 @@ public class DataStandardController {
     @PostMapping("/compliance-check/export")
     public void exportComplianceCheck(@RequestBody ComplianceCheckRequest request,
                                       HttpServletResponse response) throws IOException {
-        // 产品化文件名：DataNest-标准合规检查-日期.csv；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
+        // 产品化文件名：DataNest-标准合规检查-日期.xlsx；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String filename = "DataNest-标准合规检查-" + date + ".csv";
-        String asciiFilename = "DataNest-compliance-check-" + date + ".csv";
+        String filename = "DataNest-标准合规检查-" + date + ".xlsx";
+        String asciiFilename = "DataNest-compliance-check-" + date + ".xlsx";
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"" + asciiFilename + "\"; filename*=UTF-8''"
                         + java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8));
-        response.setContentType("text/csv;charset=UTF-8");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         complianceCheckService.export(request, response.getOutputStream());
     }
 

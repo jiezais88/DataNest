@@ -18,7 +18,7 @@ import SearchInput from '@/components/SearchInput';
 import {COL} from '@/constants/table';
 import usePagedList from '@/hooks/usePagedList';
 import {formatDateTime} from '@/utils/format';
-import {downloadCsvBlob} from '@/utils/download';
+import {downloadExportBlob} from '@/utils/download';
 import {notify} from '@/utils/notify';
 import {QUALITY_HEALTH_OPTIONS} from '@/types/quality';
 import type {AssetFavoriteItem, MyAssetQuery} from '@/types/asset';
@@ -99,8 +99,8 @@ export default function MyFavoritesPage() {
             });
             const date = new Date();
             const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-            // blob 错误检出在 downloadCsvBlob 内（业务异常返回 Result JSON，不能当 CSV 存盘）
-            if (await downloadCsvBlob(blob, `DataNest-我的收藏-${ymd}.csv`)) {
+            // blob 错误检出在 downloadExportBlob 内（业务异常返回 Result JSON，不能当导出文件存盘）
+            if (await downloadExportBlob(blob, `DataNest-我的收藏-${ymd}.xlsx`)) {
                 notify.success('已导出我的收藏');
             }
         } catch {

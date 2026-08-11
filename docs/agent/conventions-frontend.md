@@ -55,7 +55,7 @@ export function getSyncJob(id: string) {
 - API 层通过 `.then(r => r.data)` 拆信封，与 `request.get<Result<T>>` / `request.post<Result<T>>` 的泛型配合。
 - 需要自行处理错误时传 `{skipErrorMessage: true}`（如 SQL 预览行内展示错误、DAG 运行日志轮询）。
 - 19 位 Snowflake ID 全程用 `string` 类型，**不要** `Number(id)`，避免精度丢失。
-- **CSV 导出下载统一用 `src/utils/download.ts` 的 `downloadCsvBlob`**（Sprint 8 起）：`responseType:'blob'` 时业务异常的 Result JSON 会被包成 Blob、拦截器识别不了，该函数按 content-type 检出错误并弹提示，避免把错误 JSON 存成假 CSV。
+- **导出文件下载统一用 `src/utils/download.ts` 的 `downloadExportBlob`**（Sprint 8 起；2026-08-11 起导出格式为 xlsx）：`responseType:'blob'` 时业务异常的 Result JSON 会被包成 Blob、拦截器识别不了，该函数按 content-type 检出错误并弹提示，避免把错误 JSON 存成假导出文件。
 
 ## 4. 错误处理
 

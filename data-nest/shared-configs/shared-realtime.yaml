@@ -14,5 +14,10 @@ datanest:
       catalog-name: datalake_catalog
     monitor:
       interval-ms: 5000
+      # Sprint 9：作业查询连续 404 轮次阈值，达到才归并「外部停止」（防 Flink 集群短暂抖动误伤，T4）
+      not-found-threshold: 3
+    metric:
+      # Sprint 9：cdc_metric_minute 指标历史保留天数（T1，每日 03:40 清理）
+      retention-days: 30
     lag:
       warn-threshold: 30

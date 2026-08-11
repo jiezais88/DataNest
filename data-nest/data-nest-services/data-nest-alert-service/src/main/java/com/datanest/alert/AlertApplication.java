@@ -15,8 +15,10 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
  */
 @EnableDiscoveryClient
 @SpringBootApplication(scanBasePackages = {"com.datanest.alert", "com.datanest.common.internal",
-        "com.datanest.system.api", "com.datanest.engineering.api", "com.datanest.governance.api"})
-@EnableFeignClients(basePackages = {"com.datanest.system.api", "com.datanest.engineering.api", "com.datanest.governance.api"})
+        "com.datanest.system.api", "com.datanest.engineering.api", "com.datanest.governance.api",
+        "com.datanest.realtime.api"})
+@EnableFeignClients(basePackages = {"com.datanest.system.api", "com.datanest.engineering.api",
+        "com.datanest.governance.api", "com.datanest.realtime.api"})
 public class AlertApplication {
 
     public static void main(String[] args) {

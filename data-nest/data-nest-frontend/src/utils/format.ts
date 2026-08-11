@@ -71,14 +71,16 @@ export function formatRunningDuration(startedAt?: string): string {
     if (start == null) return '-';
     const ms = Date.now() - start;
     if (ms < 0) return '-';
-    const totalMinutes = Math.floor(ms / 60000);
-    if (totalMinutes < 1) return '<1 分';
+    // 自适应粒度（2026-08-11 验收反馈）：先秒再分 —— 秒 → 分秒 → 小时分 → 天小时
+    const totalSeconds = Math.floor(ms / 1000);
+    if (totalSeconds < 60) return `${totalSeconds} 秒`;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    if (totalMinutes < 60) return `${totalMinutes} 分 ${totalSeconds % 60} 秒`;
     const days = Math.floor(totalMinutes / 1440);
     const hours = Math.floor((totalMinutes % 1440) / 60);
     const minutes = totalMinutes % 60;
     if (days > 0) return `${days} 天 ${hours} 小时`;
-    if (hours > 0) return `${hours} 小时 ${minutes} 分`;
-    return `${minutes} 分`;
+    return `${hours} 小时 ${minutes} 分`;
 }
 
 /** 吞吐量：12345 -> "1.2 万行/秒"，0.5 -> "0.50 行/秒" */

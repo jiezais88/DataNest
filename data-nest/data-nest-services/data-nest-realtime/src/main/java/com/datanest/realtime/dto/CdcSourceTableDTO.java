@@ -15,4 +15,7 @@ public class CdcSourceTableDTO {
 
     @Schema(description = "主键列（逗号分隔，按 ORDINAL_POSITION 排序；无主键为 null）", example = "id")
     private String primaryKey;
+
+    @Schema(description = "PG 源是否已开启 REPLICA IDENTITY FULL（update/delete 同步必需；MySQL 源为 null；未开 FULL 的表向导给警示）")
+    private Boolean replicaIdentityFull;
 }

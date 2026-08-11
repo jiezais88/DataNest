@@ -1,7 +1,9 @@
 // Sprint 7 F1：资产分类树（数据资产首页用）
 // 结构：全部资产（置顶）→ 数据域（可展开）→ 主题（缩进叶子）→ 未分类（垫底）。
 // 节点带表数计数徽章（后端 /assets/classifications 返回）；editable 时 hover 显示改名/删除。
-// UX（2026-08-10 方案 A+B）：节点名称双行布局（主名 + 级别说明），长名 truncate 且 hover Tooltip 显示完整名。
+// UX（2026-08-11 单行精简，产品化重排）：节点单行布局（图标 + 名称 + 计数），
+// 类型靠图标 + 缩进表达（文件夹 = 域、标签 = 主题），不再每行重复「数据域/主题」文字；
+// 长名 truncate + hover Tooltip 显示完整名。
 import {useState} from 'react';
 import {Tooltip} from 'antd';
 import {
@@ -24,6 +26,28 @@ export interface AssetTreeSelection {
 }
 
 export const ALL_SELECTION: AssetTreeSelection = {type: 'all'};
+
+/** 显示宽度估算：CJK 记 2 单位，其余记 1 */
+const displayUnits = (s: string) => [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
+
+/**
+ * 名称中间省略（2026-08-11）：树名常带公共前缀（e2e_s7_xxx），尾部才是区分信息；
+ * 超长时保留首尾（e2e_…交易域），比纯尾部截断可读。阈值内不处理，交给 CSS truncate 兜底。
+ */
+function middleEllipsis(name: string, maxUnits = 26): string {
+    if (displayUnits(name) <= maxUnits) return name;
+    let head = '';
+    let tail = '';
+    for (const ch of name) {
+        if (displayUnits(head + ch) > 14) break;
+        head += ch;
+    }
+    for (let i = name.length - 1; i >= 0; i--) {
+        if (displayUnits(name[i] + tail) > 10) break;
+        tail = name[i] + tail;
+    }
+    return `${head}…${tail}`;
+}
 
 /** 选中项 → 树高亮 key */
 export function selectionKey(sel: AssetTreeSelection): string {
@@ -93,7 +117,7 @@ export default function AssetTree({
     };
 
     const rowClass = (active: boolean) =>
-        `group flex items-center gap-ds-2 w-full px-ds-3 py-[5px] rounded-ds-sm text-ds-small cursor-pointer relative transition-colors ${
+        `group flex items-center gap-ds-2 w-full px-ds-3 py-[7px] rounded-ds-sm text-ds-small cursor-pointer relative transition-colors ${
             active ? 'bg-ds-accent-light text-ds-accent font-semibold' : 'text-ds-text-secondary hover:bg-ds-bg-hover'
         }`;
 
@@ -102,14 +126,11 @@ export default function AssetTree({
             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-ds-accent rounded-full"/>
         ) : null;
 
-    /** 节点名称双行块（方案 A+B）：主名 truncate + hover Tooltip 完整名，副行级别说明 */
-    const nameBlock = (name: string, sub: string) => (
-        <span className="flex-1 min-w-0 flex flex-col justify-center gap-[1px]">
-            <Tooltip title={name} mouseEnterDelay={0.3}>
-                <span className="block truncate text-left leading-tight">{name}</span>
-            </Tooltip>
-            <span className="block truncate text-left leading-tight text-ds-tiny text-ds-text-muted">{sub}</span>
-        </span>
+    /** 节点名称（单行）：truncate + hover Tooltip 完整名 */
+    const nameText = (name: string) => (
+        <Tooltip title={name} mouseEnterDelay={0.3}>
+            <span className="flex-1 min-w-0 truncate text-left">{middleEllipsis(name)}</span>
+        </Tooltip>
     );
 
     /** 计数徽章：active 时 accent 实心白字，否则灰底（对齐原型 tree-count） */
@@ -124,7 +145,8 @@ export default function AssetTree({
 
     const editActions = (node: AssetClassification, parent?: AssetClassification) =>
         editable ? (
-            <span className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+            // hidden/group-hover:flex：未 hover 时不占布局空间（opacity-0 会白占约 44px 挤压名称）
+            <span className="hidden group-hover:flex items-center flex-shrink-0">
                 <DsIconButton
                     tone="accent"
                     aria-label={`编辑 ${node.name}`}
@@ -160,7 +182,7 @@ export default function AssetTree({
                     onClick={() => onSelect(ALL_SELECTION)}>
                 {activeBar(selectedKey === 'all')}
                 <HiOutlineSparkles size={15} className="flex-shrink-0"/>
-                {nameBlock('全部资产', '全部数据表')}
+                {nameText('全部资产')}
                 {countBadge(allCount, selectedKey === 'all')}
             </button>
 
@@ -183,7 +205,7 @@ export default function AssetTree({
                                 }}
                             />
                             <HiOutlineFolderOpen size={15} className="flex-shrink-0"/>
-                            {nameBlock(domain.name, '数据域')}
+                            {nameText(domain.name)}
                             {editActions(domain)}
                             {countBadge(domain.tableCount, selectedKey === domainKey)}
                         </div>
@@ -201,7 +223,7 @@ export default function AssetTree({
                                              })}>
                                             {activeBar(selectedKey === topicKey)}
                                             <HiOutlineTag size={14} className="flex-shrink-0"/>
-                                            {nameBlock(topic.name, '主题')}
+                                            {nameText(topic.name)}
                                             {editActions(topic, domain)}
                                             {countBadge(topic.tableCount, selectedKey === topicKey)}
                                         </div>
@@ -219,7 +241,7 @@ export default function AssetTree({
                         onClick={() => onSelect({type: 'uncategorized'})}>
                     {activeBar(selectedKey === 'uncategorized')}
                     <HiOutlineTag size={15} className="flex-shrink-0"/>
-                    {nameBlock('未分类', '未归入分类')}
+                    {nameText('未分类')}
                     {countBadge(uncategorizedCount, selectedKey === 'uncategorized')}
                 </button>
             )}

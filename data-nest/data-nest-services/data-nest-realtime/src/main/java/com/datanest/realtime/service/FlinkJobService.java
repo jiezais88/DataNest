@@ -141,8 +141,36 @@ public class FlinkJobService {
         if (requestId == null) {
             throw new IllegalStateException("Flink stop 触发响应缺少 request-id: " + triggerResponse);
         }
+        return pollSavepointResult(jobId, String.valueOf(requestId));
+    }
 
-        // 轮询 savepoint 触发结果（每 2s，最多 60s）
+    /**
+     * 手动触发 savepoint（POST /jobs/{id}/savepoints），轮询取回路径。
+     * <p>
+     * M0 实测（Flink 2.2.1）：手动触发 body 必须是 kebab-case {@code target-directory / cancel-job}，
+     * camelCase 会被静默忽略报「Property [target-directory] must be provided」——
+     * 与 stop-with-savepoint 的 camelCase（drain/targetDirectory）命名风格不同，勿混。
+     */
+    @SuppressWarnings("unchecked")
+    public String triggerSavepoint(String jobId) {
+        Map<String, Object> triggerResponse = restClient.post()
+                .uri(jobmanagerUrl + "/jobs/{jobId}/savepoints", jobId)
+                .body(Map.of("target-directory", SAVEPOINT_DIR, "cancel-job", false))
+                .retrieve()
+                .body(Map.class);
+        Object requestId = triggerResponse == null ? null : triggerResponse.get("request-id");
+        if (requestId == null) {
+            throw new IllegalStateException("Flink savepoint 触发响应缺少 request-id: " + triggerResponse);
+        }
+        return pollSavepointResult(jobId, String.valueOf(requestId));
+    }
+
+    /**
+     * 轮询 savepoint 触发结果（每 2s，最多 60s），COMPLETED 返回路径，失败/超时抛异常。
+     * 抽自 stopWithSavepoint，手动触发 savepoint 复用同一逻辑。
+     */
+    @SuppressWarnings("unchecked")
+    private String pollSavepointResult(String jobId, String requestId) {
         long deadline = System.currentTimeMillis() + SAVEPOINT_POLL_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline) {
             Map<String, Object> info = restClient.get()
@@ -168,6 +196,22 @@ public class FlinkJobService {
             }
         }
         throw new IllegalStateException("savepoint 触发超时（" + SAVEPOINT_POLL_TIMEOUT_MS / 1000 + "s 内未完成）");
+    }
+
+    /**
+     * 查询作业 checkpoint 状态（/jobs/{id}/checkpoints），返回原始结构
+     * （counts / summary / latest / history），由调用方裁剪为「检查点」页签三卡 + 最近 20 条。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCheckpoints(String jobId) {
+        Map<String, Object> checkpoints = restClient.get()
+                .uri(jobmanagerUrl + "/jobs/{jobId}/checkpoints", jobId)
+                .retrieve()
+                .body(Map.class);
+        if (checkpoints == null) {
+            throw new IllegalStateException("Flink checkpoints 响应为空: jobId=" + jobId);
+        }
+        return checkpoints;
     }
 
     /**
@@ -317,5 +361,98 @@ public class FlinkJobService {
                     jobId, vertexId, idSuffix, e.getMessage());
             return -1;
         }
+    }
+
+    // ==================== Sprint 9 F1：吞吐（double）与 job-level 指标 ====================
+
+    /**
+     * 从作业概览提取吞吐量（行/秒）= 全部 sink vertex 的 numRecordsOutPerSecond 之和（跨子任务求和）。
+     * <p>
+     * M0 实测（Flink 2.2.1）：per-second 速率指标值是 double（如 0.0833...），现有 Long 解析路径会
+     * 丢弃，故单独走 double 解析。任一下游指标查询失败返回 -1（调用方跳过回写，防误清 0）。
+     */
+    @SuppressWarnings("unchecked")
+    public double extractThroughput(String jobId, Map<String, Object> jobOverview) {
+        List<Map<String, Object>> vertices =
+                (List<Map<String, Object>>) jobOverview.get("vertices");
+        if (vertices == null) {
+            return -1;
+        }
+        double total = 0;
+        boolean unavailable = false;
+        for (Map<String, Object> vertex : vertices) {
+            if (String.valueOf(vertex.get("name")).contains("Sink")) {
+                String vertexId = String.valueOf(vertex.get("id"));
+                try {
+                    total += sumVertexDoubleMetrics(jobId, vertexId, ".numRecordsOutPerSecond");
+                } catch (Exception e) {
+                    logger.debug("查询 Flink sink 吞吐指标失败: jobId={}, vertexId={}, error={}",
+                            jobId, vertexId, e.getMessage());
+                    unavailable = true;
+                }
+            }
+        }
+        return unavailable ? -1 : total;
+    }
+
+    /** 聚合 vertex 上所有 id 以 suffix 结尾的 double 指标之和（per-second 速率走 double 解析） */
+    private double sumVertexDoubleMetrics(String jobId, String vertexId, String idSuffix) {
+        List<String> ids = listVertexMetricIds(jobId, vertexId).stream()
+                .filter(id -> id.endsWith(idSuffix))
+                .toList();
+        return queryVertexMetricDoubleValues(jobId, vertexId, ids).stream()
+                .mapToDouble(Double::doubleValue).sum();
+    }
+
+    /** 按 id 批量查指标值并 double 解析（per-second 速率；非数值跳过） */
+    @SuppressWarnings("unchecked")
+    private List<Double> queryVertexMetricDoubleValues(String jobId, String vertexId, List<String> metricIds) {
+        if (metricIds.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> metrics = restClient.get()
+                .uri(jobmanagerUrl + "/jobs/{jobId}/vertices/{vertexId}/metrics?get={get}",
+                        jobId, vertexId, String.join(",", metricIds))
+                .retrieve()
+                .body(List.class);
+        if (metrics == null) {
+            return List.of();
+        }
+        List<Double> values = new ArrayList<>();
+        for (Map<String, Object> m : metrics) {
+            try {
+                values.add(Double.parseDouble(String.valueOf(m.get("value"))));
+            } catch (NumberFormatException e) {
+                // 非数值指标跳过
+            }
+        }
+        return values;
+    }
+
+    /**
+     * 查询 job-level 指标（/jobs/{id}/metrics?get=...），返回指标 id → 值。
+     * 查询失败抛异常（调用方按「作业不可达」处理）；单指标解析失败跳过。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Double> getJobMetrics(String jobId, List<String> metricIds) {
+        if (metricIds == null || metricIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Map<String, Object>> metrics = restClient.get()
+                .uri(jobmanagerUrl + "/jobs/{jobId}/metrics?get={get}", jobId, String.join(",", metricIds))
+                .retrieve()
+                .body(List.class);
+        if (metrics == null) {
+            return Map.of();
+        }
+        Map<String, Double> result = new java.util.HashMap<>();
+        for (Map<String, Object> m : metrics) {
+            try {
+                result.put(String.valueOf(m.get("id")), Double.parseDouble(String.valueOf(m.get("value"))));
+            } catch (NumberFormatException e) {
+                // 非数值指标跳过
+            }
+        }
+        return result;
     }
 }

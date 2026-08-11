@@ -31,7 +31,7 @@ import usePagedList from '@/hooks/usePagedList';
 import {useHasRole} from '@/hooks/useHasRole';
 import {formatDateTime, formatDateTimeLocalInput} from '@/utils/format';
 import {notify} from '@/utils/notify';
-import {downloadCsvBlob} from '@/utils/download';
+import {downloadExportBlob} from '@/utils/download';
 import type {
     DatasourceScoreComparison,
     QualityIssueItem,
@@ -241,7 +241,7 @@ export default function QualityReportPage() {
         try {
             const blob = await exportQualityReport(appliedRequest);
             const date = formatDateTimeLocalInput(new Date()).slice(0, 10).replace(/-/g, '');
-            if (await downloadCsvBlob(blob, `DataNest-质量报告-${date}.csv`)) {
+            if (await downloadExportBlob(blob, `DataNest-质量报告-${date}.xlsx`)) {
                 notify.success('质量报告已导出');
             }
         } catch {
@@ -283,12 +283,13 @@ export default function QualityReportPage() {
                                        }}/>
                     )}
                     {canExport && (
-                        <DsButton variant="secondary" onClick={handleExport} disabled={exporting}>
+                        <DsButton variant="secondary" onClick={handleExport} disabled={exporting}
+                                  className="min-w-[76px]">
                             <HiOutlineArrowDownTray size={14}/>
                             {exporting ? '导出中...' : '导出'}
                         </DsButton>
                     )}
-                    <DsButton onClick={handleGenerate} disabled={loading}>
+                    <DsButton onClick={handleGenerate} disabled={loading} className="min-w-[76px]">
                         {loading ? '查询中...' : '查询'}
                     </DsButton>
                 </div>
