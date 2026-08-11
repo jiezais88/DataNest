@@ -191,9 +191,10 @@ export default function DagAlertConfigModal({
                     <DsButton
                         onClick={handleSave}
                         disabled={readOnly || saving || loading}
+                        loading={saving}
                         title={readOnly ? '只读模式：您没有编辑权限' : undefined}
                     >
-                        {saving ? '保存中...' : '保存'}
+                        保存
                     </DsButton>
                 </>
             }

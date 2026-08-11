@@ -420,8 +420,8 @@ export default function QualityScoresPage() {
                     <DsToolbar
                         extra={(
                             <>
-                                <DsButton onClick={handleSearch} disabled={loading}>
-                                    {loading ? '查询中...' : '查询'}
+                                <DsButton onClick={handleSearch} disabled={loading} loading={loading}>
+                                    查询
                                 </DsButton>
                                 <DsButton variant="secondary" onClick={resetFilters}>重置</DsButton>
                             </>
@@ -505,8 +505,8 @@ export default function QualityScoresPage() {
                 footer={
                     <>
                         <DsButton variant="secondary" onClick={() => setConfigOpen(false)}>取消</DsButton>
-                        <DsButton variant="primary" disabled={configSaving} onClick={handleConfigSave}>
-                            {configSaving ? '保存中...' : '保存'}
+                        <DsButton variant="primary" disabled={configSaving} loading={configSaving} onClick={handleConfigSave}>
+                            保存
                         </DsButton>
                     </>
                 }
@@ -559,8 +559,8 @@ export default function QualityScoresPage() {
                     <>
                         <DsButton variant="secondary" onClick={() => setDetailOpen(false)}>关闭</DsButton>
                         {canWrite && (
-                            <DsButton variant="primary" disabled={executing} onClick={handleExecute}>
-                                {executing ? '执行中...' : '立即执行全部规则'}
+                            <DsButton variant="primary" disabled={executing} loading={executing} onClick={handleExecute}>
+                                立即执行全部规则
                             </DsButton>
                         )}
                     </>

@@ -442,8 +442,8 @@ export default function QualityRulesPage() {
                                 ...jobOptions.map((j) => ({value: j.id, label: j.name})),
                             ]}
                         />
-                        <DsButton onClick={() => { setPage(1); loadRules(); }} disabled={loading}>
-                            {loading ? '查询中...' : '查询'}
+                        <DsButton onClick={() => { setPage(1); loadRules(); }} disabled={loading} loading={loading}>
+                            查询
                         </DsButton>
                         <DsButton variant="secondary" onClick={resetFilters}>重置</DsButton>
                     </DsToolbar>

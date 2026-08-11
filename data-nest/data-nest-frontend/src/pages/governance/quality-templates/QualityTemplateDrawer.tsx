@@ -137,8 +137,8 @@ export default function QualityTemplateDrawer({
                         <DsButton variant="secondary" onClick={onClose}>
                             取消
                         </DsButton>
-                        <DsButton onClick={handleSubmit} disabled={submitting}>
-                            {submitting ? '保存中...' : '保存'}
+                        <DsButton onClick={handleSubmit} disabled={submitting} loading={submitting}>
+                            保存
                         </DsButton>
                     </>
                 )

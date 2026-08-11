@@ -212,6 +212,10 @@ services:
         pekko.ask.timeout: 120s
         execution.checkpointing.interval: 30s
         classloader.check-leaked-classloader: false
+        # 重启策略：fixed-delay 最多 3 次，保证异常作业能进入 FAILED 终态（FAILURE 告警可观测）
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 3
+        restart-strategy.fixed-delay.delay: 5s
       # MinIO S3 凭据（flink-s3-fs-hadoop 的 S3A 从环境变量读凭据）
       - AWS_ACCESS_KEY_ID=datanest
       - AWS_SECRET_ACCESS_KEY=datanest123

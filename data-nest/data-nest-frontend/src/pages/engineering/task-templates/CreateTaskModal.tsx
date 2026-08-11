@@ -400,8 +400,8 @@ export default function CreateTaskModal({open, template, onClose}: CreateTaskMod
             footer={
                 <>
                     <DsButton variant="secondary" onClick={onClose} disabled={saving}>取消</DsButton>
-                    <DsButton variant="primary" onClick={handleSubmit} disabled={saving}>
-                        {saving ? '创建中...' : '生成任务'}
+                    <DsButton variant="primary" onClick={handleSubmit} disabled={saving} loading={saving}>
+                        生成任务
                     </DsButton>
                 </>
             }

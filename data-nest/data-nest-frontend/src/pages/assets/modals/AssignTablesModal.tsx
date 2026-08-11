@@ -152,8 +152,9 @@ export default function AssignTablesModal({
                             variant="primary"
                             onClick={handleSubmit}
                             disabled={submitting || selectedKeys.length === 0}
+                            loading={submitting}
                         >
-                            {submitting ? '分配中...' : `批量分配（${selectedKeys.length}）`}
+                            {`批量分配（${selectedKeys.length}）`}
                         </DsButton>
                     </div>
                 </div>

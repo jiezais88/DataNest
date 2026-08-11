@@ -230,9 +230,10 @@ export default function SqlEditorModal({
                         variant="primary"
                         onClick={handleRunTest}
                         disabled={readOnly || running || !sql.trim()}
+                        loading={running}
                         title={readOnly ? '只读模式：您没有编辑权限' : undefined}
                     >
-                        {running ? '运行中...' : '▶ 运行测试'}
+                        ▶ 运行测试
                     </DsButton>
                     <DsButton
                         variant="secondary"

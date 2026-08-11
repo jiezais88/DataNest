@@ -113,8 +113,8 @@ export default function TemplateFormDrawer({open, mode, template, onClose, onSav
             footer={
                 <>
                     <DsButton variant="secondary" onClick={onClose} disabled={saving}>取消</DsButton>
-                    <DsButton variant="primary" onClick={handleSave} disabled={saving}>
-                        {saving ? '保存中...' : '保存模板'}
+                    <DsButton variant="primary" onClick={handleSave} disabled={saving} loading={saving}>
+                        保存模板
                     </DsButton>
                 </>
             }

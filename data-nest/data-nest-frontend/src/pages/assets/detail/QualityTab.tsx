@@ -186,8 +186,8 @@ export default function QualityTab({tableId, canWrite}: QualityTabProps) {
                 </div>
                 {canWrite && (
                     <div className="ml-auto">
-                        <DsButton variant="primary" disabled={executing} onClick={handleExecute}>
-                            {executing ? '执行中...' : '立即执行全部规则'}
+                        <DsButton variant="primary" disabled={executing} loading={executing} onClick={handleExecute}>
+                            立即执行全部规则
                         </DsButton>
                     </div>
                 )}

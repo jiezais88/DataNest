@@ -118,9 +118,9 @@ export default function LoginPage() {
                         </label>
                     </div>
 
-                    <DsButton type="submit" onClick={handleLogin} disabled={!canSubmit || loading}
+                    <DsButton type="submit" onClick={handleLogin} disabled={!canSubmit || loading} loading={loading}
                               className="w-full">
-                        {loading ? '登录中...' : '登 录'}
+                        登 录
                     </DsButton>
                 </div>
 

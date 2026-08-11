@@ -208,9 +208,10 @@ export default function PythonEditorModal({
                         variant="primary"
                         onClick={handleRunTest}
                         disabled={readOnly || running || !script.trim()}
+                        loading={running}
                         title={readOnly ? '只读模式：您没有编辑权限' : undefined}
                     >
-                        {running ? '运行中...' : '▶ 运行测试'}
+                        ▶ 运行测试
                     </DsButton>
                     <DsButton variant="secondary" onClick={handleSelectAll}>
                         全选

@@ -179,8 +179,9 @@ export default function TaskDrawer({open, mode = 'create', editItem, dataSources
                             data-testid="collect-task-submit"
                             onClick={handleSubmit}
                             disabled={submitting}
+                            loading={submitting}
                         >
-                            {submitting ? '保存中...' : '保存'}
+                            保存
                         </DsButton>
                     </>
                 )

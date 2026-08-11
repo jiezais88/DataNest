@@ -100,8 +100,9 @@ export default function CommentsTab({tableId, onCountChange}: CommentsTabProps) 
                         <span className="text-ds-tiny text-ds-text-muted">
                             {content.length}/{MAX_COMMENT_LENGTH}
                         </span>
-                        <DsButton onClick={handlePublish} disabled={!content.trim() || publishing}>
-                            {publishing ? '发表中...' : '发表'}
+                        <DsButton onClick={handlePublish} disabled={!content.trim() || publishing}
+                                  loading={publishing}>
+                            发表
                         </DsButton>
                     </div>
                 </div>

@@ -1,6 +1,5 @@
 import DsButton from './DsButton';
 import DsModal from './DsModal';
-import DsSpinner from './DsSpinner';
 
 interface Props {
     open: boolean;
@@ -35,10 +34,9 @@ export default function ConfirmDialog({
                     <DsButton variant="ghost" onClick={onCancel} disabled={loading}>
                         取消
                     </DsButton>
-                    <DsButton onClick={onConfirm} disabled={loading}
+                    <DsButton onClick={onConfirm} disabled={loading} loading={loading}
                               variant={danger ? 'danger' : 'primary'}>
-                        {loading && <DsSpinner/>}
-                        {loading ? '处理中...' : confirmLabel}
+                        {confirmLabel}
                     </DsButton>
                 </>
             }

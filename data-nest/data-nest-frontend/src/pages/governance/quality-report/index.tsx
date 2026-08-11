@@ -283,14 +283,13 @@ export default function QualityReportPage() {
                                        }}/>
                     )}
                     {canExport && (
-                        <DsButton variant="secondary" onClick={handleExport} disabled={exporting}
-                                  className="min-w-[76px]">
+                        <DsButton variant="secondary" onClick={handleExport} disabled={exporting} loading={exporting}>
                             <HiOutlineArrowDownTray size={14}/>
-                            {exporting ? '导出中...' : '导出'}
+                            导出
                         </DsButton>
                     )}
-                    <DsButton onClick={handleGenerate} disabled={loading} className="min-w-[76px]">
-                        {loading ? '查询中...' : '查询'}
+                    <DsButton onClick={handleGenerate} disabled={loading} loading={loading}>
+                        查询
                     </DsButton>
                 </div>
             </div>

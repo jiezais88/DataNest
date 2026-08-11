@@ -151,9 +151,9 @@ export default function MyFavoritesPage() {
                         收藏常用数据表，快速进入。收藏为个人维度，仅自己可见。
                     </p>
                 </div>
-                <DsButton variant="secondary" onClick={handleExport} disabled={exporting}>
+                <DsButton variant="secondary" onClick={handleExport} disabled={exporting} loading={exporting}>
                     <HiOutlineArrowDownTray size={14}/>
-                    {exporting ? '导出中...' : '导出收藏'}
+                    导出收藏
                 </DsButton>
             </div>
 
@@ -163,8 +163,8 @@ export default function MyFavoritesPage() {
                     <DsToolbar
                         extra={(
                             <>
-                                <DsButton onClick={handleSearch} disabled={loading}>
-                                    {loading ? '查询中...' : '查询'}
+                                <DsButton onClick={handleSearch} disabled={loading} loading={loading}>
+                                    查询
                                 </DsButton>
                                 <DsButton variant="secondary" onClick={handleReset}>重置</DsButton>
                             </>

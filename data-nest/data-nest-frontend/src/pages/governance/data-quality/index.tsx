@@ -474,8 +474,8 @@ export default function DataQualityPage() {
                     <DsToolbar
                         extra={(
                             <>
-                                <DsButton onClick={() => { setJobPage(1); loadJobs(); }} disabled={jobLoading}>
-                                    {jobLoading ? '查询中...' : '查询'}
+                                <DsButton onClick={() => { setJobPage(1); loadJobs(); }} disabled={jobLoading} loading={jobLoading}>
+                                    查询
                                 </DsButton>
                                 <DsButton variant="secondary" onClick={resetJobFilters}>重置</DsButton>
                                 {canWrite && (

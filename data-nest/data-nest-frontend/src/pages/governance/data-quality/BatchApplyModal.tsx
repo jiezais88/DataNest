@@ -327,8 +327,8 @@ export default function BatchApplyModal({
                         <DsButton variant="ghost" onClick={onClose}>
                             取消
                         </DsButton>
-                        <DsButton onClick={handleSubmit} disabled={submitting}>
-                            {submitting ? '应用生成中...' : '生成规则'}
+                        <DsButton onClick={handleSubmit} disabled={submitting} loading={submitting}>
+                            生成规则
                         </DsButton>
                     </>
                 }

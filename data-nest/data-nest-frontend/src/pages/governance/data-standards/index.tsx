@@ -635,8 +635,9 @@ export default function DataStandardsPage() {
                                         loadNamingStandards();
                                     }}
                                     disabled={namingLoading}
+                                    loading={namingLoading}
                                 >
-                                    {namingLoading ? '查询中...' : '查询'}
+                                    查询
                                 </DsButton>
                                 <DsButton
                                     variant="secondary"
@@ -703,8 +704,9 @@ export default function DataStandardsPage() {
                                         loadFieldTypeStandards();
                                     }}
                                     disabled={fieldTypeLoading}
+                                    loading={fieldTypeLoading}
                                 >
-                                    {fieldTypeLoading ? '查询中...' : '查询'}
+                                    查询
                                 </DsButton>
                                 <DsButton
                                     variant="secondary"

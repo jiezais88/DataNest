@@ -481,8 +481,8 @@ export default function StandardCompliancePage() {
                     <DsToolbar
                         extra={(
                             <>
-                                <DsButton onClick={() => { setPage(1); loadList(); }} disabled={loading}>
-                                    {loading ? '查询中...' : '查询'}
+                                <DsButton onClick={() => { setPage(1); loadList(); }} disabled={loading} loading={loading}>
+                                    查询
                                 </DsButton>
                                 <DsButton variant="secondary" onClick={resetFilters}>重置</DsButton>
                             </>
@@ -542,8 +542,8 @@ export default function StandardCompliancePage() {
                 footer={
                     <>
                         <DsButton variant="secondary" onClick={() => setScanOpen(false)}>取消</DsButton>
-                        <DsButton onClick={handleScan} disabled={scanning}>
-                            {scanning ? '扫描中...' : '开始扫描'}
+                        <DsButton onClick={handleScan} disabled={scanning} loading={scanning}>
+                            开始扫描
                         </DsButton>
                     </>
                 }

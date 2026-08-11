@@ -299,8 +299,8 @@ export default function QualityChecksPage() {
                     <DsToolbar
                         extra={(
                             <>
-                                <DsButton onClick={() => { setPage(1); loadChecks(); }} disabled={loading}>
-                                    {loading ? '查询中...' : '查询'}
+                                <DsButton onClick={() => { setPage(1); loadChecks(); }} disabled={loading} loading={loading}>
+                                    查询
                                 </DsButton>
                                 <DsButton variant="secondary" onClick={resetFilters}>重置</DsButton>
                             </>

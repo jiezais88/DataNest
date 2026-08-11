@@ -19,7 +19,6 @@ import {ROLE_OPTIONS as ROLE_OPTION_ITEMS} from '@/constants/roles';
 import {COL} from '@/constants/table';
 import DsToolbar from '@/components/DsToolbar';
 import DsTableEmpty from '@/components/DsTableEmpty';
-import DsSpinner from '@/components/DsSpinner';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import {
     HiOutlineCheck,
@@ -370,8 +369,9 @@ export default function UsersPage() {
                             <DsButton
                                 onClick={handleSearch}
                                 disabled={loading}
+                                loading={loading}
                             >
-                                {loading ? '查询中...' : '查询'}
+                                查询
                             </DsButton>
                             <DsButton
                                 variant="secondary"
@@ -495,9 +495,9 @@ export default function UsersPage() {
                             取消
                         </DsButton>
                         <DsButton onClick={handleResetPwdSubmit}
-                                  disabled={resetPwdLoading || !resetPwdValue || resetPwdValue.length < 6}>
-                            {resetPwdLoading && <DsSpinner/>}
-                            {resetPwdLoading ? '处理中...' : '确认重置'}
+                                  disabled={resetPwdLoading || !resetPwdValue || resetPwdValue.length < 6}
+                                  loading={resetPwdLoading}>
+                            确认重置
                         </DsButton>
                     </>
                 }

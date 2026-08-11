@@ -11,6 +11,7 @@ import {
     HiOutlineArrowRight,
     HiOutlineCheckCircle,
     HiOutlineCircleStack,
+    HiOutlineExclamationTriangle,
     HiOutlineServer,
     HiOutlineXCircle,
 } from 'react-icons/hi2';
@@ -594,21 +595,42 @@ export default function CdcPipelineWizardPage() {
                                                     className="px-ds-3 py-ds-4 text-center text-ds-small text-ds-text-muted">
                                                     {sourceDatabase ? '该库下无业务表' : '请先选择源数据源与源数据库'}
                                                 </div>
-                                            ) : sourceTables.map(t => (
-                                                <label key={t.tableName}
-                                                       className="flex items-center gap-ds-2 px-ds-3 py-ds-2 border-b border-ds-border-subtle last:border-b-0 hover:bg-ds-bg-hover cursor-pointer">
-                                                    <Checkbox
-                                                        checked={isTableSelected(t.tableName)}
-                                                        onChange={(e) => toggleTable(t, e.target.checked)}
-                                                    />
-                                                    <span
-                                                        className="font-mono text-ds-small text-ds-text-primary">{t.tableName}</span>
-                                                    <span
-                                                        className="ml-auto text-ds-tiny text-ds-text-muted font-mono">
-                                                        {t.tableRows != null ? Number(t.tableRows).toLocaleString() : '—'}
-                                                    </span>
-                                                </label>
-                                            ))}
+                                            ) : (
+                                                <>
+                                                    {isPostgres && sourceTables.some(t => t.replicaIdentityFull === false) && (
+                                                        <div
+                                                            className="flex items-start gap-ds-1 px-ds-3 py-ds-2 bg-ds-warning-light text-ds-warning text-ds-tiny">
+                                                            <HiOutlineExclamationTriangle size={14}
+                                                                                          className="flex-shrink-0 mt-0.5"/>
+                                                            <span>
+                                                                部分表未开启 REPLICA IDENTITY FULL，
+                                                                <span className="font-mono">update/delete</span> 变更无法同步完整旧值
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {sourceTables.map(t => (
+                                                        <label key={t.tableName}
+                                                               className="flex items-center gap-ds-2 px-ds-3 py-ds-2 border-b border-ds-border-subtle last:border-b-0 hover:bg-ds-bg-hover cursor-pointer">
+                                                            <Checkbox
+                                                                checked={isTableSelected(t.tableName)}
+                                                                onChange={(e) => toggleTable(t, e.target.checked)}
+                                                            />
+                                                            <span
+                                                                className="font-mono text-ds-small text-ds-text-primary">{t.tableName}</span>
+                                                            {isPostgres && t.replicaIdentityFull === false && (
+                                                                <HiOutlineExclamationTriangle size={14}
+                                                                                              className="text-ds-warning flex-shrink-0"
+                                                                                              title={`${t.tableName} 未开启 REPLICA IDENTITY FULL，update/delete 变更可能无法同步完整旧值；可在源库执行 ALTER TABLE ${t.tableName} REPLICA IDENTITY FULL`}
+                                                                />
+                                                            )}
+                                                            <span
+                                                                className="ml-auto text-ds-tiny text-ds-text-muted font-mono">
+                                                                {t.tableRows != null ? Number(t.tableRows).toLocaleString() : '—'}
+                                                            </span>
+                                                        </label>
+                                                    ))}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -902,14 +924,15 @@ export default function CdcPipelineWizardPage() {
                         {step === 3 && !isEdit && (
                             <DsButton onClick={handleSaveAndStart}
                                       disabled={saving || precheckLoading || !precheck?.success}
+                                      loading={saving}
                                       title={!precheck?.success ? '预检未通过，无法启动（可仅保存）' : undefined}>
-                                {saving ? '提交中...' : '保存并启动'}
+                                保存并启动
                             </DsButton>
                         )}
                         {step === 3 && (
                             <DsButton variant={isEdit ? 'primary' : 'secondary'} onClick={handleSaveOnly}
-                                      disabled={saving}>
-                                {isEdit ? (saving ? '保存中...' : '保存') : '仅保存'}
+                                      disabled={saving} loading={saving}>
+                                {isEdit ? '保存' : '仅保存'}
                             </DsButton>
                         )}
                         <DsButton variant="ghost" onClick={() => navigate('/engineering/cdc-pipelines')}>取消</DsButton>

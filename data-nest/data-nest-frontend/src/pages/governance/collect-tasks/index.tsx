@@ -523,8 +523,9 @@ export default function CollectTasksPage() {
                             <DsButton
                                 onClick={handleSearch}
                                 disabled={loading}
+                                loading={loading}
                             >
-                                {loading ? '查询中...' : '查询'}
+                                查询
                             </DsButton>
                             <DsButton
                                 variant="secondary"

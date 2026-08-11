@@ -456,8 +456,8 @@ export default function AssetsPage() {
                         <DsToolbar
                             extra={(
                                 <>
-                                    <DsButton onClick={handleSearch} disabled={loading}>
-                                        {loading ? '查询中...' : '查询'}
+                                    <DsButton onClick={handleSearch} disabled={loading} loading={loading}>
+                                        查询
                                     </DsButton>
                                     <DsButton variant="secondary" onClick={handleReset}>重置</DsButton>
                                 </>

@@ -219,8 +219,9 @@ export default function DataSourceDrawer({open, editItem, mode, onClose, onSubmi
                                 data-testid="datasource-drawer-test-btn"
                                 onClick={handleTest}
                                 disabled={testing}
+                                loading={testing}
                             >
-                                {testing ? '测试中...' : '测试连接'}
+                                测试连接
                             </DsButton>
                             <DsButton
                                 variant="secondary"
@@ -233,8 +234,9 @@ export default function DataSourceDrawer({open, editItem, mode, onClose, onSubmi
                                 data-testid="datasource-drawer-save-btn"
                                 onClick={handleSubmit}
                                 disabled={submitting}
+                                loading={submitting}
                             >
-                                {submitting ? '保存中...' : '保存'}
+                                保存
                             </DsButton>
                         </>
                     )

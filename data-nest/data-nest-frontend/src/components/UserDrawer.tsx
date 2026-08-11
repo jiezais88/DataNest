@@ -2,7 +2,6 @@ import {useEffect, useState} from 'react';
 import type {CreateUserParams, UpdateUserParams, UserVO} from '@/api/auth';
 import Drawer from './Drawer';
 import DsButton from './DsButton';
-import DsSpinner from './DsSpinner';
 import {ROLE_OPTIONS} from '@/constants/roles';
 
 interface Props {
@@ -81,9 +80,9 @@ export default function UserDrawer({open, editUser, mode, submitting = false, on
                         <DsButton variant="secondary" onClick={onClose} disabled={submitting}>
                             取消
                         </DsButton>
-                        <DsButton type="button" onClick={handleSubmit} disabled={!canSubmit || submitting}>
-                            {submitting && <DsSpinner/>}
-                            {submitting ? '处理中...' : (isEdit ? '保存修改' : '创建用户')}
+                        <DsButton type="button" onClick={handleSubmit} disabled={!canSubmit || submitting}
+                                  loading={submitting}>
+                            {isEdit ? '保存修改' : '创建用户'}
                         </DsButton>
                     </>
                 )

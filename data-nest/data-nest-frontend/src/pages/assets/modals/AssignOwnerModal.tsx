@@ -78,8 +78,8 @@ export default function AssignOwnerModal({
             footer={
                 <>
                     <DsButton variant="secondary" onClick={onClose} disabled={saving}>取消</DsButton>
-                    <DsButton variant="primary" onClick={handleSave} disabled={saving || loading}>
-                        {saving ? '保存中...' : '保存'}
+                    <DsButton variant="primary" onClick={handleSave} disabled={saving || loading} loading={saving}>
+                        保存
                     </DsButton>
                 </>
             }

@@ -443,15 +443,16 @@ export default function CdcPipelinesPage() {
                                     <Tooltip title="立即让数仓感知湖仓中的新表/新数据（对所有管道生效）。系统每 30 秒自动同步一次（仅存在运行中管道时才生效），一般无需手动操作；仅当数仓查不到刚落库的数据时点此立即生效。">
                                         <span>
                                             <DsButton variant="secondary" onClick={handleRefreshCatalog}
-                                                      disabled={loading || catalogRefreshing || list.length === 0}>
+                                                      disabled={loading || catalogRefreshing || list.length === 0}
+                                                      loading={catalogRefreshing}>
                                                 <HiOutlineArrowPath size={14}/>
-                                                {catalogRefreshing ? '刷新中...' : '刷新数仓可见性'}
+                                                刷新数仓可见性
                                             </DsButton>
                                         </span>
                                     </Tooltip>
                                 )}
-                                <DsButton onClick={handleSearch} disabled={loading}>
-                                    {loading ? '查询中...' : '查询'}
+                                <DsButton onClick={handleSearch} disabled={loading} loading={loading}>
+                                    查询
                                 </DsButton>
                                 <DsButton variant="secondary" onClick={handleReset}>重置</DsButton>
                             </>

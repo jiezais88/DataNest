@@ -592,8 +592,8 @@ export default function AlertCenterPage() {
                         <DsToolbar
                             extra={
                                 <>
-                                    <DsButton onClick={handleRuleSearch} disabled={rulesLoading}>
-                                        {rulesLoading ? '查询中...' : '查询'}
+                                    <DsButton onClick={handleRuleSearch} disabled={rulesLoading} loading={rulesLoading}>
+                                        查询
                                     </DsButton>
                                     <DsButton variant="secondary" onClick={handleRuleReset} disabled={rulesLoading}>
                                         重置
@@ -643,8 +643,8 @@ export default function AlertCenterPage() {
                         <DsToolbar
                             extra={
                                 <>
-                                    <DsButton onClick={handleHistorySearch} disabled={historyLoading}>
-                                        {historyLoading ? '查询中...' : '查询'}
+                                    <DsButton onClick={handleHistorySearch} disabled={historyLoading} loading={historyLoading}>
+                                        查询
                                     </DsButton>
                                     <DsButton variant="secondary" onClick={handleHistoryReset}
                                               disabled={historyLoading}>

@@ -99,6 +99,8 @@ export interface CdcSourceTable {
     tableRows?: string;
     /** 源表主键列（逗号分隔，无主键缺省/null；用于勾选时预填映射主键） */
     primaryKey?: string;
+    /** PG 源是否已开启 REPLICA IDENTITY FULL（true=已开，update/delete 可同步；false=未开需警示；MySQL 源为 undefined） */
+    replicaIdentityFull?: boolean;
 }
 
 /** 源预检结果 */

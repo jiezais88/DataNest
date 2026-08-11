@@ -90,8 +90,8 @@ export default function TriggerParamsModal({
                     <DsButton variant="secondary" onClick={onCancel} disabled={executing}>
                         取消
                     </DsButton>
-                    <DsButton onClick={handleExecute} disabled={executing}>
-                        {executing ? '执行中...' : '执行'}
+                    <DsButton onClick={handleExecute} disabled={executing} loading={executing}>
+                        执行
                     </DsButton>
                 </>
             }

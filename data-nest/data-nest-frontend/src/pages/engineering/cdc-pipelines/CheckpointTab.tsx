@@ -173,10 +173,11 @@ export default function CheckpointTab({pipelineId, canWrite}: { pipelineId: stri
                     <span className="text-ds-nano text-ds-text-muted">下次启动优先从该位点恢复（不丢不重）</span>
                     <div className="ml-auto">
                         <DsButton disabled={!canWrite || triggering} onClick={handleTriggerSavepoint}
+                                  loading={triggering}
                                   title={!canWrite ? '仅工程师/超管可触发' : undefined}
                                   className="!px-ds-3 !py-ds-1">
                             <HiOutlineCloudArrowDown size={14}/>
-                            {triggering ? '触发中...' : '触发 Savepoint'}
+                            触发 Savepoint
                         </DsButton>
                     </div>
                 </div>

@@ -398,8 +398,8 @@ export default function QualityRuleDrawer({
                             <DsButton variant="secondary" onClick={onClose}>
                                 取消
                             </DsButton>
-                            <DsButton onClick={handleSubmit} disabled={submitting}>
-                                {submitting ? '保存中...' : '保存'}
+                            <DsButton onClick={handleSubmit} disabled={submitting} loading={submitting}>
+                                保存
                             </DsButton>
                         </>
                     )
@@ -628,9 +628,10 @@ export default function QualityRuleDrawer({
                                     <DsButton
                                         variant="secondary"
                                         disabled={previewing || !form.tableId || !form.sqlExpression.trim()}
+                                        loading={previewing}
                                         onClick={handlePreviewSql}
                                     >
-                                        {previewing ? '执行中...' : '执行预览'}
+                                        执行预览
                                     </DsButton>
                                     {!form.tableId && (
                                         <span className="ml-ds-2 text-ds-nano text-ds-text-muted">请先选择目标表</span>
@@ -725,9 +726,10 @@ export default function QualityRuleDrawer({
                                     <DsButton
                                         variant="secondary"
                                         disabled={testing || !form.tableId || !form.pythonScript.trim()}
+                                        loading={testing}
                                         onClick={handleTestScript}
                                     >
-                                        {testing ? '试跑中（最长约 5 分钟）...' : '测试脚本'}
+                                        测试脚本
                                     </DsButton>
                                     {!form.tableId && (
                                         <span className="ml-ds-2 text-ds-nano text-ds-text-muted">请先选择目标表</span>

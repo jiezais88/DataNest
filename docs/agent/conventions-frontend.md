@@ -92,6 +92,7 @@ catch (err) {
 - 字体、字号、间距、圆角、阴影、z-index 等均使用 `ds-*` token。
 - antd Table 统一用 `className="prototype-table prototype-table-flush"` + `pagination={false}`，分页用手写 `components/Pagination`。
 - 弹窗统一用 `components/DsModal`，按钮用 `components/DsButton`，状态徽章用 `components/DsStatusBadge`。
+- **按钮加载态统一走 `DsButton` 的 `loading` prop（2026-08-11 定稿）**：异步按钮一律 `<DsButton loading={xxx}>文案</DsButton>`，**禁止再写 `{loading ? 'XX中...' : 'XX'}` 文字切换**。`DsButton` 已内置：① inline-grid 同格叠放（spinner 与文字占同一格，仅切 `visibility`，DOM 恒定零 reflow → 宽度恒定、图标+文字不换行、相邻按钮不抖动）；② spinner 延迟 200ms 显示（快请求不闪转圈，仅 `disabled:opacity-60` 轻微变淡）；③ transition 含 opacity（disabled 变暗平滑）。改按钮加载态只动该组件，全局生效。
 - **弹窗 vs 抽屉分工（2026-08-08 定）**：实体的创建/编辑主表单（字段多、含配置，从列表页进入）一律用右侧 `components/Drawer`（命名 `XxxDrawer.tsx`，范本：DataSourceDrawer/SyncJobDrawer/QualityJobDrawer）；面板类查看/分析（字段血缘、执行详情）也用 Drawer。居中 `DsModal` 只用于：确认（ConfirmDialog）、轻量操作（分配、3-5 个字段以内的小表单）、聚焦代码编辑器（SQL/Python）、结果/详情查看。
 - 表格列宽参考 `src/constants/table.ts` 中的 `COL`，同类列在不同页面保持相近宽度。
 - **源码全部为 `.tsx`**，不要新增 `.jsx`；图标统一使用 `react-icons`（以 `HiOutline*` 系列为主）。
@@ -149,3 +150,9 @@ notify.error('操作失败');
 - 构建：`pnpm build` / `npm run build`（会执行 `tsc -b && vite build`）。
 - 生产部署：Docker 镜像基于 `nginx:alpine`，`dist/` 产物挂载到 `/usr/share/nginx/html/`。
 - 生产构建会 `drop_console` 和 `drop_debugger`。
+
+## 12. E2E 测试代码规范（Playwright）
+
+> E2E 套件位于 `data-nest-frontend/e2e/<sprint>/`，结构与既有 sprint 保持一致（`e2e/*.spec.ts` + `helpers/{api,db,seed,data,mailhog}.ts`）。测试执行细节与踩坑见 `docs/agent/gotchas.md` §七。
+
+- **DB 查询计数断言必须 `Number()` 包裹**（2026-08-11 sprint9 起约定）：`helpers/db.ts` 的 `psql*`/`mysqlT`/`pgT` 等返回的是 `execSync` 的原始 stdout（**字符串**），直接 `.toBeGreaterThanOrEqual()` 会得到 `Expected "1" >= 1` 类型不匹配失败。统一写法：`expect(Number(psqlAlert(...))).toBeGreaterThanOrEqual(1)`；`expect.poll` 里同理 `return Number(psqlRt(...))`。

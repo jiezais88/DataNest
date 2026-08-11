@@ -135,6 +135,23 @@
 - **CDC 管道 E2E 约束**（见 §一实时 CDC 小节）：Flink 1 slot 串行启停；LATEST_OFFSET 位点竞态需持续补插；湖仓断言经 `refresh-catalog` + Doris 轮询。
 - **psql 播种静默失败**：`docker exec psql` 不带 ON_ERROR_STOP 时 SQL 出错也退出 0（如缺显式 id 的 INSERT），播种后关键行数值得校验（F1 已注销评论用例踩过）。
 
+### Sprint 9 E2E（sprint9/cdc-sprint9.spec.ts，2026-08-11，实时计算深化 F1-F3 + 遗留清零）
+
+- **`expect.poll` 内 DB 计数同样返回字符串**：`Number(psqlRt(...))` 包裹（外层直接断言用 `expect(Number(psqlX(...)))`），否则 `Expected "1" >= 1` 类型不匹配。
+- **UI 断言限定抽屉作用域**：详情抽屉与列表页列头/字段同名时（如 KPI「当前延迟」与表格列），用 `page.getByLabel('管道详情 · ${name}')` 容器作用域限定，避免 strict mode 冲突。
+- **antd multiple Select 选中后 dropdown 保持打开**：先关闭下拉再点保存；`useModalA11y` 的弹窗（DsModal）对 `Escape` 会**整体关闭弹窗**，不要用 Escape 关下拉，点击弹窗标题收起。
+- **PowerShell 下 grep 过滤用单引号**：`--grep 'C\.'`；双引号 `"C\."` 被转义成 `.` 匹配全部用例。
+- **`--trace off` 运行**：CodeBuddy safe-delete shim 会拦截 Playwright 清理旧 trace 文件，导致用例失败；运行加 `--trace off`。
+- **Flink slot 唯一 → 强串行**：同刻只跑一个 playwright 实例；force-stop/stop 后作业可能残留在集群占 slot，helper 需 `cancelFlinkJobs` + `waitSlotFree`（兜底重启 Flink 集群）。
+- **`waitStatus STOPPED` 后主动 cancel Flink 作业**：stop 是 cancel-with-savepoint，DB 变 STOPPED 但作业可能停在 SAVING/CANCELLING 不释放 slot，后续用例会卡死。
+- **docker restart 后必须等真实业务接口恢复**（带 token 轮询），不能只等进程起来（Nacos 注册刷新有延迟）。
+- **Nacos 开启鉴权**：`nacosGet`/`nacosPublish` 必须带 accessToken，匿名读返回 403 JSON，`setLagThreshold` 等会把它当配置发布回 Nacos 导致配置损坏、服务启动失败。
+- **批量插入源表避免 `WITH RECURSIVE`**：MySQL `cte_max_recursion_depth` 默认 1000，迭代超限报 3636 中止（数据没插进去→无 binlog→无 lag→告警不触发）。用数字表 cross join 生成序列（不受递归限制）。
+- **制造 Flink 作业 FAILED 的方式**：DROP 源表是优雅结束（作业 FINISHED 不触发 FAILURE）；DROP Doris 目标表后 sink 写失败 → RESTARTING，需 Flink 集群配置 `restart-strategy.fixed-delay.attempts=3` 限制重启次数才能到 FAILED 终态（shared-realtime.yaml/docker-compose 已配）。
+- **DROP Doris 表需带主机地址**：Doris 是外部主机（192.168.119.135:9030），`docker exec ... mysql --host=... --port=...` 不能 `-h/-P` 短参数（PowerShell 把 `-P` 当开关）。Doris 的 Iceberg catalog 表不在 information_schema，用 `SHOW TABLES FROM datalake_catalog.<db>`。
+- **`alert_rule_object`/`alert_history` 外键列是 `alert_rule_id`**（非 `rule_id`），cleanup 与断言都按此写。
+- **强制停止语义**：force-stop 只改 DB（置 STOPPED、清 flink_job_id/savepoint_path），不清 Flink 作业，需测试侧主动 cancel 释放 slot；savepoint_path 清空、恢复功能不再可用。
+
 
 ## 八、微服务化改造踩坑（阶段 1-5，2026-08-06/07，当前有效）
 

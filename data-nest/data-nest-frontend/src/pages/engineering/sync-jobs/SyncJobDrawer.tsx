@@ -601,16 +601,18 @@ export default function SyncJobDrawer({
                             data-testid="sync-job-submit-run"
                             onClick={() => handleSubmit(true)}
                             disabled={submitting}
+                            loading={submitting}
                         >
-                            {submitting ? '保存中...' : '保存并立即执行'}
+                            保存并立即执行
                         </DsButton>
                         <DsButton
                             variant="secondary"
                             data-testid="sync-job-submit"
                             onClick={() => handleSubmit(false)}
                             disabled={submitting}
+                            loading={submitting}
                         >
-                            {submitting ? '保存中...' : '保存'}
+                            保存
                         </DsButton>
                     </>
                 )
