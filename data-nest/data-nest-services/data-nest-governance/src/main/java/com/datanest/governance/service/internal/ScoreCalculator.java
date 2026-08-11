@@ -6,10 +6,12 @@ import com.datanest.governance.entity.QualityCheckDetail;
 import com.datanest.governance.entity.QualityRule;
 import com.datanest.governance.entity.QualityScore;
 import com.datanest.governance.entity.QualityScoreConfig;
+import com.datanest.governance.entity.QualityScoreHistory;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.QualityCheckDetailMapper;
 import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityScoreConfigMapper;
+import com.datanest.governance.mapper.QualityScoreHistoryMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
 import com.datanest.common.constant.AlertConstants;
 import com.datanest.common.constant.QualityScoreConstants;
@@ -53,6 +55,7 @@ public class ScoreCalculator {
     private final QualityScoreMapper scoreMapper;
     private final QualityScoreConfigMapper configMapper;
     private final MetadataTableMapper tableMapper;
+    private final QualityScoreHistoryMapper scoreHistoryMapper;
 
     @Value("${datanest.quality.score.warning-deduct:10}")
     private int warningDeductDefault;
@@ -67,12 +70,14 @@ public class ScoreCalculator {
                            QualityCheckDetailMapper detailMapper,
                            QualityScoreMapper scoreMapper,
                            QualityScoreConfigMapper configMapper,
-                           MetadataTableMapper tableMapper) {
+                           MetadataTableMapper tableMapper,
+                           QualityScoreHistoryMapper scoreHistoryMapper) {
         this.ruleMapper = ruleMapper;
         this.detailMapper = detailMapper;
         this.scoreMapper = scoreMapper;
         this.configMapper = configMapper;
         this.tableMapper = tableMapper;
+        this.scoreHistoryMapper = scoreHistoryMapper;
     }
 
     /**
@@ -180,6 +185,25 @@ public class ScoreCalculator {
         }
 
         upsert(table, finalScore, healthLevel, passRules, warningRules, severeRules);
+
+        // Sprint 8 F3（DG-07）：批次收尾复用同一次计算结果追加评分快照历史（评分趋势图数据源），
+        // checked_at 与 lastCheckedAt 同义（批次结束 ≈ 当前计算时间）。快照失败不影响评分主流程。
+        try {
+            QualityScoreHistory history = new QualityScoreHistory();
+            history.setTableId(table.getId());
+            history.setTableName(qualifiedTableName(table));
+            history.setDatasourceId(table.getDatasourceId());
+            history.setScore(finalScore);
+            history.setHealthLevel(healthLevel);
+            history.setPassRules(passRules);
+            history.setWarningRules(warningRules);
+            history.setSevereRules(severeRules);
+            history.setCheckedAt(LocalDateTime.now());
+            history.setCreatedAt(LocalDateTime.now());
+            scoreHistoryMapper.insert(history);
+        } catch (Exception e) {
+            logger.warn("评分快照历史写入失败（不影响评分）: tableId={}, error={}", table.getId(), e.getMessage());
+        }
     }
 
     /** 取某规则最近一次检查的分级（按 id 倒序取最新一条），无记录返回 null。 */

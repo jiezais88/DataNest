@@ -1,6 +1,6 @@
 # Sprint 8：资产目录深化 + 实时 CDC 管道 + 质量报告——技术设计文档
 
-> **版本**：v1.7 | **日期**：2026-08-10 | **作者**：后端
+> **版本**：v1.8 | **日期**：2026-08-11 | **作者**：后端
 > **关联**：`DataNest-Sprint8-PRD.md`（v1.1）
 > **技术决策**：本 Sprint 范围经 2 轮用户确认（主题边界 + T1~T4 架构决策，见 PRD §13），再经代码现状核验与技术选型调研确定 6 个关键技术决策（D1~D6），见 §1 ADR。涉及架构级新增（realtime-service + MinIO + Iceberg），实现前需先在容器环境验证 Flink/CDC/Iceberg 依赖兼容（§8 B1）。
 
@@ -299,7 +299,7 @@ Sprint 8 三大模块，均为 P0：
 
 ### 4.3 质量报告聚合
 
-**KPI**：范围（数据源/库/质量任务/时间）内 `quality_check_batch` 批次数、`quality_check_detail` 明细数；平均评分 = 范围内 `quality_score`（当前最新）均值；通过率 = PASS 明细数 / 有效明细数（排除 UNAVAILABLE）。
+**KPI**：范围（数据源/库/质量任务/时间）内 `quality_check_batch` 批次数（范围内有明细的 distinct batch_id，与明细同口径）、`quality_check_detail` 明细数；平均评分 = 范围内 `quality_score`（当前最新）均值——**按质量任务筛选时收窄到该任务当前规则覆盖的表**（quality_rule 反查，2026-08-11 用户确认；规则已删光的历史任务平均评分为空）；通过率 = PASS 明细数 / 有效明细数（排除 UNAVAILABLE）。
 
 **四档分布趋势**：按天 GROUP BY `quality_check_detail.created_at` 聚合 PASS/WARNING/SEVERE/UNAVAILABLE 数量（`result_level`），折线图多系列。
 
@@ -372,6 +372,7 @@ Sprint 8 三大模块，均为 P0：
 | POST | `/score-trend` | 表评分趋势（按表 + 时间范围） | 全角色 |
 | POST | `/issues` | 问题清单分页 | 全角色 |
 | POST | `/export` | 导出 CSV（BOM） | 治理员/超管 |
+| POST | `/backfill-score-history` | 存量评分历史补算（幂等，返回补写条数；2026-08-11 用户确认手工触发，B3 落定） | 治理员/超管 |
 
 > 请求体统一 `QualityReportRequest`：`datasourceId / databaseName / jobId / startTime / endTime / tableId(评分趋势) / page/pageSize(问题清单)`；时间用 ISO String（Feign 约束对齐）。
 
@@ -500,7 +501,7 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 |---|------|------|------|
 | B1 | Flink 2.2 + CDC 3.6 + Iceberg 依赖兼容 | ✅ **已通过（M0 实测）**：Flink 2.2.1 + CDC 3.6.0（connector `3.6.0-2.2`）；`flink-cdc.sh -t remote` 提交到独立 Session 集群，MySQL→Iceberg 链路 RUNNING，含全量+增量；依赖矩阵完整锁定（见 §7.2）；若阻塞降级 Flink 1.20 + CDC 3.3（JVM 降 17，未触发） | ✅ 已通过 |
 | B2 | Doris 版本 Iceberg Catalog 支持 | ✅ **已通过（M0 实测）**：Doris 建 `datalake_catalog`（TYPE=iceberg, hadoop catalog, s3a warehouse）后 `SHOW TABLES FROM datalake_catalog.testdb` 可见 `users` 表，`SELECT` 返回 3 行（含实时增量）；`s3.endpoint` 用 `192.168.119.1:9000`（宿主 VMnet8） | ✅ 已通过 |
-| B3 | 存量评分历史补算 | V1.5.0 不做迁移内补算；需一次性 job 从 `quality_check_detail` 补写 `quality_score_history`（复用 ScoreCalculator 算法），补算范围与触发方式待定 | 待实现 |
+| B3 | 存量评分历史补算 | ✅ **已实现（2026-08-11，用户确认手工触发）**：`POST /quality/report/backfill-score-history`（治理员/超管），为有当前评分但无历史快照的表从 `quality_score` 复制首快照（与同算法从 check_detail 复算等价），幂等（已补跳过），已实测补 3 条、二次调用 0 条 | ✅ 已实现 |
 | B4 | 删除用户时评论保留语义 | ✅ 已定稿（2026-08-09 用户确认）：**前端查用户名批量回填，user_id 查无显示「已注销」**——评论列表经 `SystemUserApi.usernames` 批量回填作者名，查无（用户已物理删）回退「已注销」，零后端改动 | 明确 |
 | B5 | 评论阈值字段回填 | `quality_check_detail` 无阈值字段（阈值存 `quality_rule.warning_threshold/severe_threshold`），问题清单需按 `rule_id` 回填，历史 rule 已删则阈值缺省 | 明确（按 rule_id 回填） |
 
@@ -583,3 +584,4 @@ CREATE CATALOG datalake_catalog PROPERTIES (
 > - v1.5 (2026-08-09)：**M0 环境预研完成（B1/B2/B6 全部实测通过）**——`flink-cdc.sh -t remote` 提交到独立 Flink Session 集群跑通 **MySQL(testdb.users) → Iceberg(Hadoop Catalog/MinIO S3A) → Doris Iceberg Catalog 查询**全链路，含实时增量。实战结论固化：① 集群 lib 需预置 **dist/common/flink2-compat/两 connector/mysql 驱动/flink-shaded-hadoop/flink-s3-fs-hadoop** 共 7 个 jar（自定义镜像 `datanest-flink:2.2.1`，`docker/flink/Dockerfile`）；② **`classloader.resolve-order=parent-first`** 必配（否则 iceberg 双 classloader 冲突）；③ `flink-s3-fs-hadoop` 放 **lib 非 plugins**（plugins 会 delegration provider 重复注册 + 作业看不到 S3A）；④ S3A endpoint 用 **core-site.xml + HADOOP_CONF_DIR**，凭据用容器环境变量（`s3.*`/`hadoop.*` 前缀均不透传）；⑤ 禁开 `execution.checkpointing.unaligned`（与 CDC partitioner 冲突）；⑥ `pekko.ask.timeout=120s`；⑦ Doris 建 catalog 的 `s3.endpoint` 用宿主侧 `192.168.119.1:9000`（VMnet8）。更新 §7.2、§8 B1/B2/B6、§9（M0 完成项）。
 > - v1.6 (2026-08-10)：**F1 实现阶段确认回落**——① §5.1 新增第 16 个端点 `GET /tables/{tableId}/collaboration`（详情页协作状态聚合：tags/favorited/followed/viewCount30d/commentCount，原文档 15 端点未覆盖按钮初始态下发）；② §3.1 `asset_comment` 补 `deleted_by`/`deleted_at` 两列（对齐 §4.1「治理员/超管删记录删除人」语义）；③ `browse` 的 `tag` 筛选明确**传标签名**。以上均经用户确认。
 > - v1.7 (2026-08-10)：**F2 实现完成回落（含实测偏差修正）**——① §3.3 `startup_mode` 注释按 Flink 语义修正（INITIAL/LATEST_OFFSET/EARLIEST_OFFSET，用户确认）+ 补 `savepoint_path` 列（stop-with-savepoint 续传，用户确认）+ `write_mode` 注记（CDC 3.6.0-2.2 iceberg sink 无 upsert 选项，YAML 不下发）；② §4.2 预检按实现改 4 项、停止改 cancel-with-savepoint、监控改 realtime 轮询 `/jobs/{id}` 一次取 state+vertices、启动加 CAS 防并发重复提交；③ §5.2 internal 端点落定 `/by-datasource`；④ §7.1 删死配置 `commit-interval-ms`；⑤ §9.1 补 8000 参数校验码。F2 经两轮验证（施工代理全链路 + 主会话独立冒烟）：initial 快照/增量/savepoint 恢复续传/8009 删除保护均实测通过；F2 评审（With fixes）问题已全部修复（分页拦截器/start CAS/REST 超时/指标 -1 哨兵/vertex 匹配顺序等）。
+> - v1.8 (2026-08-11)：**F3 实现完成回落**——① B3 存量补算落定手工触发端点 `POST /quality/report/backfill-score-history`（用户确认，§5.3 补第 7 端点）；② §4.3 平均评分口径确认：按质量任务筛选时收窄到该任务当前规则覆盖的表（用户确认）；③ F3 评审（Yes）后修复：export 异常包 4222（4221 参数错误原样透传）、score-trend 校验表存在（4221，对齐 §9.1）、BOM 改显式 `\uFEFF` 转义防编辑器剥离。记录不改：补算端点并发不幂等（手工端点风险低）、pageSize 无上限（项目既有惯例）、inSql 子查询两处重复、export 内 resolveRange 算两遍。

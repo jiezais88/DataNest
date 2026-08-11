@@ -130,6 +130,10 @@ public enum ErrorCode {
     QUALITY_SCORE_CONFIG_INVALID(4217, "质量评分全局配置参数非法"),
     QUALITY_JOB_ALREADY_RUNNING(4218, "质量任务正在执行中"),
 
+    // Quality report errors — Sprint 8 F3 质量报告（DG-07）
+    QUALITY_REPORT_PARAM_INVALID(4221, "报告参数非法"),
+    QUALITY_REPORT_EXPORT_FAILED(4222, "报告导出失败"),
+
     // CDC pipeline errors — Sprint 8 实时 CDC 管道（8xxx）
     CDC_PIPELINE_CONFIG_INVALID(8000, "管道配置非法"),
     CDC_PIPELINE_NOT_FOUND(8001, "管道不存在"),

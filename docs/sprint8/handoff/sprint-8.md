@@ -1,6 +1,6 @@
 # Sprint 8 Handoff
 
-> **更新时间**：2026-08-10 | **阶段**：F1 完成（后端 + 前端 + E2E 15/15）；F2 后端完成（两轮实测 + 评审修复）→ F2 前端 / F3 待开发
+> **更新时间**：2026-08-11 | **阶段**：F1 完成（后端 + 前端 + E2E 15/15）；F2 后端完成（两轮实测 + 评审修复）；F3 后端完成（自测 + 评审修复）→ F2/F3 前端待开发
 > **Sprint 主题**：资产目录深化 + 实时 CDC 管道 + 质量报告（三大模块均为 P0）
 
 ## 1. Sprint 目标
@@ -20,7 +20,7 @@
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
 | F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` **18/18** 通过（2026-08-10 测试会话补 3 用例：删数据源级联清理协作数据/评论「已注销」兜底/评论分页）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
 | F2 实时 CDC 管道（DI-04/RC-01）          | ✅ 完成   | 后端两轮实测 + 前端完成 + Review 修复 + 联调调通 + **E2E `cdc-pipeline.spec.ts` 23/23 通过**（2026-08-10 测试会话，含 MySQL savepoint 恢复/PG 全链路/8009 引用校验）；**源范围扩展：MySQL + PostgreSQL**（PG 全链路实测通过）；Oracle/SQLServer 决策等 Flink CDC 3.7.0（B7/B8）；E2E 发现并修复后端缺口：仅增量+INITIAL 矛盾组合未拦截（已补 8000 校验） |
-| F3 质量报告（DG-07 完整版）              | ⏳ 未开始 | 报告聚合接口 + 评分历史表 + 前端报告页                                                         |
+| F3 质量报告（DG-07 完整版）              | 🔄 后端完成 | 后端已实现 + curl 自测通过 + 评审（Yes）修复完成（2026-08-11）：V1.5.0 评分历史表 + ScoreCalculator 写快照 + 报告 7 端点 + CSV 导出；前端报告页未开始 |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
 | Sprint 8 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
 
@@ -62,6 +62,7 @@
 | `docs/sprint8/handoff/sprint-8.md`（新增）                        | 本 Handoff                                                                                       |
 | F1 后端代码（2026-08-10，新增/修改）                              | governance：V1.4.0 迁移脚本 + 协作 6 实体/Mapper + `AssetCollaborationService` + 9 个 DTO；`AssetCatalogController` 扩展 16 端点、`AssetCatalogService`（tags 回填/tag 筛选/sort=hot，`backfill`/`toItemDTO` 转 public 复用）；删除钩子（`MetadataWriteService.remove`/`InternalDatasourceService.cascadeDelete`）；common `ErrorCode` 4021~4024；技术文档 v1.6 回落（collaboration 端点/comment 补字段/tag 传名） |
 | F2 后端代码（2026-08-10，新增/修改）                              | 新增 `data-nest-realtime-api`（CdcPipelineApi 契约 + fail-closed fallback）与 `data-nest-realtime` 服务（26 源文件：管道 CRUD/启停/监控/日志 + FlinkJobService/YamlBuilder/SourcePrecheck/DorisCatalog）；realtime 库 V1.0.0 三表；common `ErrorCode` 8000~8009；engineering 删除数据源 CDC 引用校验（8009）；网关路由 `/api/realtime/**` + swagger 聚合；`shared-realtime.yaml`/`shared-minio.yaml`（Nacos 已发布）；`docker/realtime.Dockerfile` + compose app-realtime；`datanest_realtime` 库已建。技术文档 v1.7 + gotchas + AGENTS.md + architecture.md 已回落 |
+| F3 后端代码（2026-08-11，新增/修改）                              | governance：V1.5.0 迁移（quality_score_history）+ 实体/Mapper + `QualityReportService`/`QualityReportController`（7 端点）+ 6 个报告 DTO + `QualityCheckDetailMapper` 两个聚合查询 + `ScoreCalculator` 批次收尾写快照；common `ErrorCode` 4221/4222。技术文档 v1.8 + gotchas 质量报告口径已回落 |
 | F1 后端补齐（2026-08-10 前端联调前用户确认补 5 项缺口）           | ① browse `sort=latest`（updated_at 降序，DB 层排序）；② `my-favorites`/`my-follows` 补 keyword/datasourceId/healthLevel 筛选（`AssetCatalogService.matchTableIds` 反查表 ID 集合，null=不过滤/空=无命中空页）；③ `viewCount` 改为 `backfill` 全场景统一回填（搜索/浏览/收藏/关注/热门，无访问为 0）；④ `search` 新增标签名命中维度（权重 40 与字段同级，`searchAssetTables` 加 `tagHitTableIds`）；⑤ 新增 `GET /my-favorites/export`（CSV BOM，复用合规导出文件名/转义模式）。均已 curl 自测通过并重建 app-governance |
 | F1 前端代码（2026-08-10，新增/修改）                              | `types/asset.ts` + `api/asset.ts` 扩展（协作 13 个 API + 7 个类型）；详情页 `CollaborationBar.tsx`（标签打/删 + 收藏/关注）+ `CommentsTab.tsx`（发表/删除/分页）+ 第 4 张热度卡 + 会话级埋点去重；资产首页标签云筛选 + 排序（默认/热度/最新/评分，搜索态禁用）+ 标签/热度两列 + 热门 Top10 面板 + `?tag=` 跳转支持；新页 `favorites/index.tsx`（筛选 + 导出 CSV + 取消收藏）/ `follows/index.tsx`（变更动态摘要 + 取消关注）；router + Sidebar 两菜单（ALL_ROLES） |
 | F1 E2E（2026-08-10，新增）                                        | `e2e/sprint8/e2e/asset-collaboration.spec.ts`（复用 sprint7 seed/data + sprint6 Api/gotoAs；协作数据 e2e_s8 前缀自播种自清理）；sprint5/sprint6 `helpers/db.ts` TABLE_DB 补协作 6 表映射 |
@@ -162,14 +163,15 @@
 **范围**：多维报告（数据源/库/质量任务/时间）+ KPI + 四档趋势 + 评分趋势 + 问题清单 + CSV 导出。
 **块内依赖**：governance Flyway V1.5.0 → ScoreCalculator 写历史 → QualityReportService/Controller → 前端 1 页 → 联调。
 
-**后端**
-- [ ] Flyway `V1.5.0`（governance）：quality_score_history（idx(table_id, checked_at)）
-- [ ] `ScoreCalculator` 批次收尾追加写历史快照
-- [ ] 存量补算一次性 job（复用 ScoreCalculator 算法，从 quality_check_detail 聚合写首次快照）
-- [ ] `QualityReportService` + `QualityReportController`（`/quality/report`：options/summary/level-trend/score-trend/issues/export，6 端点，§5.3）
-- [ ] CSV 导出（UTF-8 BOM，复用 Sprint 6 合规导出经验）
-- [ ] common：`ErrorCode` 4221/4222
-- [ ] 重建 governance + 部署 + curl 自测
+**后端**——✅ 已完成并 curl 自测通过（2026-08-11）
+- [x] Flyway `V1.5.0`（governance）：quality_score_history（idx(table_id, checked_at) + idx(checked_at)），已应用
+- [x] `ScoreCalculator` 批次收尾追加写历史快照（复用同一次计算结果，失败仅 warn 不影响评分；已实测新批次落快照 3→4 行）
+- [x] 存量补算：`POST /quality/report/backfill-score-history`（治理员/超管手工触发，用户确认；有当前评分无快照的表复制首快照，幂等，实测补 3 条/二次 0 条）
+- [x] `QualityReportService` + `QualityReportController`（`/quality/report`：options/summary/level-trend/score-trend/issues/export/backfill-score-history 7 端点，§5.3）
+- [x] CSV 导出（UTF-8 BOM 显式 `\uFEFF` 转义 + 5000 行上限 + 治理员/超管收窄）
+- [x] common：`ErrorCode` 4221/4222
+- [x] 重建 governance + 部署 + curl 自测（选项联动/汇总/四档趋势/评分趋势 4221/问题清单/导出/非法时间 4221/补算幂等全过）
+- [x] 代码评审（结论 **Yes**，无 Critical/Important）已修复：① export 异常包 4222（4221 参数错误原样透传）；② score-trend 校验表存在（对齐 §9.1）；③ BOM 字面量改显式转义防编辑器剥离；④ **平均评分按任务筛选收窄到该任务当前规则覆盖的表**（用户确认口径，技术文档 §4.3 已回落）。记录不改：补算端点并发不幂等、pageSize 无上限（项目惯例）、inSql 子查询重复、export 内 range 算两遍
 
 **前端**
 - [ ] `Sidebar.tsx`：「数据治理」组新增「质量报告」（查看 ALL_ROLES，导出 GOVERNANCE_WRITE_ROLES）

@@ -76,6 +76,7 @@
 - **批次列表「成功/失败」与「通过/警告/严重/不可用」两列语义不同（Sprint 6 UX）**：`successCount/failedCount` 反映**执行层**（SQL 是否跑成功），`passCount/warningCount/severeCount/unavailableCount` 反映**判定层**（结果是否达标）。SQL 跑成功但结果不达标 → 判「严重」；SQL 跑失败 → 判「不可用」。四档在 `QualityCheckService.toBatchDTO` 按 `result_level` 聚合，勿混淆。
 - **批次↔告警对应（Sprint 6，Flyway V3.8.1+V3.8.2）**：`alert_history` 有 `quality_batch_id` + `summary TEXT`（命中多条规则聚合，每行一条「[等级] 规则名: 详情」）；`fireBatchAlert` 一个批次只写一条 `alert_history`，批次详情按 `quality_batch_id` 反查回填。**存量库 Flyway 版本号提醒**：治理域在旧库时代最高到 3.8.2，拆库后 governance 库独立编号（当前 1.3.0），新增脚本按本库 `flyway_schema_history` 最高版本 +1。
 - **单规则执行批次 jobName 是「规则名（表名）」**：明细落库后按 `ruleName + tableName` 更新（非硬编码「单规则执行」）；单规则批次 `jobId` 为空，定位靠 jobName。
+- **质量报告口径（Sprint 8 F3，2026-08-11 落定）**：`POST /api/governance/quality/report/*`（options/summary/level-trend/score-trend/issues/export/backfill-score-history 7 端点）。① 批次数 = 范围内有明细的 distinct batch_id（与明细同口径）；② 平均评分 = quality_score 当前值均值，**按任务筛选时收窄到该任务当前规则覆盖的表**（规则已删光的历史任务平均评分为空，不是 bug）；③ 通过率排除 UNAVAILABLE；④ 问题清单阈值按 rule_id 回填 quality_rule（规则已删缺省 null）；⑤ 评分趋势读 `quality_score_history`（ScoreCalculator 批次收尾写入，失败仅 warn 不影响评分）；存量首快照走 backfill-score-history 手工端点（治理员/超管，幂等；**并发双调会各插一条首快照**，手工端点风险低，仅记录不加锁）。
 - **质量任务绑定对象名回填**：`QualityJobDTO.autoTriggerObjectName` 由 `QualityJobService` 按 `autoTriggerObjectType` 分支回填；`DAG_NODE` 映射 `DagMapper`，勿用 alert 的 `resolveObjectName`（其 DAG 类型值是 `DAG` 而非 `DAG_NODE`，映射不一致）。
 
 ## 六、已解决坑（仅供复现参考，不阻塞当前开发）
