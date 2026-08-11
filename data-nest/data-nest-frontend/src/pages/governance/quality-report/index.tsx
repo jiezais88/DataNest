@@ -106,6 +106,8 @@ export default function QualityReportPage() {
     // ============ 筛选（草稿 → 查询时应用） ============
     const [datasourceId, setDatasourceId] = useState('');
     const [databaseName, setDatabaseName] = useState('');
+    /** 库下拉选中键（'' = 全部库；否则 `数据源ID::库名` 复合键，同名库多数据源归属时选择无歧义） */
+    const [dbKey, setDbKey] = useState('');
     const [jobId, setJobId] = useState('');
     const [rangeKey, setRangeKey] = useState('30');
     const [customFrom, setCustomFrom] = useState('');
@@ -114,19 +116,22 @@ export default function QualityReportPage() {
     const [dsOptions, setDsOptions] = useState<{ value: string; label: string }[]>([]);
     const [dbOptions, setDbOptions] = useState<{ value: string; label: string }[]>([]);
     const [jobOptions, setJobOptions] = useState<{ value: string; label: string }[]>([]);
-    /** 库 → 数据源映射（选库反向联动数据源用） */
-    const [dbPairs, setDbPairs] = useState<{ name: string; datasourceId?: string }[]>([]);
 
     // 选项加载（库/任务随数据源联动）
     useEffect(() => {
         getQualityReportOptions(datasourceId || undefined)
             .then(res => {
+                const datasources = res?.datasources ?? [];
                 setDsOptions([{value: '', label: '全部数据源'},
-                    ...(res?.datasources ?? []).map(d => ({value: String(d.id), label: d.name || `数据源 ${d.id}`}))]);
-                const pairs = res?.databases ?? [];
-                setDbPairs(pairs);
+                    ...datasources.map(d => ({value: String(d.id), label: d.name || `数据源 ${d.id}`}))]);
+                const dsNameMap = new Map(datasources.map(d => [String(d.id), d.name || `数据源 ${d.id}`]));
+                // 库选项 = `库名（数据源名）` + 复合键值（同名库可属多个数据源，option value 必须全局唯一，
+                // 否则原生 select 重复 key 会 reconciliation 残留旧选项——E2E 2026-08-11 抓到）
                 setDbOptions([{value: '', label: '全部库'},
-                    ...pairs.map(db => ({value: db.name, label: db.name}))]);
+                    ...(res?.databases ?? []).map(db => ({
+                        value: `${db.datasourceId}::${db.name}`,
+                        label: `${db.name}（${dsNameMap.get(String(db.datasourceId)) ?? db.datasourceId}）`,
+                    }))]);
                 const jobs = res?.jobs ?? [];
                 // 选了数据源但无关联任务时给空态提示，避免下拉空白误以为不可选
                 setJobOptions([{value: '', label: datasourceId && jobs.length === 0 ? '该数据源下暂无任务' : '全部质量任务'},
@@ -140,20 +145,23 @@ export default function QualityReportPage() {
     /** 选手动改数据源：清空下游（库/任务） */
     const handleDatasourceChange = (v: string) => {
         setDatasourceId(v);
+        setDbKey('');
         setDatabaseName('');
         setJobId('');
     };
 
-    /** 选库：反向联动带出所属数据源（不清库本身）；任务随数据源收窄故清空 */
+    /** 选库：复合键同时精确设定 数据源+库（反向联动无歧义）；任务随数据源收窄故清空 */
     const handleDatabaseChange = (v: string) => {
-        setDatabaseName(v);
+        setDbKey(v);
         setJobId('');
-        if (v) {
-            const pair = dbPairs.find(p => p.name === v);
-            if (pair?.datasourceId != null && pair.datasourceId !== datasourceId) {
-                setDatasourceId(pair.datasourceId);
-            }
+        if (!v) {
+            setDatabaseName('');
+            return;
         }
+        const sep = v.indexOf('::');
+        const dsId = v.slice(0, sep);
+        setDatabaseName(v.slice(sep + 2));
+        if (dsId && dsId !== datasourceId) setDatasourceId(dsId);
     };
 
     // ============ 报告数据 ============
@@ -246,7 +254,7 @@ export default function QualityReportPage() {
     const issueTotal = topIssues.total;
 
     return (
-        <div className="h-[calc(100vh-9rem)] flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden">
             {/* 顶栏：标题 + 筛选 + 操作 */}
             <div className="flex items-start justify-between mb-ds-4 flex-shrink-0 gap-ds-4 flex-wrap">
                 <div>
@@ -261,8 +269,8 @@ export default function QualityReportPage() {
                 <div className="flex items-center gap-ds-2 flex-wrap">
                     <DsFilterSelect value={datasourceId} onChange={handleDatasourceChange}
                                     aria-label="按数据源筛选" options={dsOptions} className="w-[160px]"/>
-                    <DsFilterSelect value={databaseName} onChange={handleDatabaseChange} aria-label="按库筛选"
-                                    options={dbOptions} className="w-[160px]"/>
+                    <DsFilterSelect value={dbKey} onChange={handleDatabaseChange} aria-label="按库筛选"
+                                    options={dbOptions} className="w-[220px]"/>
                     <DsFilterSelect value={jobId} onChange={setJobId} aria-label="按质量任务筛选"
                                     options={jobOptions} className="w-[180px]"/>
                     <DsFilterSelect value={rangeKey} onChange={setRangeKey} aria-label="时间范围"

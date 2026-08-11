@@ -26,11 +26,14 @@ public class QualityCheckHistoryCleanupHandler implements PlatformJobHandler {
 
     private final GovernanceOpsApi governanceOpsApi;
     private final int retainDays;
+    private final int scoreHistoryRetainDays;
 
     public QualityCheckHistoryCleanupHandler(GovernanceOpsApi governanceOpsApi,
-                                             @Value("${datanest.job.quality-check-cleanup.retain-days:30}") int retainDays) {
+                                             @Value("${datanest.job.quality-check-cleanup.retain-days:30}") int retainDays,
+                                             @Value("${datanest.job.quality-check-cleanup.score-history-retain-days:90}") int scoreHistoryRetainDays) {
         this.governanceOpsApi = governanceOpsApi;
         this.retainDays = Math.max(1, retainDays);
+        this.scoreHistoryRetainDays = Math.max(1, scoreHistoryRetainDays);
     }
 
     @Override
@@ -40,9 +43,12 @@ public class QualityCheckHistoryCleanupHandler implements PlatformJobHandler {
 
     @Override
     public void execute(String param) {
-        logger.info("Starting quality check history cleanup, retainDays={}", retainDays);
+        logger.info("Starting quality check history cleanup, retainDays={}, scoreHistoryRetainDays={}",
+                retainDays, scoreHistoryRetainDays);
         CleanupRequest request = new CleanupRequest();
         request.setRetainDays(retainDays);
+        // Sprint 8 F3：评分快照历史随质量历史同任务清理（独立保留天数）
+        request.setScoreHistoryRetainDays(scoreHistoryRetainDays);
         Integer rows = RemoteCalls.execute("governance.ops.quality-cleanup", () -> {
             Result<Integer> result = governanceOpsApi.cleanupQualityCheckHistory(request);
             return result == null ? null : result.data();

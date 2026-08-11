@@ -24,6 +24,7 @@ import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.NamingStandardMapper;
 import com.datanest.governance.util.CsvExportHelper;
+import com.datanest.governance.util.ExportLabels;
 import org.apache.commons.csv.CSVPrinter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -354,12 +355,12 @@ public class ComplianceCheckService {
         printer.printRecord("对象路径", "对象类型", "违规类型", "实际值", "期望值", "适用规范", "检查时间", "是否忽略");
         for (ComplianceCheckResult r : list) {
             printer.printRecord(CsvExportHelper.safe(r.getObjectPath()),
-                    CsvExportHelper.safe(r.getObjectType()),
-                    CsvExportHelper.safe(r.getViolationType()),
+                    CsvExportHelper.safe(ExportLabels.complianceObjectType(r.getObjectType())),
+                    CsvExportHelper.safe(ExportLabels.complianceViolationType(r.getViolationType())),
                     CsvExportHelper.safe(r.getActualValue()),
                     CsvExportHelper.safe(r.getExpectedValue()),
                     CsvExportHelper.safe(applicableNames(r)),
-                    r.getCheckedAt() == null ? "" : r.getCheckedAt().toString(),
+                    CsvExportHelper.time(r.getCheckedAt()),
                     Integer.valueOf(1).equals(r.getIgnored()) ? "是" : "否");
         }
         printer.flush();

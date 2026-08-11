@@ -39,6 +39,11 @@ public class GovernanceOpsApiFallbackFactory implements FallbackFactory<Governan
             }
 
             @Override
+            public Result<Integer> cleanupAssetViewLog(CleanupRequest request) {
+                return Result.ok(0);
+            }
+
+            @Override
             public Result<Integer> cleanupLineageRecord(CleanupRequest request) {
                 return Result.ok(0);
             }

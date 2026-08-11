@@ -316,7 +316,7 @@ public class AssetCollaborationService {
                     CsvExportHelper.safe(item.getOwnerName()),
                     item.getQualityScore() == null ? "" : item.getQualityScore(),
                     item.getViewCount() == null ? "" : item.getViewCount(),
-                    item.getFavoritedAt() == null ? "" : item.getFavoritedAt().toString());
+                    CsvExportHelper.time(item.getFavoritedAt()));
         }
         printer.flush();
     }

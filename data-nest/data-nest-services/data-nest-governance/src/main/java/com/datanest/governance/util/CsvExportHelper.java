@@ -8,6 +8,8 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * CSV 导出助手（导出统一规范，2026-08-11 起；conventions-backend §8）。
@@ -26,7 +28,15 @@ public final class CsvExportHelper {
     /** 公式注入危险首字符（Excel/LibreOffice 会把这些开头的单元格当公式/命令执行） */
     private static final String FORMULA_PREFIX_CHARS = "=+-@";
 
+    /** 导出时间格式（2026-08-11 用户约定：呈现给用户的时间一律 yyyy-MM-dd HH:mm:ss 或 yyyy-MM-dd） */
+    public static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private CsvExportHelper() {
+    }
+
+    /** 时间单元格：null → 空串；否则按 yyyy-MM-dd HH:mm:ss（禁止 LocalDateTime.toString() 的 ISO 带 T 格式直接出镜） */
+    public static String time(LocalDateTime value) {
+        return value == null ? "" : TIME_FORMATTER.format(value);
     }
 
     /** 创建带 UTF-8 BOM 的 CSVPrinter（记录分隔符 \n，与既有导出文件一致）。 */

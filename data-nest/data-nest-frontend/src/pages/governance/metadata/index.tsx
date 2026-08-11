@@ -1348,7 +1348,7 @@ export default function MetadataPage() {
     };
 
     return (
-        <div className="h-[calc(100vh-9rem)] flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden">
             <div className="mb-ds-5 flex-shrink-0 flex items-start justify-between">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary flex items-center gap-ds-2">

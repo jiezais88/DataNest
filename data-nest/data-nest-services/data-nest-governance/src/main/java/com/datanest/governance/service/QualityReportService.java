@@ -32,6 +32,7 @@ import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityScoreHistoryMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
 import com.datanest.governance.util.CsvExportHelper;
+import com.datanest.governance.util.ExportLabels;
 import org.apache.commons.csv.CSVPrinter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -72,7 +73,8 @@ public class QualityReportService {
     private static final int MAX_EXPORT_ROWS = 5000;
     private static final long BUILTIN_DORIS_DATASOURCE_ID = -1L;
     private static final String BUILTIN_DORIS_NAME = "Doris 数仓";
-    private static final DateTimeFormatter CSV_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    /** 导出时间格式统一走 CsvExportHelper.TIME_FORMATTER（yyyy-MM-dd HH:mm:ss） */
+    private static final DateTimeFormatter CSV_TIME_FORMATTER = CsvExportHelper.TIME_FORMATTER;
 
     private final QualityCheckDetailMapper detailMapper;
     private final QualityScoreMapper scoreMapper;
@@ -509,17 +511,17 @@ public class QualityReportService {
                 summary.getAvgScore() == null ? "" : summary.getAvgScore(),
                 summary.getPassRate() == null ? "" : summary.getPassRate());
         printer.printRecord();
-        printer.printRecord("问题清单（WARNING/SEVERE）");
+        printer.printRecord("问题清单（严重/警告）");
         printer.printRecord("表", "规则", "类型", "结果指标", "结果值", "阈值", "级别", "检查时间");
         for (QualityIssueItemDTO item : issues) {
             printer.printRecord(CsvExportHelper.safe(item.getTableName()),
                     CsvExportHelper.safe(item.getRuleName()),
-                    CsvExportHelper.safe(item.getRuleType()),
+                    CsvExportHelper.safe(ExportLabels.qualityRuleType(item.getRuleType())),
                     CsvExportHelper.safe(item.getResultMetric()),
                     item.getResultValue() == null ? "" : item.getResultValue(),
                     item.getThreshold() == null ? "" : item.getThreshold(),
-                    CsvExportHelper.safe(item.getResultLevel()),
-                    item.getCheckedAt() == null ? "" : CSV_TIME_FORMATTER.format(item.getCheckedAt()));
+                    CsvExportHelper.safe(ExportLabels.resultLevel(item.getResultLevel())),
+                    CsvExportHelper.time(item.getCheckedAt()));
         }
         if (truncated) {
             printer.printRecord("# 问题清单超过 " + MAX_EXPORT_ROWS + " 行，已截断");

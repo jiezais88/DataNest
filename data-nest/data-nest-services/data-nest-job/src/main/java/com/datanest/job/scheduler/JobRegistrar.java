@@ -65,6 +65,8 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("standardComplianceCheckHandler", "0 30 2 * * ?");
         // Sprint 6 补全：质量检查历史清理（默认每天凌晨 4 点 30 分，保留 30 天）
         platformJobs.put("qualityCheckHistoryCleanupHandler", "0 30 4 * * ?");
+        // Sprint 8 F1：资产热度记录清理（默认每天凌晨 4 点 40 分，保留 90 天）
+        platformJobs.put("assetViewLogCleanupHandler", "0 40 4 * * ?");
         // 微服务化阶段 2：质量自动触发漏触发对账补发（默认每 10 分钟，窗口 2 小时）
         platformJobs.put("qualityAutoTriggerReconcileHandler", qualityAutoTriggerReconcileCron);
 
@@ -96,6 +98,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "dagNodeTimeoutAlertHandler" -> "DAG 节点超时告警扫描";
             case "standardComplianceCheckHandler" -> "标准合规定时扫描";
             case "qualityCheckHistoryCleanupHandler" -> "质量检查历史清理";
+            case "assetViewLogCleanupHandler" -> "资产热度记录清理";
             case "qualityAutoTriggerReconcileHandler" -> "质量自动触发对账补发";
             default -> handlerName;
         };

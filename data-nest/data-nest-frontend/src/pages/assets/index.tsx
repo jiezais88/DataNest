@@ -404,7 +404,7 @@ export default function AssetsPage() {
             : '';
 
     return (
-        <div className="h-[calc(100vh-9rem)] flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">数据资产</h1>

@@ -20,7 +20,7 @@
 | Sprint 8 UI 原型                         | ✅ 完成   | `DataNest-Sprint8-原型.{html,css,js}`（单 HTML 多视图，7 视图 prototype-switch 切换；渲染已用 Playwright 验证，临时截图/脚本已清理） |
 | F1 资产目录深化（DC-06~09）              | ✅ 完成   | 后端 curl 自测通过 + 前端完成 + E2E `asset-collaboration.spec.ts` **18/18** 通过（2026-08-10 测试会话补 3 用例：删数据源级联清理协作数据/评论「已注销」兜底/评论分页）；后端补齐 5 项缺口（sort=latest/收藏关注筛选/viewCount 全场景回填/搜索标签维度/导出收藏 CSV），前端滚动体验优化（列宽压缩 + 表名左冻结 + 细滚动条 + 热门面板可折叠） |
 | F2 实时 CDC 管道（DI-04/RC-01）          | ✅ 完成   | 后端两轮实测 + 前端完成 + Review 修复 + 联调调通 + **E2E `cdc-pipeline.spec.ts` 23/23 通过**（2026-08-10 测试会话，含 MySQL savepoint 恢复/PG 全链路/8009 引用校验）；**源范围扩展：MySQL + PostgreSQL**（PG 全链路实测通过）；Oracle/SQLServer 决策等 Flink CDC 3.7.0（B7/B8）；E2E 发现并修复后端缺口：仅增量+INITIAL 矛盾组合未拦截（已补 8000 校验） |
-| F3 质量报告（DG-07 完整版）              | 🔄 前端完成 | 后端已实现 + curl 自测通过 + 评审（Yes）修复完成（2026-08-11）：V1.5.0 评分历史表 + ScoreCalculator 写快照 + 报告 7 端点 + CSV 导出；2026-08-11 前端完成（Dashboard 一屏版）+ 后端补 3 端点（score-distribution/datasource-comparison/summary 问题计数）+ Review 修复（评分 ONLINE 口径统一 + 草稿/应用模型）；**2026-08-11 产品化重排**（用户确认）：三区布局（趋势区=四档+平均评分聚合 / 结构行动区=环图+数据源对比+问题清单 TOP6）、score-trend 聚合模式（tableId 可选）、筛选双向联动（库带数据源/任务随数据源+空态提示/下拉固定宽度防漂移）、「生成报告」改名「查询」；技术文档 v1.10 已回落 |
+| F3 质量报告（DG-07 完整版）              | ✅ 完成   | 后端已实现 + curl 自测通过 + 评审（Yes）修复完成（2026-08-11）：V1.5.0 评分历史表 + ScoreCalculator 写快照 + 报告 7 端点 + CSV 导出；2026-08-11 前端完成（Dashboard 一屏版）+ 后端补 3 端点（score-distribution/datasource-comparison/summary 问题计数）+ Review 修复（评分 ONLINE 口径统一 + 草稿/应用模型）；**2026-08-11 产品化重排**（用户确认）：三区布局（趋势区=四档+平均评分聚合 / 结构行动区=环图+数据源对比+问题清单 TOP6）、score-trend 聚合模式（tableId 可选）、筛选双向联动（库带数据源/任务随数据源+空态提示/下拉固定宽度防漂移）、「生成报告」改名「查询」；⑤ 筛选下拉固定宽度 + 任务空态提示；⑥ 问题清单行 flex-1 拉伸填满卡片；⑦ **固定高度页根容器标准统一为 `h-full`**（禁用 `calc(100vh-9rem)` 魔法数字，底部留白 = 主区 padding 24px，数据资产/元数据管理/质量报告三页已迁移，conventions-frontend.md §页面高度策略已更新）；技术文档 v1.10 已回落。**E2E `quality-report.spec.ts` 18/18 通过（2026-08-11 测试会话）**，并修复前端缺陷：库下拉同名库重复 option 导致 React 重复 key 渲染残留（**复合键方案**：选项展示 `库名（数据源名）`、value 为 `数据源ID::库名`，选库即精确设定数据源+库，反向联动无歧义） |
 | 联调验证                                 | ⏳ 未开始 | 每块内部：接口先 Postman/curl 自测，再联调前端，再 E2E                                          |
 | Sprint 8 Handoff                         | 🔄 进行中 | 本文档（规划/设计阶段记录）                                                                   |
 
@@ -74,6 +74,8 @@
 | 回归修复（2026-08-10）                                             | sprint7 `asset-catalog.spec.ts` 血缘回跳断言修复：`53065d6` 把血缘页「← 返回」改为带 `?tab=lineage`，Playwright glob 匹配含 query 串导致 `waitForURL` 超时（存量问题，非 F1 引入）；断言对齐新行为。最终回归 sprint7 26 + sprint8 15 + 其余共 **47/47 通过** |
 | F1 前端 Code Review 修复（2026-08-10，子代理 Review 结论 With fixes，无 Critical） | Important：① Long 计数字段（viewCount/refCount/viewCount30d/commentCount）TS 类型 number→string（后端 Long 全量序列化为 string，已 curl 实证）；② CSV 导出 blob 错误检出（业务异常 Result JSON 会被存成假 CSV）——收敛 `utils/download.ts` 的 `downloadCsvBlob`，收藏页 + 合规页一起换掉。Minor 顺手修：聚合未返回禁点收藏/关注 + 拆分 toggling 锁、`?tag=` 一次性消费 + 首屏双请求消除、评论发表回第 1 页/删空页回退。规范已回落 `conventions-frontend.md`。修复后复跑 sprint8 E2E **15/15 通过**（chip 跳转用例断言对齐 ?tag= 一次性消费新行为） |
 | F2 E2E（2026-08-10 测试会话，新增）                                    | `e2e/sprint8/e2e/cdc-pipeline.spec.ts`（23 用例；复用 sprint7 seed/用户，真实链路：test-mysql/test-postgres 专用 e2e_s8 源表 → Flink 作业 → Iceberg/MinIO → Doris datalake_catalog 断言；e2e_s8 前缀自播种自清理）；`asset-collaboration.spec.ts` 补 3 用例（级联删除/已注销/评论分页）达 18 用例；realtime `CdcPipelineService` 补「仅增量+INITIAL → 8000」校验；最终回归 sprint8 两规格连跑 **41/41 通过** |
+| F3 导出中文化（2026-08-11，用户反馈）                                  | 新增 `governance/util/ExportLabels.java` 中文字典（与前端标签对齐：规则类型/判定级别/合规对象类型/违规类型，未知值原样兜底）；质量报告导出小节标题改「问题清单（严重/警告）」+ 类型/级别列中文化；合规导出对象类型/违规类型中文化；我的收藏导出无枚举残留。**时间格式统一（同日用户约定：呈现给用户的时间一律 `yyyy-MM-dd HH:mm:ss` 或 `yyyy-MM-dd`）**：`CsvExportHelper` 新增 `TIME_FORMATTER` + `time()`，替换合规/收藏导出的 `LocalDateTime.toString()`（ISO 带 T）；规范与 `ExportLabels` 一起落入 conventions-backend §8。系统性排查 3 个 CSV 导出点全覆盖；E2E 断言补强（F3 导出 + sprint6 合规 E1 + F1 收藏导出，锁中文 + 时间格式 + 禁英文枚举） |
+| F3 E2E（2026-08-11 测试会话，新增）                                    | `e2e/sprint8/e2e/quality-report.spec.ts`（18 用例；复用 sprint7 seed/用户，自播种 e2e_s8 报告任务/阈值规则/12 条问题明细/T1×3+T2×1 评分历史快照，固定 ID 段 900008 自清理）；`quality-report/index.tsx` 修复库下拉重复 key 渲染残留（去重 + 唯一归属才反带） |
 | F2 向导高级配置产品化（2026-08-10/11，用户确认）                        | Checkpoint 间隔**档位化**：实时（10 秒）/ 准实时（60 秒，默认推荐）/ 低优先（10 分钟）+ 自定义秒数兜底（历史非档位值编辑回填自动归「自定义」，不静默改值），configJson 仍存秒数后端不变；确认页档位标签展示。**并行度容量动态检测（2026-08-11）**：新增 `GET /cdc/pipelines/cluster-info`（realtime 转发 Flink `/overview` 的 slots-total/slots-available，集群不可达返回空字段），向导并行度提示展示真实 slot 数（「当前集群 N 个 Task Slot（空闲 M）」），拉取失败降级为无数字通用提示；E2E 已覆盖端点 + UI 断言。E2E 复跑 41/41 通过 |
 | `docs/sprint8/DataNest-Sprint8-原型.html/css/js`（新增）| UI 原型：**单 HTML 多视图**（沿用 Sprint 7 范本），prototype-switch 切换 7 视图：数据资产（标签云 + 热门 Top10）、资产详情（标签/收藏/关注/评论/热度）、我的收藏、我的关注（表变更动态）、CDC 管道列表（含日志抽屉）、CDC 新建向导（4 步）、质量报告（**Dashboard 一屏版**：KPI×5 + 四档趋势 + 评分分布环图 + 数据源对比横向条 + 表评分趋势 + 问题清单 TOP5，无滚动）；视觉严格对齐真实 ds-* token + antd 组件结构（accent indigo #4f46e5、圆角 8/12/16px、表头 11px 大写、表格 10px 16px） |
 
@@ -175,14 +177,16 @@
 - [x] 代码评审（结论 **Yes**，无 Critical/Important）已修复：① export 异常包 4222（4221 参数错误原样透传）；② score-trend 校验表存在（对齐 §9.1）；③ BOM 字面量改显式转义防编辑器剥离；④ **平均评分按任务筛选收窄到该任务当前规则覆盖的表**（用户确认口径，技术文档 §4.3 已回落）。记录不改：补算端点并发不幂等、pageSize 无上限（项目惯例）、inSql 子查询重复、export 内 range 算两遍
 - [x] 导出两次规范化（2026-08-11，用户要求）：① 全部导出端点统一为 **void + `HttpServletResponse` 响应流**（质量报告/我的收藏/合规检查三处，规范落入 conventions-backend §8）；② 调研后引入 **Commons CSV 1.14.1**（EasyExcel 已归档、Fesod 拖 POI 过重），三个导出迁移到 `CSVPrinter`，手写 esc() 全部删除，收进 `CsvExportHelper`（BOM + **CSV 公式注入统一防护** `safe()`：首字符 `=+-@` 前置单引号，已单测验证；F1 评审记录的项目级缺口就此消除）
 
-**前端**
-- [ ] `Sidebar.tsx`：「数据治理」组新增「质量报告」（查看 ALL_ROLES，导出 GOVERNANCE_WRITE_ROLES）
-- [ ] `router/index.tsx`：`/governance/quality-report`
-- [ ] 质量报告页：筛选区（联动）+ KPI 卡 + 四档趋势图 + 评分趋势图 + 问题清单表 + 导出按钮
-- [ ] `types/quality-report.ts` + `api/quality-report.ts`
+**前端**——✅ 已完成（2026-08-11）
+- [x] `Sidebar.tsx`：「数据治理」组新增「质量报告」（查看 ALL_ROLES，导出 GOVERNANCE_WRITE_ROLES）
+- [x] `router/index.tsx`：`/governance/quality-report`
+- [x] 质量报告页：筛选区（联动）+ KPI 卡 + 四档趋势图 + 评分趋势图 + 问题清单表 + 导出按钮
+- [x] `types/quality-report.ts` + `api/quality-report.ts`
 
-**测试**
-- [ ] curl 自测 → 前端联调 → `e2e/sprint8/e2e/quality-report.spec.ts`
+**测试**——✅ 完成（2026-08-11 测试会话）
+- [x] curl 自测 → 前端联调 → `e2e/sprint8/e2e/quality-report.spec.ts` **18/18 通过**（选项联动/KPI 双口径/四档趋势/评分趋势聚合+单表+4221/评分分布/数据源对比/问题清单分页与阈值回填/CSV 导出 BOM+公式注入防护+1005/补算幂等/UI 主链路/抽屉分页/行跳详情/导出下载）
+- [x] E2E 发现并修复前端缺陷：**库下拉同名库重复 option → React 重复 key 渲染残留**（选数据源后旧选项不清）；修复为**复合键方案**（2026-08-11 用户确认）：`quality-report/index.tsx` 库选项展示 `库名（数据源名）`、value 用 `数据源ID::库名` 复合键，选库同时精确设定数据源+库
+- [x] 测试环境经验：PG 容器时钟比宿主快 ~0.6s，播种时间字段断言需给 endTime 加缓冲；720p 视口下一屏 Dashboard 结构区行被裁（行点击类断言需拉高视口）
 
 ---
 
@@ -228,6 +232,7 @@
 - [ ] 全量回归：`docker compose up -d` 全部服务 + 前端 build + 各块 E2E 全跑
 - [ ] 代码审查 + 更新 AGENTS.md / docs/agent（如需；新增 realtime 服务/第 5 库/MinIO 需同步架构文档）
 - [ ] 更新 §2 看板全部置 ✅ + 本文档归档
+- [x] **Sprint 8 收尾审计（2026-08-11，用户要求）**：级联删除（表/数据源/标签/CDC 管道四条链全部到位并经实证）+ 删除校验（8009 CDC 引用、8003 运行中保护、4023 评论权限）确认无缺口；定时任务补齐两个清理缺口——`quality_score_history` 并入质量清理端点（独立保留天数默认 90 天）+ `asset_view_log` 新增清理端点与 `assetViewLogCleanupHandler`（每天 04:40，平台任务 13→14 个），均已实测删除生效；`cdc_pipeline_log` 低频不清理（记录在案）；平台无删除用户功能，T4「删收藏/关注」无触发点（评论「已注销」兜底已就绪，未来加用户删除时需补 governance 清理端点）
 
 ## 7. 备注 / 已知坑提醒
 

@@ -27,9 +27,13 @@ public interface GovernanceOpsApi {
     @PostMapping("/collect/cleanup")
     Result<Integer> cleanupCollectHistory(@RequestBody CleanupRequest request);
 
-    /** 清理超过保留天数的质量检查历史（分批 500，级联明细），返回删除总条数 */
+    /** 清理超过保留天数的质量检查历史（分批 500，级联明细），顺带清评分快照历史，返回删除总条数 */
     @PostMapping("/quality/cleanup")
     Result<Integer> cleanupQualityCheckHistory(@RequestBody CleanupRequest request);
+
+    /** 清理超过保留天数的资产热度记录（asset_view_log，Sprint 8 F1），返回删除条数 */
+    @PostMapping("/assets/view-log/cleanup")
+    Result<Integer> cleanupAssetViewLog(@RequestBody CleanupRequest request);
 
     /** 清理超过保留天数的血缘记录，返回删除条数 */
     @PostMapping("/lineage/cleanup")

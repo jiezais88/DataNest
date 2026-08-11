@@ -289,6 +289,14 @@ test.describe('Sprint 6 标准合规检查（判定 + UI + 忽略 + 权限 + 定
         expect(csv).toContain(fullObjectPath('.order_no'));
         expect(csv).toContain('varchar');
         expect(csv).toContain('INT');
+        // 枚举值中文化（2026-08-11）：对象类型/违规类型不出现英文枚举
+        expect(csv).toContain('字段名');
+        expect(csv).toContain('命名规范');
+        expect(csv).not.toContain('COLUMN');
+        expect(csv).not.toContain('NAMING');
+        // 时间格式约定（2026-08-11 用户确认）：yyyy-MM-dd HH:mm:ss，禁止 ISO 带 T
+        expect(csv).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+        expect(csv).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}/);
         // 默认导出未忽略（本用例前所有条目均未忽略）
         expect(csv).toContain('否');
     });

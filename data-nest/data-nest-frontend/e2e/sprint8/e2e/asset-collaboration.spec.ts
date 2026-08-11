@@ -244,6 +244,9 @@ test.describe('DC-07 收藏与关注', () => {
         const body = await res.text();
         expect(body.charCodeAt(0)).toBe(0xFEFF);
         expect(body).toContain('表名,注释,数据源');
+        // 时间格式约定（2026-08-11 用户确认）：yyyy-MM-dd HH:mm:ss，禁止 ISO 带 T
+        expect(body).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+        expect(body).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}/);
         expect(body).toContain(T1_NAME);
     });
 

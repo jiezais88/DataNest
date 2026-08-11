@@ -9,6 +9,9 @@ import com.datanest.governance.entity.LineageRecord;
 import com.datanest.governance.entity.QualityCheckBatch;
 import com.datanest.governance.entity.QualityCheckDetail;
 import com.datanest.governance.entity.QualityJob;
+import com.datanest.governance.entity.QualityScoreHistory;
+import com.datanest.governance.entity.AssetViewLog;
+import com.datanest.governance.mapper.AssetViewLogMapper;
 import com.datanest.governance.mapper.CollectChangeDetailMapper;
 import com.datanest.governance.mapper.CollectExecutionLogMapper;
 import com.datanest.governance.mapper.CollectHistoryMapper;
@@ -16,11 +19,13 @@ import com.datanest.governance.mapper.LineageRecordMapper;
 import com.datanest.governance.mapper.QualityCheckBatchMapper;
 import com.datanest.governance.mapper.QualityCheckDetailMapper;
 import com.datanest.governance.mapper.QualityJobMapper;
+import com.datanest.governance.mapper.QualityScoreHistoryMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -44,6 +49,10 @@ public class GovernanceOpsService {
     private static final int QUALITY_CHECK_DEFAULT_RETAIN_DAYS = 30;
     /** 血缘记录默认保留天数（对齐原 datanest.job.lineage-cleanup.retain-days 默认 90） */
     private static final int LINEAGE_DEFAULT_RETAIN_DAYS = 90;
+    /** 评分快照历史默认保留天数（Sprint 8 F3；对齐报告趋势窗口 7/30/90 天） */
+    private static final int SCORE_HISTORY_DEFAULT_RETAIN_DAYS = 90;
+    /** 资产热度记录默认保留天数（Sprint 8 F1；热度只用最近 30 天，留 90 天兜底） */
+    private static final int ASSET_VIEW_LOG_DEFAULT_RETAIN_DAYS = 90;
     /** 每批删除的批次条数上限，防止单次事务过大 */
     private static final int BATCH_LIMIT = 500;
 
@@ -59,6 +68,8 @@ public class GovernanceOpsService {
     private final QualityCheckDetailMapper qualityCheckDetailMapper;
     private final LineageRecordMapper lineageRecordMapper;
     private final QualityJobMapper qualityJobMapper;
+    private final QualityScoreHistoryMapper qualityScoreHistoryMapper;
+    private final AssetViewLogMapper assetViewLogMapper;
 
     public GovernanceOpsService(CollectHistoryMapper collectHistoryMapper,
                                 CollectExecutionLogMapper collectExecutionLogMapper,
@@ -66,7 +77,9 @@ public class GovernanceOpsService {
                                 QualityCheckBatchMapper qualityCheckBatchMapper,
                                 QualityCheckDetailMapper qualityCheckDetailMapper,
                                 LineageRecordMapper lineageRecordMapper,
-                                QualityJobMapper qualityJobMapper) {
+                                QualityJobMapper qualityJobMapper,
+                                QualityScoreHistoryMapper qualityScoreHistoryMapper,
+                                AssetViewLogMapper assetViewLogMapper) {
         this.collectHistoryMapper = collectHistoryMapper;
         this.collectExecutionLogMapper = collectExecutionLogMapper;
         this.collectChangeDetailMapper = collectChangeDetailMapper;
@@ -74,6 +87,8 @@ public class GovernanceOpsService {
         this.qualityCheckDetailMapper = qualityCheckDetailMapper;
         this.lineageRecordMapper = lineageRecordMapper;
         this.qualityJobMapper = qualityJobMapper;
+        this.qualityScoreHistoryMapper = qualityScoreHistoryMapper;
+        this.assetViewLogMapper = assetViewLogMapper;
     }
 
     /**
@@ -115,11 +130,12 @@ public class GovernanceOpsService {
      * 清理超过保留天数的质量检查历史（对齐原 QualityCheckHistoryCleanupHandler.cleanup）：
      * 按 started_at 超期分批（每批 500）删除 quality_check_batch 并级联 quality_check_detail，
      * 避免高频执行历史无限膨胀且单次事务过大。
+     * Sprint 8 F3：顺带清理 quality_score_history 评分快照历史（独立保留天数，默认 90 天对齐报告趋势窗口）。
      *
-     * @return 批次 + 明细删除总条数
+     * @return 批次 + 明细 + 评分快照删除总条数
      */
     @Transactional
-    public int cleanupQualityCheckHistory(Integer retainDays) {
+    public int cleanupQualityCheckHistory(Integer retainDays, Integer scoreHistoryRetainDays) {
         int days = Math.max(1, retainDays == null ? QUALITY_CHECK_DEFAULT_RETAIN_DAYS : retainDays);
         LocalDateTime threshold = LocalDateTime.now().minusDays(days);
         logger.info("Starting quality check history cleanup, threshold={}, retainDays={}", threshold, days);
@@ -152,7 +168,30 @@ public class GovernanceOpsService {
         }
         logger.info("Quality check history cleanup completed: totalBatches={}, totalDetails={}",
                 totalBatches, totalDetails);
-        return (int) (totalBatches + totalDetails);
+
+        // 评分快照历史清理（按 checked_at 超期一次删；有 idx(checked_at) 索引，量级可控）
+        int scoreDays = Math.max(1, scoreHistoryRetainDays == null
+                ? SCORE_HISTORY_DEFAULT_RETAIN_DAYS : scoreHistoryRetainDays);
+        int scoreRows = qualityScoreHistoryMapper.delete(new QueryWrapper<QualityScoreHistory>()
+                .lt("checked_at", LocalDateTime.now().minusDays(scoreDays)));
+        logger.info("Quality score history cleanup completed: rows={}, retainDays={}", scoreRows, scoreDays);
+        return (int) (totalBatches + totalDetails) + scoreRows;
+    }
+
+    /**
+     * 清理超过保留天数的资产热度记录（asset_view_log，Sprint 8 F1）。
+     * 热度统计只用最近 30 天，默认保留 90 天兜底。
+     *
+     * @return 删除条数
+     */
+    @Transactional
+    public int cleanupAssetViewLog(Integer retainDays) {
+        int days = Math.max(1, retainDays == null ? ASSET_VIEW_LOG_DEFAULT_RETAIN_DAYS : retainDays);
+        LocalDate threshold = LocalDate.now().minusDays(days);
+        int rows = assetViewLogMapper.delete(new QueryWrapper<AssetViewLog>()
+                .lt("view_date", threshold));
+        logger.info("Asset view log cleanup completed: rows={}, retainDays={}", rows, days);
+        return rows;
     }
 
     /**
