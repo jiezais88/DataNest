@@ -3,14 +3,18 @@
 import request from './request';
 import type {PageResult, Result} from '@/types/common';
 import type {
+    CdcCheckpoints,
     CdcClusterInfo,
+    CdcMetricCurrent,
     CdcPipeline,
     CdcPipelineLog,
     CdcPipelineQuery,
     CdcPipelineSaveRequest,
     CdcPipelineStats,
+    CdcSavepointResult,
     CdcSourceTable,
     CdcSourceValidateResult,
+    CdcTrend,
 } from '@/types/cdc';
 
 const BASE = '/realtime/cdc/pipelines';
@@ -74,3 +78,25 @@ export const getCdcPipelineLogs = (id: string, page: number, pageSize: number) =
 /** 刷新 Doris catalog（湖仓新表/新数据让 Doris 外部表可见） */
 export const refreshCdcCatalog = (id: string) =>
     request.get<Result<null>>(`${BASE}/${id}/refresh-catalog`).then(r => r.data);
+
+// ==================== Sprint 9 F1/F2：运行监控 + 检查点 + savepoint ====================
+
+/** 管道实时 KPI（当前延迟/吞吐/累计变更/作业重启；非运行中返回最后已知值 + live=false） */
+export const getCdcMetricCurrent = (id: string) =>
+    request.get<Result<CdcMetricCurrent>>(`${BASE}/${id}/metrics/current`).then(r => r.data);
+
+/** 管道指标趋势（range ∈ 1h/6h/24h/7d，默认 24h；24h 按 5 分钟桶、7d 按小时桶聚合） */
+export const getCdcMetricTrend = (id: string, range: string) =>
+    request.get<Result<CdcTrend>>(`${BASE}/${id}/metrics/trend`, {params: {range}}).then(r => r.data);
+
+/** checkpoint 历史/健康度（实时转发 Flink REST，不落库；作业不可达 reachable=false） */
+export const getCdcCheckpoints = (id: string) =>
+    request.get<Result<CdcCheckpoints>>(`${BASE}/${id}/checkpoints`).then(r => r.data);
+
+/** 手动触发 savepoint（仅运行中；成功回写 savepoint_path，失败抛 8010/8011） */
+export const triggerCdcSavepoint = (id: string) =>
+    request.post<Result<CdcSavepointResult>>(`${BASE}/${id}/savepoints`).then(r => r.data);
+
+/** 强制停止管道（作业已丢失降级：跳过 savepoint 置 STOPPED；非运行中幂等返回当前状态） */
+export const forceStopCdcPipeline = (id: string) =>
+    request.post<Result<CdcPipeline>>(`${BASE}/${id}/force-stop`).then(r => r.data);

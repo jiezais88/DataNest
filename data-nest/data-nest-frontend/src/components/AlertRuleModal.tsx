@@ -29,12 +29,21 @@ const OBJECT_TYPE_OPTIONS: { value: AlertObjectType; label: string }[] = [
     {value: 'SYNC_JOB', label: '同步任务'},
     {value: 'COLLECT_TASK', label: '采集任务'},
     {value: 'QUALITY', label: '质量任务'},
+    {value: 'CDC_PIPELINE', label: 'CDC 管道'},
 ];
 
+/** 默认触发条件（非 CDC 对象类型）：失败/超时/成功 */
 const TRIGGER_OPTIONS: { value: AlertTriggerType; label: string }[] = [
     {value: 'FAILURE', label: '失败'},
     {value: 'TIMEOUT', label: '超时'},
     {value: 'SUCCESS', label: '成功'},
+];
+
+/** CDC 管道专属触发条件：作业失败/延迟超阈值/外部停止（后端 AlertConstants 语义） */
+const CDC_TRIGGER_OPTIONS: { value: AlertTriggerType; label: string }[] = [
+    {value: 'FAILURE', label: '作业失败'},
+    {value: 'LAG_EXCEEDED', label: '延迟超阈值'},
+    {value: 'EXTERNAL_STOP', label: '外部停止'},
 ];
 
 export interface AlertRuleModalProps {
@@ -155,11 +164,15 @@ export default function AlertRuleModal({
             .finally(() => setObjectOptionsLoading(false));
     }, [open, objectType, objectLocked]);
 
-    // 用户手动切换对象类型时，重置已选对象
+    // 用户手动切换对象类型时，重置已选对象与触发条件（各类型默认项均为 FAILURE）
     const handleObjectTypeChange = (type: AlertObjectType) => {
         setObjectType(type);
         setObjectIds([]);
+        setConditions(['FAILURE']);
     };
+
+    // 当前对象类型可选的触发条件
+    const currentTriggerOptions = objectType === 'CDC_PIPELINE' ? CDC_TRIGGER_OPTIONS : TRIGGER_OPTIONS;
 
     // DAG 选项：项目 → DAG 树形结构
     const dagTreeData = useMemo(() => {
@@ -363,7 +376,7 @@ export default function AlertRuleModal({
                             触发条件 <span className="text-ds-danger">*</span>
                         </label>
                         <div className="space-y-ds-1.5">
-                            {TRIGGER_OPTIONS.map(o => (
+                            {currentTriggerOptions.map(o => (
                                 <label key={o.value}
                                        className="flex items-center gap-ds-2 text-ds-body text-ds-text-primary">
                                     <input
@@ -383,6 +396,15 @@ export default function AlertRuleModal({
                                 <p>• 失败：批次中存在达到任务告警等级（严重/警告）的检查项</p>
                                 <p>• 成功：批次全部检查项通过且执行成功</p>
                                 <p>• 超时：任务配置了超时阈值（编辑任务 → 执行超时），批次执行超过该分钟数仍 RUNNING 即触发；未配置则永不触发</p>
+                            </div>
+                        )}
+                        {objectType === 'CDC_PIPELINE' && (
+                            <div
+                                className="mt-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm px-ds-3 py-ds-2 text-ds-nano text-ds-text-muted leading-relaxed">
+                                <p className="font-semibold text-ds-text-secondary mb-0.5">CDC 管道触发语义说明</p>
+                                <p>• 作业失败：Flink 作业进入 FAILED（管道置异常）时触发</p>
+                                <p>• 延迟超阈值：同步延迟超过全局阈值（默认 30 秒）时触发；同一管道连续超阈值仅告警一次，恢复后可再次告警</p>
+                                <p>• 外部停止：作业被外部取消，或集群重启导致作业丢失（连续 3 轮探测确认）时触发</p>
                             </div>
                         )}
                     </div>

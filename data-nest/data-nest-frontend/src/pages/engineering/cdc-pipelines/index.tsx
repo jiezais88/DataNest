@@ -19,6 +19,7 @@ import {
 } from 'react-icons/hi2';
 import {
     deleteCdcPipeline,
+    forceStopCdcPipeline,
     getCdcPipelineStats,
     pageCdcPipelines,
     refreshCdcCatalog,
@@ -37,6 +38,7 @@ import {COL} from '@/constants/table';
 import usePagedList from '@/hooks/usePagedList';
 import {useHasRole} from '@/hooks/useHasRole';
 import {formatDateTime, formatRunningDuration} from '@/utils/format';
+import {getErrorCode} from '@/utils/error';
 import {notify} from '@/utils/notify';
 import type {CdcPipeline, CdcPipelineQuery, CdcPipelineStats, CdcPipelineStatus} from '@/types/cdc';
 import CdcLogDrawer from './CdcLogDrawer';
@@ -101,9 +103,12 @@ export default function CdcPipelinesPage() {
     const [logTarget, setLogTarget] = useState<CdcPipeline | null>(null);
     const [stopTarget, setStopTarget] = useState<CdcPipeline | null>(null);
     const [stopLoading, setStopLoading] = useState(false);
+    const [forceStopTarget, setForceStopTarget] = useState<CdcPipeline | null>(null);
+    const [forceStopLoading, setForceStopLoading] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<CdcPipeline | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [actingId, setActingId] = useState<string | null>(null);
+    const [catalogRefreshing, setCatalogRefreshing] = useState(false);
 
     const afterMutation = () => {
         reload();
@@ -130,11 +135,29 @@ export default function CdcPipelinesPage() {
             await stopCdcPipeline(stopTarget.id);
             notify.success(`管道「${stopTarget.name}」已停止（savepoint 已保存）`);
             afterMutation();
-        } catch {
-            // 拦截器已提示
+        } catch (e) {
+            // 作业已丢失（8008）：拦截器已提示停止失败，弹出强制停止降级确认
+            if (getErrorCode(e) === 8008) {
+                setForceStopTarget(stopTarget);
+            }
         } finally {
             setStopLoading(false);
             setStopTarget(null);
+        }
+    };
+
+    const handleForceStop = async () => {
+        if (!forceStopTarget) return;
+        setForceStopLoading(true);
+        try {
+            await forceStopCdcPipeline(forceStopTarget.id);
+            notify.success(`管道「${forceStopTarget.name}」已强制停止（未保存位点，下次启动将按启动位点重新同步）`);
+            afterMutation();
+        } catch {
+            // 拦截器已提示
+        } finally {
+            setForceStopLoading(false);
+            setForceStopTarget(null);
         }
     };
 
@@ -153,15 +176,19 @@ export default function CdcPipelinesPage() {
         }
     };
 
-    const handleRefreshCatalog = async (p: CdcPipeline) => {
-        setActingId(p.id);
+    // 全局刷新数仓可见性：后端为 catalog 级 REFRESH CATALOG（对所有管道生效），
+    // id 仅作存在性校验/日志载体，故取列表任意管道 id 即可。
+    const handleRefreshCatalog = async () => {
+        const id = list[0]?.id;
+        if (!id) return;
+        setCatalogRefreshing(true);
         try {
-            await refreshCdcCatalog(p.id);
-            notify.success('已触发 Doris Catalog 刷新');
+            await refreshCdcCatalog(id);
+            notify.success('数仓可见性已刷新，新表/新数据现已可在数仓查询');
         } catch {
             // 拦截器已提示
         } finally {
-            setActingId(null);
+            setCatalogRefreshing(false);
         }
     };
 
@@ -357,15 +384,6 @@ export default function CdcPipelinesPage() {
                         </DsIconButton>
                     </Tooltip>
                     {canWrite && (
-                        <Tooltip title="刷新 Doris Catalog（湖仓新表/新数据可见）">
-                            <DsIconButton tone="accent" aria-label={`刷新 Catalog ${r.name}`}
-                                          disabled={actingId === r.id}
-                                          onClick={() => handleRefreshCatalog(r)}>
-                                <HiOutlineArrowPath size={14}/>
-                            </DsIconButton>
-                        </Tooltip>
-                    )}
-                    {canWrite && (
                         <Tooltip title={r.status === 'RUNNING' ? '运行中请先停止' : '删除'}>
                             <span>
                                 <DsIconButton tone="danger" aria-label={`删除 ${r.name}`}
@@ -421,14 +439,17 @@ export default function CdcPipelinesPage() {
                     <DsToolbar
                         extra={(
                             <>
-                                <Tooltip title="刷新列表与统计">
-                                    <span>
-                                        <DsButton variant="secondary" onClick={afterMutation} disabled={loading}>
-                                            <HiOutlineArrowPath size={14}/>
-                                            刷新
-                                        </DsButton>
-                                    </span>
-                                </Tooltip>
+                                {canWrite && (
+                                    <Tooltip title="立即让数仓感知湖仓中的新表/新数据（对所有管道生效）。系统每 30 秒自动同步一次（仅存在运行中管道时才生效），一般无需手动操作；仅当数仓查不到刚落库的数据时点此立即生效。">
+                                        <span>
+                                            <DsButton variant="secondary" onClick={handleRefreshCatalog}
+                                                      disabled={loading || catalogRefreshing || list.length === 0}>
+                                                <HiOutlineArrowPath size={14}/>
+                                                {catalogRefreshing ? '刷新中...' : '刷新数仓可见性'}
+                                            </DsButton>
+                                        </span>
+                                    </Tooltip>
+                                )}
                                 <DsButton onClick={handleSearch} disabled={loading}>
                                     {loading ? '查询中...' : '查询'}
                                 </DsButton>
@@ -512,6 +533,25 @@ export default function CdcPipelinesPage() {
                 loading={stopLoading}
                 onConfirm={handleStop}
                 onCancel={() => setStopTarget(null)}
+            />
+
+            {/* 强制停止确认（停止遇 8008 作业丢失后的降级入口） */}
+            <ConfirmDialog
+                open={!!forceStopTarget}
+                title="强制停止管道"
+                message={
+                    <div>
+                        <p>Flink 集群中未找到管道「{forceStopTarget?.name}」的作业（可能集群已重启或作业被外部清理），无法保存 savepoint。</p>
+                        <p className="mt-ds-2 text-ds-small text-ds-text-secondary">
+                            强制停止将直接把管道置为「已停止」并清除位点记录；<strong>下次启动按启动位点重新同步</strong>（全量+增量模式将重跑全量快照）。
+                        </p>
+                    </div>
+                }
+                confirmLabel="强制停止"
+                danger
+                loading={forceStopLoading}
+                onConfirm={handleForceStop}
+                onCancel={() => setForceStopTarget(null)}
             />
 
             {/* 删除确认 */}

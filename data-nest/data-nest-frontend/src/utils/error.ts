@@ -29,3 +29,16 @@ export function getErrorMessage(e: unknown, fallback = '操作失败，请稍后
     }
     return fallback;
 }
+
+/** 从错误中提取后端业务错误码（信封 code，如 8008 作业丢失停止失败）；非业务错误返回 undefined */
+export function getErrorCode(e: unknown): number | undefined {
+    if (axios.isAxiosError(e)) {
+        const data = e.response?.data as { code?: number } | undefined;
+        return typeof data?.code === 'number' ? data.code : undefined;
+    }
+    if (e instanceof Error) {
+        const resp = (e as ApiError).response;
+        return typeof resp?.data?.code === 'number' ? resp.data.code : undefined;
+    }
+    return undefined;
+}

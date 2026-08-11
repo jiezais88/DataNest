@@ -46,6 +46,7 @@ const OBJECT_TYPE_OPTIONS: { value: AlertObjectType | ''; label: string }[] = [
     {value: 'SYNC_JOB', label: '同步任务'},
     {value: 'COLLECT_TASK', label: '采集任务'},
     {value: 'QUALITY', label: '质量任务'},
+    {value: 'CDC_PIPELINE', label: 'CDC 管道'},
 ];
 
 const ALERT_TYPE_OPTIONS: { value: AlertTriggerType | ''; label: string }[] = [
@@ -53,6 +54,8 @@ const ALERT_TYPE_OPTIONS: { value: AlertTriggerType | ''; label: string }[] = [
     {value: 'FAILURE', label: '失败'},
     {value: 'TIMEOUT', label: '超时'},
     {value: 'SUCCESS', label: '成功'},
+    {value: 'LAG_EXCEEDED', label: '延迟超阈值'},
+    {value: 'EXTERNAL_STOP', label: '外部停止'},
 ];
 
 const SEND_STATUS_OPTIONS: { value: AlertSendStatus | ''; label: string }[] = [
@@ -71,6 +74,8 @@ const TRIGGER_LABEL: Record<AlertTriggerType, string> = {
     FAILURE: '失败',
     TIMEOUT: '超时',
     SUCCESS: '成功',
+    LAG_EXCEEDED: '延迟超阈值',
+    EXTERNAL_STOP: '外部停止',
 };
 
 /** 质量批次告警 summary 逐行解析（每行一条「[等级] 规则名: 详情」），返回展示行 */
@@ -113,13 +118,24 @@ function objectTypeBadge(type: AlertObjectType) {
     const variant = type === 'SYNC_JOB' ? 'accent'
         : type === 'COLLECT_TASK' ? 'success'
             : type === 'QUALITY' ? 'warning'
-                : 'running';
+                : type === 'CDC_PIPELINE' ? 'accent'
+                    : 'running';
     const label = type === 'SYNC_JOB' ? '同步任务'
         : type === 'COLLECT_TASK' ? '采集任务'
             : type === 'QUALITY' ? '质量任务'
-                : 'DAG';
+                : type === 'CDC_PIPELINE' ? 'CDC 管道'
+                    : 'DAG';
     return <DsStatusBadge variant={variant} label={label}/>;
 }
+
+/** 触发条件徽章颜色映射（对齐后端告警类型语义） */
+const TRIGGER_BADGE_CLASS: Record<AlertTriggerType, string> = {
+    FAILURE: 'bg-ds-danger-light text-ds-danger',
+    TIMEOUT: 'bg-ds-warning-light text-ds-warning',
+    SUCCESS: 'bg-ds-success-light text-ds-success',
+    LAG_EXCEEDED: 'bg-ds-warning-light text-ds-warning',
+    EXTERNAL_STOP: 'bg-ds-danger-light text-ds-danger',
+};
 
 function triggerBadges(conditions: AlertTriggerType[]) {
     return (
@@ -127,13 +143,7 @@ function triggerBadges(conditions: AlertTriggerType[]) {
             {(conditions || []).map(c => (
                 <span
                     key={c}
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge ${
-                        c === 'FAILURE'
-                            ? 'bg-ds-danger-light text-ds-danger'
-                            : c === 'TIMEOUT'
-                                ? 'bg-ds-warning-light text-ds-warning'
-                                : 'bg-ds-success-light text-ds-success'
-                    }`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge ${TRIGGER_BADGE_CLASS[c] || 'bg-ds-bg-hover text-ds-text-muted'}`}
                 >
                     {TRIGGER_LABEL[c] || c}
                 </span>
@@ -495,13 +505,7 @@ export default function AlertCenterPage() {
             width: COL.STATUS,
             render: (v: AlertTriggerType) => (
                 <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge ${
-                        v === 'FAILURE'
-                            ? 'bg-ds-danger-light text-ds-danger'
-                            : v === 'TIMEOUT'
-                                ? 'bg-ds-warning-light text-ds-warning'
-                                : 'bg-ds-success-light text-ds-success'
-                    }`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-badge ${TRIGGER_BADGE_CLASS[v] || 'bg-ds-bg-hover text-ds-text-muted'}`}
                 >
                     {TRIGGER_LABEL[v] || v}
                 </span>

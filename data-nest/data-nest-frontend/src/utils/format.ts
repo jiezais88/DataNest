@@ -112,6 +112,16 @@ export function formatDateTime(value?: string): string {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+/** ISO 字符串 -> "HH:mm"（本地时区；跨天时带日期 "MM-dd HH:mm"），空值/非法值 -> "" */
+export function formatTimeHm(value?: string): string {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const hm = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return hm;
+}
+
 /** 相对时间：1 分钟内"刚刚"，之后"N 分钟/小时/天前"，超过 7 天显示日期 */
 export function formatRelativeTime(value?: string): string {
     if (!value) return '-';

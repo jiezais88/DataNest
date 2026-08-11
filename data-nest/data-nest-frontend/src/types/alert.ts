@@ -2,9 +2,10 @@
 // 对齐后端 task-core AlertRuleDTO / AlertObjectOptionDTO / AlertHistory / UserOptionDTO
 // 注意：后端 JacksonConfig 将 Long 全局序列化为字符串，所有 ID 用 string 类型
 
-export type AlertObjectType = 'DAG' | 'SYNC_JOB' | 'COLLECT_TASK' | 'QUALITY';
+export type AlertObjectType = 'DAG' | 'SYNC_JOB' | 'COLLECT_TASK' | 'QUALITY' | 'CDC_PIPELINE';
 
-export type AlertTriggerType = 'FAILURE' | 'TIMEOUT' | 'SUCCESS';
+/** 触发条件：FAILURE 失败 / TIMEOUT 超时 / SUCCESS 成功 / LAG_EXCEEDED 延迟超阈值（CDC）/ EXTERNAL_STOP 外部停止（CDC） */
+export type AlertTriggerType = 'FAILURE' | 'TIMEOUT' | 'SUCCESS' | 'LAG_EXCEEDED' | 'EXTERNAL_STOP';
 
 /** 邮件发送状态 */
 export type AlertSendStatus = 'SUCCESS' | 'FAILED';

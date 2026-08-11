@@ -121,3 +121,85 @@ export interface CdcPipelineLog {
     message: string;
     createdAt?: string;
 }
+
+// ==================== Sprint 9 F1：运行监控（实时 KPI + 趋势） ====================
+
+/** 管道实时 KPI（GET /cdc/pipelines/{id}/metrics/current） */
+export interface CdcMetricCurrent {
+    /** 是否运行中（非 RUNNING 时各指标为最后已知值） */
+    live?: boolean;
+    /** 当前延迟（秒），-1 表示取不到 */
+    currentLagSeconds?: number;
+    /** 当前吞吐（行/秒，sink vertex numRecordsOutPerSecond 求和），-1 表示取不到 */
+    throughputRowsPerSecond?: number;
+    /** 作业累计重启次数 */
+    numRestarts?: number;
+    /** 累计变更数（Long 序列化为 string） */
+    totalChanges?: string;
+}
+
+/** 趋势图数据点 */
+export interface CdcTrendPoint {
+    /** 采样时间（1h/6h 原始分钟点；24h 为 5 分钟桶起点；7d 为整点） */
+    minuteAt: string;
+    /** 本桶延迟均值（秒），无样本为 null */
+    lagAvgSeconds?: number | null;
+    /** 本桶延迟峰值（秒），无样本为 null（趋势图标红判定用） */
+    lagMaxSeconds?: number | null;
+    /** 本桶吞吐均值（行/秒），无样本为 null */
+    recordsPerSecondAvg?: number | null;
+}
+
+/** 趋势图返回（GET /cdc/pipelines/{id}/metrics/trend?range=） */
+export interface CdcTrend {
+    /** 查询范围：1h/6h/24h/7d */
+    range: string;
+    /** 数据点（按时间升序；无数据时段为空，前端断点展示不插值） */
+    points: CdcTrendPoint[];
+}
+
+// ==================== Sprint 9 F2：Checkpoint / Savepoint 管理 ====================
+
+/** checkpoint 健康度摘要 */
+export interface CdcCheckpointSummary {
+    /** 最近一次成功 checkpoint 触发时间（yyyy-MM-dd HH:mm:ss），无则 null */
+    latestCompletedTime?: string | null;
+    /** 端到端耗时均值（毫秒），无样本为 null */
+    avgDurationMs?: string | number | null;
+    /** 近期失败次数（受 Flink 保留窗口限制，文案标注「近期」不承诺精确 24h） */
+    recentFailedCount?: string | number | null;
+}
+
+/** checkpoint 历史条目 */
+export interface CdcCheckpointHistoryItem {
+    /** 触发时间（yyyy-MM-dd HH:mm:ss） */
+    triggerTime: string;
+    /** 端到端耗时（毫秒） */
+    durationMs?: string | number | null;
+    /** 状态大小（字节） */
+    stateSizeBytes?: string | number | null;
+    /** 状态：COMPLETED / FAILED / IN_PROGRESS */
+    status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
+    /** 是否 savepoint */
+    savepoint?: boolean;
+    /** checkpoint 类型：CHECKPOINT / SAVEPOINT */
+    checkpointType?: string;
+}
+
+/** 检查点页签数据（GET /cdc/pipelines/{id}/checkpoints；作业不可达 reachable=false 空结构） */
+export interface CdcCheckpoints {
+    /** Flink 作业是否可达（不可达时三卡/历史为空，前端降级提示） */
+    reachable?: boolean;
+    /** 健康度摘要（三卡） */
+    summary?: CdcCheckpointSummary | null;
+    /** 最近 20 条 checkpoint 历史（按触发时间倒序） */
+    history?: CdcCheckpointHistoryItem[];
+    /** 最近一次 savepoint 路径（latest.savepoint.external_path），无则 null */
+    latestSavepointPath?: string | null;
+}
+
+/** 手动触发 savepoint 返回（POST /cdc/pipelines/{id}/savepoints） */
+export interface CdcSavepointResult {
+    /** 新 savepoint 路径（s3a://...，已回写管道 savepoint_path） */
+    savepointPath?: string;
+}
