@@ -1,5 +1,5 @@
-import {useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useEffect, useState} from 'react';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {login} from '@/api/auth';
 import {useAuthStore} from '@/store/useAuthStore';
 import ErrorCard from '@/components/ErrorCard';
@@ -9,6 +9,7 @@ import {getErrorMessage} from '@/utils/error';
 
 export default function LoginPage() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const {setAuth} = useAuthStore();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -16,6 +17,15 @@ export default function LoginPage() {
     const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // 被踢出登录（401 跳转携带 expired=1）时提示原因；读取后清掉参数避免刷新重复提示
+    useEffect(() => {
+        if (searchParams.get('expired') === '1') {
+            setError('登录已过期，请重新登录');
+            setSearchParams({}, {replace: true});
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const canSubmit = username.trim() && password.trim();
 

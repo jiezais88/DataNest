@@ -43,7 +43,9 @@ instance.interceptors.response.use(
     (err: AxiosError<{ message?: string }>) => {
         if (err.response?.status === 401) {
             localStorage.removeItem('token');
-            window.location.href = '/login';
+            // 踢出登录（token 过期/闲置超时）：整页跳转前弹 toast 会被刷新销毁，
+            // 改为带 expired=1 参数跳登录页，由登录页挂载时展示提示
+            window.location.href = '/login?expired=1';
             return Promise.reject(err);
         }
         const msg = err.response?.data?.message || err.message || '网络异常，请稍后重试';
