@@ -330,28 +330,29 @@ services:
   # 镜像：gvenzl/oracle-free:23-slim（社区免费版，无需授权）
   # 持久化：test-oracle-data 卷
   # 启动慢（start_period=120s），需等 initdb 完成
+  # 2026-08-11 起停用（本期 CDC 只接 MySQL，Oracle 资源占用大，需要时取消注释即可）
   # ============================================
-  middleware-test-oracle:
-    image: gvenzl/oracle-free:23-slim
-    container_name: datanest-middleware-test-oracle
-    environment:
-      ORACLE_PASSWORD: root123
-      APP_USER: testuser
-      APP_USER_PASSWORD: testpass123
-      TZ: Asia/Shanghai
-    ports:
-      - "1521:1521"
-    volumes:
-      - test-oracle-data:/opt/oracle/oradata
-      - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
-    healthcheck:
-      test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 120s
-    networks:
-      - datanest-net
+  # middleware-test-oracle:
+  #   image: gvenzl/oracle-free:23-slim
+  #   container_name: datanest-middleware-test-oracle
+  #   environment:
+  #     ORACLE_PASSWORD: root123
+  #     APP_USER: testuser
+  #     APP_USER_PASSWORD: testpass123
+  #     TZ: Asia/Shanghai
+  #   ports:
+  #     - "1521:1521"
+  #   volumes:
+  #     - test-oracle-data:/opt/oracle/oradata
+  #     - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 20
+  #     start_period: 120s
+  #   networks:
+  #     - datanest-net
 
   # ============================================
   # Test SQL Server 2022 — 数据源 E2E 测试目标库
@@ -789,7 +790,7 @@ volumes:
   # Sprint 8 实时 CDC：Flink 作业数据与 checkpoint
   flink-data:
   flink-checkpoints:
-  test-oracle-data:
+  # test-oracle-data:（2026-08-11 随 middleware-test-oracle 一起停用）
   # PowerJob server 持久化（日志/H2 本地库等）
   powerjob-server-data:
 

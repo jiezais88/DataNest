@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
+import com.datanest.realtime.dto.CdcClusterInfoDTO;
 import com.datanest.realtime.dto.CdcPipelineDTO;
 import com.datanest.realtime.dto.CdcPipelineLogDTO;
 import com.datanest.realtime.dto.CdcPipelineSaveRequest;
@@ -71,6 +72,13 @@ public class CdcPipelineController {
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     public Result<List<String>> listTargetDatabases() {
         return Result.ok(dorisCatalogService.listLakeDatabases());
+    }
+
+    @Operation(summary = "Flink 集群容量", description = "Task Slot 总数/空闲数（向导并行度动态提示；集群不可达时字段为空，前端降级通用提示）")
+    @GetMapping("/cluster-info")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    public Result<CdcClusterInfoDTO> clusterInfo() {
+        return Result.ok(pipelineService.clusterInfo());
     }
 
     @Operation(summary = "创建管道", description = "初始状态 STOPPED；UPSERT 模式每表必须配置主键")

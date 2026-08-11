@@ -3,6 +3,7 @@
 import request from './request';
 import type {PageResult, Result} from '@/types/common';
 import type {
+    CdcClusterInfo,
     CdcPipeline,
     CdcPipelineLog,
     CdcPipelineQuery,
@@ -17,6 +18,10 @@ const BASE = '/realtime/cdc/pipelines';
 /** 源数据源预检（连通性/binlog 开启/ROW 格式/源库存在性逐项） */
 export const validateCdcSource = (datasourceId: string, sourceDatabase?: string) =>
     request.post<Result<CdcSourceValidateResult>>(`${BASE}/validate-source`, {datasourceId, sourceDatabase}).then(r => r.data);
+
+/** Flink 集群容量（Task Slot 总数/空闲数，向导并行度动态提示；集群不可达字段为空） */
+export const getCdcClusterInfo = () =>
+    request.get<Result<CdcClusterInfo>>(`${BASE}/cluster-info`).then(r => r.data);
 
 /** 源 MySQL 库列表（向导选库下拉，已过滤系统库） */
 export const listCdcSourceDatabases = (datasourceId: string) =>

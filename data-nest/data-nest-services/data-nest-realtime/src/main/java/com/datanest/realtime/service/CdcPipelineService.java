@@ -13,6 +13,7 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.IdsRequest;
+import com.datanest.realtime.dto.CdcClusterInfoDTO;
 import com.datanest.realtime.dto.CdcPipelineDTO;
 import com.datanest.realtime.dto.CdcPipelineLogDTO;
 import com.datanest.realtime.dto.CdcPipelineSaveRequest;
@@ -170,6 +171,23 @@ public class CdcPipelineService {
         Long syncedTables = tableMapper.selectCount(null);
         dto.setSyncedTables(syncedTables == null ? 0L : syncedTables);
         return dto;
+    }
+
+    /** Flink 集群容量（Task Slot 总数/空闲数，向导并行度提示；集群不可达返回空字段，前端降级） */
+    public CdcClusterInfoDTO clusterInfo() {
+        CdcClusterInfoDTO dto = new CdcClusterInfoDTO();
+        try {
+            Map<String, Object> overview = flinkJobService.getClusterOverview();
+            dto.setSlotsTotal(toInteger(overview == null ? null : overview.get("slots-total")));
+            dto.setSlotsAvailable(toInteger(overview == null ? null : overview.get("slots-available")));
+        } catch (Exception e) {
+            logger.warn("查询 Flink 集群概览失败（前端降级通用提示）: error={}", e.getMessage());
+        }
+        return dto;
+    }
+
+    private static Integer toInteger(Object value) {
+        return value instanceof Number n ? n.intValue() : null;
     }
 
     /** 分页查询（status/keyword 过滤，id 倒序，批量回填数据源名） */

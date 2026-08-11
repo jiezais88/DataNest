@@ -16,6 +16,7 @@ import {
 } from 'react-icons/hi2';
 import {
     createCdcPipeline,
+    getCdcClusterInfo,
     getCdcPipeline,
     listCdcSourceDatabases,
     listCdcSourceTables,
@@ -30,6 +31,7 @@ import DsStatusBadge from '@/components/DsStatusBadge';
 import {DataSourceTypeEnum} from '@/constants/datasource';
 import {notify} from '@/utils/notify';
 import type {
+    CdcClusterInfo,
     CdcPipelineSaveRequest,
     CdcSourceTable,
     CdcSourceValidateResult,
@@ -175,6 +177,20 @@ export default function CdcPipelineWizardPage() {
                 setDatasourceTypeMap(Object.fromEntries(records.map(d => [d.id, d.type])));
             })
             .catch(() => setDatasourceOptions([]));
+    }, []);
+
+    /** Flink 集群 slot（并行度动态提示；null=未加载/集群不可达，降级通用提示） */
+    const [clusterSlots, setClusterSlots] = useState<{ total: number; available: number } | null>(null);
+
+    // 集群容量动态检测（Flink /overview 经 realtime 转发；失败保持 null 走通用提示）
+    useEffect(() => {
+        getCdcClusterInfo()
+            .then((info?: CdcClusterInfo) => {
+                if (info?.slotsTotal != null) {
+                    setClusterSlots({total: info.slotsTotal, available: info.slotsAvailable ?? 0});
+                }
+            })
+            .catch(() => setClusterSlots(null));
     }, []);
 
     // 现有湖仓库名（目标库下拉候选；接口失败降级为空，仍可自由输入）
@@ -732,7 +748,9 @@ export default function CdcPipelineWizardPage() {
                                                aria-label="并行度"
                                                onChange={(e) => setParallelism(Number(e.target.value))}/>
                                         <div className="text-ds-tiny text-ds-warning mt-ds-1">
-                                            当前集群仅 1 个 Task Slot，并行度 &gt;1 作业将无法调度
+                                            {clusterSlots
+                                                ? `当前集群 ${clusterSlots.total} 个 Task Slot（空闲 ${clusterSlots.available}），并行度超过将无法调度`
+                                                : '并行度超过集群 Task Slot 数将无法调度'}
                                         </div>
                                     </div>
                                     <div>

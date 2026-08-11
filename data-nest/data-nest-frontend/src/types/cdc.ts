@@ -107,6 +107,12 @@ export interface CdcSourceValidateResult {
     checks?: CdcCheckItem[];
 }
 
+/** Flink 集群容量（向导并行度动态提示；集群不可达时字段为空，前端降级通用提示） */
+export interface CdcClusterInfo {
+    slotsTotal?: number;
+    slotsAvailable?: number;
+}
+
 /** 运行日志项 */
 export interface CdcPipelineLog {
     id: string;

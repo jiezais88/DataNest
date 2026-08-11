@@ -245,6 +245,11 @@ test.describe('A. 源预检与元数据', () => {
 
         const targets = await engineer.get<string[]>('/realtime/cdc/pipelines/target-databases');
         expect(Array.isArray(targets)).toBe(true);
+
+        // 集群容量端点（向导并行度动态提示）
+        const cluster = await engineer.get<any>('/realtime/cdc/pipelines/cluster-info');
+        expect(cluster.slotsTotal).toBeGreaterThanOrEqual(1);
+        expect(cluster.slotsAvailable).toBeGreaterThanOrEqual(0);
     });
 });
 
@@ -315,7 +320,9 @@ test.describe('C. 向导创建与列表页', () => {
         await page.getByLabel('目标库').fill(TARGET_DB);
         await expect(page.getByLabel(`主键列 ${T_MAIN}`)).toHaveValue('id');
         await expect(page.getByLabel(`目标表名 ${T_MAIN}`)).toHaveValue(T_MAIN);
-        // 配置带：默认 全量+增量 / Upsert；高级配置 Checkpoint 选「实时（10 秒）」档（加速增量验证）
+        // 配置带：默认 全量+增量 / Upsert；并行度容量为动态检测的真实 slot 数
+        await expect(page.getByText(/当前集群 \d+ 个 Task Slot（空闲 \d+），并行度超过将无法调度/)).toBeVisible();
+        // 高级配置 Checkpoint 选「实时（10 秒）」档（加速增量验证）
         await page.getByLabel('Checkpoint 间隔').click();
         await page.locator('.ant-select-dropdown:visible .ant-select-item-option')
             .filter({hasText: '实时（10 秒'}).click();

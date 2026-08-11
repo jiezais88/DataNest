@@ -66,6 +66,18 @@ public class FlinkJobService {
     }
 
     /**
+     * 集群概览（/overview）：Task Slot 总数/空闲数等，供向导并行度容量动态提示。
+     * 复用带超时的 restClient，JM 半挂最多阻塞 15s。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getClusterOverview() {
+        return restClient.get()
+                .uri(jobmanagerUrl + "/overview")
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
      * 提交 CDC YAML 管道到 Flink Session 集群。
      *
      * @param yaml                         CDC YAML 管道定义
