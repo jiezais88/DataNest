@@ -33,9 +33,11 @@ public class AuthController {
         UserLoginDTO user = userService.verify(req.username(), req.password());
 
         if (req.rememberMe() == Boolean.TRUE) {
-            // 记住我：token 绝对永不过期 + 该 token 永不因无操作冻结
+            // 记住我：独立 deviceType，与普通登录（默认 "pc"）互不复用、互不覆盖豁免；
+            // token 绝对永不过期 + 该 token 永不因无操作冻结
             StpUtil.login(user.userId(), StpUtil.createSaLoginParameter()
                     .setIsLastingCookie(true)
+                    .setDeviceType("remember")
                     .setTimeout(-1)          // SaTokenDao.NEVER_EXPIRE，绝对永不过期
                     .setActiveTimeout(-1));  // 该 token 永不冻结
         } else {
