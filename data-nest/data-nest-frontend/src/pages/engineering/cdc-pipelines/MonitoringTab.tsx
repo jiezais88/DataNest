@@ -5,6 +5,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {Spin} from 'antd';
 import {getCdcMetricCurrent, getCdcMetricTrend} from '@/api/cdc';
 import LineChart from '@/components/charts/LineChart';
+import DsStatusBadge, {type DsStatusVariant} from '@/components/DsStatusBadge';
 import type {CdcMetricCurrent, CdcTrend, CdcTrendPoint} from '@/types/cdc';
 import {formatTimeHm} from '@/utils/format';
 
@@ -21,28 +22,35 @@ const ACCENT = 'rgb(var(--color-accent))';
 const WARNING = 'rgb(217 119 6)';
 const MUTED = 'rgb(148 163 184)';
 
-/** KPI 卡 */
-function KpiCard({label, value, unit, sub, danger}: {
+/** KPI 卡（数字最大、单位小字、状态独立徽标；不再把"已停止"塞进 value 串） */
+function KpiCard({label, value, unit, sub, danger, status}: {
     label: string;
     value: string;
     unit?: string;
     sub?: string;
     danger?: boolean;
+    /** 状态徽标（替代旧「—（已停止）」拼接写法），如 {label: '已停止', variant: 'pending'} */
+    status?: {label: string; variant: DsStatusVariant};
 }) {
     return (
         <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-3 flex-1 min-w-0">
-            <div className="text-ds-nano text-ds-text-muted mb-ds-1">{label}</div>
-            <div className={`text-ds-heading font-bold leading-tight truncate ${danger ? 'text-ds-danger' : 'text-ds-text-primary'}`}>
-                {value}
-                {unit && <span className="text-ds-tiny text-ds-text-muted font-normal ml-1">{unit}</span>}
+            <div className="flex items-center gap-ds-2 mb-ds-1 min-w-0">
+                <span className="text-ds-nano text-ds-text-muted truncate">{label}</span>
+                {status && <DsStatusBadge label={status.label} variant={status.variant}/>}
             </div>
-            {sub && <div className="text-ds-nano text-ds-text-muted mt-ds-1">{sub}</div>}
+            <div className="flex items-baseline gap-1 min-w-0">
+                <span className={`text-ds-heading font-bold leading-none tabular-nums ${danger ? 'text-ds-danger' : 'text-ds-text-primary'}`}>
+                    {value}
+                </span>
+                {unit && <span className="text-ds-small text-ds-text-muted font-normal">{unit}</span>}
+            </div>
+            {sub && <div className="text-ds-nano text-ds-text-muted mt-ds-1 truncate">{sub}</div>}
         </div>
     );
 }
 
 export default function MonitoringTab({pipelineId}: { pipelineId: string }) {
-    const [range, setRange] = useState('24h');
+    const [range, setRange] = useState('1h');
     const [current, setCurrent] = useState<CdcMetricCurrent | null>(null);
     const [trend, setTrend] = useState<CdcTrend | null>(null);
     const [loading, setLoading] = useState(false);
@@ -136,22 +144,26 @@ export default function MonitoringTab({pipelineId}: { pipelineId: string }) {
             {/* KPI 卡（固定区） */}
             <div className="grid grid-cols-4 gap-ds-3 mb-ds-3 flex-shrink-0">
                 <KpiCard label="当前延迟"
-                         value={live ? lagText : `${lagText}（已停止）`}
-                         unit={live ? '秒' : undefined}
+                         value={lagText}
+                         unit="秒"
                          sub="阈值 30 秒"
-                         danger={(current?.currentLagSeconds ?? 0) > LAG_THRESHOLD}/>
+                         danger={(current?.currentLagSeconds ?? 0) > LAG_THRESHOLD}
+                         status={live ? undefined : {label: '已停止', variant: 'pending'}}/>
                 <KpiCard label="当前吞吐"
                          value={current?.throughputRowsPerSecond != null && current.throughputRowsPerSecond >= 0
                              ? current.throughputRowsPerSecond.toFixed(1) : '—'}
                          unit="行/秒"
-                         sub="Sink 端实时值"/>
+                         sub="Sink 端实时值"
+                         status={live ? undefined : {label: '已停止', variant: 'pending'}}/>
                 <KpiCard label="累计变更"
                          value={current?.totalChanges != null ? Number(current.totalChanges).toLocaleString() : '—'}
-                         sub="含全量 + 增量"/>
+                         sub="含全量 + 增量"
+                         status={live ? undefined : {label: '已停止', variant: 'pending'}}/>
                 <KpiCard label="作业重启"
                          value={current?.numRestarts != null ? String(current.numRestarts) : '—'}
                          unit="次"
-                         sub="本次运行以来"/>
+                         sub="本次运行以来"
+                         status={live ? undefined : {label: '已停止', variant: 'pending'}}/>
             </div>
 
             {/* 图表区（弹性拉伸） */}

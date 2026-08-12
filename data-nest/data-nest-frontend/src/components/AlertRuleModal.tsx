@@ -417,20 +417,22 @@ export default function AlertRuleModal({
                         <p className="mt-ds-1 text-ds-nano text-ds-text-muted">仅显示已填写邮箱的平台用户</p>
                     </div>
 
-                    <div>
-                        <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
-                            超时阈值（分钟）
-                        </label>
-                        <input
-                            type="number"
-                            min={1}
-                            value={timeoutMinutes}
-                            onChange={e => setTimeoutMinutes(Number(e.target.value) || 30)}
-                            disabled={readOnly || !conditions.includes('TIMEOUT')}
-                            className="w-[120px] px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                        <p className="mt-ds-1 text-ds-nano text-ds-text-muted">仅当勾选「超时」时生效</p>
-                    </div>
+                    {objectType !== 'CDC_PIPELINE' && (
+                        <div>
+                            <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
+                                超时阈值（分钟）
+                            </label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={timeoutMinutes}
+                                onChange={e => setTimeoutMinutes(Number(e.target.value) || 30)}
+                                disabled={readOnly || !conditions.includes('TIMEOUT')}
+                                className="w-[120px] px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            />
+                            <p className="mt-ds-1 text-ds-nano text-ds-text-muted">仅当勾选「超时」时生效</p>
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-ds-2">
                         <Switch checked={enabled} onChange={setEnabled} disabled={readOnly} size="small"/>

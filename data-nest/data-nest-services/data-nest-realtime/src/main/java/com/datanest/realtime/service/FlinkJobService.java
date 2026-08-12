@@ -241,6 +241,16 @@ public class FlinkJobService {
 
     /**
      * 查询作业最近异常根因（用于作业 FAILED 时回写 last_error）。
+     * <p>
+     * Flink 2.x 的 {@code GET /jobs/{jobId}/exceptions} 返回结构：
+     * <pre>{@code
+     * {
+     *   "exceptionHistory": { "entries": [ { "exceptionName": ..., "stacktrace": ..., "timestamp": ... }, ... ] }
+     * }
+     * }</pre>
+     * 顶层不再有 {@code root-exception}（旧版本字段，已废弃为空）。因此从 {@code exceptionHistory.entries[0].stacktrace}
+     * 提取，兼容兜底 {@code root-exception} 与 {@code entries[0].exceptionName}。
+     * <p>
      * 查询失败返回 null（不影响状态回写主流程）。
      */
     @SuppressWarnings("unchecked")
@@ -250,8 +260,31 @@ public class FlinkJobService {
                     .uri(jobmanagerUrl + "/jobs/{jobId}/exceptions", jobId)
                     .retrieve()
                     .body(Map.class);
-            Object rootException = exceptions == null ? null : exceptions.get("root-exception");
-            return rootException == null ? null : String.valueOf(rootException);
+            if (exceptions == null) {
+                return null;
+            }
+            // 1) 兼容旧结构：顶层 root-exception
+            Object rootException = exceptions.get("root-exception");
+            if (rootException != null && !String.valueOf(rootException).isBlank()) {
+                return String.valueOf(rootException);
+            }
+            // 2) Flink 2.x：exceptionHistory.entries[0].stacktrace（完整堆栈）
+            Map<String, Object> history = (Map<String, Object>) exceptions.get("exceptionHistory");
+            if (history != null) {
+                Object entriesObj = history.get("entries");
+                if (entriesObj instanceof List<?> entries && !entries.isEmpty()) {
+                    Map<String, Object> first = (Map<String, Object>) entries.get(0);
+                    Object stacktrace = first.get("stacktrace");
+                    if (stacktrace != null && !String.valueOf(stacktrace).isBlank()) {
+                        return String.valueOf(stacktrace);
+                    }
+                    Object exceptionName = first.get("exceptionName");
+                    if (exceptionName != null && !String.valueOf(exceptionName).isBlank()) {
+                        return String.valueOf(exceptionName);
+                    }
+                }
+            }
+            return null;
         } catch (Exception e) {
             logger.warn("查询 Flink 作业异常信息失败: jobId={}, error={}", jobId, e.getMessage());
             return null;

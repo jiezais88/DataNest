@@ -3,6 +3,7 @@
 // 打开时按 id 拉详情（列表行数据可能因无轮询而过期，且不含完整审计/高级配置信息）。
 import {useEffect, useState} from 'react';
 import {Spin} from 'antd';
+import {HiOutlineExclamation} from 'react-icons/hi';
 import {getCdcPipeline} from '@/api/cdc';
 import Drawer from '@/components/Drawer';
 import {useHasRole} from '@/hooks/useHasRole';
@@ -101,6 +102,17 @@ function BasicInfoTab({detail}: { detail: CdcPipeline }) {
             </Section>
 
             <Section title="运行状态">
+                {detail.status === 'ERROR' && (
+                    <div className="mb-ds-3 border border-ds-danger/30 bg-ds-danger/5 rounded-ds-md p-ds-3">
+                        <div className="flex items-center gap-ds-2 mb-ds-1">
+                            <HiOutlineExclamation size={14} className="text-ds-danger flex-shrink-0"/>
+                            <span className="text-ds-small font-semibold text-ds-danger">管道运行异常</span>
+                        </div>
+                        <p className="text-ds-small text-ds-danger/90 break-all leading-relaxed">
+                            {detail.lastError || 'Flink 作业失败（未取到异常详情）'}
+                        </p>
+                    </div>
+                )}
                 <Row label="状态"><CdcStatusBadge status={detail.status}/></Row>
                 <Row label="当前延迟"><LagValue seconds={detail.currentLagSeconds}/></Row>
                 <Row label="累计变更" mono>
@@ -192,9 +204,6 @@ export default function CdcPipelineDetailDrawer({pipelineId, onClose}: CdcPipeli
                                 }`}
                             >
                                 {t.label}
-                                {t.key !== 'basic' && (
-                                    <span className="ml-ds-1 text-ds-nano text-ds-accent">新</span>
-                                )}
                             </button>
                         ))}
                     </div>

@@ -101,6 +101,8 @@ export default function CdcPipelinesPage() {
     // ============ 操作 ============
     const [detailId, setDetailId] = useState<string | null>(null);
     const [logTarget, setLogTarget] = useState<CdcPipeline | null>(null);
+    const [startTarget, setStartTarget] = useState<CdcPipeline | null>(null);
+    const [startLoading, setStartLoading] = useState(false);
     const [stopTarget, setStopTarget] = useState<CdcPipeline | null>(null);
     const [stopLoading, setStopLoading] = useState(false);
     const [forceStopTarget, setForceStopTarget] = useState<CdcPipeline | null>(null);
@@ -115,16 +117,21 @@ export default function CdcPipelinesPage() {
         loadStats();
     };
 
-    const handleStart = async (p: CdcPipeline) => {
-        setActingId(p.id);
+    const handleStart = async () => {
+        if (!startTarget) return;
+        setStartLoading(true);
+        setActingId(startTarget.id);
         try {
-            await startCdcPipeline(p.id);
-            notify.success(`管道「${p.name}」已启动`);
+            // 提交 Flink 作业（接口成功≠作业已 RUNNING），返回后不立即断言状态
+            await startCdcPipeline(startTarget.id);
+            notify.success(`管道「${startTarget.name}」已提交启动，等待作业就绪`);
             afterMutation();
         } catch {
             // 8004/8005/8007/8008 由拦截器统一提示
         } finally {
+            setStartLoading(false);
             setActingId(null);
+            setStartTarget(null);
         }
     };
 
@@ -361,7 +368,7 @@ export default function CdcPipelinesPage() {
                         <Tooltip title={r.savepointPath ? '启动（从 savepoint 恢复）' : '启动'}>
                             <DsIconButton tone="accent" aria-label={`启动 ${r.name}`}
                                           disabled={actingId === r.id}
-                                          onClick={() => handleStart(r)}>
+                                          onClick={() => setStartTarget(r)}>
                                 <HiOutlinePlay size={14}/>
                             </DsIconButton>
                         </Tooltip>
@@ -523,6 +530,27 @@ export default function CdcPipelinesPage() {
             {/* 运行日志抽屉（pipeline 优先取列表刷新后的最新行，状态徽章随之更新） */}
             <CdcLogDrawer pipeline={list.find(p => p.id === logTarget?.id) ?? logTarget}
                           onClose={() => setLogTarget(null)}/>
+
+            {/* 启动确认：与停止对称，明确"将提交 Flink 作业"，避免直接执行让用户以为没点 */}
+            <ConfirmDialog
+                open={!!startTarget}
+                title="启动管道"
+                message={
+                    <div>
+                        <p>确认启动管道「{startTarget?.name}」？将提交 Flink CDC 作业。</p>
+                        <p className="mt-ds-2 text-ds-small text-ds-text-secondary">
+                            {startTarget?.savepointPath
+                                ? '将从上次 savepoint 恢复（不丢不重）。'
+                                : '全新启动，将执行全量快照 + 持续增量同步。'}
+                            作业提交后通常需数秒就绪，期间管道状态为「启动中」，请勿重复操作。
+                        </p>
+                    </div>
+                }
+                confirmLabel="启动"
+                loading={startLoading}
+                onConfirm={handleStart}
+                onCancel={() => setStartTarget(null)}
+            />
 
             {/* 停止确认 */}
             <ConfirmDialog
