@@ -21,11 +21,11 @@ import {
 import * as monaco from 'monaco-editor/editor/editor.api';
 import '@/lib/monacoSetup';
 import Editor, {type OnMount} from '@monaco-editor/react';
-import * as XLSX from 'xlsx';
 import {
     cancelQuery,
     clearQueryHistory,
     executeSql,
+    exportSqlResult,
     getQueryHistory,
     listSqlDatasources,
 } from '@/api/data-service';
@@ -36,7 +36,7 @@ import DsIconButton from '@/components/DsIconButton';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import Pagination from '@/components/Pagination';
 import usePagedList from '@/hooks/usePagedList';
-import {downloadBlob} from '@/utils/download';
+import {downloadExportBlob} from '@/utils/download';
 import {getErrorMessage} from '@/utils/error';
 import {formatDateTime, formatDuration, formatNumber} from '@/utils/format';
 import {notify} from '@/utils/notify';
@@ -268,7 +268,7 @@ export default function SqlConsolePage() {
         }
     }, [dsNameOf]);
 
-    // ============ 导出 ============
+    // ============ 导出（后端生成文件流，Sprint 10 用户拍板：所有导出走后端） ============
     const exportBaseName = () => {
         const dsName = context?.dsName || '数据源';
         const table = extractTableName(sql);
@@ -278,33 +278,25 @@ export default function SqlConsolePage() {
         return `${dsName}_${table}_${ts}`;
     };
 
-    const exportCsv = () => {
+    /** 复用执行链路触发后端导出（相同 SQL/数据源，服务端再跑一次只读校验+敏感度闸门） */
+    const exportResult = async (format: 'XLSX' | 'CSV') => {
         if (!result) return;
-        const esc = (v: unknown) => {
-            if (v == null) return '';
-            const s = String(v);
-            return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-        };
-        const header = result.columns.map(esc).join(',');
-        const lines = result.rows.map(r => result.columns.map(c => esc(r[c])).join(','));
-        const csv = '\uFEFF' + [header, ...lines].join('\r\n');
-        downloadBlob(new Blob([csv], {type: 'text/csv;charset=utf-8'}), `${exportBaseName()}.csv`);
-        notify.success('CSV 导出成功');
+        try {
+            const blob = await exportSqlResult({
+                datasourceId: datasourceIdRef.current ?? '-1',
+                sql,
+                format,
+                timeoutSeconds: undefined,
+            });
+            const ok = await downloadExportBlob(blob, `${exportBaseName()}.${format.toLowerCase()}`);
+            if (ok) notify.success(format === 'CSV' ? 'CSV 导出成功' : 'Excel 导出成功');
+        } catch (e) {
+            notify.error(getErrorMessage(e));
+        }
     };
 
-    const exportXlsx = () => {
-        if (!result) return;
-        const aoa = [result.columns, ...result.rows.map(r => result.columns.map(c => r[c]))];
-        const sheet = XLSX.utils.aoa_to_sheet(aoa);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, sheet, '查询结果');
-        const out = XLSX.write(wb, {bookType: 'xlsx', type: 'array'});
-        downloadBlob(
-            new Blob([out], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
-            `${exportBaseName()}.xlsx`,
-        );
-        notify.success('Excel 导出成功');
-    };
+    const exportCsv = () => exportResult('CSV');
+    const exportXlsx = () => exportResult('XLSX');
 
     // ============ 结果表（紧凑 IDE 风格） ============
     const tableColumns = (result?.columns ?? []).map(c => ({

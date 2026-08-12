@@ -8,6 +8,7 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.dataservice.dto.SqlDatasourceDTO;
 import com.datanest.dataservice.dto.SqlExecuteRequest;
 import com.datanest.dataservice.dto.SqlExecuteResult;
+import com.datanest.dataservice.dto.SqlExportRequest;
 import com.datanest.dataservice.entity.SqlQueryHistory;
 import com.datanest.dataservice.mapper.SqlQueryHistoryMapper;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
@@ -255,6 +256,30 @@ public class SqlQueryService {
                     "SQL 命中机密数据表，禁止查询: " + String.join(", ", confidentialTables));
         }
         return 0;
+    }
+
+    /**
+     * SQL 终端导出（Sprint 10 F1，后端导出）：复用 execute 全链路（只读校验 + 敏感度闸门 + 执行 + 写历史），
+     * 结果由 Controller 转为 XLSX/CSV 文件流。行数上限与查询一致（1000）。
+     */
+    public SqlExecuteResult export(SqlExportRequest request) {
+        SqlExecuteRequest exec = new SqlExecuteRequest();
+        exec.setDatasourceId(request.getDatasourceId());
+        exec.setSql(request.getSql());
+        exec.setTimeoutSeconds(request.getTimeoutSeconds());
+        return execute(exec);
+    }
+
+    /** 数据源显示名（导出文件名用）：内置 Doris → 「Doris 数仓」，平台数据源查下拉映射，查不到用「数据源」 */
+    public String datasourceName(Long datasourceId) {
+        if (datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
+            return DorisConstants.BUILTIN_DORIS_NAME;
+        }
+        return listQueryableDatasources().stream()
+                .filter(d -> d.getId().equals(datasourceId))
+                .map(SqlDatasourceDTO::getName)
+                .findFirst()
+                .orElse("数据源");
     }
 
     /**

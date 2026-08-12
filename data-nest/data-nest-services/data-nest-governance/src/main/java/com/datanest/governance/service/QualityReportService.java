@@ -33,7 +33,7 @@ import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.mapper.QualityScoreHistoryMapper;
 import com.datanest.governance.mapper.QualityScoreMapper;
 import com.datanest.governance.util.ExportLabels;
-import com.datanest.governance.util.XlsxExportHelper;
+import com.datanest.common.util.XlsxExportHelper;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import lombok.extern.slf4j.Slf4j;
@@ -505,7 +505,7 @@ public class QualityReportService {
             int rowIdx = 0;
             XlsxExportHelper.writeRow(sheet, rowIdx++, List.of("质量报告",
                     XlsxExportHelper.time(range[0]) + " ~ " + XlsxExportHelper.time(range[1])), widths);
-            XlsxExportHelper.writeRow(sheet, rowIdx++,
+            XlsxExportHelper.writeHeaderRow(sheet, rowIdx++,
                     List.of("检查批次数", "规则明细数", "平均评分", "通过率(%)"), widths);
             XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
                     summary.getBatchCount() == null ? "" : summary.getBatchCount(),
@@ -514,7 +514,7 @@ public class QualityReportService {
                     summary.getPassRate() == null ? "" : summary.getPassRate()), widths);
             XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(), widths);
             XlsxExportHelper.writeRow(sheet, rowIdx++, List.of("问题清单（严重/警告）"), widths);
-            XlsxExportHelper.writeRow(sheet, rowIdx++,
+            XlsxExportHelper.writeHeaderRow(sheet, rowIdx++,
                     List.of("表", "规则", "类型", "结果指标", "结果值", "阈值", "级别", "检查时间"), widths);
             for (QualityIssueItemDTO item : issues) {
                 XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(

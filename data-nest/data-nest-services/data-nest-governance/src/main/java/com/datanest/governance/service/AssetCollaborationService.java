@@ -37,7 +37,7 @@ import com.datanest.governance.mapper.AssetViewLogMapper;
 import com.datanest.governance.mapper.CollectChangeDetailMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.system.api.SystemUserApi;
-import com.datanest.governance.util.XlsxExportHelper;
+import com.datanest.common.util.XlsxExportHelper;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import lombok.extern.slf4j.Slf4j;
@@ -309,7 +309,7 @@ public class AssetCollaborationService {
             SXSSFSheet sheet = wb.createSheet("我的收藏");
             int[] widths = new int[10];
             int rowIdx = 0;
-            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+            XlsxExportHelper.writeHeaderRow(sheet, rowIdx++, List.of(
                     "表名", "注释", "数据源", "库名", "数据域", "主题", "负责人", "质量评分", "近30天热度", "收藏时间"), widths);
             for (AssetFavoriteItemDTO item : items) {
                 XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(

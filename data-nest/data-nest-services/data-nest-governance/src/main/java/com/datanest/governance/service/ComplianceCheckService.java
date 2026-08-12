@@ -23,7 +23,7 @@ import com.datanest.governance.mapper.FieldTypeStandardMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.NamingStandardMapper;
-import com.datanest.governance.util.XlsxExportHelper;
+import com.datanest.common.util.XlsxExportHelper;
 import com.datanest.governance.util.ExportLabels;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
@@ -355,7 +355,7 @@ public class ComplianceCheckService {
             SXSSFSheet sheet = wb.createSheet("标准合规检查");
             int[] widths = new int[8];
             int rowIdx = 0;
-            XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(
+            XlsxExportHelper.writeHeaderRow(sheet, rowIdx++, List.of(
                     "对象路径", "对象类型", "违规类型", "实际值", "期望值", "适用规范", "检查时间", "是否忽略"), widths);
             for (ComplianceCheckResult r : list) {
                 XlsxExportHelper.writeRow(sheet, rowIdx++, List.of(

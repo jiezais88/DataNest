@@ -6,6 +6,7 @@ import type {
     SqlDatasource,
     SqlExecuteRequest,
     SqlExecuteResult,
+    SqlExportRequest,
     SqlQueryHistory,
 } from '@/types/data-service';
 
@@ -42,4 +43,12 @@ export function getQueryHistory(page: number, pageSize: number) {
 /** 清空我的查询历史 */
 export function clearQueryHistory() {
     return request.delete<Result<null>>('/data-service/sql-console/history');
+}
+
+/**
+ * 导出查询结果（后端生成 xlsx/csv，流式响应）。
+ * format: 'XLSX' | 'CSV'；用 downloadExportBlob 做错误检出后触发下载。
+ */
+export function exportSqlResult(data: SqlExportRequest) {
+    return request.post<Blob>('/data-service/sql-console/export', data, {responseType: 'blob'});
 }

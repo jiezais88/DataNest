@@ -38,6 +38,15 @@ export interface SqlCancelRequest {
     queryId: string;
 }
 
+/** SQL 终端导出请求（format: 'XLSX' | 'CSV'） */
+export interface SqlExportRequest {
+    datasourceId: string;
+    sql: string;
+    format: 'XLSX' | 'CSV';
+    /** 查询超时秒数（默认取服务配置 60） */
+    timeoutSeconds?: number;
+}
+
 /** SQL 查询历史 */
 export interface SqlQueryHistory {
     id: string;
