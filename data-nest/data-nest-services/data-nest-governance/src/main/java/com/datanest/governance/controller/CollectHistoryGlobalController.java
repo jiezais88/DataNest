@@ -6,6 +6,7 @@ import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.CollectHistoryDTO;
 import com.datanest.governance.dto.CollectHistoryQueryRequest;
+import com.datanest.governance.dto.CollectHistoryStatsDTO;
 import com.datanest.governance.service.CollectHistoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,6 +31,14 @@ public class CollectHistoryGlobalController {
     @PostMapping("/global-history/page")
     public Result<PageResult<CollectHistoryDTO>> list(@RequestBody @Valid CollectHistoryQueryRequest request) {
         return Result.ok(collectHistoryService.list(request));
+    }
+
+    @Operation(summary = "全局采集历史状态统计（顶部统计卡，按时间范围聚合）")
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+    @GetMapping("/global-history/stats")
+    public Result<CollectHistoryStatsDTO> stats(@Parameter(description = "时间下界（ISO 8601）") @RequestParam(required = false) String startTimeFrom,
+                                                @Parameter(description = "时间上界（ISO 8601）") @RequestParam(required = false) String startTimeTo) {
+        return Result.ok(collectHistoryService.listStats(startTimeFrom, startTimeTo));
     }
 
     // 停止为写操作，权限对齐采集任务的 execute/schedule，仅治理写角色可用

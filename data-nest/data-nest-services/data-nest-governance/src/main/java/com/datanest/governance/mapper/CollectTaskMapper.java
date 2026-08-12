@@ -1,6 +1,7 @@
 package com.datanest.governance.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.datanest.governance.dto.CollectTaskStatsDTO;
 import com.datanest.governance.entity.CollectTask;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -16,4 +17,15 @@ public interface CollectTaskMapper extends BaseMapper<CollectTask> {
 
     @Select("SELECT * FROM collect_task WHERE datasource_id = #{datasourceId} AND status IN ('NORMAL', 'NEVER_EXECUTED')")
     List<CollectTask> selectActiveByDatasourceId(@Param("datasourceId") Long datasourceId);
+
+    /**
+     * 任务状态统计（列表页顶部统计卡），避免前端拉全量列表计数。
+     */
+    @Select("SELECT " +
+            "  COUNT(*) FILTER (WHERE status = 'RUNNING') AS running, " +
+            "  COUNT(*) FILTER (WHERE status = 'SUCCESS') AS success, " +
+            "  COUNT(*) FILTER (WHERE status = 'FAILED') AS failed, " +
+            "  COUNT(*) FILTER (WHERE status = 'NEVER_EXECUTED') AS never " +
+            "FROM collect_task")
+    CollectTaskStatsDTO selectStats();
 }

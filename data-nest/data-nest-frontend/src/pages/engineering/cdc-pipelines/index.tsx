@@ -31,6 +31,7 @@ import DsButton from '@/components/DsButton';
 import DsIconButton from '@/components/DsIconButton';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import DsToolbar from '@/components/DsToolbar';
+import StatsCards from '@/components/StatsCards';
 import Pagination from '@/components/Pagination';
 import SearchInput from '@/components/SearchInput';
 import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
@@ -53,26 +54,6 @@ const STATUS_TABS: { value: CdcPipelineStatus | ''; label: string }[] = [
     {value: 'STOPPED', label: '已停止'},
     {value: 'ERROR', label: '异常'},
 ];
-
-/** 顶部统计卡（对齐原型 cdc-mini-strip） */
-function StatCard({icon, iconClass, label, value}: {
-    icon: React.ReactNode;
-    iconClass: string;
-    label: string;
-    value: string;
-}) {
-    return (
-        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-4 flex items-center gap-ds-3">
-            <div className={`w-10 h-10 rounded-ds-md flex items-center justify-center flex-shrink-0 ${iconClass}`}>
-                {icon}
-            </div>
-            <div className="min-w-0">
-                <div className="text-ds-heading font-bold text-ds-text-primary leading-tight">{value}</div>
-                <div className="text-ds-tiny text-ds-text-muted mt-ds-1">{label}</div>
-            </div>
-        </div>
-    );
-}
 
 export default function CdcPipelinesPage() {
     const navigate = useNavigate();
@@ -429,16 +410,18 @@ export default function CdcPipelinesPage() {
             </div>
 
             {/* 统计卡 */}
-            <div className="grid grid-cols-4 gap-ds-4 mb-ds-4">
-                <StatCard icon={<HiOutlineBolt size={20}/>} iconClass="bg-ds-accent-light text-ds-accent"
-                          label="运行中" value={stats?.running ?? '—'}/>
-                <StatCard icon={<HiOutlinePause size={20}/>} iconClass="bg-ds-bg-hover text-ds-text-muted"
-                          label="已停止" value={stats?.stopped ?? '—'}/>
-                <StatCard icon={<HiOutlineTrash size={20}/>} iconClass="bg-ds-danger-light text-ds-danger"
-                          label="异常" value={stats?.error ?? '—'}/>
-                <StatCard icon={<HiOutlineTableCells size={20}/>} iconClass="bg-ds-success-light text-ds-success"
-                          label="已同步表" value={stats?.syncedTables ?? '—'}/>
-            </div>
+            <StatsCards
+                items={[
+                    {label: '运行中', value: stats?.running ?? '—', icon: <HiOutlineBolt size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent'},
+                    {label: '已停止', value: stats?.stopped ?? '—', icon: <HiOutlinePause size={20}/>,
+                     iconClass: 'bg-ds-bg-hover text-ds-text-muted'},
+                    {label: '异常', value: stats?.error ?? '—', icon: <HiOutlineTrash size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger'},
+                    {label: '已同步表', value: stats?.syncedTables ?? '—', icon: <HiOutlineTableCells size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success'},
+                ]}
+            />
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden">

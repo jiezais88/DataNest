@@ -17,6 +17,7 @@ import com.datanest.engineering.api.dto.SyncJobInfo;
 import com.datanest.engineering.dto.DataSourceCreateRequest;
 import com.datanest.engineering.dto.DataSourceDTO;
 import com.datanest.engineering.dto.DataSourceQueryRequest;
+import com.datanest.engineering.dto.DataSourceStatsDTO;
 import com.datanest.engineering.dto.DataSourceUpdateRequest;
 import com.datanest.engineering.entity.DataSourceConnection;
 import com.datanest.engineering.mapper.*;
@@ -219,6 +220,14 @@ public class DataSourceService {
         DataSourceDTO dto = toDTO(entity);
         fillUsernameNames(List.of(dto));
         return dto;
+    }
+
+    /**
+     * 连接状态统计（列表页顶部统计卡），避免前端拉全量列表计数。
+     */
+    public DataSourceStatsDTO listStats() {
+        DataSourceStatsDTO stats = dataSourceMapper.selectStats();
+        return stats == null ? new DataSourceStatsDTO() : stats;
     }
 
     public PageResult<DataSourceDTO> list(DataSourceQueryRequest request) {

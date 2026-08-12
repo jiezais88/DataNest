@@ -31,6 +31,7 @@ public enum ErrorCode {
     TASK_ALREADY_RUNNING(4003, "采集任务正在执行中"),
     TASK_SCHEDULE_FAILED(4004, "任务调度失败"),
     HISTORY_NOT_FOUND(4005, "采集历史不存在"),
+    HISTORY_TIME_RANGE_INVALID(4006, "执行历史时间范围非法"),
     METADATA_NOT_FOUND(4006, "元数据不存在"),
 
     // Asset catalog errors — Sprint 7 数据资产目录
@@ -96,6 +97,7 @@ public enum ErrorCode {
     // Alert errors — Sprint 5 告警中心
     ALERT_RULE_NOT_FOUND(7201, "告警规则不存在"),
     ALERT_RULE_OBJECT_INVALID(7202, "告警规则对象类型非法"),
+    ALERT_HISTORY_TIME_RANGE_INVALID(7203, "告警时间范围非法"),
 
     // Task template errors — Sprint 7 任务模板库（DD-09）
     TASK_TEMPLATE_NOT_FOUND(7301, "任务模板不存在"),
@@ -129,6 +131,7 @@ public enum ErrorCode {
     QUALITY_CHECK_EXECUTE_FAILED(4216, "质量检查执行失败"),
     QUALITY_SCORE_CONFIG_INVALID(4217, "质量评分全局配置参数非法"),
     QUALITY_JOB_ALREADY_RUNNING(4218, "质量任务正在执行中"),
+    QUALITY_CHECK_TIME_RANGE_INVALID(4219, "质量检查时间范围非法"),
 
     // Quality report errors — Sprint 8 F3 质量报告（DG-07）
     QUALITY_REPORT_PARAM_INVALID(4221, "报告参数非法"),

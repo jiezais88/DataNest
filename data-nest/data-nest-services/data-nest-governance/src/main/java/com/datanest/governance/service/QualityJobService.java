@@ -23,6 +23,7 @@ import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
 import com.datanest.task.core.dto.QualityRuleDTO;
+import com.datanest.governance.dto.QualityJobStatsDTO;
 import com.datanest.governance.entity.QualityCheckBatch;
 import com.datanest.governance.entity.QualityJob;
 import com.datanest.governance.entity.QualityJobRule;
@@ -112,6 +113,14 @@ public class QualityJobService {
     }
 
     // ==================== 查询 ====================
+
+    /**
+     * 任务配置统计（列表页顶部统计卡），避免前端拉全量列表计数。
+     */
+    public QualityJobStatsDTO listStats() {
+        QualityJobStatsDTO stats = jobMapper.selectStats();
+        return stats == null ? new QualityJobStatsDTO() : stats;
+    }
 
     /**
      * 分页列表（含规则数、调度状态徽章）。

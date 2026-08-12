@@ -113,6 +113,17 @@ export const listAllDagExecutions = (params: {
     pageSize?: number;
 }) => request.get<Result<PageResult<DagExecution>>>('/engineering/dag-executions', {params}).then(r => r.data);
 
+export interface DagExecutionStats {
+    running: number;
+    success: number;
+    failed: number;
+    terminated: number;
+}
+
+/** DAG 执行状态统计（顶部统计卡，按时间范围聚合） */
+export const getDagExecutionStats = (params: {startTimeFrom?: string; startTimeTo?: string}) =>
+    request.get<Result<DagExecutionStats>>('/engineering/dag-executions/stats', {params}).then(r => r.data);
+
 // =================== DAG 参数（Sprint 4） ===================
 
 export const listDagParameters = (dagId: string | number) =>

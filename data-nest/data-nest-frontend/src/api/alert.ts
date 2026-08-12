@@ -56,8 +56,27 @@ export const getAlertHistory = (params: {
     objectId?: string;
     alertType?: AlertTriggerType;
     sendStatus?: AlertSendStatus;
+    sentAtFrom?: string;
+    sentAtTo?: string;
 }) =>
     request.get<Result<PageResult<AlertHistory>>>('/alert/alert-history', {params}).then(r => r.data);
+
+export interface AlertHistoryStats {
+    failure: number;
+    timeout: number;
+    lagExceeded: number;
+    externalStop: number;
+    success: number;
+    sendFailed: number;
+}
+
+export const getAlertHistoryStats = (params: {
+    objectType?: AlertObjectType;
+    objectId?: string;
+    sentAtFrom?: string;
+    sentAtTo?: string;
+}) =>
+    request.get<Result<AlertHistoryStats>>('/alert/alert-history/stats', {params}).then(r => r.data);
 
 // =================== 用户选择器（仍在 system 服务） ===================
 

@@ -52,6 +52,31 @@ export function queryAllSyncJobHistory(params: SyncJobHistoryQueryParams) {
     return request.post<Result<PageResult<SyncJobHistory>>>('/engineering/sync-jobs/history/page', params);
 }
 
+export interface SyncJobStats {
+    running: number;
+    success: number;
+    failed: number;
+    terminated: number;
+    pending: number;
+}
+
+/** 同步任务状态统计（顶部统计卡） */
+export function getSyncJobStats() {
+    return request.get<Result<SyncJobStats>>('/engineering/sync-jobs/stats');
+}
+
+export interface SyncJobHistoryStats {
+    running: number;
+    success: number;
+    failed: number;
+    terminated: number;
+}
+
+/** 同步执行历史状态统计（顶部统计卡，按时间范围聚合） */
+export function getSyncJobHistoryStats(params: {startTimeFrom?: string; startTimeTo?: string}) {
+    return request.get<Result<SyncJobHistoryStats>>('/engineering/sync-jobs/history/stats', {params});
+}
+
 export function getSyncJobLogs(syncJobId: string, historyId: string, scope: string, page: number, pageSize: number) {
     return request.get<Result<PageResult<SyncJobLog>>>(`/engineering/sync-jobs/${syncJobId}/history/${historyId}/logs`, {
         params: {scope, page, pageSize},

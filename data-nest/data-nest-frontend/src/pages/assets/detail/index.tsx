@@ -22,6 +22,7 @@ import DatabaseTypeIcon from '@/components/DatabaseTypeIcon';
 import DsButton from '@/components/DsButton';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import QualityScoreBadge from '@/components/QualityScoreBadge';
+import StatsCards from '@/components/StatsCards';
 import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
 import {useHasRole} from '@/hooks/useHasRole';
 import {formatDateTime} from '@/utils/format';
@@ -86,26 +87,6 @@ function BasicInfoTab({table}: { table: MetadataTable }) {
                     <div className="text-ds-small text-ds-text-primary">{item.value}</div>
                 </div>
             ))}
-        </div>
-    );
-}
-
-/** 指标卡（对齐原型 stat-strip：圆角图标 + 大数值 + 小标签） */
-function StatCard({icon, iconClass, label, value}: {
-    icon: React.ReactNode;
-    iconClass: string;
-    label: string;
-    value: React.ReactNode;
-}) {
-    return (
-        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-4 flex items-center gap-ds-3">
-            <div className={`w-10 h-10 rounded-ds-md flex items-center justify-center flex-shrink-0 ${iconClass}`}>
-                {icon}
-            </div>
-            <div className="min-w-0">
-                <div className="leading-tight">{value}</div>
-                <div className="text-ds-tiny text-ds-text-muted mt-ds-1">{label}</div>
-            </div>
         </div>
     );
 }
@@ -255,40 +236,18 @@ export default function AssetDetailPage() {
             <CollaborationBar tableId={tableId} collaboration={collaboration} onChange={setCollaboration}/>
 
             {/* 指标卡（对齐原型 stat-strip：质量评分 / 字段数 / 直接上下游表数 / 近 30 天热度） */}
-            <div className="grid grid-cols-4 gap-ds-4 mb-ds-4 flex-shrink-0">
-                <StatCard
-                    icon={<HiOutlineCheckCircle size={20}/>}
-                    iconClass="bg-ds-accent-light text-ds-accent"
-                    label="质量评分"
-                    value={<QualityScoreBadge score={score?.score ?? null} healthLevel={score?.healthLevel}/>}
-                />
-                <StatCard
-                    icon={<HiOutlineQueueList size={20}/>}
-                    iconClass="bg-ds-success-light text-ds-success"
-                    label="字段数"
-                    value={<span className="text-ds-heading font-bold text-ds-text-primary">{table.columnCount ?? '—'}</span>}
-                />
-                <StatCard
-                    icon={<HiOutlineShare size={20}/>}
-                    iconClass="bg-ds-warning-light text-ds-warning"
-                    label="直接上游 / 下游表"
-                    value={
-                        <span className="text-ds-heading font-bold text-ds-text-primary">
-                            {lineageStats ? `${lineageStats.up} / ${lineageStats.down}` : '—'}
-                        </span>
-                    }
-                />
-                <StatCard
-                    icon={<HiOutlineFire size={20}/>}
-                    iconClass="bg-ds-danger-light text-ds-danger"
-                    label="热度（近 30 天访问）"
-                    value={
-                        <span className="text-ds-heading font-bold text-ds-text-primary">
-                            {collaboration?.viewCount30d ?? '—'}
-                        </span>
-                    }
-                />
-            </div>
+            <StatsCards
+                items={[
+                    {label: '质量评分', icon: <HiOutlineCheckCircle size={20}/>, iconClass: 'bg-ds-accent-light text-ds-accent',
+                     value: <QualityScoreBadge score={score?.score ?? null} healthLevel={score?.healthLevel}/>},
+                    {label: '字段数', icon: <HiOutlineQueueList size={20}/>, iconClass: 'bg-ds-success-light text-ds-success',
+                     value: <span className="text-ds-heading font-bold text-ds-text-primary">{table.columnCount ?? '—'}</span>},
+                    {label: '直接上游 / 下游表', icon: <HiOutlineShare size={20}/>, iconClass: 'bg-ds-warning-light text-ds-warning',
+                     value: <span className="text-ds-heading font-bold text-ds-text-primary">{lineageStats ? `${lineageStats.up} / ${lineageStats.down}` : '—'}</span>},
+                    {label: '热度（近 30 天访问）', icon: <HiOutlineFire size={20}/>, iconClass: 'bg-ds-danger-light text-ds-danger',
+                     value: <span className="text-ds-heading font-bold text-ds-text-primary">{collaboration?.viewCount30d ?? '—'}</span>},
+                ]}
+            />
 
             {/* 四页签（懒加载：切到才挂载拉取） */}
             <div

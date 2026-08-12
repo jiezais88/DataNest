@@ -8,6 +8,7 @@ import com.datanest.task.core.dto.QualityJobCreateRequest;
 import com.datanest.task.core.dto.QualityJobDTO;
 import com.datanest.task.core.dto.QualityJobQueryRequest;
 import com.datanest.task.core.dto.QualityJobUpdateRequest;
+import com.datanest.governance.dto.QualityJobStatsDTO;
 import com.datanest.governance.service.QualityJobService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,6 +37,12 @@ public class QualityJobController {
     @PostMapping("/page")
     public Result<PageResult<QualityJobDTO>> page(@RequestBody QualityJobQueryRequest request) {
         return Result.ok(jobService.list(request));
+    }
+
+    @Operation(summary = "质量任务配置统计（顶部统计卡）")
+    @GetMapping("/stats")
+    public Result<QualityJobStatsDTO> stats() {
+        return Result.ok(jobService.listStats());
     }
 
     @Operation(summary = "质量任务详情（含规则列表）")

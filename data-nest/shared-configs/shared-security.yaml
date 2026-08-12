@@ -16,6 +16,8 @@ sa-token:
   timeout: 604800
   # 临时有效期 (秒)，默认 30 分钟
   active-timeout: 1800
+  # 开启动态临时有效期：登录时可对单 token 覆盖 active-timeout（记住我场景豁免无操作冻结）
+  dynamic-active-timeout: true
   # 是否允许同一账号多地同时登录
   is-concurrent: true
   # 是否共用一个 Token

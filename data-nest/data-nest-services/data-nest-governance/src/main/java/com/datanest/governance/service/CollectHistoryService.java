@@ -12,6 +12,7 @@ import com.datanest.common.model.PageResult;
 import com.datanest.governance.dto.CollectChangeDetailDTO;
 import com.datanest.governance.dto.CollectExecutionLogDTO;
 import com.datanest.governance.dto.CollectHistoryDTO;
+import com.datanest.governance.dto.CollectHistoryStatsDTO;
 import com.datanest.governance.dto.CollectHistoryQueryRequest;
 import com.datanest.governance.entity.CollectChangeDetail;
 import com.datanest.governance.entity.CollectExecutionLog;
@@ -45,6 +46,30 @@ public class CollectHistoryService {
         this.logMapper = logMapper;
         this.changeDetailMapper = changeDetailMapper;
         this.collectTaskMapper = collectTaskMapper;
+    }
+
+    /**
+     * 执行状态统计（列表页顶部统计卡，按时间范围聚合），避免前端拉全量列表计数。
+     */
+    public CollectHistoryStatsDTO listStats(String startTimeFrom, String startTimeTo) {
+        LocalDateTime from = parseIso(startTimeFrom);
+        LocalDateTime to = parseIso(startTimeTo);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.HISTORY_TIME_RANGE_INVALID, "时间范围非法：开始时间晚于结束时间");
+        }
+        CollectHistoryStatsDTO stats = collectHistoryMapper.selectStats(from, to);
+        return stats == null ? new CollectHistoryStatsDTO() : stats;
+    }
+
+    private LocalDateTime parseIso(String iso) {
+        if (iso == null || iso.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(iso.trim());
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.HISTORY_TIME_RANGE_INVALID, "时间参数格式非法（需 ISO 8601）: " + iso);
+        }
     }
 
     public PageResult<CollectHistoryDTO> list(CollectHistoryQueryRequest request) {

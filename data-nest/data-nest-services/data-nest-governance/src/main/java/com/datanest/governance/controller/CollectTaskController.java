@@ -8,6 +8,7 @@ import com.datanest.common.model.Result;
 import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
+import com.datanest.governance.dto.CollectTaskStatsDTO;
 import com.datanest.governance.dto.CollectTaskUpdateRequest;
 import com.datanest.governance.service.CollectTaskService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -64,6 +65,13 @@ public class CollectTaskController {
     @PostMapping("/page")
     public Result<PageResult<CollectTaskDTO>> list(@RequestBody CollectTaskQueryRequest request) {
         return Result.ok(collectTaskService.list(request));
+    }
+
+    @Operation(summary = "采集任务状态统计（顶部统计卡）")
+    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @GetMapping("/stats")
+    public Result<CollectTaskStatsDTO> stats() {
+        return Result.ok(collectTaskService.listStats());
     }
 
     @Operation(summary = "手动执行采集任务")

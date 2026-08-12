@@ -15,6 +15,7 @@ import {
     createCollectTask,
     deleteCollectTask,
     executeCollectTask,
+    getCollectTaskStats,
     queryCollectTasks,
     startCollectTaskSchedule,
     stopCollectTaskSchedule,
@@ -35,17 +36,20 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import SearchInput from '@/components/SearchInput';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsToolbar from '@/components/DsToolbar';
+import StatsCards from '@/components/StatsCards';
 import TaskDrawer from './TaskDrawer';
 import AlertRuleModal from '@/components/AlertRuleModal';
 import {
     HiOutlineBell,
     HiOutlineCalendar,
+    HiOutlineCheckCircle,
     HiOutlineClock,
     HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlay,
     HiOutlinePlus,
     HiOutlineTrash,
+    HiOutlineXCircle,
 } from 'react-icons/hi2';
 
 const STATUS_OPTIONS: { value: TaskStatus | ''; label: string }[] = [
@@ -145,6 +149,26 @@ export default function CollectTasksPage() {
     const [alertTarget, setAlertTarget] = useState<CollectTask | null>(null);
     const [alertOpen, setAlertOpen] = useState(false);
 
+    // ============ 顶部统计卡（后端聚合端点） ============
+    const [stats, setStats] = useState<{ running: number; success: number; failed: number; never: number } | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const loadStats = useCallback(() => {
+        setStatsLoading(true);
+        getCollectTaskStats()
+            .then((result) => setStats(result.data))
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setStatsLoading(false));
+    }, []);
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+    // 统计卡点击下钻：状态作为下钻维度与列表筛选联动（再点取消）
+    const toggleStatusDrill = (target: TaskStatus) => {
+        applyQuery({...query, status: query.status === target ? '' : target});
+    };
+
     const loadDataSources = useCallback(async () => {
         try {
             const result = await getDataSources({page: 1, pageSize: 1000});
@@ -181,6 +205,7 @@ export default function CollectTasksPage() {
             : await createCollectTask(payload);
         notify.success(editItem ? '采集任务更新成功' : '采集任务创建成功');
         reload();
+        loadStats();
         return result;
     };
 
@@ -190,10 +215,11 @@ export default function CollectTasksPage() {
             await executeCollectTask(item.id);
             notify.success(`采集任务 "${item.name}" 已触发执行`);
             reload();
+            loadStats();
         } finally {
             setExecutingId(null);
         }
-    }, [reload]);
+    }, [reload, loadStats]);
 
     const handleToggleSchedule = useCallback(async (item: CollectTask) => {
         setSchedulingId(item.id);
@@ -206,10 +232,11 @@ export default function CollectTasksPage() {
             }
             notify.success(`采集任务 "${item.name}" 已${isEnabled ? '停止调度' : '开启调度'}`);
             reload();
+            loadStats();
         } finally {
             setSchedulingId(null);
         }
-    }, [reload]);
+    }, [reload, loadStats]);
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
@@ -220,6 +247,7 @@ export default function CollectTasksPage() {
             setDeleteOpen(false);
             setDeleteTarget(null);
             reload();
+            loadStats();
         } finally {
             setDeleteLoading(false);
         }
@@ -514,6 +542,29 @@ export default function CollectTasksPage() {
                     </DsButton>
                 )}
             </div>
+
+            {/* 任务状态分布统计卡（后端聚合端点，点击下钻列表筛选） */}
+            <StatsCards
+                loading={statsLoading}
+                items={[
+                    {label: '运行中', value: stats?.running ?? '—', icon: <HiOutlinePlay size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent', valueClass: 'text-ds-accent',
+                     tip: '点击筛选列表', active: query.status === 'RUNNING',
+                     onClick: () => toggleStatusDrill('RUNNING')},
+                    {label: '成功', value: stats?.success ?? '—', icon: <HiOutlineCheckCircle size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                     tip: '点击筛选列表', active: query.status === 'SUCCESS',
+                     onClick: () => toggleStatusDrill('SUCCESS')},
+                    {label: '失败', value: stats?.failed ?? '—', icon: <HiOutlineXCircle size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                     tip: '点击筛选列表', active: query.status === 'FAILED',
+                     onClick: () => toggleStatusDrill('FAILED')},
+                    {label: '未执行', value: stats?.never ?? '—', icon: <HiOutlineClock size={20}/>,
+                     iconClass: 'bg-ds-bg-hover text-ds-text-muted', valueClass: 'text-ds-text-secondary',
+                     tip: '点击筛选列表', active: query.status === 'NEVER_EXECUTED',
+                     onClick: () => toggleStatusDrill('NEVER_EXECUTED')},
+                ]}
+            />
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">

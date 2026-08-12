@@ -10,6 +10,7 @@ import {notify} from '@/utils/notify';
 import {COL} from '@/constants/table';
 import {
     getQualityCheckDetail,
+    getQualityCheckStats,
     queryQualityChecks,
 } from '@/api/quality';
 import Drawer from '@/components/Drawer';
@@ -19,6 +20,7 @@ import DsStatusBadge from '@/components/DsStatusBadge';
 import type {DsStatusVariant} from '@/components/DsStatusBadge';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import DsToolbar from '@/components/DsToolbar';
+import StatsCards from '@/components/StatsCards';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsRangePicker from '@/components/DsRangePicker';
 import Pagination from '@/components/Pagination';
@@ -36,7 +38,13 @@ import type {
     QualityCheckStatus,
     QualityCheckTriggerType,
 } from '@/types/quality';
-import {HiOutlineEye} from 'react-icons/hi2';
+import {
+    HiOutlineCheckCircle,
+    HiOutlineClock,
+    HiOutlineExclamationTriangle,
+    HiOutlineEye,
+    HiOutlineXCircle,
+} from 'react-icons/hi2';
 
 /** 批次状态 -> 徽章变体（单一出处） */
 const STATUS_VARIANT: Record<QualityCheckStatus, DsStatusVariant> = {
@@ -112,6 +120,30 @@ export default function QualityChecksPage() {
     useEffect(() => {
         loadChecks();
     }, [loadChecks]);
+
+    // ============ 顶部统计卡（后端聚合端点，与列表同时间范围） ============
+    const [stats, setStats] = useState<{ running: number; success: number; partial: number; failed: number } | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const loadStats = useCallback(() => {
+        setStatsLoading(true);
+        getQualityCheckStats({
+            startTimeFrom: startTimeFrom || undefined,
+            startTimeTo: startTimeTo || undefined,
+        })
+            .then((res) => setStats(res.data))
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setStatsLoading(false));
+    }, [startTimeFrom, startTimeTo]);
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+    // 统计卡点击下钻：状态作为下钻维度与列表筛选联动（再点取消）
+    const toggleStatusDrill = (target: QualityCheckStatus) => {
+        setStatus(prev => (prev === target ? '' : target));
+        setPage(1);
+    };
 
     // URL 状态同步（对齐 data-quality）：进页初始化筛选与分页，深层跳转返回后筛选不丢
     const urlInitRef = useRef(false);
@@ -293,6 +325,29 @@ export default function QualityChecksPage() {
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">查看质量检查批次与规则执行明细</p>
                 </div>
             </div>
+
+            {/* 批次状态分布统计卡（后端聚合端点，点击下钻列表筛选） */}
+            <StatsCards
+                loading={statsLoading}
+                items={[
+                    {label: '运行中', value: stats?.running ?? '—', icon: <HiOutlineClock size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent', valueClass: 'text-ds-accent',
+                     tip: '点击筛选列表', active: status === 'RUNNING',
+                     onClick: () => toggleStatusDrill('RUNNING')},
+                    {label: '成功', value: stats?.success ?? '—', icon: <HiOutlineCheckCircle size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                     tip: '点击筛选列表', active: status === 'SUCCESS',
+                     onClick: () => toggleStatusDrill('SUCCESS')},
+                    {label: '部分失败', value: stats?.partial ?? '—', icon: <HiOutlineExclamationTriangle size={20}/>,
+                     iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning',
+                     tip: '点击筛选列表', active: status === 'PARTIAL_FAILED',
+                     onClick: () => toggleStatusDrill('PARTIAL_FAILED')},
+                    {label: '失败', value: stats?.failed ?? '—', icon: <HiOutlineXCircle size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                     tip: '点击筛选列表', active: status === 'FAILED',
+                     onClick: () => toggleStatusDrill('FAILED')},
+                ]}
+            />
 
             <div className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                 <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">

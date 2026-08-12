@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Modal, Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {getSyncJobLogs, queryAllSyncJobHistory, stopSyncHistory} from '@/api/sync';
+import {getSyncJobHistoryStats, getSyncJobLogs, queryAllSyncJobHistory, stopSyncHistory} from '@/api/sync';
 import type {SyncHistoryStatus, SyncJobHistory, SyncJobLog,} from '@/types/sync';
 import Pagination from '@/components/Pagination';
 import DsTableEmpty from '@/components/DsTableEmpty';
@@ -11,13 +11,22 @@ import DsButton from '@/components/DsButton';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsIconButton from '@/components/DsIconButton';
 import DsToolbar from '@/components/DsToolbar';
-import {HiChevronRight, HiOutlineDocumentText, HiOutlineEye, HiOutlineStop,} from 'react-icons/hi2';
+import {
+    HiChevronRight,
+    HiOutlineCheckCircle,
+    HiOutlineDocumentText,
+    HiOutlineEye,
+    HiOutlinePlay,
+    HiOutlineStop,
+    HiOutlineXCircle,
+} from 'react-icons/hi2';
 import {formatDateTime, formatExecutionDuration, getDefaultTimeRange} from '@/utils/format';
 import {HistoryDetailModal, HistoryLogModal,} from '@/pages/engineering/sync-jobs/history-common';
 import {STATUS_OPTIONS, statusLabel, triggerBadge,} from '@/pages/engineering/sync-jobs/history-common-utils';
 import {COL} from '@/constants/table';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import DsRangePicker from '@/components/DsRangePicker';
+import StatsCards from '@/components/StatsCards';
 import {executionStatusVariant} from '@/utils/status';
 import {useCanEdit} from '@/hooks/useCanEdit';
 import {notify} from '@/utils/notify';
@@ -75,6 +84,30 @@ export default function SyncJobHistoryGlobalPage() {
         },
         defaultPageSize: 10,
     });
+
+    // ============ 顶部统计卡（后端聚合端点，与列表同时间范围） ============
+    const [stats, setStats] = useState<{running: number; success: number; failed: number; terminated: number} | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const loadStats = useCallback(() => {
+        setStatsLoading(true);
+        getSyncJobHistoryStats({
+            startTimeFrom: query.startTimeFrom || undefined,
+            startTimeTo: query.startTimeTo || undefined,
+        })
+            .then((result) => setStats(result.data))
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setStatsLoading(false));
+    }, [query.startTimeFrom, query.startTimeTo]);
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+    // 统计卡点击下钻：状态作为下钻维度与列表筛选联动（再点取消）
+    const toggleStatusDrill = (target: SyncHistoryStatus) => {
+        applyQuery({...query, status: query.status === target ? undefined : target});
+    };
+
 // 从任务列表「历史」跳入：URL ?syncJobId=xxx&jobName=yyy → 精确过滤该任务
     const urlSyncJobId = searchParams.get('syncJobId');
     const urlJobName = searchParams.get('jobName') || '';
@@ -423,6 +456,29 @@ export default function SyncJobHistoryGlobalPage() {
                     返回任务列表
                 </DsButton>
             </div>
+
+            {/* 执行状态分布统计卡（后端聚合端点，点击下钻列表筛选） */}
+            <StatsCards
+                loading={statsLoading}
+                items={[
+                    {label: '运行中', value: stats?.running ?? '—', icon: <HiOutlinePlay size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent', valueClass: 'text-ds-accent',
+                     tip: '点击筛选列表', active: query.status === 'RUNNING',
+                     onClick: () => toggleStatusDrill('RUNNING')},
+                    {label: '成功', value: stats?.success ?? '—', icon: <HiOutlineCheckCircle size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                     tip: '点击筛选列表', active: query.status === 'SUCCESS',
+                     onClick: () => toggleStatusDrill('SUCCESS')},
+                    {label: '失败', value: stats?.failed ?? '—', icon: <HiOutlineXCircle size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                     tip: '点击筛选列表', active: query.status === 'FAILED',
+                     onClick: () => toggleStatusDrill('FAILED')},
+                    {label: '已终止', value: stats?.terminated ?? '—', icon: <HiOutlineStop size={20}/>,
+                     iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning',
+                     tip: '点击筛选列表', active: query.status === 'TERMINATED',
+                     onClick: () => toggleStatusDrill('TERMINATED')},
+                ]}
+            />
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">

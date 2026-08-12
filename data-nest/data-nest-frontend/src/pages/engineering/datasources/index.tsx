@@ -6,6 +6,7 @@ import type {ColumnsType} from 'antd/es/table';
 import {
     createDataSource,
     deleteDataSource,
+    getDataSourceStats,
     getDataSources,
     testSavedDataSource,
     updateDataSource,
@@ -41,7 +42,16 @@ import {NODE_STATUS_COLOR} from '@/constants/statusColors';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsToolbar from '@/components/DsToolbar';
 import StatusSpine from '@/components/StatusSpine';
-import {HiOutlineBolt, HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash,} from 'react-icons/hi2';
+import StatsCards from '@/components/StatsCards';
+import {
+    HiOutlineArrowTrendingUp,
+    HiOutlineBolt,
+    HiOutlineCloudArrowDown,
+    HiOutlineEye,
+    HiOutlinePencilSquare,
+    HiOutlinePlus,
+    HiOutlineTrash,
+} from 'react-icons/hi2';
 
 const STATUS_OPTIONS: { value: DataSourceStatus | ''; label: string }[] = [
     {value: '', label: '全部状态'},
@@ -120,6 +130,26 @@ export default function DataSourcesPage() {
 
     const [draftKeyword, setDraftKeyword] = useState('');
 
+    // ============ 顶部统计卡（后端聚合端点） ============
+    const [stats, setStats] = useState<{ normal: number; error: number; offline: number; unknown: number } | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const loadStats = useCallback(() => {
+        setStatsLoading(true);
+        getDataSourceStats()
+            .then((result) => setStats(result.data))
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setStatsLoading(false));
+    }, []);
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+    // 统计卡点击下钻：连接状态作为下钻维度与列表筛选联动（再点取消）
+    const toggleStatusDrill = (target: DataSourceStatus) => {
+        applyQuery({...query, status: query.status === target ? '' : target});
+    };
+
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
     const [editItem, setEditItem] = useState<DataSource | null>(null);
@@ -169,6 +199,7 @@ export default function DataSourcesPage() {
         setDrawerOpen(false);
         setEditItem(null);
         reload();
+        loadStats();
         return result;
     };
 
@@ -183,6 +214,7 @@ export default function DataSourcesPage() {
         setDrawerOpen(false);
         setEditItem(null);
         reload();
+        loadStats();
         return result;
     };
 
@@ -195,6 +227,7 @@ export default function DataSourcesPage() {
             setDeleteOpen(false);
             setDeleteTarget(null);
             reload();
+            loadStats();
         } catch (err) {
             const errorData = (err as ApiError)?.response?.data;
             if (errorData?.code === 3005 && Array.isArray(errorData?.data)) {
@@ -215,7 +248,8 @@ export default function DataSourcesPage() {
         setTestModalMessage(result.data.message || (result.data.success ? '连接正常' : '连接失败'));
         setTestModalOpen(true);
         reload();
-    }, [reload]);
+        loadStats();
+    }, [reload, loadStats]);
 
     const handlePreview = async (database: string, schema: string | undefined, table: string) => {
         if (!previewTarget) return;
@@ -439,6 +473,29 @@ export default function DataSourcesPage() {
                     </DsButton>
                 )}
             </div>
+
+            {/* 连接状态分布统计卡 */}
+            <StatsCards
+                loading={statsLoading}
+                items={[
+                    {label: '正常', value: stats?.normal ?? '—', icon: <HiOutlineBolt size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                     tip: '点击筛选列表', active: query.status === DataSourceStatusEnum.NORMAL,
+                     onClick: () => toggleStatusDrill(DataSourceStatusEnum.NORMAL)},
+                    {label: '异常', value: stats?.error ?? '—', icon: <HiOutlineCloudArrowDown size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                     tip: '点击筛选列表', active: query.status === DataSourceStatusEnum.ERROR,
+                     onClick: () => toggleStatusDrill(DataSourceStatusEnum.ERROR)},
+                    {label: '已下线', value: stats?.offline ?? '—', icon: <HiOutlineTrash size={20}/>,
+                     iconClass: 'bg-ds-bg-hover text-ds-text-muted', valueClass: 'text-ds-text-secondary',
+                     tip: '点击筛选列表', active: query.status === DataSourceStatusEnum.OFFLINE,
+                     onClick: () => toggleStatusDrill(DataSourceStatusEnum.OFFLINE)},
+                    {label: '未检测', value: stats?.unknown ?? '—', icon: <HiOutlineArrowTrendingUp size={20}/>,
+                     iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning',
+                     tip: '点击筛选列表', active: query.status === DataSourceStatusEnum.UNKNOWN,
+                     onClick: () => toggleStatusDrill(DataSourceStatusEnum.UNKNOWN)},
+                ]}
+            />
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 mb-ds-4 flex-shrink-0">

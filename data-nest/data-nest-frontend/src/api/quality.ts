@@ -64,6 +64,18 @@ export function queryQualityJobs(params: QualityJobQueryParams) {
     return request.post<Result<PageResult<QualityJob>>>('/governance/quality/jobs/page', params);
 }
 
+export interface QualityJobStats {
+    enabled: number;
+    disabled: number;
+    scheduled: number;
+    auto: number;
+}
+
+/** 质量任务配置统计（顶部统计卡） */
+export function getQualityJobStats() {
+    return request.get<Result<QualityJobStats>>('/governance/quality/jobs/stats');
+}
+
 /** 质量任务详情（含 rules 规则列表） */
 export function getQualityJob(id: string) {
     return request.get<Result<QualityJob>>(`/governance/quality/jobs/${id}`);
@@ -160,6 +172,18 @@ export function executeQualityRule(id: string) {
 /** 批次分页查询（按任务/触发方式/状态过滤） */
 export function queryQualityChecks(params: QualityCheckQueryParams) {
     return request.post<Result<PageResult<QualityCheckBatch>>>('/governance/quality/checks/page', params);
+}
+
+export interface QualityCheckStats {
+    running: number;
+    success: number;
+    partial: number;
+    failed: number;
+}
+
+/** 批次状态统计（顶部统计卡，按时间范围聚合） */
+export function getQualityCheckStats(params: {startTimeFrom?: string; startTimeTo?: string}) {
+    return request.get<Result<QualityCheckStats>>('/governance/quality/checks/stats', {params});
 }
 
 /** 批次详情（含规则明细） */

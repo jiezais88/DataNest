@@ -1,6 +1,7 @@
 package com.datanest.engineering.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.datanest.engineering.dto.DagExecutionStatsDTO;
 import com.datanest.engineering.entity.DagExecution;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -39,4 +40,22 @@ public interface DagExecutionMapper extends BaseMapper<DagExecution> {
      */
     @Select("SELECT * FROM dag_execution WHERE status IN ('SUCCESS', 'FAILED', 'TERMINATED') AND start_time < #{beforeTime} ORDER BY id LIMIT #{limit}")
     List<DagExecution> selectTerminalsBefore(@Param("beforeTime") LocalDateTime beforeTime, @Param("limit") int limit);
+
+    /**
+     * 执行状态统计（列表页顶部统计卡，按时间范围聚合），避免前端拉全量列表计数。
+     */
+    @Select("<script>" +
+            "SELECT " +
+            "  COUNT(*) FILTER (WHERE status = 'RUNNING') AS running, " +
+            "  COUNT(*) FILTER (WHERE status = 'SUCCESS') AS success, " +
+            "  COUNT(*) FILTER (WHERE status = 'FAILED') AS failed, " +
+            "  COUNT(*) FILTER (WHERE status = 'TERMINATED') AS terminated " +
+            "FROM dag_execution " +
+            "<where>" +
+            "  <if test='startTimeFrom != null'> AND start_time &gt;= #{startTimeFrom} </if>" +
+            "  <if test='startTimeTo != null'> AND start_time &lt;= #{startTimeTo} </if>" +
+            "</where>" +
+            "</script>")
+    DagExecutionStatsDTO selectStats(@Param("startTimeFrom") LocalDateTime startTimeFrom,
+                                     @Param("startTimeTo") LocalDateTime startTimeTo);
 }

@@ -1,6 +1,6 @@
 # Sprint 9 Handoff
 
-> **更新时间**：2026-08-11 | **阶段**：规划 + 技术设计 + UI 原型完成（PRD v1.0、技术文档 v1.0、原型 4 视图 Playwright 验证通过）→ F1 实施待启动
+> **更新时间**：2026-08-12 | **阶段**：规划 + 设计 + 后端 F1/F2/F3 全部实施完成 + 后端三块（级联删除/删除校验/内部定时器）复核通过 → 前端联调待启动
 > **Sprint 主题**：实时计算深化（CDC 监控深化 + Checkpoint/Savepoint 管理 + 流处理告警）+ S8 F2 遗留 TODO 清零（三大模块均为 P0）
 
 ## 1. Sprint 目标
@@ -20,7 +20,8 @@
 | **F2 Checkpoint/Savepoint 管理** | ✅ 完成（2026-08-11 后端实施 + curl 自测） | 见 §6：minio 8.5.17 + checkpoints 转发 + 手动 savepoint + force-stop + 文件清理（手动 savepoint 替换/force-stop/删除三场景实测通过；stop 替换清理逻辑同法实现，因 Flink slot 被验收管道占用未单独实测，留待联调） |
 | **F3 流处理告警** | ✅ 完成（2026-08-11 后端实施 + curl 自测） | 见 §6：双 CHECK 放宽（**文档修正**：alert_history.alert_type 实际有 CHECK）+ AlertConstants/白名单/反查/三触发点；实测 CDC 规则创建、对象下拉/名称反查、删除管道解绑规则、LAG_EXCEEDED/EXTERNAL_STOP 历史落库全通过 |
 | **S8 F2 遗留 TODO 清零** | ✅ 完成 | ①②③ 随 F1/F2 落地；④ PG REPLICA IDENTITY FULL 检查已补（CdcSourceTableDTO.replicaIdentityFull + listPostgresTables relreplident） |
-| Sprint 9 Handoff | 🔄 进行中 | 本文档（规划 + F1/F2/F3 后端实施记录） |
+| **后端三块复核（级联删除/删除校验/内部定时器）** | ✅ 通过（2026-08-12） | 后端主 Agent 逐项代码核验：PRD §7 引用总表 4 行级联全落地（含 PG 复制槽清理超范围补充）+ 数据源 8009 fail-closed 校验 + 5 个内部定时器（5s 轮询/60s 降采样/每日 03:40 清理/savepoint 2s×60s 轮询/app-job 30s Doris catalog）全部到位；404 归并保留 savepoint_path 与 forceStop 清位点语义区分清晰、无状态泄漏。无需补做 |
+| Sprint 9 Handoff | 🔄 进行中 | 本文档（规划 + F1/F2/F3 后端实施记录 + 后端复核通过）；前端联调 + E2E 待推进 |
 
 ## 3. 关键决策（用户已确认）
 

@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataNest · Sprint 10 原型（数据服务）</title>
+<link rel="stylesheet" href="DataNest-Sprint10-原型.css">
+</head>
+<body>
+
+<!-- ============ 原型切换条 ============ -->
+<div class="prototype-switch">
+  <span class="switch-badge">Sprint10</span>
+  <button data-view="sql-console" class="active">SQL 查询终端</button>
+  <button data-view="api-list">API 管理</button>
+  <button data-view="api-create">API 创建向导</button>
+  <button data-view="api-detail">API 详情统计</button>
+  <button data-view="api-key">API Key</button>
+  <button data-view="api-stats">API 运行统计</button>
+  <button data-view="classification">数据分级分类</button>
+  <button data-view="cdc-subscribe">CDC 实时订阅</button>
+</div>
+
+<!-- ============ 图标库（HeroIcons outline，与前端 react-icons/hi2 一致） ============ -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></symbol>
+    <symbol id="i-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 013 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031.352c-.483-.174-.711-.703-.59-1.202L18.75 4.971zm-16.5.52c.99-.203 1.99-.377 3-.52m2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031.352c-.483-.174-.711-.703-.59-1.202L5.25 4.971z"/></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></symbol>
+    <symbol id="i-magnifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15m7.5-7.5h-15"/></symbol>
+    <symbol id="i-xmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 19.5L8.25 12l7.5-7.5"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.25 4.5l7.5 7.5-7.5 7.5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.281m5.94 2.28l-2.28 5.941"/></symbol>
+    <symbol id="i-datanest-logo" viewBox="0 0 32 32"><defs><linearGradient id="dn-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#dn-grad)" stroke="none"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============================================================
+     View 1：SQL 查询终端（/data-service/sql-console）
+     ============================================================ -->
+<div class="view active" data-view="sql-console">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item active"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</h1>
+          <div class="head-sub">对授权数据源执行只读 SQL（SELECT / WITH / SHOW），支持结果导出与查询历史。机密表默认隐藏、命中即拦截。</div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-refresh"/></svg>刷新</button>
+        </div>
+      </div>
+
+      <div class="sql-toolbar">
+        <span class="ds-label">数据源</span>
+        <div class="filter-select">
+          <select>
+            <option selected>内置 Doris（datanest）</option>
+            <option>MySQL · 业务主库（business_db）</option>
+            <option>PostgreSQL · 用户库（userdb）</option>
+          </select>
+          <svg class="chev"><use href="#i-chev-d"/></svg>
+        </div>
+        <button class="btn btn-primary" style="margin-left:auto"><svg class="hi-sm"><use href="#i-play"/></svg>运行（Ctrl+Enter）</button>
+        <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-stop"/></svg>停止</button>
+      </div>
+
+      <div class="sql-editor">
+        <div class="ed-gutter">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8</div>
+        <div class="ed-code"><span class="tk-kw">SELECT</span> region, <span class="tk-fn">COUNT</span>(*) <span class="tk-kw">AS</span> cnt
+<span class="tk-kw">FROM</span> <span class="tk-table">dwd.dws_orders</span>
+<span class="tk-kw">WHERE</span> order_date <span class="tk-num">&gt;=</span> <span class="tk-str">'2026-08-01'</span>
+<span class="tk-kw">GROUP BY</span> region
+<span class="tk-kw">ORDER BY</span> cnt <span class="tk-kw">DESC</span>
+<span class="tk-cmt">-- 区域订单量统计</span>
+<span class="tk-kw">LIMIT</span> <span class="tk-num">100</span>;</div>
+      </div>
+
+      <div class="sql-result-bar">
+        <span class="res-info">用时 <b>0.45s</b> · 返回 <b>3</b> 行（最多 1000 行）</span>
+        <div class="res-actions">
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-download"/></svg>导出 CSV</button>
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-download"/></svg>导出 Excel</button>
+        </div>
+      </div>
+
+      <div class="sql-kpi-strip">
+        <div class="sql-kpi"><div class="sk-ic accent"><svg class="hi"><use href="#i-bolt"/></svg></div><div><div class="sk-num">0.45<span style="font-size:.6875rem;color:rgb(var(--color-text-muted));font-weight:400;margin-left:2px">s</span></div><div class="sk-lbl">本次用时</div></div></div>
+        <div class="sql-kpi"><div class="sk-ic success"><svg class="hi"><use href="#i-check"/></svg></div><div><div class="sk-num">3 / 1000</div><div class="sk-lbl">返回行 / 上限</div></div></div>
+        <div class="sql-kpi"><div class="sk-ic neutral"><svg class="hi"><use href="#i-table"/></svg></div><div><div class="sk-num">3,210</div><div class="sk-lbl">扫描行</div></div></div>
+        <div class="sql-kpi"><div class="sk-ic danger"><svg class="hi"><use href="#i-warn"/></svg></div><div><div class="sk-num">0</div><div class="sk-lbl">机密拦截</div></div></div>
+      </div>
+
+      <div class="sql-split">
+        <div class="sql-left">
+          <div class="sql-result-card">
+            <div class="rc-head">
+              <span class="rc-ttl">查询结果</span>
+              <span class="rc-sub">dwd.dws_orders · 12 列 · 命中 3 行</span>
+            </div>
+            <div class="rc-body">
+              <table class="proto-table">
+                <thead><tr><th>region</th><th>cnt</th><th>order_date_min</th><th>order_date_max</th><th>amount_sum</th><th>amount_avg</th><th>created_at</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="cell-strong">华东</span></td><td><span class="mono cell-sec">12,845</span></td><td><span class="mono cell-sec">2026-08-01</span></td><td><span class="mono cell-sec">2026-08-12</span></td><td><span class="mono cell-sec">¥ 4,820,512</span></td><td><span class="mono cell-sec">¥ 375.3</span></td><td><span class="mono cell-sec">2026-08-12 10:22:31</span></td></tr>
+                  <tr><td><span class="cell-strong">华北</span></td><td><span class="mono cell-sec">9,832</span></td><td><span class="mono cell-sec">2026-08-01</span></td><td><span class="mono cell-sec">2026-08-12</span></td><td><span class="mono cell-sec">¥ 3,418,209</span></td><td><span class="mono cell-sec">¥ 347.6</span></td><td><span class="mono cell-sec">2026-08-12 10:22:31</span></td></tr>
+                  <tr><td><span class="cell-strong">华南</span></td><td><span class="mono cell-sec">7,621</span></td><td><span class="mono cell-sec">2026-08-01</span></td><td><span class="mono cell-sec">2026-08-12</span></td><td><span class="mono cell-sec">¥ 2,712,815</span></td><td><span class="mono cell-sec">¥ 356.0</span></td><td><span class="mono cell-sec">2026-08-12 10:22:31</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sql-right">
+          <div class="history-card">
+            <div class="hc-head">
+              <span class="hc-ttl">查询历史</span>
+              <span class="hc-clear">清空</span>
+            </div>
+            <div class="history-list">
+              <div class="history-item">
+                <div class="hs-sql">SELECT region, COUNT(*) AS cnt FROM dwd.dws_orders …</div>
+                <div class="hs-meta"><span>内置 Doris</span><span>0.45s</span><span>3 行</span><span>10:22</span></div>
+              </div>
+              <div class="history-item">
+                <div class="hs-sql">SELECT * FROM dim.dim_date LIMIT 20</div>
+                <div class="hs-meta"><span>内置 Doris</span><span>0.18s</span><span>20 行</span><span>10:15</span></div>
+              </div>
+              <div class="history-item">
+                <div class="hs-sql">SELECT order_id, amount FROM dwd.dws_orders WHERE region = '华东'</div>
+                <div class="hs-meta"><span>内置 Doris</span><span>0.62s</span><span>100 行</span><span>09:58</span></div>
+              </div>
+              <div class="history-item">
+                <div class="hs-sql">SHOW TABLES FROM dwd</div>
+                <div class="hs-meta"><span>内置 Doris</span><span>0.09s</span><span>12 行</span><span>09:40</span></div>
+              </div>
+              <div class="history-item">
+                <div class="hs-sql">DESC dwd.dws_orders</div>
+                <div class="hs-meta"><span>内置 Doris</span><span>0.04s</span><span>12 行</span><span>09:32</span></div>
+              </div>
+              <div class="history-item">
+                <div class="hs-sql">SELECT status, COUNT(*) FROM dwd.dws_orders GROUP BY status</div>
+                <div class="hs-meta"><span>内置 Doris</span><span>0.31s</span><span>5 行</span><span>09:15</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint-box compact">
+        <span class="hb-ttl">只读安全：</span>仅允许 SELECT / WITH / SHOW / DESC / EXPLAIN（JSqlParser 语法级校验，子查询/注释不可绕过）· 单次默认超时 60 秒 · 结果上限 1000 行 · 机密表（CONFIDENTIAL）默认隐藏 + 命中拦截
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 2：API 管理（/data-service/api-manage）
+     ============================================================ -->
+<div class="view" data-view="api-list">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item active"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-key"/></svg>API 管理</h1>
+          <div class="head-sub">将数据表一键生成为 RESTful API 供业务系统调用（X-API-Key 认证 + 限流 + 调用统计）。机密表不可生成；内部表需超管开白。</div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-key"/></svg>API Key 管理</button>
+          <button class="btn btn-primary" onclick="switchView('api-create')"><svg class="hi-sm"><use href="#i-plus"/></svg>新建 API</button>
+        </div>
+      </div>
+
+      <div class="stat-strip">
+        <div class="stat-card"><div class="stat-ic accent"><svg class="hi"><use href="#i-bolt"/></svg></div><div><div class="stat-num">12</div><div class="stat-lbl">已发布 API</div></div></div>
+        <div class="stat-card"><div class="stat-ic neutral"><svg class="hi"><use href="#i-doc"/></svg></div><div><div class="stat-num">3</div><div class="stat-lbl">待发布 / 草稿</div></div></div>
+        <div class="stat-card"><div class="stat-ic success"><svg class="hi"><use href="#i-chev-r"/></svg></div><div><div class="stat-num">128,492</div><div class="stat-lbl">近 7 天总调用</div></div></div>
+        <div class="stat-card"><div class="stat-ic danger"><svg class="hi"><use href="#i-warn"/></svg></div><div><div class="stat-num">2</div><div class="stat-lbl">已下线</div></div></div>
+      </div>
+
+      <div class="table-card">
+        <div class="card-toolbar">
+          <div class="search-input"><svg class="hi-sm"><use href="#i-magnifier"/></svg><input placeholder="搜索 API 名称 / 路径 / 数据表"></div>
+          <div class="filter-select"><select><option>全部状态</option><option>已发布</option><option>未发布</option><option>已下线</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+          <div class="filter-select"><select><option>全部敏感度</option><option>公开</option><option>内部（开白）</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+          <div class="actions">
+            <div class="seg"><span class="seg-item">我的 API</span><span class="seg-item active">全部</span></div>
+          </div>
+        </div>
+        <table class="proto-table">
+          <thead>
+            <tr><th>API 名称</th><th>路径</th><th>方法</th><th>数据表</th><th>敏感度</th><th>状态</th><th>近 7 天调用</th><th>创建人</th><th>创建时间</th><th>修改人</th><th>修改时间</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="cell-strong">订单区域统计</span></td>
+              <td><span class="mono cell-sec">/open-api/v1/orders/region</span></td>
+              <td><span class="mono cell-sec">GET</span></td>
+              <td><span class="mono cell-sec">dwd.dws_orders</span></td>
+              <td><span class="badge-sens badge-public"><svg class="hi-sm"><use href="#i-check"/></svg>公开</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>已发布</span></td>
+              <td><span class="mono cell-sec">84,512</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-09 16:42</span></td>
+              <td>
+                <button class="icon-btn accent"><svg class="hi"><use href="#i-eye"/></svg></button>
+                <button class="icon-btn accent" title="运行统计" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-chart"/></svg></button>
+                <button class="icon-btn"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">订单明细查询</span></td>
+              <td><span class="mono cell-sec">/open-api/v1/orders/detail</span></td>
+              <td><span class="mono cell-sec">GET</span></td>
+              <td><span class="mono cell-sec">dwd.dws_orders</span></td>
+              <td><span class="badge-sens badge-public"><svg class="hi-sm"><use href="#i-check"/></svg>公开</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>已发布</span></td>
+              <td><span class="mono cell-sec">31,204</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-02 14:08</span></td>
+              <td><span class="cell-strong">王工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-10 11:15</span></td>
+              <td>
+                <button class="icon-btn accent"><svg class="hi"><use href="#i-eye"/></svg></button>
+                <button class="icon-btn accent" title="运行统计" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-chart"/></svg></button>
+                <button class="icon-btn"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">用户留存统计</span></td>
+              <td><span class="mono cell-sec">/open-api/v1/users/retention</span></td>
+              <td><span class="mono cell-sec">GET</span></td>
+              <td><span class="mono cell-sec">dws.dws_user_retention</span></td>
+              <td><span class="badge-sens badge-internal"><svg class="hi-sm"><use href="#i-warn"/></svg>内部</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>已发布</span></td>
+              <td><span class="mono cell-sec">8,091</span></td>
+              <td><span class="cell-strong">王工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-05 09:32</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-09 11:05</span></td>
+              <td>
+                <button class="icon-btn accent"><svg class="hi"><use href="#i-eye"/></svg></button>
+                <button class="icon-btn accent" title="运行统计" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-chart"/></svg></button>
+                <button class="icon-btn"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">区域维度</span></td>
+              <td><span class="mono cell-sec">/open-api/v1/dim/region</span></td>
+              <td><span class="mono cell-sec">GET</span></td>
+              <td><span class="mono cell-sec">dim.dim_region</span></td>
+              <td><span class="badge-sens badge-public"><svg class="hi-sm"><use href="#i-check"/></svg>公开</span></td>
+              <td><span class="badge badge-accent"><span class="dot"></span>未发布</span></td>
+              <td><span class="cell-muted">—</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-10 15:22</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-10 15:22</span></td>
+              <td>
+                <button class="icon-btn accent"><svg class="hi"><use href="#i-eye"/></svg></button>
+                <button class="icon-btn accent" title="运行统计" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-chart"/></svg></button>
+                <button class="icon-btn"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">客户明细（旧）</span></td>
+              <td><span class="mono cell-sec">/open-api/v1/customers/detail</span></td>
+              <td><span class="mono cell-sec">GET</span></td>
+              <td><span class="mono cell-sec">dwd.dws_customer</span></td>
+              <td><span class="badge-sens badge-confidential"><svg class="hi-sm"><use href="#i-warn"/></svg>机密</span></td>
+              <td><span class="badge badge-stopped"><span class="dot"></span>已下线</span></td>
+              <td><span class="cell-muted">—</span></td>
+              <td><span class="cell-strong">赵工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">07-20 09:15</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-08 16:40</span></td>
+              <td>
+                <button class="icon-btn accent"><svg class="hi"><use href="#i-eye"/></svg></button>
+                <button class="icon-btn accent" title="运行统计" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-chart"/></svg></button>
+                <button class="icon-btn"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <span class="page-info">共 12 条 · 第 1/3 页</span>
+          <div class="page-nav">
+            <button class="page-btn" disabled><svg class="hi-sm"><use href="#i-chev-l"/></svg></button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <button class="page-btn"><svg class="hi-sm"><use href="#i-chev-r"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 3：API 创建向导（3 步：选表 → 配置接口 → 绑定 Key）
+     ============================================================ -->
+<div class="view" data-view="api-create">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item active" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-plus"/></svg>新建 API</h1>
+          <div class="head-sub">三步完成：选择数据表 → 配置参数化接口 → 绑定 API Key。选表即生成接口雏形（右侧实时预览），机密字段自动锁定不进入 API 响应。</div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-secondary" onclick="switchView('api-list')"><svg class="hi-sm"><use href="#i-chev-l"/></svg>返回列表</button>
+        </div>
+      </div>
+
+      <div class="wiz-card">
+        <div class="wiz-steps">
+          <div class="wiz-step active"><span class="wiz-step-num">1</span>选择数据表</div>
+          <div class="wiz-step-line"></div>
+          <div class="wiz-step"><span class="wiz-step-num">2</span>配置接口</div>
+          <div class="wiz-step-line"></div>
+          <div class="wiz-step"><span class="wiz-step-num">3</span>绑定 API Key</div>
+        </div>
+        <div class="wiz-body">
+          <div class="dual-cards">
+            <!-- 源卡：选择数据源 + 库 + 表 -->
+            <div class="dual-card">
+              <div class="dual-card-head">
+                <svg class="hi-sm" style="color:rgb(var(--color-accent))"><use href="#i-table"/></svg>
+                <span class="dc-ttl">数据源</span>
+                <span class="dc-sub">选择数据表，作为接口的数据来源</span>
+              </div>
+              <div class="dual-card-body">
+                <div class="form-item">
+                  <label class="fi-label">数据源 <span class="req">*</span></label>
+                  <div class="filter-select" style="width:100%">
+                    <select>
+                      <option selected>内置 Doris（datanest）</option>
+                      <option>MySQL · 业务主库（business_db）</option>
+                      <option>PostgreSQL · 用户库（userdb）</option>
+                    </select>
+                    <svg class="chev"><use href="#i-chev-d"/></svg>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <div class="form-item">
+                    <label class="fi-label">数据库 <span class="req">*</span></label>
+                    <input class="form-input" value="dwd">
+                  </div>
+                  <div class="form-item">
+                    <label class="fi-label">Schema</label>
+                    <input class="form-input" value="public">
+                  </div>
+                </div>
+                <div class="field-table">
+                  <div class="ft-head">
+                    <span style="font-size:11px;font-weight:600;color:rgb(var(--color-text-muted));letter-spacing:.5px">数据表（单选）<span class="req">*</span></span>
+                    <span style="margin-left:auto;font-size:11px;color:rgb(var(--color-text-muted))">12 张</span>
+                  </div>
+                  <div class="ft-list">
+                    <label class="ft-row"><input type="radio" name="tbl" checked><span class="ft-name">dws_orders</span><span class="ft-type">事实表</span><span class="ft-mode"><span class="badge-sens badge-public">公开</span></span></label>
+                    <label class="ft-row"><input type="radio" name="tbl"><span class="ft-name">dws_customer</span><span class="ft-type">维度表</span><span class="ft-mode"><span class="badge-sens badge-public">公开</span></span></label>
+                    <label class="ft-row"><input type="radio" name="tbl"><span class="ft-name">dws_customer_detail</span><span class="ft-type">事实表</span><span class="ft-mode"><span class="badge-sens badge-confidential">机密</span></span></label>
+                    <label class="ft-row"><input type="radio" name="tbl"><span class="ft-name">dws_customer_phone</span><span class="ft-type">事实表</span><span class="ft-mode"><span class="badge-sens badge-confidential">机密</span></span></label>
+                    <label class="ft-row"><input type="radio" name="tbl"><span class="ft-name">dws_user_retention</span><span class="ft-type">事实表</span><span class="ft-mode"><span class="badge-sens badge-internal">内部</span></span></label>
+                    <label class="ft-row"><input type="radio" name="tbl"><span class="ft-name">dim_region</span><span class="ft-type">维度表</span><span class="ft-mode"><span class="badge-sens badge-public">公开</span></span></label>
+                    <label class="ft-row"><input type="radio" name="tbl"><span class="ft-name">dim_date</span><span class="ft-type">维度表</span><span class="ft-mode"><span class="badge-sens badge-public">公开</span></span></label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 流向箭头 -->
+            <div class="flow-arrow">
+              <svg class="hi fa-ic" style="width:22px;height:22px"><use href="#i-chev-r"/></svg>
+              <span class="fa-tx">生成</span>
+            </div>
+
+            <!-- 目标卡：API 预览（路径 / 方法 / 默认暴露字段） -->
+            <div class="dual-card">
+              <div class="dual-card-head">
+                <svg class="hi-sm" style="color:rgb(var(--color-accent))"><use href="#i-key"/></svg>
+                <span class="dc-ttl">API 预览</span>
+                <span class="dc-sub">选表即生成接口雏形</span>
+              </div>
+              <div class="dual-card-body">
+                <div class="api-preview-path">
+                  <span class="ap-method">GET</span>
+                  <span class="ap-path">/open-api/v1/orders</span>
+                  <svg class="hi-sm ap-copy"><use href="#i-copy"/></svg>
+                </div>
+                <div class="kv-row"><span class="kv-label">生成规则</span><span class="kv-value">按表名自动生成路径与语义名，下一步可修改</span></div>
+                <div class="field-table">
+                  <div class="ft-head">
+                    <span style="font-size:11px;font-weight:600;color:rgb(var(--color-text-muted));letter-spacing:.5px">暴露字段</span>
+                    <span style="margin-left:auto;font-size:11px;color:rgb(var(--color-text-muted))">默认暴露 6 个</span>
+                  </div>
+                  <div class="ft-list">
+                    <label class="ft-row"><input type="checkbox" checked><span class="ft-name">order_id</span><span class="ft-type">主键</span></label>
+                    <label class="ft-row"><input type="checkbox" checked><span class="ft-name">region</span><span class="ft-type">区域</span><span class="ft-mode">可参数化</span></label>
+                    <label class="ft-row"><input type="checkbox" checked><span class="ft-name">amount</span><span class="ft-type">金额</span></label>
+                    <label class="ft-row"><input type="checkbox" checked><span class="ft-name">order_date</span><span class="ft-type">下单日期</span><span class="ft-mode">可参数化</span></label>
+                    <label class="ft-row"><input type="checkbox" checked><span class="ft-name">status</span><span class="ft-type">状态</span></label>
+                    <label class="ft-row"><input type="checkbox" checked><span class="ft-name">customer_id</span><span class="ft-type">客户 ID</span></label>
+                    <label class="ft-row" style="opacity:.55;cursor:not-allowed"><input type="checkbox" disabled><span class="ft-name">customer_phone</span><span class="ft-type">手机号</span><span class="ft-mode"><span class="badge-sens badge-confidential">机密 · 锁定</span></span></label>
+                    <label class="ft-row" style="opacity:.55;cursor:not-allowed"><input type="checkbox" disabled><span class="ft-name">customer_identity</span><span class="ft-type">证件号</span><span class="ft-mode"><span class="badge-sens badge-confidential">机密 · 锁定</span></span></label>
+                  </div>
+                </div>
+                <div style="margin-top:auto;display:flex;gap:8px">
+                  <div class="info-box" style="flex:1"><svg class="hi-sm"><use href="#i-check"/></svg><span>公开字段默认全量暴露；<b>机密字段自动锁定</b>，不进入 API 响应，从源头防止数据泄露。</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="wiz-foot">
+          <button class="btn btn-secondary" onclick="switchView('api-list')">取消</button>
+          <button class="btn btn-primary">下一步：配置接口<svg class="hi-sm"><use href="#i-chev-r"/></svg></button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 4：API 详情（文档 + 调用统计 /data-service/api-manage/:id）
+     ============================================================ -->
+<div class="view" data-view="api-detail">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item active" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-bolt"/></svg>订单区域统计</h1>
+          <div class="head-sub">
+            <span class="badge badge-running"><span class="dot"></span>已发布</span>
+            <span class="badge-sens badge-public" style="margin-left:8px"><svg class="hi-sm"><use href="#i-check"/></svg>公开</span>
+            <span class="mono cell-muted" style="margin-left:8px">/open-api/v1/orders/region · GET</span>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-doc"/></svg>查看文档</button>
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-copy"/></svg>复制调用示例</button>
+          <button class="btn btn-secondary" onclick="switchView('api-key')"><svg class="hi-sm"><use href="#i-key"/></svg>绑定 Key</button>
+        </div>
+      </div>
+
+      <div class="detail-row row-2-1" style="margin-bottom:8px">
+        <!-- 健康度评级 -->
+        <div class="health-grade success">
+          <div class="hg-ic"><svg class="hi"><use href="#i-shield"/></svg></div>
+          <div class="hg-info">
+            <span class="hg-lvl">健康 · A 级</span>
+            <span class="hg-desc">成功率 99.2% · P95 430ms · 错误率 0.8%，整体表现良好</span>
+          </div>
+          <div class="hg-score">95</div>
+        </div>
+        <!-- API 信息卡 + 平台运行统计入口 -->
+        <div class="api-meta-card">
+          <div class="seg" style="height:30px;padding:3px">
+            <span class="seg-item">近24h</span>
+            <span class="seg-item active">近7天</span>
+            <span class="seg-item">近30天</span>
+          </div>
+          <div class="api-meta-row">
+            <span>版本<span class="mr-val">v1</span></span>
+            <span>创建人<span class="mr-val">李工</span></span>
+            <span>状态<span class="mr-val" style="color:rgb(var(--color-success))">已发布</span></span>
+          </div>
+          <div class="api-meta-row">
+            <span>绑定 Key<span class="mr-val">3</span></span>
+            <span>近 7 天调用<span class="mr-val">84,512</span></span>
+          </div>
+          <div class="global-stats-entry" onclick="switchView('api-stats')" title="打开平台 API 运行统计">
+            <div>
+              <span class="gse-ttl"><svg class="hi-sm"><use href="#i-trend"/></svg>平台运行统计</span>
+              <span class="gse-desc">近 7 天 128,492 次调用 · 成功率 98.7%</span>
+            </div>
+            <svg class="hi-sm"><use href="#i-chev-r"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="kpi-strip compact">
+        <div class="kpi-card"><div class="kpi-label">总调用量</div><div class="kpi-num">84,512</div><div class="kpi-sub">近 7 天 · 同比 +12.4%</div></div>
+        <div class="kpi-card"><div class="kpi-label">成功率</div><div class="kpi-num success">99.2%</div><div class="kpi-sub">目标 ≥ 99.0%</div></div>
+        <div class="kpi-card"><div class="kpi-label">平均 / P95 耗时</div><div class="kpi-num">180<span class="unit">ms</span></div><div class="kpi-sub">P95：430ms</div></div>
+        <div class="kpi-card"><div class="kpi-label">今日调用</div><div class="kpi-num">12,034</div><div class="kpi-sub">实时 · 429 共 3 次</div></div>
+      </div>
+
+      <!-- 三联趋势 -->
+      <div class="detail-row row-2-1" style="margin-bottom:8px">
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">调用量趋势</span>
+            <span class="cc-sub">峰值 14,820（昨天 16:00）</span>
+          </div>
+          <div class="trend-chart">
+            <svg viewBox="0 0 720 120" preserveAspectRatio="none">
+              <line x1="0" y1="25" x2="720" y2="25" class="grid-line"/>
+              <line x1="0" y1="65" x2="720" y2="65" class="grid-line"/>
+              <line x1="0" y1="105" x2="720" y2="105" class="grid-line"/>
+              <text x="0" y="18" class="axis-text">15k</text>
+              <text x="0" y="58" class="axis-text">10k</text>
+              <text x="0" y="98" class="axis-text">5k</text>
+              <polyline points="0,95 60,82 120,86 180,68 240,72 300,50 360,58 420,38 480,46 540,28 600,38 660,22 720,28" class="line-accent"/>
+              <text x="0" y="118" class="axis-text">08-06</text>
+              <text x="290" y="118" class="axis-text">08-10</text>
+              <text x="610" y="118" class="axis-text">今天</text>
+            </svg>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">错误率趋势</span>
+            <span class="cc-sub">峰值 0.12%（08-09 02:00）</span>
+          </div>
+          <div class="trend-chart">
+            <svg viewBox="0 0 720 120" preserveAspectRatio="none">
+              <line x1="0" y1="40" x2="720" y2="40" class="grid-line"/>
+              <line x1="0" y1="80" x2="720" y2="80" class="grid-line"/>
+              <text x="0" y="32" class="axis-text">1%</text>
+              <text x="0" y="72" class="axis-text">0.5%</text>
+              <polyline points="0,55 60,52 120,58 180,54 240,60 300,58 360,62 420,65 480,62 540,68 600,62 660,70 720,65" class="line-danger"/>
+              <text x="0" y="118" class="axis-text">08-06</text>
+              <text x="290" y="118" class="axis-text">08-10</text>
+              <text x="610" y="118" class="axis-text">今天</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-row row-2-1" style="margin-bottom:8px">
+        <!-- 今日小时柱状图 -->
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">今日小时调用分布</span>
+            <span class="cc-sub">峰值 1,420（15:00）</span>
+          </div>
+          <div class="trend-chart" style="display:flex;flex-direction:column">
+            <div class="bar-chart" style="height:100px">
+              <div class="bar" style="height:30%"></div>
+              <div class="bar" style="height:20%"></div>
+              <div class="bar" style="height:14%"></div>
+              <div class="bar" style="height:12%"></div>
+              <div class="bar" style="height:18%"></div>
+              <div class="bar" style="height:28%"></div>
+              <div class="bar" style="height:42%"></div>
+              <div class="bar" style="height:65%"></div>
+              <div class="bar" style="height:88%"></div>
+              <div class="bar" style="height:96%"></div>
+              <div class="bar" style="height:82%"></div>
+              <div class="bar" style="height:72%"></div>
+              <div class="bar" style="height:68%"></div>
+              <div class="bar" style="height:80%"></div>
+              <div class="bar" style="height:100%"></div>
+              <div class="bar" style="height:94%"></div>
+              <div class="bar" style="height:78%"></div>
+              <div class="bar" style="height:62%"></div>
+              <div class="bar" style="height:48%"></div>
+              <div class="bar" style="height:34%"></div>
+              <div class="bar" style="height:22%"></div>
+              <div class="bar" style="height:16%"></div>
+              <div class="bar" style="height:12%"></div>
+              <div class="bar dim" style="height:8%"></div>
+            </div>
+            <div class="bar-chart-labels">
+              <span>00</span><span></span><span></span><span></span><span></span><span>05</span><span></span><span></span><span></span><span></span><span>10</span><span></span><span></span><span></span><span></span><span>15</span><span></span><span></span><span></span><span></span><span>20</span><span></span><span></span><span></span><span>23</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 错误码分布 + Top Key 排行 -->
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">调用方 Key 排行 · 近 7 天</span>
+          </div>
+          <div class="rank-list">
+            <div class="rank-row"><span class="rr-no top1">1</span><span class="rr-name">业务-订单组</span><div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:100%"></div></div></div><span class="rr-val">68,120</span></div>
+            <div class="rank-row"><span class="rr-no top2">2</span><span class="rr-name">数据看板</span><div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:24%"></div></div></div><span class="rr-val">16,392</span></div>
+            <div class="rank-row"><span class="rr-no top3">3</span><span class="rr-name">业务-第三方报表</span><div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:9%"></div></div></div><span class="rr-val">6,182</span></div>
+            <div class="rank-row"><span class="rr-no">4</span><span class="rr-name">临时测试</span><div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:3%"></div></div></div><span class="rr-val">1,820</span></div>
+            <div class="rank-row"><span class="rr-no">5</span><span class="rr-name">BI 测试组</span><div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:1%"></div></div></div><span class="rr-val">682</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 错误码分布 + 最近调用条 -->
+      <div class="detail-row row-2-1" style="margin-bottom:8px">
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">错误码分布 · 近 7 天</span>
+            <span class="cc-sub">总调用 84,512</span>
+          </div>
+          <div class="trend-chart" style="display:flex;flex-direction:column;justify-content:center;gap:8px">
+            <div class="err-split" style="--w-2xx:97;--w-4xx:2.5;--w-5xx:0.5">
+              <div class="es-2xx"></div>
+              <div class="es-4xx"></div>
+              <div class="es-5xx"></div>
+            </div>
+            <div class="err-legend">
+              <span class="el-item"><span class="el-dot" style="background:rgb(var(--color-success))"></span>2xx 成功<span class="el-val">81,945</span></span>
+              <span class="el-item"><span class="el-dot" style="background:rgb(var(--color-warning))"></span>4xx 客户端<span class="el-val">2,131</span></span>
+              <span class="el-item"><span class="el-dot" style="background:rgb(var(--color-danger))"></span>5xx 服务端<span class="el-val">436</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">最近调用</span>
+            <span class="cc-sub">最新 5 条 · 异常高亮</span>
+          </div>
+          <div class="mini-log-list">
+            <div class="ml-head"><span>时间</span><span>调用方</span><span>状态</span><span>耗时</span></div>
+            <div class="ml-row"><span class="ml-time">10:24:31</span><span class="ml-caller">业务-订单组</span><span class="ml-status success">200</span><span class="ml-dur">182ms</span></div>
+            <div class="ml-row"><span class="ml-time">10:24:28</span><span class="ml-caller">数据看板</span><span class="ml-status success">200</span><span class="ml-dur">205ms</span></div>
+            <div class="ml-row"><span class="ml-time">10:24:25</span><span class="ml-caller">业务-第三方报表</span><span class="ml-status warn">429</span><span class="ml-dur">—</span></div>
+            <div class="ml-row"><span class="ml-time">10:24:18</span><span class="ml-caller">临时测试</span><span class="ml-status success">200</span><span class="ml-dur">156ms</span></div>
+            <div class="ml-row"><span class="ml-time">10:24:02</span><span class="ml-caller">BI 测试组</span><span class="ml-status danger">500</span><span class="ml-dur">1.2s</span></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 5：API Key 管理（含新建 Key 弹窗）
+     ============================================================ -->
+<div class="view" data-view="api-key">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item active" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-key"/></svg>API Key 管理</h1>
+          <div class="head-sub">业务系统凭 API Key（X-API-Key 头）调用对外 API 与 WebSocket 订阅；Key 仅创建时展示一次明文，后端只存哈希。</div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-primary" onclick="openModal('new-key-modal')"><svg class="hi-sm"><use href="#i-plus"/></svg>新建 Key</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="card-toolbar">
+          <div class="search-input"><svg class="hi-sm"><use href="#i-magnifier"/></svg><input placeholder="搜索 Key 名称"></div>
+          <div class="filter-select"><select><option>全部状态</option><option>启用</option><option>禁用</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+        </div>
+        <table class="proto-table">
+          <thead><tr><th>Key 名称</th><th>状态</th><th>绑定 API</th><th>限流 QPS</th><th>近 7 天调用</th><th>创建人</th><th>创建时间</th><th>修改人</th><th>修改时间</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="cell-strong">业务-订单组</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>启用</span></td>
+              <td><span class="cell-sec">订单区域统计 · 订单明细查询 · 用户留存统计</span></td>
+              <td><span class="mono cell-sec">50</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-09 14:08</span></td>
+              <td>
+                <button class="icon-btn accent"><svg class="hi"><use href="#i-key"/></svg></button>
+                <button class="icon-btn"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">数据看板</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>启用</span></td>
+              <td><span class="cell-sec">订单区域统计</span></td>
+              <td><span class="mono cell-sec">10</span></td>
+              <td><span class="mono cell-strong" style="color:rgb(var(--color-success))">32,408</span></td>
+              <td><span class="cell-strong">王工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">07-28 09:12</span></td>
+              <td><span class="cell-strong">王工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">07-28 09:12</span></td>
+              <td>
+                <button class="icon-btn accent" title="查看 Key"><svg class="hi"><use href="#i-key"/></svg></button>
+                <button class="icon-btn" title="编辑"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger" title="禁用"><svg class="hi"><use href="#i-stop"/></svg></button>
+                <button class="icon-btn danger" title="删除"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">实时订阅-看板</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>启用</span></td>
+              <td><span class="cell-sec">WebSocket 订阅：orders-sync 管道</span></td>
+              <td><span class="mono cell-sec">20</span></td>
+              <td><span class="mono cell-strong" style="color:rgb(var(--color-success))">20,118</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-05 11:48</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-09 16:30</span></td>
+              <td>
+                <button class="icon-btn accent" title="查看 Key"><svg class="hi"><use href="#i-key"/></svg></button>
+                <button class="icon-btn" title="编辑"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn danger" title="禁用"><svg class="hi"><use href="#i-stop"/></svg></button>
+                <button class="icon-btn danger" title="删除"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">临时测试</span></td>
+              <td><span class="badge badge-stopped"><span class="dot"></span>禁用</span></td>
+              <td><span class="cell-sec">区域维度</span></td>
+              <td><span class="mono cell-sec">5</span></td>
+              <td><span class="mono cell-muted">0</span></td>
+              <td><span class="cell-strong">赵工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">07-20 14:25</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">07-22 10:00</span></td>
+              <td>
+                <button class="icon-btn accent" title="查看 Key"><svg class="hi"><use href="#i-key"/></svg></button>
+                <button class="icon-btn" title="编辑"><svg class="hi"><use href="#i-pencil"/></svg></button>
+                <button class="icon-btn accent" title="启用"><svg class="hi"><use href="#i-play"/></svg></button>
+                <button class="icon-btn danger" title="删除"><svg class="hi"><use href="#i-trash"/></svg></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <span class="page-info">共 4 条 · 第 1/1 页</span>
+          <div class="page-nav"><button class="page-btn active">1</button></div>
+        </div>
+      </div>
+
+      <div class="hint-box" style="margin-top:12px">
+        <span class="hb-ttl">限流说明：</span>Key 级 QPS 与单 API 级 QPS 取小生效（Redis 滑动窗口）；超限返回 429（含 Retry-After）。一个 Key 可绑定多个 API，也可绑定 CDC 管道用于 WebSocket 订阅（Key 绑定管道即获得订阅权）。<b style="color:rgb(var(--color-warning))">近 7 天调用为 0 的 Key 建议停用</b>，防止长期闲置引发泄露风险。
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============ 新建 Key 弹窗 ============ -->
+<div class="modal-mask" id="new-key-modal">
+  <div class="modal-backdrop" onclick="closeModal('new-key-modal')"></div>
+  <div class="modal w560">
+    <button class="icon-btn modal-close" onclick="closeModal('new-key-modal')"><svg class="hi"><use href="#i-xmark"/></svg></button>
+    <div class="modal-ttl">新建 API Key</div>
+    <div class="modal-body">
+      <div class="form-item">
+        <label class="fi-label">Key 名称 <span class="req">*</span></label>
+        <input class="form-input" placeholder="例如：业务-订单组" value="业务-订单组">
+      </div>
+      <div class="form-grid">
+        <div class="form-item">
+          <label class="fi-label">限流 QPS <span class="req">*</span></label>
+          <input class="form-input mono" value="50">
+          <div class="fi-hint">该 Key 下所有 API 共享此总上限</div>
+        </div>
+        <div class="form-item">
+          <label class="fi-label">状态</label>
+          <div class="switch on" style="margin-top:8px"></div>
+        </div>
+      </div>
+      <div class="form-item">
+        <label class="fi-label">绑定 API</label>
+        <div class="sel">
+          <span class="sel-chip">订单区域统计</span>
+          <span class="sel-chip">订单明细查询</span>
+          <span class="sel-chip">用户留存统计</span>
+          <svg class="chev"><use href="#i-chev-d"/></svg>
+        </div>
+        <div class="fi-hint">可同时绑定 CDC 管道用于 WebSocket 实时订阅（Key 绑定管道即获得订阅权）</div>
+      </div>
+      <div class="key-box">
+        <svg class="hi" style="color:rgb(var(--color-accent))"><use href="#i-key"/></svg>
+        <span class="key-val">K-8f3a9c2d1e0b7a5f</span>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px"><svg class="hi-sm"><use href="#i-copy"/></svg>复制</button>
+      </div>
+      <div class="key-warn">
+        <svg class="hi-sm"><use href="#i-warn"/></svg>
+        明文 Key 仅在此展示一次，关闭后无法再次查看。请立即复制并妥善保管；泄露可通过「禁用 + 重新创建」处置。
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('new-key-modal')">关闭</button>
+      <button class="btn btn-primary" onclick="closeModal('new-key-modal')">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 6：API 运行统计（/data-service/api-stats 全局观测域）
+     ============================================================ -->
+<div class="view" data-view="api-stats">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">工作台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>总览</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item active"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</h1>
+          <div class="head-sub">平台全部 API 的运行态势：总量趋势、健康分级、Top 调用与限流命中；点击排行条目可进入单 API 详情。</div>
+        </div>
+        <div class="head-actions">
+          <div class="seg">
+            <span class="seg-item">近24h</span>
+            <span class="seg-item active">近7天</span>
+            <span class="seg-item">近30天</span>
+          </div>
+          <button class="btn btn-secondary" onclick="switchView('api-list')"><svg class="hi-sm"><use href="#i-chev-l"/></svg>返回 API 列表</button>
+        </div>
+      </div>
+
+      <div class="kpi-strip compact">
+        <div class="kpi-card"><div class="kpi-label">总调用量</div><div class="kpi-num">128,492</div><div class="kpi-sub">近 7 天 · 12 个已发布 API</div></div>
+        <div class="kpi-card"><div class="kpi-label">平均成功率</div><div class="kpi-num success">98.7%</div><div class="kpi-sub">目标 ≥ 99.0% · 距达标 0.3pp</div></div>
+        <div class="kpi-card"><div class="kpi-label">平均 / P95 耗时</div><div class="kpi-num">412<span class="unit">ms</span></div><div class="kpi-sub">P95 优于 500ms 目标</div></div>
+        <div class="kpi-card"><div class="kpi-label">限流命中</div><div class="kpi-num" style="color:rgb(var(--color-warning))">8,214</div><div class="kpi-sub">占调用 6.4% · 429 最多</div></div>
+      </div>
+
+      <!-- 全局调用量趋势 + 健康分布 -->
+      <div class="detail-row row-2-1" style="margin-bottom:8px">
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">全局调用量趋势</span>
+            <span class="cc-sub">峰值 21,904（昨天 15:00）</span>
+            <span class="cc-actions">
+              <span class="chart-legend">
+                <span class="lg-item"><span class="lg-dot" style="background:rgb(var(--color-accent))"></span>调用量</span>
+                <span class="lg-item"><span class="lg-dot" style="background:rgb(var(--color-danger))"></span>失败数</span>
+              </span>
+            </span>
+          </div>
+          <div class="trend-chart">
+            <svg viewBox="0 0 720 150" preserveAspectRatio="none">
+              <line x1="0" y1="28" x2="720" y2="28" class="grid-line"/>
+              <line x1="0" y1="70" x2="720" y2="70" class="grid-line"/>
+              <line x1="0" y1="112" x2="720" y2="112" class="grid-line"/>
+              <text x="0" y="21" class="axis-text">20k</text>
+              <text x="0" y="63" class="axis-text">10k</text>
+              <text x="0" y="105" class="axis-text">5k</text>
+              <polyline points="0,132 60,124 120,128 180,112 240,118 300,100 360,106 420,88 480,94 540,76 600,84 660,68 720,72" class="line-accent"/>
+              <polyline points="0,142 60,141 120,140 180,139 240,140 300,137 360,138 420,134 480,135 540,132 600,133 660,130 720,131" class="line-danger"/>
+              <text x="0" y="149" class="axis-text">08-06</text>
+              <text x="290" y="149" class="axis-text">08-09</text>
+              <text x="610" y="149" class="axis-text">今天</text>
+            </svg>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">API 健康分布</span>
+            <span class="cc-sub">近 7 天 · 共 12 个</span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px;flex-shrink:0">
+            <span style="font-size:1.75rem;font-weight:800;letter-spacing:-.5px;line-height:1;color:rgb(var(--color-success));font-family:'SFMono-Regular',ui-monospace,Consolas,monospace">92</span>
+            <span style="font-size:11px;color:rgb(var(--color-text-muted));margin-bottom:2px">平台综合健康分</span>
+          </div>
+          <div class="err-split" style="--w-2xx:75;--w-4xx:17;--w-5xx:8;margin-top:8px">
+            <div class="es-2xx"></div>
+            <div class="es-4xx"></div>
+            <div class="es-5xx"></div>
+          </div>
+          <div class="err-legend">
+            <span class="el-item"><span class="el-dot" style="background:rgb(var(--color-success))"></span>健康<span class="el-val">9</span></span>
+            <span class="el-item"><span class="el-dot" style="background:rgb(var(--color-warning))"></span>警告<span class="el-val">2</span></span>
+            <span class="el-item"><span class="el-dot" style="background:rgb(var(--color-danger))"></span>严重<span class="el-val">1</span></span>
+          </div>
+          <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:8px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgb(var(--color-text-secondary))">
+              <span style="background:rgb(var(--color-success));width:7px;height:7px;border-radius:50%;flex-shrink:0"></span>
+              <span>订单区域统计、订单明细、用户画像…等 9 个</span>
+              <a style="margin-left:auto;color:rgb(var(--color-accent));font-weight:600;cursor:pointer" onclick="switchView('api-list')">查看</a>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgb(var(--color-text-secondary))">
+              <span style="background:rgb(var(--color-warning));width:7px;height:7px;border-radius:50%;flex-shrink:0"></span>
+              <span>支付回调、库存快照</span>
+              <a style="margin-left:auto;color:rgb(var(--color-accent));font-weight:600;cursor:pointer" onclick="switchView('api-detail')">查看</a>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgb(var(--color-text-secondary))">
+              <span style="background:rgb(var(--color-danger));width:7px;height:7px;border-radius:50%;flex-shrink:0"></span>
+              <span>对账中心</span>
+              <a style="margin-left:auto;color:rgb(var(--color-danger));font-weight:600;cursor:pointer" onclick="switchView('api-detail')">查看</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top 5 调用排行 + 错误码分布 -->
+      <div class="detail-row row-2-1" style="margin-bottom:8px">
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">Top 5 API 调用排行</span>
+            <span class="cc-sub">按近 7 天调用量</span>
+            <span class="cc-actions"><span class="chart-legend"><span class="lg-item"><span class="lg-dot" style="background:rgb(var(--color-accent))"></span>调用量占比</span></span></span>
+          </div>
+          <div class="rank-list">
+            <div class="rank-row clickable" onclick="switchView('api-detail')" title="查看「订单区域统计」详情">
+              <span class="rr-no top1">1</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>订单区域统计</span>
+                <span class="rr-sub">/open-api/v1/orders/region</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:100%"></div></div></div>
+              <span class="rr-val">35,204</span>
+              <span class="rr-link">详情<svg class="hi-sm"><use href="#i-chev-r"/></svg></span>
+            </div>
+            <div class="rank-row clickable" onclick="switchView('api-detail')" title="查看「订单明细」详情">
+              <span class="rr-no top2">2</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>订单明细</span>
+                <span class="rr-sub">/open-api/v1/orders</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:74%"></div></div></div>
+              <span class="rr-val">26,058</span>
+              <span class="rr-link">详情<svg class="hi-sm"><use href="#i-chev-r"/></svg></span>
+            </div>
+            <div class="rank-row clickable" onclick="switchView('api-detail')" title="查看「用户画像」详情">
+              <span class="rr-no top3">3</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>用户画像</span>
+                <span class="rr-sub">/open-api/v1/users/profile</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:46%"></div></div></div>
+              <span class="rr-val">16,202</span>
+              <span class="rr-link">详情<svg class="hi-sm"><use href="#i-chev-r"/></svg></span>
+            </div>
+            <div class="rank-row clickable" onclick="switchView('api-detail')" title="查看「支付回调」详情">
+              <span class="rr-no">4</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>支付回调</span>
+                <span class="rr-sub">/open-api/v1/payments/callback</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:31%"></div></div></div>
+              <span class="rr-val">10,912</span>
+              <span class="rr-link">详情<svg class="hi-sm"><use href="#i-chev-r"/></svg></span>
+            </div>
+            <div class="rank-row clickable" onclick="switchView('api-detail')" title="查看「库存快照」详情">
+              <span class="rr-no">5</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>库存快照</span>
+                <span class="rr-sub">/open-api/v1/inventory/snapshot</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:21%"></div></div></div>
+              <span class="rr-val">7,384</span>
+              <span class="rr-link">详情<svg class="hi-sm"><use href="#i-chev-r"/></svg></span>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">错误码分布</span>
+            <span class="cc-sub">非 2xx 请求 · 共 1,584</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+            <div class="err-split" style="flex:1;--w-4xx:91;--w-5xx:9">
+              <div class="es-4xx"></div>
+              <div class="es-5xx"></div>
+            </div>
+            <span style="font-size:11px;color:rgb(var(--color-text-muted))">91% 客户端 · 9% 服务端</span>
+          </div>
+          <div class="rank-list" style="margin-top:6px">
+            <div class="rank-row">
+              <span class="rr-no">1</span>
+              <span class="rr-name">429 限流</span>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:100%;background:rgb(var(--color-warning))"></div></div></div>
+              <span class="rr-val">792</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no">2</span>
+              <span class="rr-name">401 未认证</span>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:43%"></div></div></div>
+              <span class="rr-val">342</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no">3</span>
+              <span class="rr-name">403 无权限</span>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:28%"></div></div></div>
+              <span class="rr-val">221</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no">4</span>
+              <span class="rr-name">500 内部错误</span>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:18%;background:rgb(var(--color-danger))"></div></div></div>
+              <span class="rr-val">143</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no">5</span>
+              <span class="rr-name">404 未找到</span>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:11%"></div></div></div>
+              <span class="rr-val">86</span>
+            </div>
+          </div>
+          <div class="info-box" style="margin-top:auto"><svg class="hi-sm"><use href="#i-warn"/></svg><span><b>429 限流占错误总量 50%</b>，命中集中在「订单区域统计」；建议调高该 API 的 Key 级 QPS 或增加结果缓存。</span></div>
+        </div>
+      </div>
+
+      <!-- 调用方 Key 排行 + 限流趋势 + 状态速览 -->
+      <div class="detail-row row-2" style="margin-bottom:0">
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">调用方 Key 排行</span>
+            <span class="cc-sub">近 7 天调用量</span>
+          </div>
+          <div class="rank-list">
+            <div class="rank-row">
+              <span class="rr-no top1">1</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>orders-prod</span>
+                <span class="rr-sub">生产接入 · 绑定 3 个 API</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:100%"></div></div></div>
+              <span class="rr-val">58,204</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no top2">2</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>mobile-app-key</span>
+                <span class="rr-sub">移动端 · 绑定 2 个 API</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:56%"></div></div></div>
+              <span class="rr-val">32,408</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no top3">3</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>partner-warehouse</span>
+                <span class="rr-sub">仓储伙伴 · 绑定 1 个 API</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:35%"></div></div></div>
+              <span class="rr-val">20,118</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no">4</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>data-team-internal</span>
+                <span class="rr-sub">数据组内测 · 绑定 4 个 API</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:22%"></div></div></div>
+              <span class="rr-val">12,846</span>
+            </div>
+            <div class="rank-row">
+              <span class="rr-no">5</span>
+              <div class="rr-name" style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <span>test-key</span>
+                <span class="rr-sub">临时测试 · 7 天 0 调用</span>
+              </div>
+              <div class="rr-bar-wrap"><div class="rr-bar-bg"><div class="rr-bar" style="width:0%"></div></div></div>
+              <span class="rr-val" style="color:rgb(var(--color-text-muted))">0</span>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">限流命中趋势</span>
+            <span class="cc-sub">近 7 天 · 峰值 1,984（08-11）</span>
+          </div>
+          <div class="bar-chart" style="flex:1;min-height:88px">
+            <div class="bar" style="height:26%"></div>
+            <div class="bar" style="height:34%"></div>
+            <div class="bar" style="height:45%"></div>
+            <div class="bar" style="height:59%"></div>
+            <div class="bar" style="height:72%"></div>
+            <div class="bar" style="height:100%"></div>
+            <div class="bar" style="height:78%"></div>
+          </div>
+          <div class="bar-chart-labels">
+            <span>08-06</span><span>08-07</span><span>08-08</span><span>08-09</span><span>08-10</span><span>08-11</span><span>今天</span>
+          </div>
+          <div class="info-box" style="margin-top:auto"><svg class="hi-sm"><use href="#i-warn"/></svg><span>限流命中连续 5 天上升，<b>建议扩容或按 Key 差异化限流</b>，优先保障核心生产 Key。</span></div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+          <div class="cc-head">
+            <span class="cc-ttl">API 状态速览</span>
+            <span class="cc-sub">全量 API</span>
+          </div>
+          <div class="stat-blocks">
+            <div class="st-block"><span class="st-num ok">12</span><span class="st-label">已发布</span></div>
+            <div class="st-block"><span class="st-num pending">3</span><span class="st-label">待发布</span></div>
+            <div class="st-block"><span class="st-num off">2</span><span class="st-label">已下线</span></div>
+          </div>
+          <div class="info-box" style="margin-top:auto"><svg class="hi-sm"><use href="#i-warn"/></svg><span>近 7 天 <b>0 调用的 Key 共 3 个</b>（僵尸 Key），建议停用以防泄露；可在「API Key」页一键处置。</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 7：数据分级分类（/data-service/classification）
+     ============================================================ -->
+<div class="view" data-view="classification">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item active"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-shield"/></svg>数据分级分类</h1>
+          <div class="head-sub">数据表敏感度分级：公开 / 内部 / 机密。机密表不可查询（SQL 终端默认隐藏）、不可生成对外 API；内部表默认禁止 API（超管可开白）。分级变更留审计。</div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-doc"/></svg>审计记录</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="card-toolbar">
+          <div class="filter-select"><select><option>全部敏感度</option><option>公开</option><option>内部</option><option>机密</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+          <div class="filter-select"><select><option>全部数据源</option><option>内置 Doris</option><option>MySQL</option><option>PostgreSQL</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+          <div class="search-input"><svg class="hi-sm"><use href="#i-magnifier"/></svg><input placeholder="搜索库名 / 表名"></div>
+          <div class="actions">
+            <button class="btn btn-secondary" disabled><svg class="hi-sm"><use href="#i-warn"/></svg>设为机密</button>
+            <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-scale"/></svg>设为内部</button>
+            <button class="btn btn-primary"><svg class="hi-sm"><use href="#i-check"/></svg>设为公开</button>
+          </div>
+        </div>
+        <table class="proto-table">
+          <thead><tr><th><input type="checkbox"></th><th>敏感度</th><th>表名</th><th>库 / Schema</th><th>数据源</th><th>来源</th><th>API 开白</th><th>创建人</th><th>创建时间</th><th>修改人</th><th>修改时间</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><span class="badge-sens badge-confidential"><svg class="hi-sm"><use href="#i-warn"/></svg>机密</span></td>
+              <td><span class="mono cell-strong">dws_customer_phone</span></td>
+              <td><span class="mono cell-sec">dwd</span></td>
+              <td><span class="cell-sec">内置 Doris</span></td>
+              <td><span class="cell-muted">同步任务</span></td>
+              <td><span class="cell-muted">禁止</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><span class="cell-strong">张治理</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-10 14:22</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><span class="badge-sens badge-confidential"><svg class="hi-sm"><use href="#i-warn"/></svg>机密</span></td>
+              <td><span class="mono cell-strong">dws_customer_detail</span></td>
+              <td><span class="mono cell-sec">dwd</span></td>
+              <td><span class="cell-sec">内置 Doris</span></td>
+              <td><span class="cell-muted">同步任务</span></td>
+              <td><span class="cell-muted">禁止</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><span class="cell-strong">张治理</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-10 14:22</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked></td>
+              <td><span class="badge-sens badge-internal"><svg class="hi-sm"><use href="#i-warn"/></svg>内部</span></td>
+              <td><span class="mono cell-strong">dws_user_retention</span></td>
+              <td><span class="mono cell-sec">dws</span></td>
+              <td><span class="cell-sec">内置 Doris</span></td>
+              <td><span class="cell-muted">同步任务</span></td>
+              <td><span class="cell-sec">已开白</span></td>
+              <td><span class="cell-strong">王工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-05 09:32</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-09 11:05</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><span class="badge-sens badge-internal"><svg class="hi-sm"><use href="#i-warn"/></svg>内部</span></td>
+              <td><span class="mono cell-strong">dws_orders</span></td>
+              <td><span class="mono cell-sec">dwd</span></td>
+              <td><span class="cell-sec">内置 Doris</span></td>
+              <td><span class="cell-muted">同步任务</span></td>
+              <td><span class="cell-muted">未开白</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><span class="cell-strong">张治理</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-08 16:40</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><span class="badge-sens badge-public"><svg class="hi-sm"><use href="#i-check"/></svg>公开</span></td>
+              <td><span class="mono cell-strong">dim_region</span></td>
+              <td><span class="mono cell-sec">dim</span></td>
+              <td><span class="cell-sec">内置 Doris</span></td>
+              <td><span class="cell-muted">手工录入</span></td>
+              <td><span class="cell-muted">—</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 09:00</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 09:00</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><span class="badge-sens badge-public"><svg class="hi-sm"><use href="#i-check"/></svg>公开</span></td>
+              <td><span class="mono cell-strong">dim_date</span></td>
+              <td><span class="mono cell-sec">dim</span></td>
+              <td><span class="cell-sec">内置 Doris</span></td>
+              <td><span class="cell-muted">手工录入</span></td>
+              <td><span class="cell-muted">—</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 09:00</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 09:00</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <span class="page-info">共 24 条 · 第 1/2 页</span>
+          <div class="page-nav">
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn"><svg class="hi-sm"><use href="#i-chev-r"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint-box" style="margin-top:12px">
+        <span class="hb-ttl">分级策略：</span>
+        <b>公开</b>＝SQL 终端可查、可生成对外 API；<b>内部</b>＝SQL 终端可查、API 需超管开白（本页「开白」标记）；<b>机密</b>＝SQL 终端默认隐藏 + 命中拦截、禁止生成对外 API、禁止 WebSocket 订阅。机密降级必经「内部」两步（防一步误操作）。改级操作写入审计日志（谁/何时/从哪级到哪级）。
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 8：CDC 管道 → 实时订阅（WebSocket 对外推送）
+     ============================================================ -->
+<div class="view" data-view="cdc-subscribe">
+  <aside class="sidebar">
+    <div class="sb-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="sb-brand-text">DataNest</span></div>
+    <nav class="sb-nav">
+      <div class="sb-group">数据平台</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-home"/></svg>首页</a>
+      <div class="sb-group">数据服务</div>
+      <a class="sb-item" onclick="switchView('sql-console')"><svg class="hi"><use href="#i-terminal"/></svg>SQL 查询终端</a>
+      <a class="sb-item" onclick="switchView('api-list')"><svg class="hi"><use href="#i-key"/></svg>API 管理<span class="sb-new-tag">新</span></a>
+      <a class="sb-item" onclick="switchView('api-stats')"><svg class="hi"><use href="#i-trend"/></svg>API 运行统计</a>
+      <a class="sb-item" onclick="switchView('classification')"><svg class="hi"><use href="#i-shield"/></svg>数据分级分类<span class="sb-new-tag">新</span></a>
+      <div class="sb-group">数据资产</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-star"/></svg>我的收藏</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-bell"/></svg>我的关注</a>
+      <div class="sb-group">数据工程</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-server"/></svg>数据源管理</a>
+      <a class="sb-item active" onclick="switchView('cdc-subscribe')"><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-swap"/></svg>批量数据同步任务</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-folder"/></svg>项目管理</a>
+      <div class="sb-group">数据治理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-table"/></svg>元数据管理</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-chart"/></svg>质量报告</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-check"/></svg>质量任务</a>
+      <div class="sb-group">系统管理</div>
+      <a class="sb-item"><svg class="hi"><use href="#i-cog"/></svg>告警中心</a>
+      <a class="sb-item"><svg class="hi"><use href="#i-user"/></svg>用户管理</a>
+    </nav>
+  </aside>
+
+  <div class="layout-main">
+    <header class="layout-header"><div class="header-user"><span>admin</span><span class="avatar">A</span></div></header>
+    <main class="page">
+      <div class="page-head">
+        <div>
+          <h1><svg class="hi"><use href="#i-bolt"/></svg>CDC 管道</h1>
+          <div class="head-sub">orders-sync · 源 MySQL(orders) → Iceberg(orders) · <span class="badge badge-running"><span class="dot"></span>运行中</span></div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-secondary"><svg class="hi-sm"><use href="#i-pause"/></svg>停止管道</button>
+          <button class="btn btn-primary" onclick="openDrawer('sub-drawer')"><svg class="hi-sm"><use href="#i-wifi"/></svg>实时订阅</button>
+        </div>
+      </div>
+
+      <div class="stat-strip">
+        <div class="stat-card"><div class="stat-ic accent"><svg class="hi"><use href="#i-wifi"/></svg></div><div><div class="stat-num">2</div><div class="stat-lbl">在线订阅连接</div></div></div>
+        <div class="stat-card"><div class="stat-ic neutral"><svg class="hi"><use href="#i-swap"/></svg></div><div><div class="stat-num">1,284</div><div class="stat-lbl">今日变更事件</div></div></div>
+        <div class="stat-card"><div class="stat-ic success"><svg class="hi"><use href="#i-bolt"/></svg></div><div><div class="stat-num">1.2s</div><div class="stat-lbl">端到端延迟（P95）</div></div></div>
+        <div class="stat-card"><div class="stat-ic danger"><svg class="hi"><use href="#i-warn"/></svg></div><div><div class="stat-num">0</div><div class="stat-lbl">推送失败</div></div></div>
+      </div>
+
+      <div class="table-card">
+        <div class="card-toolbar">
+          <div class="search-input"><svg class="hi-sm"><use href="#i-magnifier"/></svg><input placeholder="搜索订阅 Key / 会话"></div>
+          <div class="filter-select"><select><option>全部状态</option><option>已连接</option><option>已断开</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+        </div>
+        <table class="proto-table">
+          <thead><tr><th>订阅方 Key</th><th>连接状态</th><th>接收事件</th><th>最近事件时间</th><th>创建人</th><th>创建时间</th><th>修改人</th><th>修改时间</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="cell-strong">实时订阅-看板</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>已连接</span></td>
+              <td><span class="mono cell-sec">1,283</span></td>
+              <td><span class="mono cell-sec">2026-08-12 10:24:31</span></td>
+              <td><span class="cell-strong">李工</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-05 11:48</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-09 16:30</span></td>
+              <td><button class="icon-btn danger"><svg class="hi"><use href="#i-xmark"/></svg></button></td>
+            </tr>
+            <tr>
+              <td><span class="cell-strong">业务-订单组</span></td>
+              <td><span class="badge badge-running"><span class="dot"></span>已连接</span></td>
+              <td><span class="mono cell-sec">946</span></td>
+              <td><span class="mono cell-sec">2026-08-12 10:23:58</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><span class="cell-strong">admin</span></td>
+              <td><span class="cell-muted" style="white-space:nowrap">08-01 10:24</span></td>
+              <td><button class="icon-btn danger"><svg class="hi"><use href="#i-xmark"/></svg></button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============ 实时订阅抽屉（CDC 管道详情） ============ -->
+<div class="drawer-mask" id="sub-drawer">
+  <div class="drawer-panel">
+    <div class="drawer-head">
+      <span class="ttl"><svg class="hi" style="color:rgb(var(--color-accent))"><use href="#i-wifi"/></svg>实时订阅 · orders-sync</span>
+      <button class="icon-btn" onclick="closeDrawer('sub-drawer')"><svg class="hi"><use href="#i-xmark"/></svg></button>
+    </div>
+    <div class="drawer-body">
+      <div class="section">
+        <div class="sec-ttl">订阅地址</div>
+        <div class="sub-addr">
+          <span class="sub-url">ws://gateway.example.com/api/data-service/ws/events</span>
+          <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px"><svg class="hi-sm"><use href="#i-copy"/></svg>复制</button>
+        </div>
+        <div class="fi-hint" style="margin-top:6px">认证方式：WebSocket 握手请求头携带 X-API-Key（Key 需绑定本管道即获得订阅权）</div>
+      </div>
+
+      <div class="section">
+        <div class="sec-ttl">订阅消息</div>
+        <div class="code-block"><span class="cb-copy"><svg class="hi-sm"><use href="#i-copy"/></svg></span>{
+  <span class="code-key">"op"</span>: <span class="code-str">"subscribe"</span>,
+  <span class="code-key">"pipelineId"</span>: <span class="code-num">12</span>
+}</div>
+      </div>
+
+      <div class="section">
+        <div class="sec-ttl">变更事件示例（行级，端到端延迟 &lt; 10s）</div>
+        <div class="code-block"><span class="cb-copy"><svg class="hi-sm"><use href="#i-copy"/></svg></span>{
+  <span class="code-key">"pipelineId"</span>: <span class="code-num">12</span>,
+  <span class="code-key">"table"</span>: <span class="code-str">"orders"</span>,
+  <span class="code-key">"opType"</span>: <span class="code-str">"INSERT"</span>,
+  <span class="code-key">"data"</span>: { <span class="code-key">"id"</span>: <span class="code-num">1024</span>, <span class="code-key">"amount"</span>: <span class="code-num">99.9</span> },
+  <span class="code-key">"ts"</span>: <span class="code-str">"2026-08-12T10:00:01Z"</span>
+}</div>
+      </div>
+
+      <div class="section">
+        <div class="sec-ttl">JavaScript 订阅示例</div>
+        <div class="code-block"><span class="cb-copy"><svg class="hi-sm"><use href="#i-copy"/></svg></span><span class="code-cmt">// 业务端示例</span>
+<span class="code-key">const</span> ws = <span class="code-key">new</span> WebSocket(<span class="code-str">'wss://…/api/data-service/ws/events'</span>, {
+  headers: { <span class="code-str">'X-API-Key'</span>: <span class="code-str">'K-…'</span> }
+});
+ws.onmessage = (e) =&gt; <span class="code-fn">handle</span>(<span class="code-fn">JSON.parse</span>(e.data));</div>
+      </div>
+
+      <div class="section">
+        <div class="sec-ttl">订阅说明</div>
+        <div class="kv-row"><span class="kv-label">连接心跳</span><span class="kv-value">服务端 60s ping/pong；空闲 120s 断开</span></div>
+        <div class="kv-row"><span class="kv-label">断线处理</span><span class="kv-value">业务端负责重连；重连后从最新开始接收（无历史重放）</span></div>
+        <div class="kv-row"><span class="kv-label">推送延迟</span><span class="kv-value">变更事件端到端 P95 &lt; 10s（Flink CDC → Kafka → WebSocket）</span></div>
+        <div class="kv-row"><span class="kv-label">机密表</span><span class="kv-value">目标表为机密级的管道不可订阅（返回拒绝）</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 视图切换 ============
+function switchView(name){
+  document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('active', v.dataset.view===name)});
+  document.querySelectorAll('.prototype-switch button').forEach(function(b){b.classList.toggle('active', b.dataset.view===name)});
+  closeDrawer('sub-drawer');
+  closeModal('new-key-modal');
+  window.scrollTo(0,0);
+}
+// ============ 弹窗 ============
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+// ============ 抽屉 ============
+function openDrawer(id){document.getElementById(id).classList.add('open')}
+function closeDrawer(id){document.getElementById(id).classList.remove('open')}
+// ============ 切换条绑定 ============
+document.querySelectorAll('.prototype-switch button').forEach(function(b){
+  b.addEventListener('click', function(){switchView(b.dataset.view)});
+});
+</script>
+</body>
+</html>

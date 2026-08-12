@@ -13,6 +13,18 @@ export function getDataSources(params: DataSourceQueryParams) {
     return request.post<Result<PageResult<DataSource>>>('/engineering/datasources/page', params);
 }
 
+export interface DataSourceStats {
+    normal: number;
+    error: number;
+    offline: number;
+    unknown: number;
+}
+
+/** 数据源连接状态统计（顶部统计卡） */
+export function getDataSourceStats() {
+    return request.get<Result<DataSourceStats>>('/engineering/datasources/stats');
+}
+
 export function getDataSource(id: string) {
     return request.get<Result<DataSource>>(`/engineering/datasources/${id}`);
 }

@@ -5,12 +5,15 @@ import type {ColumnsType} from 'antd/es/table';
 import {
     HiChevronRight,
     HiOutlineCalendar,
+    HiOutlineCheckCircle,
     HiOutlineClock,
     HiOutlineEye,
     HiOutlinePencilSquare,
+    HiOutlinePlay,
     HiOutlinePlayCircle,
     HiOutlinePlus,
-    HiOutlineTrash
+    HiOutlineTrash,
+    HiOutlineXCircle,
 } from 'react-icons/hi2';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {
@@ -35,6 +38,7 @@ import DsFilterSelect from '@/components/DsFilterSelect';
 import DsToolbar from '@/components/DsToolbar';
 import DsStatusBadge, {type DsStatusVariant} from '@/components/DsStatusBadge';
 import DsTableEmpty from '@/components/DsTableEmpty';
+import StatsCards from '@/components/StatsCards';
 import {executionStatusVariant} from '@/utils/status';
 import {formatDateTime} from '@/utils/format';
 import {COL} from '@/constants/table';
@@ -241,6 +245,14 @@ export default function ProjectDagsPage() {
     });
     const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
+    // 顶部统计卡（DAG 全量列表派生：定义状态 + 最近一次执行状态）
+    const stats = useMemo(() => ({
+        enabled: dags.filter((d) => d.status === 'ENABLED').length,
+        disabled: dags.filter((d) => d.status === 'DISABLED').length,
+        running: dags.filter((d) => d.latestExecution?.status === 'RUNNING').length,
+        failed: dags.filter((d) => d.latestExecution?.status === 'FAILED' || d.latestExecution?.status === 'TERMINATED').length,
+    }), [dags]);
+
     const columns = useMemo<ColumnsType<Dag>>(() => [
         {
             title: 'DAG 名称',
@@ -433,6 +445,32 @@ export default function ProjectDagsPage() {
                     </Tooltip>
                 </div>
             </div>
+
+            {/* DAG 状态分布统计卡（定义状态 + 最近一次执行，点击下钻列表筛选） */}
+            <StatsCards
+                items={[
+                    {label: '已启用', value: stats.enabled, icon: <HiOutlineCheckCircle size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success'},
+                    {label: '已停用', value: stats.disabled, icon: <HiOutlineTrash size={20}/>,
+                     iconClass: 'bg-ds-bg-hover text-ds-text-muted', valueClass: 'text-ds-text-secondary'},
+                    {label: '运行中', value: stats.running, icon: <HiOutlinePlay size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent', valueClass: 'text-ds-accent',
+                     tip: '点击筛选列表', active: appliedStatus === 'running',
+                     onClick: () => {
+                         setAppliedStatus(prev => (prev === 'running' ? '' : 'running'));
+                         setPage(1);
+                         refresh();
+                     }},
+                    {label: '最近失败', value: stats.failed, icon: <HiOutlineXCircle size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                     tip: '点击筛选列表（含已终止）', active: appliedStatus === 'danger',
+                     onClick: () => {
+                         setAppliedStatus(prev => (prev === 'danger' ? '' : 'danger'));
+                         setPage(1);
+                         refresh();
+                     }},
+                ]}
+            />
 
             {/* 工具栏：独立卡片（与表格分离，对齐原型 .toolbar） */}
             <div

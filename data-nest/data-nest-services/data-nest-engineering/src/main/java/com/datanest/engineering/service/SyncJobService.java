@@ -246,6 +246,14 @@ public class SyncJobService {
         return dto;
     }
 
+    /**
+     * 任务状态统计（列表页顶部统计卡），避免前端拉全量列表计数。
+     */
+    public SyncJobStatsDTO listStats() {
+        SyncJobStatsDTO stats = syncJobMapper.selectStats();
+        return stats == null ? new SyncJobStatsDTO() : stats;
+    }
+
     public PageResult<SyncJobDTO> list(SyncJobQueryRequest request) {
         IPage<SyncJob> page = new Page<>(request.getPage(), request.getPageSize());
         QueryWrapper<SyncJob> wrapper = new QueryWrapper<>();
@@ -402,6 +410,19 @@ public class SyncJobService {
             logger.warn("手动停止后释放同步互斥锁失败: syncJobId={}, historyId={}", syncJobId, historyId, e);
         }
         logger.info("已手动停止同步执行: syncJobId={}, historyId={}", syncJobId, historyId);
+    }
+
+    /**
+     * 执行历史状态统计（列表页顶部统计卡，按时间范围聚合），避免前端拉全量列表计数。
+     */
+    public SyncJobHistoryStatsDTO listHistoryStats(String startTimeFrom, String startTimeTo) {
+        LocalDateTime from = parseIsoToLocalDateTime(startTimeFrom);
+        LocalDateTime to = parseIsoToLocalDateTime(startTimeTo);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "执行时间范围非法：开始时间晚于结束时间");
+        }
+        SyncJobHistoryStatsDTO stats = syncJobHistoryMapper.selectStats(from, to);
+        return stats == null ? new SyncJobHistoryStatsDTO() : stats;
     }
 
     public PageResult<SyncJobHistoryDTO> historyPage(Long syncJobId, SyncJobHistoryQueryRequest request) {

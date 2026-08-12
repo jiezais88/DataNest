@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
+import com.datanest.governance.dto.QualityCheckStatsDTO;
 import com.datanest.governance.service.QualityCheckQueryService;
 import com.datanest.task.core.dto.QualityCheckBatchDTO;
 import com.datanest.task.core.dto.QualityCheckQueryRequest;
@@ -35,6 +36,13 @@ public class QualityCheckController {
     @PostMapping("/page")
     public Result<PageResult<QualityCheckBatchDTO>> page(@RequestBody QualityCheckQueryRequest request) {
         return Result.ok(checkQueryService.listBatches(request));
+    }
+
+    @Operation(summary = "批次状态统计（顶部统计卡，按时间范围聚合）")
+    @GetMapping("/stats")
+    public Result<QualityCheckStatsDTO> stats(@Parameter(description = "时间下界（ISO 8601）") @RequestParam(required = false) String startTimeFrom,
+                                              @Parameter(description = "时间上界（ISO 8601）") @RequestParam(required = false) String startTimeTo) {
+        return Result.ok(checkQueryService.listStats(startTimeFrom, startTimeTo));
     }
 
     @Operation(summary = "批次详情（含规则明细）")

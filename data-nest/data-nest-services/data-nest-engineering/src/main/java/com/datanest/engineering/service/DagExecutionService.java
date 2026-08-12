@@ -483,6 +483,19 @@ public class DagExecutionService {
      * @param filter 全局筛选条件（已通过 controller 解析为非空默认值）
      * @return 分页结果（DagExecutionGlobalDto 列表 + total）
      */
+    /**
+     * 执行状态统计（列表页顶部统计卡，按时间范围聚合），避免前端拉全量列表计数。
+     */
+    public DagExecutionStatsDTO listStats(String startTimeFrom, String startTimeTo) {
+        LocalDateTime from = parseIsoToLocalDateTime(startTimeFrom, "startTimeFrom");
+        LocalDateTime to = parseIsoToLocalDateTime(startTimeTo, "startTimeTo");
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "执行时间范围非法：开始时间晚于结束时间");
+        }
+        DagExecutionStatsDTO stats = dagExecutionMapper.selectStats(from, to);
+        return stats == null ? new DagExecutionStatsDTO() : stats;
+    }
+
     public PageResult<DagExecutionGlobalDto> listAll(GlobalExecutionFilter filter) {
         // 1. 解析时间（null 视为无界；非法格式直接抛错）
         LocalDateTime startTimeFrom = parseIsoToLocalDateTime(filter.getStartTimeFrom(), "startTimeFrom");

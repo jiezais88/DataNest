@@ -32,7 +32,16 @@ public class AuthController {
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
         UserLoginDTO user = userService.verify(req.username(), req.password());
 
-        StpUtil.login(user.userId(), req.rememberMe() == Boolean.TRUE);
+        if (req.rememberMe() == Boolean.TRUE) {
+            // 记住我：token 绝对永不过期 + 该 token 永不因无操作冻结
+            StpUtil.login(user.userId(), StpUtil.createSaLoginParameter()
+                    .setIsLastingCookie(true)
+                    .setTimeout(-1)          // SaTokenDao.NEVER_EXPIRE，绝对永不过期
+                    .setActiveTimeout(-1));  // 该 token 永不冻结
+        } else {
+            // 非记住我：维持全局配置（7 天绝对 + 30 分钟无操作踢出）
+            StpUtil.login(user.userId());
+        }
         StpUtil.getSession().set("roles", user.roles());
 
         Map<String, Object> result = new HashMap<>();

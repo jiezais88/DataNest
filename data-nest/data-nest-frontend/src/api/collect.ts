@@ -30,6 +30,18 @@ export function queryCollectTasks(params: CollectTaskQueryParams) {
     return request.post<Result<PageResult<CollectTask>>>('/governance/collect-tasks/page', params);
 }
 
+export interface CollectTaskStats {
+    running: number;
+    success: number;
+    failed: number;
+    never: number;
+}
+
+/** 采集任务状态统计（顶部统计卡） */
+export function getCollectTaskStats() {
+    return request.get<Result<CollectTaskStats>>('/governance/collect-tasks/stats');
+}
+
 export function executeCollectTask(id: string) {
     return request.post<Result<null>>(`/governance/collect-tasks/${id}/execute`);
 }
@@ -56,6 +68,18 @@ export function queryCollectHistory(params: CollectHistoryQueryParams) {
 
 export function queryAllCollectHistory(params: CollectHistoryQueryParams) {
     return request.post<Result<PageResult<CollectTaskExecution>>>('/governance/collect-tasks/global-history/page', params);
+}
+
+export interface CollectHistoryStats {
+    running: number;
+    success: number;
+    failed: number;
+    terminated: number;
+}
+
+/** 全局采集历史状态统计（顶部统计卡，按时间范围聚合） */
+export function getCollectHistoryStats(params: {startTimeFrom?: string; startTimeTo?: string}) {
+    return request.get<Result<CollectHistoryStats>>('/governance/collect-tasks/global-history/stats', {params});
 }
 
 export function getCollectHistory(taskId: string, historyId: string) {

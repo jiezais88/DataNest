@@ -12,6 +12,7 @@ import {
     createQualityJob,
     deleteQualityJob,
     executeQualityJob,
+    getQualityJobStats,
     queryQualityJobs,
     startQualityJobSchedule,
     stopQualityJobSchedule,
@@ -29,14 +30,18 @@ import ReferenceListModal from '@/components/ReferenceListModal';
 import type {ApiError} from '@/utils/error';
 import Pagination from '@/components/Pagination';
 import SearchInput from '@/components/SearchInput';
+import StatsCards from '@/components/StatsCards';
 import {
     HiOutlineCalendar,
+    HiOutlineCheckCircle,
+    HiOutlineClock,
     HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlay,
     HiOutlinePlus,
     HiOutlineScale,
     HiOutlineTrash,
+    HiOutlineXCircle,
 } from 'react-icons/hi2';
 import type {
     QualityAlertLevel,
@@ -99,6 +104,27 @@ export default function DataQualityPage() {
         }
     }, [jobPage, jobPageSize, jobKeyword, jobEnabled]);
 
+    // ============ 顶部统计卡（后端聚合端点） ============
+    const [stats, setStats] = useState<{ enabled: number; disabled: number; scheduled: number; auto: number } | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const loadStats = useCallback(() => {
+        setStatsLoading(true);
+        getQualityJobStats()
+            .then((res) => setStats(res.data))
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setStatsLoading(false));
+    }, []);
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+    // 统计卡点击下钻：启用状态作为下钻维度与列表筛选联动（再点取消）
+    const toggleEnabledDrill = (target: '1' | '0') => {
+        setJobEnabled(prev => (prev === target ? '' : target));
+        setJobPage(1);
+    };
+
     useEffect(() => {
         loadJobs();
     }, [loadJobs]);
@@ -160,6 +186,7 @@ export default function DataQualityPage() {
             notify.success('质量任务创建成功');
         }
         loadJobs();
+        loadStats();
     };
 
     const handleToggleJob = useCallback(async (item: QualityJob) => {
@@ -167,7 +194,8 @@ export default function DataQualityPage() {
         await toggleQualityJob(item.id, nextEnabled);
         notify.success(nextEnabled === 1 ? '已启用' : '已停用');
         loadJobs();
-    }, [loadJobs]);
+        loadStats();
+    }, [loadJobs, loadStats]);
 
     /** 列表内直接开启/关闭调度（参考同步任务操作列调度开关） */
     const handleToggleSchedule = useCallback(async (item: QualityJob) => {
@@ -181,10 +209,11 @@ export default function DataQualityPage() {
             }
             notify.success(`已${enabling ? '开启' : '关闭'}定时调度`);
             loadJobs();
+            loadStats();
         } finally {
             setSchedulingId('');
         }
-    }, [loadJobs]);
+    }, [loadJobs, loadStats]);
 
     const handleExecuteJob = useCallback(async (item: QualityJob) => {
         setExecutingId(item.id);
@@ -205,6 +234,7 @@ export default function DataQualityPage() {
             setDeleteJobOpen(false);
             setDeleteJobTarget(null);
             loadJobs();
+            loadStats();
         } catch (e) {
             const errorData = (e as ApiError)?.response?.data;
             // 被告警规则引用时（3005），后端 data 返回引用告警规则名称列表，弹窗展示
@@ -467,6 +497,25 @@ export default function DataQualityPage() {
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">配置质量任务并设置触发方式，对数据资产进行质量检查</p>
                 </div>
             </div>
+
+            {/* 任务配置分布统计卡（后端聚合端点，点击下钻列表筛选） */}
+            <StatsCards
+                loading={statsLoading}
+                items={[
+                    {label: '已启用', value: stats?.enabled ?? '—', icon: <HiOutlineCheckCircle size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                     tip: '点击筛选列表', active: jobEnabled === '1',
+                     onClick: () => toggleEnabledDrill('1')},
+                    {label: '已停用', value: stats?.disabled ?? '—', icon: <HiOutlineXCircle size={20}/>,
+                     iconClass: 'bg-ds-bg-hover text-ds-text-muted', valueClass: 'text-ds-text-secondary',
+                     tip: '点击筛选列表', active: jobEnabled === '0',
+                     onClick: () => toggleEnabledDrill('0')},
+                    {label: '定时调度', value: stats?.scheduled ?? '—', icon: <HiOutlineCalendar size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent', valueClass: 'text-ds-accent'},
+                    {label: '自动触发', value: stats?.auto ?? '—', icon: <HiOutlineClock size={20}/>,
+                     iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning'},
+                ]}
+            />
 
             <div
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">

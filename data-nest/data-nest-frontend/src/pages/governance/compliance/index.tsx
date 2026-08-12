@@ -34,6 +34,7 @@ import DsIconButton from '@/components/DsIconButton';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsModal from '@/components/DsModal';
 import DsStatusBadge from '@/components/DsStatusBadge';
+import StatsCards from '@/components/StatsCards';
 import type {DsStatusVariant} from '@/components/DsStatusBadge';
 import DsToolbar from '@/components/DsToolbar';
 import DsTableEmpty from '@/components/DsTableEmpty';
@@ -404,32 +405,6 @@ export default function StandardCompliancePage() {
         },
     ], []);
 
-    // ============ 三格统计卡片 ============
-    const statCards = [
-        {
-            label: '不合规项',
-            value: summaryLoading ? '…' : (summary?.nonCompliant ?? 0),
-            accent: 'text-ds-danger',
-            icon: <HiOutlineXCircle size={22}/>,
-            iconBg: 'bg-ds-danger-light text-ds-danger',
-        },
-        {
-            label: '已忽略',
-            value: summaryLoading ? '…' : (summary?.ignored ?? 0),
-            accent: 'text-ds-text-secondary',
-            icon: <HiOutlineCheckCircle size={22}/>,
-            iconBg: 'bg-ds-bg-hover text-ds-text-muted',
-        },
-        {
-            label: '合规率',
-            value: summaryLoading ? '…' : `${(summary?.complianceRate ?? 0).toFixed(1)}%`,
-            accent: 'text-ds-success',
-            icon: <HiOutlineShieldCheck size={22}/>,
-            iconBg: 'bg-ds-success-light text-ds-success',
-            tip: '对象合规率（按表/字段对象估算，已忽略项视为已豁免）',
-        },
-    ];
-
     // ============ 渲染 ============
     return (
         <div className="flex flex-col overflow-x-hidden">
@@ -455,25 +430,19 @@ export default function StandardCompliancePage() {
             </div>
 
             {/* 三格统计 */}
-            <div className="grid grid-cols-3 gap-ds-4 mb-ds-4 flex-shrink-0">
-                {statCards.map((card) => (
-                    <div
-                        key={card.label}
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-3 flex items-center gap-ds-3"
-                        title={card.tip}
-                    >
-                        <div className={`w-10 h-10 rounded-ds-md flex items-center justify-center flex-shrink-0 ${card.iconBg}`}>
-                            {card.icon}
-                        </div>
-                        <div className="min-w-0">
-                            <div className={`text-ds-display font-bold leading-none ${card.accent}`}>
-                                {card.value}
-                            </div>
-                            <div className="text-ds-small text-ds-text-muted mt-ds-1">{card.label}</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <StatsCards
+                columns={3}
+                loading={summaryLoading}
+                items={[
+                    {label: '不合规项', value: summary?.nonCompliant ?? 0, valueClass: 'text-ds-danger',
+                     icon: <HiOutlineXCircle size={22}/>, iconClass: 'bg-ds-danger-light text-ds-danger'},
+                    {label: '已忽略', value: summary?.ignored ?? 0, valueClass: 'text-ds-text-secondary',
+                     icon: <HiOutlineCheckCircle size={22}/>, iconClass: 'bg-ds-bg-hover text-ds-text-muted'},
+                    {label: '合规率', value: `${(summary?.complianceRate ?? 0).toFixed(1)}%`, valueClass: 'text-ds-success',
+                     icon: <HiOutlineShieldCheck size={22}/>, iconClass: 'bg-ds-success-light text-ds-success',
+                     tip: '对象合规率（按表/字段对象估算，已忽略项视为已豁免）'},
+                ]}
+            />
 
             {/* 扫描结果清单 */}
             <div className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">

@@ -59,6 +59,13 @@ public class SyncJobController {
         return Result.ok(syncJobService.list(request));
     }
 
+    @Operation(summary = "同步任务状态统计（顶部统计卡）")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @GetMapping("/stats")
+    public Result<SyncJobStatsDTO> stats() {
+        return Result.ok(syncJobService.listStats());
+    }
+
     @Operation(summary = "手动执行同步任务")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping("/{id}/execute")
@@ -105,6 +112,14 @@ public class SyncJobController {
     public Result<PageResult<SyncJobHistoryDTO>> allHistoryPage(@Valid @RequestBody SyncJobHistoryQueryRequest request) {
         // 全局历史接口也支持按 syncJobId 精确过滤（从任务列表「历史」跳入时 URL 带 ?syncJobId=xxx）
         return Result.ok(syncJobService.historyPage(request.getSyncJobId(), request));
+    }
+
+    @Operation(summary = "执行历史状态统计（顶部统计卡，按时间范围聚合）")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @GetMapping("/history/stats")
+    public Result<SyncJobHistoryStatsDTO> historyStats(@Parameter(description = "执行时间下界（ISO 8601）") @RequestParam(required = false) String startTimeFrom,
+                                                       @Parameter(description = "执行时间上界（ISO 8601）") @RequestParam(required = false) String startTimeTo) {
+        return Result.ok(syncJobService.listHistoryStats(startTimeFrom, startTimeTo));
     }
 
     @Operation(summary = "执行历史日志分页")

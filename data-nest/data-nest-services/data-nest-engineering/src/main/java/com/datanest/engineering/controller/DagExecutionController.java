@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionGlobalDto;
+import com.datanest.engineering.dto.DagExecutionStatsDTO;
 import com.datanest.engineering.dto.GlobalExecutionFilter;
 import com.datanest.engineering.dto.NodeExecutionLogDTO;
 import com.datanest.engineering.service.DagExecutionService;
@@ -80,6 +81,14 @@ public class DagExecutionController {
         filter.setPage(page < 1 ? 1 : page);
         filter.setPageSize(pageSize < 1 ? 20 : (pageSize > 200 ? 200 : pageSize));
         return Result.ok(dagExecutionService.listAll(filter));
+    }
+
+    @Operation(summary = "执行状态统计（顶部统计卡，按时间范围聚合）")
+    @GetMapping("/stats")
+    public Result<DagExecutionStatsDTO> stats(
+            @Parameter(description = "执行时间下界（ISO 8601）") @RequestParam(required = false) String startTimeFrom,
+            @Parameter(description = "执行时间上界（ISO 8601）") @RequestParam(required = false) String startTimeTo) {
+        return Result.ok(dagExecutionService.listStats(startTimeFrom, startTimeTo));
     }
 
     @Operation(summary = "节点执行日志查询（node_execution_log）")

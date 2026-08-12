@@ -16,6 +16,7 @@ import com.datanest.governance.api.dto.CollectTaskCreateInternalRequest;
 import com.datanest.governance.dto.CollectTaskCreateRequest;
 import com.datanest.governance.dto.CollectTaskDTO;
 import com.datanest.governance.dto.CollectTaskQueryRequest;
+import com.datanest.governance.dto.CollectTaskStatsDTO;
 import com.datanest.governance.dto.CollectTaskUpdateRequest;
 import com.datanest.common.constant.AlertConstants;
 import com.datanest.governance.entity.CollectChangeDetail;
@@ -302,6 +303,15 @@ public class CollectTaskService {
         Map<Long, String> usernameMap = usernames(
                 List.of(task.getCreatedBy(), task.getUpdatedBy()));
         return toDTO(task, usernameMap);
+    }
+
+    /**
+     * 任务状态统计（列表页顶部统计卡），避免前端拉全量列表计数。
+     */
+    @Transactional(readOnly = true)
+    public CollectTaskStatsDTO listStats() {
+        CollectTaskStatsDTO stats = collectTaskMapper.selectStats();
+        return stats == null ? new CollectTaskStatsDTO() : stats;
     }
 
     @Transactional(readOnly = true)

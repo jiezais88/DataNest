@@ -4,8 +4,15 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation, useNavigate, useSearchParams} from 'react-router-dom';
 import {Modal, Table, Tooltip,} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {HiOutlineArrowPath, HiOutlineEye, HiOutlineStop} from 'react-icons/hi2';
-import {listAllDagExecutions, rerunFailed, stopDag} from '@/pages/engineering/dags/api';
+import {
+    HiOutlineArrowPath,
+    HiOutlineCheckCircle,
+    HiOutlineEye,
+    HiOutlinePlay,
+    HiOutlineStop,
+    HiOutlineXCircle,
+} from 'react-icons/hi2';
+import {getDagExecutionStats, listAllDagExecutions, rerunFailed, stopDag} from '@/pages/engineering/dags/api';
 import type {DagExecution} from '@/pages/engineering/dags/types';
 import {formatDateTime, formatExecutionDuration, getDefaultTimeRange} from '@/utils/format';
 import {useCanEdit} from '@/hooks/useCanEdit';
@@ -19,6 +26,7 @@ import DsRangePicker from '@/components/DsRangePicker';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsToolbar from '@/components/DsToolbar';
 import DsTableEmpty from '@/components/DsTableEmpty';
+import StatsCards from '@/components/StatsCards';
 import {executionStatusVariant} from '@/utils/status';
 import {notify} from '@/utils/notify';
 import {NODE_STATUS_COLOR, NODE_STATUS_LABEL} from '@/constants/statusColors';
@@ -135,6 +143,30 @@ export default function DagExecutionsGlobalPage() {
         initialQuery: buildDefaultApplied(),
         defaultPageSize: 10,
     });
+
+    // ============ 顶部统计卡（后端聚合端点，与列表同时间范围） ============
+    const [stats, setStats] = useState<{running: number; success: number; failed: number; terminated: number} | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const loadStats = useCallback(() => {
+        setStatsLoading(true);
+        getDagExecutionStats({
+            startTimeFrom: applied.startTimeFrom || undefined,
+            startTimeTo: applied.startTimeTo || undefined,
+        })
+            .then((result) => setStats(result))
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setStatsLoading(false));
+    }, [applied.startTimeFrom, applied.startTimeTo]);
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+    // 统计卡点击下钻：状态作为下钻维度与列表筛选联动（再点取消）
+    const toggleStatusDrill = (target: string) => {
+        applyQuery({...applied, status: applied.status === target ? undefined : target});
+    };
+
 // 从任务列表「历史」跳入：URL ?dagId=xxx&dagName=yyy → 精确过滤该 DAG
     const urlDagId = searchParams.get('dagId');
     const urlDagName = searchParams.get('dagName') || '';
@@ -567,6 +599,29 @@ export default function DagExecutionsGlobalPage() {
                     </DsButton>
                 )}
             </div>
+
+            {/* 执行状态分布统计卡（后端聚合端点，点击下钻列表筛选） */}
+            <StatsCards
+                loading={statsLoading}
+                items={[
+                    {label: '运行中', value: stats?.running ?? '—', icon: <HiOutlinePlay size={20}/>,
+                     iconClass: 'bg-ds-accent-light text-ds-accent', valueClass: 'text-ds-accent',
+                     tip: '点击筛选列表', active: applied.status === 'RUNNING',
+                     onClick: () => toggleStatusDrill('RUNNING')},
+                    {label: '成功', value: stats?.success ?? '—', icon: <HiOutlineCheckCircle size={20}/>,
+                     iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                     tip: '点击筛选列表', active: applied.status === 'SUCCESS',
+                     onClick: () => toggleStatusDrill('SUCCESS')},
+                    {label: '失败', value: stats?.failed ?? '—', icon: <HiOutlineXCircle size={20}/>,
+                     iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                     tip: '点击筛选列表', active: applied.status === 'FAILED',
+                     onClick: () => toggleStatusDrill('FAILED')},
+                    {label: '已终止', value: stats?.terminated ?? '—', icon: <HiOutlineStop size={20}/>,
+                     iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning',
+                     tip: '点击筛选列表', active: applied.status === 'TERMINATED',
+                     onClick: () => toggleStatusDrill('TERMINATED')},
+                ]}
+            />
 
             {/* 工具栏：独立卡片（与表格分离，对齐原型 .toolbar） */}
             <div

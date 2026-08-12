@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.constant.AlertConstants;
+import com.datanest.alert.dto.AlertHistoryStatsDTO;
 import com.datanest.alert.dto.AlertObjectOptionDTO;
 import com.datanest.alert.dto.AlertRuleDTO;
 import com.datanest.alert.entity.*;
@@ -271,11 +272,47 @@ public class AlertRuleService {
     // ==================== 告警历史 ====================
 
     public PageResult<AlertHistory> listHistory(int page, int pageSize, String objectType,
-                                                Long objectId, String alertType, String sendStatus) {
+                                                Long objectId, String alertType, String sendStatus,
+                                                String sentAtFrom, String sentAtTo) {
+        LocalDateTime from = parseIsoToLocalDateTime(sentAtFrom);
+        LocalDateTime to = parseIsoToLocalDateTime(sentAtTo);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.ALERT_HISTORY_TIME_RANGE_INVALID, "告警时间范围非法：开始时间晚于结束时间");
+        }
         IPage<AlertHistory> p = alertHistoryMapper.selectHistoryPage(new Page<>(page, pageSize),
-                objectType, objectId, alertType, sendStatus);
+                objectType, objectId, alertType, sendStatus, from, to);
         applyHistoryObjectNames(p.getRecords());
         return new PageResult<>(p.getRecords(), p.getTotal(), page, pageSize);
+    }
+
+    /**
+     * 告警历史统计（列表页顶部统计卡，按时间范围 + 对象维度聚合）。
+     * 与 listHistory 同筛选条件，避免前端拉全量列表计数。
+     */
+    public AlertHistoryStatsDTO listHistoryStats(String objectType, Long objectId,
+                                                 String sentAtFrom, String sentAtTo) {
+        LocalDateTime from = parseIsoToLocalDateTime(sentAtFrom);
+        LocalDateTime to = parseIsoToLocalDateTime(sentAtTo);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.ALERT_HISTORY_TIME_RANGE_INVALID, "告警时间范围非法：开始时间晚于结束时间");
+        }
+        AlertHistoryStatsDTO stats = alertHistoryMapper.selectHistoryStats(objectType, objectId, from, to);
+        if (stats == null) {
+            stats = new AlertHistoryStatsDTO();
+        }
+        return stats;
+    }
+
+    /** 解析 ISO 8601 时间字符串（yyyy-MM-dd'T'HH:mm:ss），非法或空返回 null（调用方决定是否校验） */
+    private LocalDateTime parseIsoToLocalDateTime(String iso) {
+        if (!StringUtils.hasText(iso)) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(iso.trim());
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.ALERT_HISTORY_TIME_RANGE_INVALID, "时间参数格式非法（需 ISO 8601）: " + iso);
+        }
     }
 
     /**

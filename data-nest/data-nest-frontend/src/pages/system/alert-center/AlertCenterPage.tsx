@@ -8,7 +8,8 @@ import type {ColumnsType} from 'antd/es/table';
 import {useHasRole} from '@/hooks/useHasRole';
 import {ALERT_WRITE_ROLES} from '@/constants/roles';
 import {COL} from '@/constants/table';
-import {deleteAlertRule, getAlertHistory, getAlertRules, getUsersWithEmail, toggleAlertRule,} from '@/api/alert';
+import {deleteAlertRule, getAlertHistory, getAlertHistoryStats, getAlertRules, getUsersWithEmail, toggleAlertRule,} from '@/api/alert';
+import type {AlertHistoryStats} from '@/api/alert';
 import type {
     AlertHistory,
     AlertObjectType,
@@ -16,7 +17,7 @@ import type {
     AlertSendStatus,
     AlertTriggerType,
 } from '@/types/alert';
-import {formatDateTime} from '@/utils/format';
+import {formatDateTime, getDefaultTimeRange} from '@/utils/format';
 import {notify} from '@/utils/notify';
 import usePagedList from '@/hooks/usePagedList';
 import Pagination from '@/components/Pagination';
@@ -25,19 +26,25 @@ import DsIconButton from '@/components/DsIconButton';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import SearchInput from '@/components/SearchInput';
 import DsFilterSelect from '@/components/DsFilterSelect';
+import DsRangePicker from '@/components/DsRangePicker';
 import DsToolbar from '@/components/DsToolbar';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import DsModal from '@/components/DsModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import AlertRuleModal from '@/components/AlertRuleModal';
+import StatsCards from '@/components/StatsCards';
 import {
     HiOutlineBell,
     HiOutlineBellAlert,
+    HiOutlineBolt,
+    HiOutlineCheckCircle,
     HiOutlineClock,
     HiOutlineEye,
     HiOutlinePencilSquare,
     HiOutlinePlus,
+    HiOutlineStop,
     HiOutlineTrash,
+    HiOutlineXCircle,
 } from 'react-icons/hi2';
 
 const OBJECT_TYPE_OPTIONS: { value: AlertObjectType | ''; label: string }[] = [
@@ -53,9 +60,9 @@ const ALERT_TYPE_OPTIONS: { value: AlertTriggerType | ''; label: string }[] = [
     {value: '', label: '全部告警类型'},
     {value: 'FAILURE', label: '失败'},
     {value: 'TIMEOUT', label: '超时'},
-    {value: 'SUCCESS', label: '成功'},
     {value: 'LAG_EXCEEDED', label: '延迟超阈值'},
     {value: 'EXTERNAL_STOP', label: '外部停止'},
+    {value: 'SUCCESS', label: '成功通知'},
 ];
 
 const SEND_STATUS_OPTIONS: { value: AlertSendStatus | ''; label: string }[] = [
@@ -163,9 +170,19 @@ interface HistoryListQuery {
     objectType: AlertObjectType | '';
     alertType: AlertTriggerType | '';
     sendStatus: AlertSendStatus | '';
+    sentAtFrom: string;
+    sentAtTo: string;
 }
 
-const INITIAL_HISTORY_QUERY: HistoryListQuery = {objectType: '', alertType: '', sendStatus: ''};
+/** 初始时间范围：近 7 天（对齐执行历史页，时间范围必填） */
+const DEFAULT_HISTORY_RANGE = getDefaultTimeRange();
+const INITIAL_HISTORY_QUERY: HistoryListQuery = {
+    objectType: '',
+    alertType: '',
+    sendStatus: '',
+    sentAtFrom: DEFAULT_HISTORY_RANGE.from,
+    sentAtTo: DEFAULT_HISTORY_RANGE.to,
+};
 
 export default function AlertCenterPage() {
     const canWrite = useHasRole(...ALERT_WRITE_ROLES);
@@ -219,12 +236,45 @@ export default function AlertCenterPage() {
                 objectType: query.objectType || undefined,
                 alertType: query.alertType || undefined,
                 sendStatus: query.sendStatus || undefined,
+                sentAtFrom: query.sentAtFrom || undefined,
+                sentAtTo: query.sentAtTo || undefined,
             });
             return {list: result.records, total: result.total};
         },
         initialQuery: INITIAL_HISTORY_QUERY,
         defaultPageSize: 10,
     });
+// ==================== 告警历史统计卡（后端聚合端点，跟随时间范围 + 对象类型） ====================
+    const [alertStats, setAlertStats] = useState<AlertHistoryStats | null>(null);
+    const [alertStatsLoading, setAlertStatsLoading] = useState(false);
+    const loadAlertStats = useCallback((query: HistoryListQuery) => {
+        setAlertStatsLoading(true);
+        getAlertHistoryStats({
+            objectType: query.objectType || undefined,
+            sentAtFrom: query.sentAtFrom || undefined,
+            sentAtTo: query.sentAtTo || undefined,
+        })
+            .then(setAlertStats)
+            .catch(() => {
+                // 拦截器已提示，保持旧数据
+            })
+            .finally(() => setAlertStatsLoading(false));
+    }, []);
+    useEffect(() => {
+        if (activeTab === 'history') {
+            loadAlertStats(historyQuery);
+        }
+    }, [activeTab, historyQuery, loadAlertStats]);
+    // 统计卡点击下钻（方案 A）：统计卡仅下钻告警类型维度，与列表「告警类型」筛选一一对应；
+    // 点击时清空发送状态（发送失败提示条独立下钻），保证「统计卡数字 = 列表 total」严格一致。
+    const toggleHistoryDrill = (target: AlertTriggerType) => {
+        applyHistoryQuery({
+            ...historyQuery,
+            alertType: historyQuery.alertType === target ? '' : target,
+            sendStatus: '',
+        });
+    };
+
 // 接收用户显示：加载全部有邮箱用户建 id→username 映射
     const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
     useEffect(() => {
@@ -637,8 +687,43 @@ export default function AlertCenterPage() {
 
             {/* ==================== 告警历史 ==================== */}
             {activeTab === 'history' && (
-                <div
-                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
+                <>
+                    {/* 告警构成统计卡（后端聚合端点，点击卡片下钻列表筛选） */}
+                    {/* 告警类型构成统计卡（方案 A：与「告警类型」筛选一一对应，点击下钻） */}
+                    <StatsCards
+                        columns={5}
+                        loading={alertStatsLoading}
+                        items={[
+                            {label: '失败', value: alertStats?.failure ?? '—', icon: <HiOutlineXCircle size={20}/>,
+                             iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                             tip: '任务执行失败触发的告警，点击筛选列表',
+                             active: historyQuery.alertType === 'FAILURE',
+                             onClick: () => toggleHistoryDrill('FAILURE')},
+                            {label: '超时', value: alertStats?.timeout ?? '—', icon: <HiOutlineClock size={20}/>,
+                             iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning',
+                             tip: '执行超时触发的告警，点击筛选列表',
+                             active: historyQuery.alertType === 'TIMEOUT',
+                             onClick: () => toggleHistoryDrill('TIMEOUT')},
+                            {label: '延迟超阈值', value: alertStats?.lagExceeded ?? '—', icon: <HiOutlineBolt size={20}/>,
+                             iconClass: 'bg-ds-warning-light text-ds-warning', valueClass: 'text-ds-warning',
+                             tip: 'CDC 管道延迟超阈值告警，点击筛选列表',
+                             active: historyQuery.alertType === 'LAG_EXCEEDED',
+                             onClick: () => toggleHistoryDrill('LAG_EXCEEDED')},
+                            {label: '外部停止', value: alertStats?.externalStop ?? '—', icon: <HiOutlineStop size={20}/>,
+                             iconClass: 'bg-ds-bg-hover text-ds-text-muted', tip: '管道被外部停止的通知，点击筛选列表',
+                             active: historyQuery.alertType === 'EXTERNAL_STOP',
+                             onClick: () => toggleHistoryDrill('EXTERNAL_STOP')},
+                            {label: '成功通知', value: alertStats?.success ?? '—', icon: <HiOutlineCheckCircle size={20}/>,
+                             iconClass: 'bg-ds-success-light text-ds-success', valueClass: 'text-ds-success',
+                             tip: '任务恢复/成功的通知，点击筛选列表',
+                             active: historyQuery.alertType === 'SUCCESS',
+                             onClick: () => toggleHistoryDrill('SUCCESS')},
+                        ]}
+                    />
+                    
+
+                    <div
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
                     <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={
@@ -671,6 +756,19 @@ export default function AlertCenterPage() {
                                 options={SEND_STATUS_OPTIONS}
                                 aria-label="按发送状态筛选"
                             />
+                            <DsRangePicker
+                                from={historyQuery.sentAtFrom}
+                                to={historyQuery.sentAtTo}
+                                allowClear={false}
+                                onChange={(from, to) => {
+                                    // 时间范围必填：清空时提示并保持原值，避免查全部
+                                    if (!from || !to) {
+                                        notify.warning('请选择告警时间范围');
+                                        return;
+                                    }
+                                    applyHistoryQuery({...historyQuery, sentAtFrom: from, sentAtTo: to});
+                                }}
+                            />
                         </DsToolbar>
                     </div>
 
@@ -690,7 +788,8 @@ export default function AlertCenterPage() {
                     </div>
                     <Pagination page={historyPage} pageSize={historyPageSize} total={historyTotal}
                                 onChange={handleHistoryPageChange}/>
-                </div>
+                    </div>
+                </>
             )}
 
             {/* 规则新增/编辑弹窗 */}

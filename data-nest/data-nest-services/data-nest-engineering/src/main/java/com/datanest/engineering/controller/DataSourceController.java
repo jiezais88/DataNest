@@ -7,6 +7,7 @@ import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DataSourceCreateRequest;
 import com.datanest.engineering.dto.DataSourceDTO;
 import com.datanest.engineering.dto.DataSourceQueryRequest;
+import com.datanest.engineering.dto.DataSourceStatsDTO;
 import com.datanest.engineering.dto.DataSourceUpdateRequest;
 import com.datanest.engineering.service.DataSourceService;
 import com.datanest.task.core.dto.TestConnectionRequest;
@@ -35,6 +36,13 @@ public class DataSourceController {
     @PostMapping("/page")
     public Result<PageResult<DataSourceDTO>> list(@RequestBody DataSourceQueryRequest request) {
         return Result.ok(dataSourceService.list(request));
+    }
+
+    @Operation(summary = "数据源连接状态统计（顶部统计卡）")
+    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @GetMapping("/stats")
+    public Result<DataSourceStatsDTO> stats() {
+        return Result.ok(dataSourceService.listStats());
     }
 
     @Operation(summary = "新增数据源（超管、工程师）")

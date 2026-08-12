@@ -8,6 +8,7 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.PageResult;
+import com.datanest.governance.dto.QualityCheckStatsDTO;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.entity.QualityCheckBatch;
 import com.datanest.governance.entity.QualityCheckDetail;
@@ -102,6 +103,33 @@ public class QualityCheckQueryService {
                 .map(batch -> toBatchDTO(batch, detailsByBatch.getOrDefault(batch.getId(), List.of())))
                 .toList();
         return new PageResult<>(records, page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /**
+     * 批次状态统计（列表页顶部统计卡，按时间范围聚合）。
+     */
+    public QualityCheckStatsDTO listStats(String startTimeFrom, String startTimeTo) {
+        LocalDateTime from = parseIso(startTimeFrom);
+        LocalDateTime to = parseIso(startTimeTo);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.QUALITY_CHECK_TIME_RANGE_INVALID, "时间范围非法：开始时间晚于结束时间");
+        }
+        QualityCheckStatsDTO stats = batchMapper.selectStats(from, to);
+        if (stats == null) {
+            stats = new QualityCheckStatsDTO();
+        }
+        return stats;
+    }
+
+    private LocalDateTime parseIso(String iso) {
+        if (iso == null || iso.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(iso.trim());
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.QUALITY_CHECK_TIME_RANGE_INVALID, "时间参数格式非法（需 ISO 8601）: " + iso);
+        }
     }
 
     /**
