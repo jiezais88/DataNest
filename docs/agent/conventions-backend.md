@@ -135,7 +135,7 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 
 ## 11. 接口文档注解（springdoc，2026-08-09 起）
 
-- **选型**：springdoc-openapi 3.0.x（Boot 4 线），不用 Knife4j（未适配 Boot 4）。聚合入口 `http://localhost:8080/swagger-ui.html`（网关 swagger-ui 右上角切服务）；实现与坑见 AGENTS.md §6 / gotchas §一。
+- **选型**：springdoc-openapi 3.0.x（Boot 4 线），不用 Knife4j（未适配 Boot 4）。聚合入口 `http://localhost:8080/swagger-ui.html`（网关 swagger-ui 右上角切服务）；实现与坑见 gotchas §一。
 - **注解标准**（样板：`system` 服务的 `UserController`/`UserVO`）：
   - Controller 类级 `@Tag(name = "中文模块名", description = "一句话")`；端点方法 `@Operation(summary = "中文动作短语")`（复杂语义加 description）。
   - 所有 `@PathVariable`/`@RequestParam` 加 `@Parameter(description=…)`；`@RequestBody` 不加。

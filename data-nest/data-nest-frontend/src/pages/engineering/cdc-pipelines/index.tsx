@@ -398,7 +398,7 @@ export default function CdcPipelinesPage() {
                         CDC 管道
                     </h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        MySQL Binlog / PostgreSQL WAL → Flink CDC → Iceberg 湖仓（MinIO）→ Doris 外部表，秒级捕获业务库变更。
+                        秒级捕获业务库（MySQL / PostgreSQL）变更，实时同步到湖仓与 Doris 数仓。
                     </p>
                 </div>
                 {canWrite && (
@@ -430,7 +430,7 @@ export default function CdcPipelinesPage() {
                         extra={(
                             <>
                                 {canWrite && (
-                                    <Tooltip title="立即让数仓感知湖仓中的新表/新数据（对所有管道生效）。系统每 30 秒自动同步一次（仅存在运行中管道时才生效），一般无需手动操作；仅当数仓查不到刚落库的数据时点此立即生效。">
+                                    <Tooltip title="立即让数仓感知湖仓中的新表/新数据（对所有管道生效）。系统每 30 秒自动同步一次（仅存在运行中管道时才生效），一般无需手动操作；仅当数仓查不到刚同步的数据时点此立即生效。">
                                         <span>
                                             <DsButton variant="secondary" onClick={handleRefreshCatalog}
                                                       disabled={loading || catalogRefreshing || list.length === 0}

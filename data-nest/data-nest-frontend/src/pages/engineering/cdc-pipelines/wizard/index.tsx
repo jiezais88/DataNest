@@ -461,8 +461,8 @@ export default function CdcPipelineWizardPage() {
                         {isEdit ? '编辑 CDC 管道' : '新建 CDC 管道'}
                     </h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        {isEdit ? '仅停止状态可编辑；保存后清空 savepoint，下次启动按启动位点从头跑。'
-                            : 'MySQL Binlog / PostgreSQL WAL → Iceberg 湖仓（MinIO），Doris 经 Iceberg Catalog 查询。'}
+                        {isEdit ? '仅停止状态的管道可编辑；保存后将清空断点续传进度，下次启动按配置的启动位点重新读取。'
+                            : '捕获 MySQL / PostgreSQL 业务库的实时变更，写入湖仓存储，Doris 数仓可直接查询。'}
                     </p>
                 </div>
             </div>

@@ -101,7 +101,7 @@
 - 三个目录各有聚合 pom（**目录名 = 聚合 artifactId**：data-nest-libs/apis/services，packaging=pom）；根 pom modules = data-nest-libs → data-nest-apis → data-nest-services
 - **artifactId 不变，依赖零改动**；仅 pom relativePath（../../pom.xml）与 7 个 Dockerfile 的 jar COPY 路径（加 services/ 前缀）调整
 - 全部 `git mv` 完成（484 项 rename，历史保留）；全量构建 + compose config + app-system 镜像构建验证通过
-- ⚠️ 后续引用模块物理路径时注意新位置（AGENTS.md §3 命令、docs 已同步）
+- ⚠️ 后续引用模块物理路径时注意新位置（构建命令见 docs/agent/build-and-deploy.md、docs 已同步）
 
 ### 远程调用容错体系（L1 统一设施 + L2 熔断）
 

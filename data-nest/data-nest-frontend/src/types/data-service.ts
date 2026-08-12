@@ -59,3 +59,201 @@ export interface SqlQueryHistory {
     errorMessage?: string;
     createdAt?: string;
 }
+
+// ============ Sprint 10 F2：数据 API 管理 + API Key 管理 ============
+
+/** API 生命周期状态：CREATED 未发布 / PUBLISHED 已发布 / DISABLED 已下线 */
+export type DataApiStatus = 'CREATED' | 'PUBLISHED' | 'DISABLED';
+
+/** 表敏感度（governance metadata_table.sensitivity_level；未打标默认 PUBLIC） */
+export type SensitivityLevel = 'PUBLIC' | 'INTERNAL' | 'CONFIDENTIAL';
+
+/** API Key 状态 */
+export type ApiKeyStatus = 'ENABLED' | 'DISABLED';
+
+export const DATA_API_STATUS_LABEL: Record<DataApiStatus, string> = {
+    CREATED: '未发布',
+    PUBLISHED: '已发布',
+    DISABLED: '已下线',
+};
+
+export const SENSITIVITY_LABEL: Record<SensitivityLevel, string> = {
+    PUBLIC: '公开',
+    INTERNAL: '内部',
+    CONFIDENTIAL: '机密',
+};
+
+export const API_KEY_STATUS_LABEL: Record<ApiKeyStatus, string> = {
+    ENABLED: '启用',
+    DISABLED: '禁用',
+};
+
+/** API 分页列表项（Long 计数序列为 string） */
+export interface DataApiPageItem {
+    id: string;
+    name: string;
+    path: string;
+    method: string;
+    datasourceId: string;
+    datasourceName?: string;
+    databaseName: string;
+    schemaName?: string;
+    tableName: string;
+    /** 源表敏感度；governance 不可达时降级为空（显示「未知」） */
+    sensitivityLevel?: SensitivityLevel;
+    status: DataApiStatus;
+    boundKeyCount: string;
+    calls7d: string;
+    createdBy?: string;
+    createdByName?: string;
+    createdAt?: string;
+    updatedByName?: string;
+    updatedAt?: string;
+}
+
+/** API 列表页统计卡汇总 */
+export interface DataApiSummary {
+    publishedCount: string;
+    createdCount: string;
+    disabledCount: string;
+    totalCalls7d: string;
+}
+
+/** 参数化筛选定义（EQ 等值 / RANGE 范围，查询条件 AND 组合） */
+export interface ApiParamDef {
+    field: string;
+    type: 'EQ' | 'RANGE';
+}
+
+/** API 定义（params_json 解析形态）；fields 空 = 全部字段 */
+export interface DataApiDefinition {
+    filters?: ApiParamDef[];
+    fields?: string[];
+}
+
+/** 自动文档参数说明 */
+export interface DataApiDocParam {
+    name: string;
+    description: string;
+}
+
+/** API 自动文档 */
+export interface DataApiDoc {
+    method: string;
+    path: string;
+    /** 经网关完整调用路径（/api/data-service/open-api/v1/...） */
+    fullPath: string;
+    auth: string;
+    params: DataApiDocParam[];
+    response: string;
+    curl: string;
+}
+
+/** 绑定 Key 简要信息（API 详情用） */
+export interface ApiKeyBrief {
+    id: string;
+    name: string;
+    status: ApiKeyStatus;
+}
+
+/** API 详情 */
+export interface DataApiDetail {
+    id: string;
+    name: string;
+    path: string;
+    method: string;
+    datasourceId: string;
+    datasourceName?: string;
+    databaseName: string;
+    schemaName?: string;
+    tableName: string;
+    sensitivityLevel?: SensitivityLevel;
+    metadataTableId?: string;
+    definition: DataApiDefinition;
+    orderBy?: string;
+    paginated?: number;
+    pageSizeMax?: number;
+    status: DataApiStatus;
+    doc: DataApiDoc;
+    boundKeys: ApiKeyBrief[];
+    calls7d: string;
+    createdBy?: string;
+    createdByName?: string;
+    updatedByName?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+/** 创建 API 请求（datasourceId Long 以 string 传输；内置 Doris 传 '-1'） */
+export interface DataApiCreateRequest {
+    name: string;
+    /** 可传自定义段 orders 或完整 /open-api/v1/orders，后端统一归一 */
+    path: string;
+    datasourceId: string;
+    databaseName: string;
+    schemaName?: string;
+    tableName: string;
+    metadataTableId?: string;
+    filters?: ApiParamDef[];
+    /** 返回字段白名单（空 = 全部字段） */
+    fields?: string[];
+    orderBy?: string;
+    paginated?: number;
+    pageSizeMax?: number;
+}
+
+/** 编辑 API 请求（数据源/库/表绑定不可改） */
+export interface DataApiUpdateRequest {
+    name: string;
+    path: string;
+    filters?: ApiParamDef[];
+    fields?: string[];
+    orderBy?: string;
+    paginated?: number;
+    pageSizeMax?: number;
+}
+
+/** API Key 分页列表项 */
+export interface ApiKeyPageItem {
+    id: string;
+    name: string;
+    status: ApiKeyStatus;
+    qpsLimit: number;
+    boundApiCount: string;
+    /** 近 7 天调用（'0' = 僵尸 Key，建议停用） */
+    calls7d: string;
+    createdBy?: string;
+    createdByName?: string;
+    createdAt?: string;
+    updatedByName?: string;
+    updatedAt?: string;
+}
+
+/** API Key 详情（编辑预填；明文 Key 只在创建时返回） */
+export interface ApiKeyDetail {
+    id: string;
+    name: string;
+    status: ApiKeyStatus;
+    qpsLimit: number;
+    apiIds: string[];
+    createdByName?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+/** 创建/编辑 Key 请求（apiIds 全量重绑） */
+export interface ApiKeySaveRequest {
+    name: string;
+    qpsLimit: number;
+    apiIds?: string[];
+}
+
+/** 创建 Key 响应（apiKey 明文仅本次返回） */
+export interface ApiKeyCreateResult {
+    id: string;
+    name: string;
+    apiKey: string;
+    qpsLimit: number;
+    status: ApiKeyStatus;
+    createdAt?: string;
+}

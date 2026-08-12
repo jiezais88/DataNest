@@ -40,6 +40,11 @@ const MyFollowsPage = lazyPage(() => import('@/pages/assets/follows'));
 const CdcPipelinesPage = lazyPage(() => import('@/pages/engineering/cdc-pipelines'));
 const CdcPipelineWizardPage = lazyPage(() => import('@/pages/engineering/cdc-pipelines/wizard'));
 const SqlConsolePage = lazyPage(() => import('@/pages/data-service/sql-console'));
+const ApiManagePage = lazyPage(() => import('@/pages/data-service/api-manage'));
+const ApiCreateWizardPage = lazyPage(() => import('@/pages/data-service/api-manage/wizard'));
+const ApiDetailPage = lazyPage(() => import('@/pages/data-service/api-manage/detail'));
+const ApiEditPage = lazyPage(() => import('@/pages/data-service/api-manage/edit'));
+const ApiKeysPage = lazyPage(() => import('@/pages/data-service/api-keys'));
 
 export const router = createBrowserRouter([
     {
@@ -113,6 +118,11 @@ export const router = createBrowserRouter([
             {path: 'asset-catalog/follows', element: <MyFollowsPage/>},
             {path: 'asset-catalog/:tableId', element: <AssetDetailPage/>},
             {path: 'data-service/sql-console', element: <SqlConsolePage/>},
+            {path: 'data-service/api-manage', element: <ApiManagePage/>},
+            {path: 'data-service/api-manage/new', element: <ApiCreateWizardPage/>},
+            {path: 'data-service/api-manage/:id', element: <ApiDetailPage/>},
+            {path: 'data-service/api-manage/:id/edit', element: <ApiEditPage/>},
+            {path: 'data-service/api-keys', element: <ApiKeysPage/>},
         ],
     },
 ]);

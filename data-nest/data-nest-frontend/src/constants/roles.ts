@@ -26,6 +26,9 @@ export const ENGINEERING_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_
 /** 治理模块（采集任务/元数据/数据标准）写权限 */
 export const GOVERNANCE_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.GOVERNANCE_ADMIN];
 
+/** 数据服务模块（数据 API / API Key）写权限（PRD Sprint 10 §8：写 = 超管/工程师，查看 = 全角色） */
+export const DATA_SERVICE_WRITE_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER];
+
 /** 告警中心查看权限（PRD §8：超管/工程师/治理员可查看，分析师不可） */
 export const ALERT_VIEW_ROLES: RoleCode[] = [ROLE.SUPER_ADMIN, ROLE.DATA_ENGINEER, ROLE.GOVERNANCE_ADMIN];
 

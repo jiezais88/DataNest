@@ -24,6 +24,8 @@ import {
     HiOutlineShieldCheck,
     HiOutlineStar,
     HiOutlineCommandLine,
+    HiOutlineFingerPrint,
+    HiOutlineKey,
     HiOutlineTableCells,
     HiOutlineUsers,
 } from 'react-icons/hi2';
@@ -89,6 +91,18 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: 'SQL 查询终端',
                 path: '/data-service/sql-console',
                 icon: <HiOutlineCommandLine size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: 'API 管理',
+                path: '/data-service/api-manage',
+                icon: <HiOutlineKey size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: 'API Key 管理',
+                path: '/data-service/api-keys',
+                icon: <HiOutlineFingerPrint size={18}/>,
                 roles: ALL_ROLES
             },
         ],

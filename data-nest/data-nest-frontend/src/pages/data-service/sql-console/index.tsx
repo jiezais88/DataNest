@@ -348,7 +348,7 @@ export default function SqlConsolePage() {
                         <h1 className="text-ds-display text-ds-text-primary whitespace-nowrap">SQL 查询终端</h1>
                     </div>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        在左侧目录选择库表插入查询模板，或手动编写只读 SQL 查询与导出结果。
+                        在左侧目录选表插入查询模板，或手动编写只读 SQL；查询结果可导出 CSV / Excel。
                     </p>
                 </div>
                 <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">

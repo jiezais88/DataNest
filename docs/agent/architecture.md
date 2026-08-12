@@ -16,7 +16,8 @@ data-nest/
 │   ├── data-nest-alert-api
 │   ├── data-nest-engineering-api
 │   ├── data-nest-governance-api
-│   └── data-nest-system-api
+│   ├── data-nest-system-api
+│   └── data-nest-realtime-api（Sprint 8 F2）
 └── data-nest-services/      # 可部署服务（聚合 artifactId: data-nest-services）
     ├── data-nest-gateway
     ├── data-nest-system
@@ -24,8 +25,11 @@ data-nest/
     ├── data-nest-engineering
     ├── data-nest-governance
     ├── data-nest-worker
-    └── data-nest-job
+    ├── data-nest-job
+    └── data-nest-data-service（Sprint 10 F1：SQL 终端 / 数据 API / 实时订阅）
 ```
+
+**2026-08-12 pom 重构**：`data-nest-service-webmvc` 为"带库 WebMVC 服务"中间父 pom（system/alert/engineering/governance/realtime/data-service 继承，集中 web/nacos/持库/sa-token/springdoc/lombok 公共依赖与分层构建）；`data-nest-apis` 聚合 pom 统管 6 个 Feign 契约模块公共依赖（common/openfeign/resilience4j/feign-hc5/lombok）；根 pom `properties` + `dependencyManagement` 统一管理全部第三方版本（`mysql-connector.version`=8.0.33、`poi.version`=5.4.1、`powerjob.version`=5.1.2、`flink.version`=2.2.1、`cdc.version`=3.6.0-2.2、`flink-shaded-guava.version`=33.4.0-jre-20.0）。**子模块禁止再写第三方字面量版本或本地 properties 版本属性**。
 
 **已删除的模块**（勿再引用）：
 - `data-nest-alert`（阶段 1 删除，告警域收拢进 `data-nest-alert-service`）
@@ -44,6 +48,7 @@ data-nest/
 | `data-nest-governance` | app-governance | 8084 | `/governance` | 数据治理：元数据、采集、质量（规则/任务/批次/评分）、标准、合规、血缘、资产目录与协作（标签/收藏/关注/评论/热度，Sprint 8 F1） | datanest_governance（25 表） |
 | `data-nest-worker` | app-worker | 8085 | `/worker` | Addax 同步/DAG 节点/质量/采集的实际执行方，纯执行节点，回写全部走 Feign | 无库 |
 | `data-nest-job` | app-job | 8086 | `/job` | PowerJob worker（App `data-nest-job`），平台定时任务（清理/对账/合规扫描/超时告警等，13 个 CRON 任务） | 无库 |
+| `data-nest-data-service` | app-data-service | 8090 | `/data-service` | 数据服务（Sprint 10）：SQL 查询终端（F1：只读查询/超时中断/结果截断/导出/查询历史）、数据 API（F2）、实时订阅（F3）。**不暴露宿主机端口**，对外走 gateway `/api/data-service/**` | datanest_dataservice（6 表：data_api / api_key / api_key_binding / api_key_pipeline / api_call_log / sql_query_history） |
 
 **库表归属**（5 库均在 middleware-postgres 同一实例，各服务独立 Flyway 管理，基线 V1.0.0）：
 
@@ -52,6 +57,7 @@ data-nest/
 - **datanest_engineering（13）**：sync_job、sync_job_history、sync_job_log、dag、dag_project、dag_node、dag_edge、dag_parameter、dag_version、dag_execution、node_execution、node_execution_log、datasource_connection
 - **datanest_governance（25）**：metadata_table、metadata_column、collect_task、collect_history、collect_execution_log、collect_change_detail、quality_rule、quality_rule_template、quality_job、quality_job_rule、quality_check_batch、quality_check_detail、quality_score、quality_score_config、naming_standard、field_type_standard、compliance_check_result、asset_classification、lineage_record、asset_tag、asset_table_tag、asset_favorite、asset_follow、asset_comment、asset_view_log（Sprint 8 F1 新增 6 表）
 - **datanest_realtime（3）**：cdc_pipeline、cdc_pipeline_table、cdc_pipeline_log（Sprint 8 F2 新增库）
+- **datanest_dataservice（6）**：data_api、api_key、api_key_binding、api_key_pipeline、api_call_log、sql_query_history（Sprint 10 F1 新增第 6 业务库，F1 已建，F2/F3 表随功能演进复用）
 
 ## 3. 服务间调用拓扑
 
@@ -65,6 +71,7 @@ data-nest/
 | app-realtime | engineering-api | 读源数据源连接信息（含 encryptedPassword，本地解密）；数据源名回填 |
 | app-worker | alert-api、system-api、engineering-api、governance-api | 执行回写全链路（同步/DAG/质量/采集/元数据/血缘）+ fire 告警 |
 | app-job | alert-api、system-api、engineering-api、governance-api | 清理/对账/合规扫描/超时告警等 handler 全部端点化 |
+| app-data-service | system-api、engineering-api、governance-api | SQL 终端：数据源下拉（engineering）、元数据树（governance）、用户信息（system） |
 | app-system | 无 | 被其它服务消费，不消费别人 |
 
 说明：
@@ -129,13 +136,17 @@ com.datanest.common
 └── util/                                # 公共工具类
 ```
 
+**2026-08-12 新增共享组件（common）**：`FlywayAutoConfiguration`（持库服务统一迁移）、`MybatisPlusInterceptorAutoConfiguration`（从 task-core 迁入，分页+乐观锁兜底）、`DorisConstants`（内置 Doris 数据源 ID=-1L 与展示名统一）、`JdbcUrlBuilder`（带 socketTimeout 重载）、`JdbcPreviewHelper.formatValue/classifyError` 公开。**禁止回归自建**。
+
 `data-nest-task-core` 是执行内核：`SyncJobExecutorService`/`CollectExecutor`/`GenericSqlExecutor`/`QualityCheckService`/`DagExecutionSyncService` 等执行侧代码 + `dto` 包（阶段 6.1 迁入）。该 lib 被 worker/job 依赖（代码在其进程内运行），自身不持库、不独立部署。
+
+**2026-08-12 新增（task-core）**：`SystemUserResolver`（用户名批量反查，engineering/governance 统一委托）、`SqlStatementSplitter.classify`（SQL 四分类，worker/engineering/GenericSqlExecutor 统一）。**禁止回归自建**。
 
 ## 7. 核心容器
 
 | 容器 | 说明 |
 |------|------|
-| `app-gateway` / `app-system` / `app-alert` / `app-realtime` / `app-engineering` / `app-governance` / `app-worker` / `app-job` | 8 个后端服务（对应 §2） |
+| `app-gateway` / `app-system` / `app-alert` / `app-realtime` / `app-engineering` / `app-governance` / `app-worker` / `app-job` / `app-data-service` | 9 个后端服务（对应 §2） |
 | `app-frontend` | 前端 |
 | `middleware-mysql` | MySQL：Nacos、PowerJob 元数据 |
 | `middleware-postgres` | PostgreSQL：5 个业务库（datanest_system/alert/engineering/governance/realtime） |

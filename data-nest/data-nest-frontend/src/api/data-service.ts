@@ -2,6 +2,16 @@
 import request from './request';
 import type {Result, PageResult} from '@/types/common';
 import type {
+    ApiKeyCreateResult,
+    ApiKeyDetail,
+    ApiKeyPageItem,
+    ApiKeySaveRequest,
+    DataApiCreateRequest,
+    DataApiDetail,
+    DataApiPageItem,
+    DataApiStatus,
+    DataApiSummary,
+    DataApiUpdateRequest,
     SqlCancelRequest,
     SqlDatasource,
     SqlExecuteRequest,
@@ -51,4 +61,100 @@ export function clearQueryHistory() {
  */
 export function exportSqlResult(data: SqlExportRequest) {
     return request.post<Blob>('/data-service/sql-console/export', data, {responseType: 'blob'});
+}
+
+// ============ Sprint 10 F2：数据 API 管理 ============
+
+/** API 列表（分页；scope=mine 仅看我创建的；keyword 匹配名称/路径；status 精确过滤） */
+export function pageDataApis(params: {
+    page: number;
+    pageSize: number;
+    scope?: 'mine';
+    keyword?: string;
+    status?: DataApiStatus | '';
+}) {
+    const search = new URLSearchParams();
+    search.set('page', String(params.page));
+    search.set('pageSize', String(params.pageSize));
+    if (params.scope) search.set('scope', params.scope);
+    if (params.keyword) search.set('keyword', params.keyword);
+    if (params.status) search.set('status', params.status);
+    return request.get<Result<PageResult<DataApiPageItem>>>(`/data-service/apis/page?${search.toString()}`);
+}
+
+/** API 汇总（列表页统计卡：已发布/待发布/已下线/近 7 天总调用） */
+export function getDataApiSummary() {
+    return request.get<Result<DataApiSummary>>('/data-service/apis/summary');
+}
+
+/** API 详情（定义 + 自动文档 + 绑定 Key + 近 7 天调用） */
+export function getDataApi(id: string) {
+    return request.get<Result<DataApiDetail>>(`/data-service/apis/${id}`);
+}
+
+/** 创建 API（后端校验敏感度闸门 + 路径归一查重） */
+export function createDataApi(data: DataApiCreateRequest) {
+    return request.post<Result<DataApiDetail>>('/data-service/apis', data);
+}
+
+/** 编辑 API（名称/路径/参数/字段/排序/分页；数据源/库/表绑定不可改） */
+export function updateDataApi(id: string, data: DataApiUpdateRequest) {
+    return request.put<Result<DataApiDetail>>(`/data-service/apis/${id}`, data);
+}
+
+/** 发布（CREATED/DISABLED → PUBLISHED，幂等） */
+export function publishDataApi(id: string) {
+    return request.post<Result<null>>(`/data-service/apis/${id}/publish`);
+}
+
+/** 下线（PUBLISHED → DISABLED，幂等） */
+export function disableDataApi(id: string) {
+    return request.post<Result<null>>(`/data-service/apis/${id}/disable`);
+}
+
+/** 删除（软删，保留调用统计，清理 Key 绑定） */
+export function deleteDataApi(id: string) {
+    return request.delete<Result<null>>(`/data-service/apis/${id}`);
+}
+
+// ============ Sprint 10 F2：API Key 管理 ============
+
+/** Key 列表（分页；含绑定 API 数 + 近 7 天调用，0 = 僵尸 Key） */
+export function pageApiKeys(params: { page: number; pageSize: number; keyword?: string; status?: string }) {
+    const search = new URLSearchParams();
+    search.set('page', String(params.page));
+    search.set('pageSize', String(params.pageSize));
+    if (params.keyword) search.set('keyword', params.keyword);
+    if (params.status) search.set('status', params.status);
+    return request.get<Result<PageResult<ApiKeyPageItem>>>(`/data-service/api-keys/page?${search.toString()}`);
+}
+
+/** Key 详情（编辑弹窗预填当前绑定 API） */
+export function getApiKey(id: string) {
+    return request.get<Result<ApiKeyDetail>>(`/data-service/api-keys/${id}`);
+}
+
+/** 创建 Key（明文仅本次响应返回，后端只存哈希） */
+export function createApiKey(data: ApiKeySaveRequest) {
+    return request.post<Result<ApiKeyCreateResult>>('/data-service/api-keys', data);
+}
+
+/** 编辑 Key（改名 / 限流 QPS / 全量重绑 API） */
+export function updateApiKey(id: string, data: ApiKeySaveRequest) {
+    return request.put<Result<null>>(`/data-service/api-keys/${id}`, data);
+}
+
+/** 快捷启用（幂等） */
+export function enableApiKey(id: string) {
+    return request.post<Result<null>>(`/data-service/api-keys/${id}/enable`);
+}
+
+/** 快捷禁用（幂等；禁用后对外调用立即 401） */
+export function disableApiKey(id: string) {
+    return request.post<Result<null>>(`/data-service/api-keys/${id}/disable`);
+}
+
+/** 删除 Key（同时清理 API 绑定与管道订阅授权） */
+export function deleteApiKey(id: string) {
+    return request.delete<Result<null>>(`/data-service/api-keys/${id}`);
 }

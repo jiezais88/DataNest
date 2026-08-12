@@ -110,6 +110,8 @@ const SqlTree = forwardRef<SqlTreeHandle, {
     const dsNameMapRef = useRef<Map<string, string>>(new Map());
     const itemsRef = useRef<TreeItem[]>([]);
     itemsRef.current = items;
+    // loadChildren 引用（loadRoots 默认展开 Doris 时主动加载子节点，避免 effect 依赖循环）
+    const loadChildrenRef = useRef<(item: TreeItem) => Promise<void>>(() => Promise.resolve());
     const isSearchModeRef = useRef(false);
     isSearchModeRef.current = isSearchMode;
 
@@ -147,6 +149,8 @@ const SqlTree = forwardRef<SqlTreeHandle, {
                 children: [],
             }));
             setItems(roots);
+            // 同步 itemsRef（loadChildren 内部用 itemsRef.current 展开树，setItems 异步时需先对齐）
+            itemsRef.current = roots;
             // 内置 Doris 默认展开 + 首次进入自动选中（上下文条与树选中态一致）
             const doris = list.find(d => d.builtin);
             if (doris) {
@@ -158,6 +162,8 @@ const SqlTree = forwardRef<SqlTreeHandle, {
                         datasourceId: doris.id,
                         dsName: dorisItem.meta.name,
                     });
+                    // 默认展开的同时主动加载库列表，避免「展开但无子节点」的空态
+                    await loadChildrenRef.current(dorisItem);
                 }
             }
         } catch {
@@ -246,6 +252,7 @@ const SqlTree = forwardRef<SqlTreeHandle, {
             setTreeLoadingKey(null);
         }
     }, [treeLoadingKey]);
+    loadChildrenRef.current = loadChildren;
 
     const handleToggle = useCallback(async (item: TreeItem) => {
         const key = nodeKey(item.meta);

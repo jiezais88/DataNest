@@ -164,6 +164,8 @@ public enum ErrorCode {
     API_PATH_EXISTS(9010, "API 路径已存在"),
     API_EXEMPT_NOT_ALLOWED(9011, "机密表不可开白 / 非超管不可开白"),
     SENSITIVITY_SERVICE_UNAVAILABLE(9012, "分级服务暂不可用，请稍后重试"),
+    API_DEFINITION_INVALID(9013, "API 定义参数非法"),
+    API_KEY_NOT_FOUND(9014, "API Key 不存在"),
 
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),

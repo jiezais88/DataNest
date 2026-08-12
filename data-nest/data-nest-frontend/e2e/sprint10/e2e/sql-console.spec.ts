@@ -31,9 +31,8 @@ function treeNode(page: Page, text: string, exact = false) {
     }).first();
 }
 
-/** 展开 Doris 数仓并加载库列表（默认已展开但子节点未加载：修复后首次点击即加载，而非收起） */
+/** Doris 数仓默认展开且首次进入自动加载库列表 */
 async function expandDoris(page: Page): Promise<void> {
-    await treeNode(page, 'Doris 数仓', true).click();
     await expect(treeNode(page, 'ods', true)).toBeVisible();
 }
 

@@ -1,7 +1,7 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-12（F1 SQL 终端前端 + 联调 + 补 cancel 后端会话）
-> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.5）· `../DataNest-Sprint10-原型.html/css`
+> 更新：2026-08-12（F2 前端 + 联调会话）
+> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.8）· `../DataNest-Sprint10-原型.html/css`
 
 ---
 
@@ -12,8 +12,8 @@
 | PRD | ✅ v1.3 | **全部决策定稿（D1~D5）**；§6.3/6.4/6.5 已回落原型修正；§12.2/§13 决策记录含 D4 M0 结论 |
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
-| 后端 | ✅ F1 完成 | **F1 SQL 终端已部署 `datanest-app-data-service`（healthy）**；17 API 自测用例 + F1.1 cancel 补丁全通过；**F1.1（本会话）：`SqlExecuteRequest.queryId` + `POST /sql-console/cancel` 停止查询、`SqlExecuteResult.tableCount/confidentialHits` KPI 字段、socketTimeout 参数化、durationMs 改 int**；F2 API 管理/Key/F3 网关/F4 WebSocket/F5 分级对外端点未开始 |
-| 前端 | ✅ F1 完成 | **SQL 查询终端页已实现并部署 `app-frontend`**（`/data-service/sql-console` + Sidebar「数据服务」组，仅此一项渐进式）；数据源下拉/Monaco(Ctrl+Enter)/运行/停止/KPI 4 卡/结果表/CSV·Excel 导出/查询历史回填+清空；与后端联调通过 |
+| 后端 | ✅ F1/F2 完成 | **F1 SQL 终端已部署 `datanest-app-data-service`（healthy）**；17 API 自测用例 + F1.1 cancel 补丁全通过；**F2（本会话）：数据 API 管理端（CRUD/发布/下线/软删 + 敏感度闸门 + 自动文档）+ API Key 管理（K- 明文一次 + SHA-256 + 绑定/快捷启停/近 7 天调用聚合）已实现并部署，API 自测 45 用例全通过**；F2 前端会话补：`/apis/summary` 汇总 + `/api-keys/{id}` 详情 + PageItem/Detail 敏感度反查（读路径降级）；F3 网关（对外入口/限流/熔断/统计）/F4 WebSocket/F5 分级对外端点未开始 |
+| 前端 | ✅ F1/F2 完成 | **SQL 查询终端页已实现并部署 `app-frontend`**（`/data-service/sql-console`）；**F2（本会话）：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（列表/新建编辑弹窗/明文一次性展示/快捷启停/僵尸 Key 灰显）已实现并部署**，Sidebar「数据服务」组补「API 管理」；联调通过 |
 
 ---
 
@@ -72,8 +72,8 @@
 
 ## 5. Next Action
 
-1. **F2 API 管理 + Key**：`DataApiController` + `DataApiService`（CRUD/发布/下线 + 敏感度校验 + API 预览）+ `ApiKeyController`（一次性明文 + 近 7 天调用 + 快捷启用 `POST /api-keys/{id}/enable`）+ data_api/api_key/api_key_binding/api_key_pipeline 实体 Mapper（表已建，可直接用）。
-2. **F3 API 网关**：`OpenApiKeyFilter`（Key 哈希校验，open-api 路由网关已放行）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j）+ `ApiCallLogWriter`（异步队列写 api_call_log）；`StatsController` 全局统计（`/stats/*`）。
+1. ~~**F2 API 管理 + Key**~~ ✅ 已完成（见 §19 后端 + §20 前端/联调）。
+2. **F3 API 网关**：`OpenApiKeyFilter`（Key 哈希校验，open-api 路由网关已放行）+ 对外执行 `GET /open-api/v1/{自定义path}`（params 白名单绑定 + 分页 + orderBy）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j）+ `ApiCallLogWriter`（异步队列写 api_call_log）；`StatsController` 全局统计（`/stats/*`）。注意：对外路径按**自定义 path** 匹配（Blocker 5 已定，data_api.path 存完整路径）。
 3. **F5 分级对外端点**：governance `SensitivityController`（改级/批量/开白/审计，机密降级必经 INTERNAL 两步）+ 前端数据分级分类页。
 4. **F4 WebSocket 实时订阅**：依赖 Kafka 中间件——compose `middleware-kafka`（`apache/kafka:4.0.x`）+ Flink lib 增 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2` + realtime `CdcEventYamlBuilder` 事件作业联动（server-id 6400+/PG 额外槽）+ `WsEventsHandler` + `KafkaEventConsumer`。
 5. **健康分级阈值确认**：全局统计页「健康/警告/严重 + 综合健康分」的分级阈值（当前注记对齐告警 PASS/WARNING/SEVERE 语义），需后端定稿前与产品确认。
@@ -334,6 +334,74 @@
 
 ---
 
+## 19. F2 数据 API + Key 管理端后端（2026-08-12，本会话）
+
+> 范围：F2 管理端（技术文档 F2 行的「对外调用入口」经用户拍板归 F3）。4 问 4 答决策全部按推荐项拍板。
+
+### 19.1 决策（用户拍板）
+- **F2 范围**：只做管理端（API 定义 CRUD/生命周期 + Key 管理/绑定），对外 `/open-api/v1/**` 执行入口 + OpenApiKeyFilter 归 F3。
+- **API 对外路径 = 自定义路径**（技术文档 Blocker 5 定稿）：`data_api.path` 存完整 `/open-api/v1/{段}`；输入 `orders`/`/orders`/完整路径三种形态统一归一；段规则 `^[a-z0-9][a-z0-9-_]{0,99}$`。
+- **删除 = 软删**（PRD「软删保留调用统计」）：V1.0.2 加 `deleted` 列；path 唯一约束改**部分唯一索引 `WHERE deleted=0`**（删除后路径可复用，实测通过）。
+- **返回字段白名单并入 params_json**（不加列）：`{"filters":[{"field","type":"EQ|RANGE"}],"fields":[...]}`，空 fields = 全部字段。
+
+### 19.2 实现（data-service，已部署）
+- **实体/Mapper**：`DataApi`/`ApiKey`/`ApiKeyBinding`/`ApiKeyPipeline`（F4 用，本期仅建实体）/`ApiCallLog`（F3 写入，本期仅聚合查询）+ 5 Mapper；绑定数/近 7 天调用走 `GROUP BY` 批量投影（`RefCount`），无 N+1。
+- **`DataApiService`/`DataApiController`（`/apis`）**：创建/编辑/发布/下线/软删 + 分页（scope=mine/keyword/status）+ 详情（定义+自动文档+绑定 Key+近 7 天调用）。
+  - 敏感度闸门 fail-closed（governance 不可达 9012）：PUBLIC 放行 / INTERNAL 需 `api_exempted=1` / CONFIDENTIAL 9004；**创建/编辑/发布三处都过闸门**（表可能在创建后被改级）。
+  - 防注入：filters/fields 列标识符白名单 + orderBy「列名 ASC|DESC」严格正则（会拼进 SQL）→ 非法抛 9013。
+  - 自动文档 `DataApiDocDTO`：参数说明（EQ→单参数、RANGE→min_/max_ 双参数）+ 分页参数 + curl 示例。
+  - 编辑用 `UpdateWrapper.set` 显式写（`updateById` 忽略 null 会导致 orderBy 无法清空）。
+- **`ApiKeyService`/`ApiKeyController`（`/api-keys`）**：创建（`K-`+32hex 明文仅返回一次，SHA-256 落库）/编辑（全量重绑）/快捷启停（幂等）/删除（清理绑定+管道授权）/分页（绑定 API 数 + 近 7 天调用，0=僵尸 Key）。
+- **common**：错误码补 `API_DEFINITION_INVALID(9013)`、`API_KEY_NOT_FOUND(9014)`。
+- **权限**：类级四角色 OR + 方法级写操作超管/工程师（Sa-Token 类+方法注解同时生效），实测分析师写操作 403。
+
+### 19.3 Review（架构融洽/业务正确/实现高效）
+- 跨服务调用全走 Feign 契约（governance 敏感度 / engineering batchGet 数据源名 / system usernames 回填），批量无 N+1；fail-closed 仅用于敏感度与数据源校验（写路径），读路径降级空 Map。
+- 审计字段约定：create 仅 created_by/created_at；update 才写 updated_by/at。
+- 踩坑记录：Git Bash curl `-d` 直传中文 body 是 GBK 字节 → 后端 9999（Jackson UTF-8 解析失败），自测改 Python urllib；Long 序列化为字符串是全局约定（boundKeyCount/calls7d 前端按 string 处理）。
+
+### 19.4 自测（45 用例全通过，测试脚本与数据已清理）
+- 功能 38 项：创建/路径归一/查重 9010/非法路径·orderBy·筛选 9013/列表 keyword·scope/编辑清空排序·type 归一/发布·下线·幂等/Key 全流程（明文、重名 9009、绑定、启停、重绑、哈希落库核对）/权限 403/软删后详情 9008 + 路径复用/Key 删除清理绑定。
+- 敏感度闸门 7 项：PUBLIC 放行；CONFIDENTIAL 创建/编辑/重新发布全 9004；INTERNAL 未开白 9004、开白放行；测后恢复 PUBLIC。
+
+---
+
+## 20. F2 前端（API 管理 + Key 管理）+ 后端小补丁 + 联调（2026-08-12，本会话）
+
+> 用户拍板（3 问 3 答）：① 列表页敏感度列/统计卡缺后端数据 → **授权补后端**；② 详情页本期做「概览+定义+文档+绑定 Key」，统计图表待 F3；③ 字段级「机密锁定」不做（NG5 无字段级敏感度，字段全可勾选，仅表级闸门）。
+
+### 20.1 后端补丁（data-service，已部署，用户授权）
+- **`GET /apis/summary`**：列表页统计卡（publishedCount/createdCount/disabledCount/totalCalls7d）。
+- **`GET /api-keys/{id}`**（`ApiKeyDetailDTO`）：编辑弹窗预填当前绑定 apiIds（明文 Key 不回传）；编辑=全量重绑，无详情端点前端无法预填。
+- **`DataApiPageItem`/`DataApiDetailDTO` 加 `sensitivityLevel`**：按 数据源+库+schema 分组批量反查 governance `getSensitivity`（非逐行 N+1）；读路径 fail-open——governance 不可达留空，前端显示「未知」，不阻断列表（写路径闸门仍 fail-closed）。
+- **踩坑**：`@Select` 非 `<script>` 模式不解析 `&gt;` 转义 → `countCallsSince` 报 9999（column "gt" does not exist），改 `<script>` 包裹修复。
+- **补「修改人/修改时间」列（2026-08-12 用户走查反馈）**：`DataApiPageItem`/`ApiKeyPageItem` 加 `updatedByName`/`updatedAt`（usernames 回填扩展到 updatedBy），API 列表 + Key 列表各补 2 列（对齐原型）；实测编辑后两字段正确返回，测试数据已清理。
+- **API Key 管理改独立菜单（2026-08-12 用户拍板）**：Sidebar「数据服务」组新增「API Key 管理」（`/data-service/api-keys`，`HiOutlineFingerPrint`，ALL_ROLES）；API 管理页头「API Key 管理」按钮与 Key 页「返回 API 管理」按钮随之移除（菜单直达，避免冗余入口）。
+- **全站用户可见文案产品化（2026-08-12 用户反馈「后端只存哈希这类描述不产品化」）**：梳理所有页面用户可见文案（页头描述/空态/toast/确认框/提示条/tooltip），清除实现视角表述——HTTP 状态码（401/404/429）、「后端只存哈希」「Redis 滑动窗口」「Retry-After」「RESTful」「X-API-Key 头」「落库」「savepoint」「接口雏形/语义名」等改为用户价值语言（如「业务系统将无法再调用」「完整 Key 仅展示一次，请妥善保管」「超限的调用会被拒绝并提示业务方稍后重试」）；CDC 列表/向导描述从技术链路（Binlog→Flink→Iceberg→MinIO）改为用户价值（秒级捕获业务库变更，实时同步湖仓与数仓）。代码注释保持技术表述不变。
+
+### 20.2 前端（app-frontend，已部署）
+- **路由/菜单**：`/data-service/api-manage`（列表）+ `/new`（向导）+ `/:id`（详情）+ `/:id/edit` + `/data-service/api-keys`；Sidebar「数据服务」组补「API 管理」（ALL_ROLES，页内写操作按 `DATA_SERVICE_WRITE_ROLES` 隐藏）；breadcrumb map 补 3 条；`constants/roles.ts` 新增 `DATA_SERVICE_WRITE_ROLES`（超管+工程师）。
+- **API 列表页**：StatsCards 4 卡（已发布/待发布/近 7 天总调用/已下线，点击下钻状态筛选）+ 搜索/状态筛选/「我的 API·全部」seg + 表格（名称/路径/数据表/敏感度/状态/绑定 Key/近 7 天调用/创建人/时间/操作=查看·编辑·发布|下线·删除）。
+- **创建向导 3 步**：① 选表（数据源→库→schema→表 radio 列表带敏感度徽章，机密表禁选+锁图标提示，内部表警告需开白；右侧 API 预览卡实时生成 `GET /open-api/v1/{表名}` + 暴露字段清单）→ ② 配置接口（共享 `ApiConfigForm`：名称/路径段（前缀只读展示）/字段一行三配「暴露 checkbox + EQ/RANGE 筛选」/排序字段+方向/分页+pageSizeMax；前端预校验与后端白名单同规则）→ ③ 绑定 Key（暂不绑定/绑定已有 Key 勾选/新建 Key 三选；新建 Key 成功后明文一次性弹窗）。
+- **编辑页**：数据源/库/表只读卡 + ApiConfigForm 预填（orderBy 拆字段+方向、fields 空=全字段展开为全列勾选、filters 回填）；列清单优先 metadataTableId 直取，缺失时按数据源+库+表反查元数据，再退化按当前定义展示。
+- **详情页**：状态/敏感度徽章 + 发布/下线/编辑/删除 + 复制 curl + 基本信息（数据源/库表/绑定 Key 数/近 7 天调用/审计）+ 接口定义（筛选/返回字段/排序/分页）+ 调用文档（参数表/返回结构/curl）+ 绑定 Key 列表 + F3 统计占位提示。
+- **Key 管理页**：列表（名称/状态/绑定 API 数/QPS/近 7 天调用 0=僵尸灰显+tooltip/创建人/时间/操作=编辑·启停·删除）+ 新建/编辑弹窗（`KeyFormModal`：名称/QPS/绑定 API checkbox 列表；创建成功切换明文展示视图，禁遮罩关闭防明文丢失）+ 底部限流说明+僵尸 Key 建议提示条（对齐原型 hint-box）。
+- **与原型偏差（用户确认）**：字段级「机密锁定」不做（NG5）；详情页统计图表区占位待 F3；API 列表「敏感度筛选」下拉不做（列保留，跨服务过滤会破分页）。
+- `types/metadata.ts` 补 `sensitivityLevel`/`apiExempted`（治理实体早已返回，前端类型补声明）。
+
+### 20.3 Review（AGENTS §7 三点）
+- 架构融洽：跨域数据全走既有 Feign/前端 API 层；敏感度反查走 governance-api 契约批量端点，分组非逐行；列表页 usePagedList、StatsCards/DsToolbar/DsFilterSelect 等全复用全局组件，无自建重复。
+- 业务正确：权限对齐 PRD §8（查看四角色、写超管/工程师，后端注解兜底）；审计字段/软删/路径归一语义与后端一致；明文 Key 仅创建返回。
+- 实现高效：列表聚合全走后端 GROUP BY 投影；Key 选项/绑定 API 选项一次 pageSize=100 拉取；无循环远程调用（向导绑定已有 Key 的逐个 update 为用户触发的有界操作）。
+- 自修复：冒烟首跑发现「新建 API」按钮双匹配（页头+空态 CTA）与 ods 无 users 元数据表（实有 target_users）两处用例问题；完整 E2E 归专门测试会话。
+
+### 20.4 验证
+- `mvn clean package`（data-service）✅、`tsc --noEmit` ✅、eslint 0 警告 ✅、`pnpm build` ✅；两容器重建部署，镜像时间戳新、data-service healthy。
+- **后端联调 python 21 用例全过**（summary/create/detail 敏感度/编辑清排序/发布/下线/重发布/Key 明文一次/详情 apiIds/重绑/启停/列表聚合/软删 9008），测后数据已清理。
+- **前端冒烟**：列表页元素用例通过；向导页经运行快照确认渲染正确（表 radio 列表 + 敏感度徽章 + API 预览路径/字段清单均正常）——完整 E2E 由专门测试会话承担（用户明确），临时 spec 与 test-results 已清理不入库。
+
+---
+
 > **版本记录**
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
 > - v1.1 (2026-08-12)：§3 待同步项 4 项全部回落完成（PRD v1.2 + 技术文档 v1.2：全局统计端点组 / API 预览 / Key 近 7 天调用与快捷启用）；状态看板与技术文档版本同步更新；Next Action 移除回落项、新增健康分级阈值确认。
@@ -352,3 +420,5 @@
 > - v1.13 (2026-08-12)：**首次进入默认上下文一致性**（方案 C：自动选中 Doris 数仓）——`SqlTree.loadRoots` 加载根后自动展开+高亮内置 Doris 并同步上下文条；上下文条默认文案统一「Doris 数仓」；`tsc`+`build` 通过并部署（handoff §14）。
 > - v1.14 (2026-08-12)：**失败 SQL 进历史 + 错误展示优化**——后端 Flyway V1.0.1 加 `error_message`、成功/失败统一写历史（修复虚拟线程 Sa-Token 上下文丢失导致失败历史不写）；前端历史 Drawer 失败项红标+错误信息、结果区专门错误面板（分类图标+标题+详情）；`tsc`+`build`+`mvn package` 通过并部署（handoff §16）。
 > - v1.15 (2026-08-12)：**采集完成判定修复**（数据源真没表时不再无限转圈）——后端 `CollectTaskService.getById` NPE 修复（`List.of` 遇 null updatedBy 抛 9999）；前端采集轮询改「库列表非空 + 任务状态兜底」双判定，SUCCESS 但库空时提示「采集完成但未发现元数据」；`tsc`+`build`+`mvn package` 通过并部署（handoff §18）。
+> - v1.16 (2026-08-12)：**F2 数据 API + Key 管理端后端完成**——4 项决策拍板（只做管理端/自定义路径/软删加列/白名单并入 params_json）；`DataApiController`+`ApiKeyController` 全端点实现并部署；V1.0.2 软删迁移（path 部分唯一索引）；敏感度闸门 fail-closed 三处（创建/编辑/发布）；标识符与排序白名单防注入；common 补 9013/9014；45 用例自测全通过（handoff §19）；技术文档 v1.7（Blocker 5 定稿 + §3.0/§9/§9.1 同步）。
+> - v1.17 (2026-08-12)：**F2 前端 + 联调完成**——用户 3 问 3 答（授权补后端 3 处：`/apis/summary`、`/api-keys/{id}`、PageItem/Detail 敏感度反查；详情页统计图表待 F3；字段级机密锁定不做）；前端 API 管理（列表+统计卡/详情/3 步向导/编辑）+ Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）实现并部署；踩坑 `@Select` 非 script 不解析 `&gt;`；后端 python 联调 21 用例全过 + 前端冒烟通过（完整 E2E 归专门测试会话，临时 spec 未入库，handoff §20）；技术文档 v1.8。

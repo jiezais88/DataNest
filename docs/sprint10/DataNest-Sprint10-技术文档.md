@@ -47,7 +47,7 @@
 
 - **对外入口**：网关新增路由 `/api/data-service/**` → `lb://data-nest-data-service`（StripPrefix=1）；`open-api` 与 `ws` 路径在网关 `SaTokenConfig.addExclude` **放行登录态**（业务系统无平台账号），改为数据服务侧 `X-API-Key` 独立校验（与 `/internal/**` 令牌模式并列但独立，PRD R9）。
 - **Key 存储**：`SHA-256(key)` 存哈希（`api_key.key_hash`），创建时一次性返回明文（`K-` 前缀，仅展示一次）；禁用/删除即失效。
-- **API 定义**：`data_api` 表存路径/方法/参数（参数化筛选字段、范围字段、分页开关、返回字段白名单、关联表元数据 id）；发布后对外路径 `/api/data-service/open-api/v1/{apiId}?key=…` 或 `X-API-Key` 头（见 §4.3）。
+- **API 定义**：`data_api` 表存路径/方法/参数（参数化筛选字段、范围字段、分页开关、返回字段白名单、关联表元数据 id）；发布后对外路径 `/api/data-service/open-api/v1/{自定义path}`（Blocker 5 已定：自定义路径，path 列存完整 `/open-api/v1/{段}` 唯一），认证 `X-API-Key` 头（见 §4.3）。
 - **鉴权过滤器**：数据服务 `OpenApiKeyFilter`（OncePerRequestFilter）拦截 `/open-api/**` 与 `/ws/**`：校验 Key 哈希命中 + 启用 + 绑定关系；失败 401；限流超限 429（带 `Retry-After`）。
 - **分级闸门**：生成 API 前经 governance-api 校验表敏感度——机密表禁止（任何角色）；内部表默认禁止、超管可开白（governance 侧 `api_exempted` 字段，T6）。
 
@@ -123,6 +123,8 @@ governance 域（datanest_governance 库，V1.6.0）
 | 库 | 脚本 | 内容 |
 |----|------|------|
 | `datanest_dataservice`（新库，基线） | `V1.0.0__baseline.sql` | 6 表（sql_query_history / data_api / api_key / api_key_binding / api_key_pipeline / api_call_log） |
+| `datanest_dataservice` | `V1.0.1__sql_query_history_error_message.sql` | sql_query_history 加 error_message（失败 SQL 进历史） |
+| `datanest_dataservice` | `V1.0.2__data_api_soft_delete.sql` | data_api 加 deleted 软删列；path 唯一约束改部分唯一索引（deleted=0）；params_json 注释升级为完整定义对象 |
 | `datanest_governance`（现最高 V1.5.0） | `V1.6.0__sprint10_sensitivity.sql` | metadata_table 加 sensitivity_level + api_exempted；新建 sensitivity_change_log |
 
 ### 3.1 dataservice `V1.0.0__baseline.sql`（核心表）
@@ -226,7 +228,7 @@ COMMENT ON TABLE public.sensitivity_change_log IS '数据分级变更审计（Sp
   ├─ 校验表存在 + 敏感度（机密禁止 / 内部需 api_exempted 开白）
   └─ 生成 path（/open-api/v1/{id}）+ params_json + 文档
 
-对外调用（GET /api/data-service/open-api/v1/{apiId}，X-API-Key 头）
+对外调用（GET /api/data-service/open-api/v1/{自定义path}，X-API-Key 头）
   └─ OpenApiKeyFilter：Key 哈希校验 → Key×API 限流（Redis ZSET）→ 熔断检查
        ├─ 构造 SQL（params 白名单绑定 + 分页 + orderBy 白名单）→ 执行
        ├─ 异步记 api_call_log
@@ -280,6 +282,7 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 | POST | `/apis/{id}/disable` | 下线 | 超管/工程师 |
 | DELETE | `/apis/{id}` | 删除（软删） | 超管/工程师 |
 | GET | `/apis/{id}/stats?range=` | 单 API 调用统计（24h/7d/30d，聚合+明细分页） | 四角色 OR |
+| GET | `/apis/summary` | API 汇总（列表页统计卡：已发布/待发布/已下线计数 + 近 7 天总调用；2026-08-12 F2 前端会话补） | 四角色 OR |
 | GET | `/stats/overview?range=` | 全局 KPI 聚合（总调用/成功率/P95/限流命中，API 运行统计页） | 四角色 OR |
 | GET | `/stats/trend?range=` | 全局调用量趋势（双线：调用量 + 失败数，标注峰值） | 四角色 OR |
 | GET | `/stats/health-distribution?range=` | API 健康分布（健康/警告/严重占比 + 平台综合健康分） | 四角色 OR |
@@ -289,6 +292,7 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 | GET | `/stats/rate-limit-trend?range=` | 限流命中趋势（时间范围柱状） | 四角色 OR |
 | POST | `/api-keys` | 创建 Key（返回明文一次） | 超管/工程师 |
 | GET | `/api-keys/page` | Key 列表（含近 7 天调用聚合，识别僵尸 Key） | 四角色 OR |
+| GET | `/api-keys/{id}` | Key 详情（编辑弹窗预填当前绑定 apiIds；明文不回传；2026-08-12 F2 前端会话补） | 四角色 OR |
 | PUT | `/api-keys/{id}` | 编辑（改名/qps/绑定） | 超管/工程师 |
 | POST | `/api-keys/{id}/disable` | 禁用 | 超管/工程师 |
 | POST | `/api-keys/{id}/enable` | 启用（快捷启用，操作列一步恢复） | 超管/工程师 |
@@ -299,7 +303,7 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/open-api/v1/{apiId}` | 对外数据 API（X-API-Key 认证 + 限流 + 熔断 + 统计） |
+| GET | `/open-api/v1/{自定义path}` | 对外数据 API（X-API-Key 认证 + 限流 + 熔断 + 统计） |
 | WS | `/ws/events` | WebSocket 实时订阅（握手校验 X-API-Key） |
 
 ### 5.3 governance 新增（internal + 分级端点）
@@ -405,7 +409,7 @@ kafka:
 | 2 | **Kafka 版本与部署形态** | **M0 已定（2026-08-12）**：官方 `apache/kafka:4.0.x` 纯 KRaft 单节点；Kafka 客户端向后兼容 ≥0.10 broker，无兼容风险；仅需 lib 增补 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2`（shade 含 flink-connector-kafka，无需单独引） | ✅ M0 定稿（q-2） |
 | 3 | **governance 不可达时敏感度校验策略** | **fail-closed 已确认（2026-08-12）**：数据服务无法确认表敏感度时，SQL 执行与 API 创建默认拒绝并提示「分级服务暂不可用」——保护敏感数据不因治理服务故障而泄漏 | ✅ 已确认 |
 | 4 | **机密表改级降级是否需两步** | **两步已确认（2026-08-12）**：CONFIDENTIAL→PUBLIC 必经 INTERNAL，防一步误操作机密裸奔 | ✅ 已确认 |
-| 5 | **API 对外路径形态** | `/open-api/v1/{apiId}`（apiId 动态）vs `/open-api/v1/{自定义path}`；倾向自定义 path（`data_api.path` 唯一约束已设计），路径下又分 v1 版本段 | 实现定 |
+| 5 | **API 对外路径形态** | **已定（2026-08-12，F2 实现时用户拍板）**：**自定义路径**（原型=实现基准），`data_api.path` 存完整路径 `/open-api/v1/{自定义段}`，未删除行部分唯一索引；段规则 `^[a-z0-9][a-z0-9-_]{0,99}$`，输入三种形态（`orders`/`/orders`/完整路径）统一归一 | ✅ 已定 |
 | 6 | **Kafka 消费端 offset 语义** | **已定（2026-08-12，q-3）**：`latest`（仅增量推送，订阅时刻后事件；无历史重放，PRD NG9） | ✅ 已定 |
 | 7 | **查询历史/调用统计清理** | **已定（2026-08-12，用户拍板）**：**业务服务本地禁止 `@Scheduled`**，定时清理全部放 **app-job**（PowerJob cron）——清理逻辑下沉 data-service `/internal/**` 端点（经 data-service-api Feign 触发），job 新增 `sqlHistoryCleanupHandler`；规范已写入 `docs/agent/conventions-backend.md` §7「定时任务规范」 | ✅ 已定并实现 |
 | 8 | **X-API-Key 头名与文档** | `X-API-Key`（对齐规格示例），CORS allowed-headers 需补（shared-security.yaml 当前无此项） | 实现定 |
@@ -424,7 +428,7 @@ kafka:
 - [x] common：新增 ErrorCode 段（数据服务 9xxx：SQL 只读拦截/Key 无效/限流/API 未发布/表敏感度等）
 - [x] governance 依赖项：V1.6.0 迁移（metadata_table 加 sensitivity_level/api_exempted + sensitivity_change_log）+ internal `GovernanceMetadataController`（表清单+敏感度批量）+ governance-api `GovernanceMetadataApi` 契约（fallback fail-closed 已生效）——**SensitivityController 改级/批量/开白/审计仍归 F5**
 - [x] **定时清理规范落定**：业务服务本地禁 `@Scheduled`（写入 conventions-backend §7）；新增 data-service-api `DataServiceOpsApi` 契约 + data-service `/internal/sql-history/cleanup` + job `SqlHistoryCleanupHandler`（已注册 PowerJob jobId=293，cron `0 50 3 * * ?`）
-- [ ] API 定义：`DataApiController` + `DataApiService`（CRUD/发布/下线 + 敏感度校验）+ `data_api`/`api_key`/`api_key_binding`/`api_key_pipeline` 实体 Mapper
+- [x] API 定义：`DataApiController` + `DataApiService`（CRUD/发布/下线 + 敏感度校验）+ `data_api`/`api_key`/`api_key_binding`/`api_key_pipeline` 实体 Mapper——**F2 已完成并部署（2026-08-12）**：自定义路径归一/查重（V1.0.2 软删 + path 部分唯一索引）、params_json 定义对象（filters EQ/RANGE + fields 白名单，标识符/排序严格白名单防注入）、自动文档（参数说明 + curl 示例）、`ApiKeyController`（K- 明文一次 + SHA-256 哈希 + 绑定/快捷启停/近 7 天调用聚合识别僵尸 Key）；API 自测 45 用例全通过（含敏感度 9004 三门路、权限 403、软删路径复用）
 - [ ] API 网关：`OpenApiKeyFilter`（Key 哈希校验）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j，数据源维度）+ `ApiCallLogWriter`（异步队列）
 - [ ] 全局统计：`StatsController` + `StatsQueryService`（`/stats/*` 聚合，D8 异步写入+聚合查询；健康分级阈值对齐告警 PASS/WARNING/SEVERE 语义）
 - [ ] WebSocket：`WsEventsHandler`（TextWebSocketHandler + 握手 Key 校验 + subscribe）+ `WebSocketSubscriptionRegistry` + `KafkaEventConsumer`（spring-kafka @KafkaListener → fan-out）
@@ -465,6 +469,9 @@ kafka:
 | 9009 | API_KEY_NAME_EXISTS | Key 名称已存在 |
 | 9010 | API_PATH_EXISTS | API 路径已存在 |
 | 9011 | API_EXEMPT_NOT_ALLOWED | 机密表不可开白 / 非超管不可开白 |
+| 9012 | SENSITIVITY_SERVICE_UNAVAILABLE | 分级服务暂不可用（fail-closed） |
+| 9013 | API_DEFINITION_INVALID | API 定义参数非法（路径/筛选/字段/排序白名单校验失败） |
+| 9014 | API_KEY_NOT_FOUND | API Key 不存在 |
 
 > 具体段号以实现时 common `ErrorCode` 实际布局为准（当前已用 2xxx~8xxx）。
 
@@ -500,3 +507,5 @@ kafka:
 > - v1.5 (2026-08-12)：**F1 多数据源 E2E**——放开 compose `middleware-test-oracle`（gvenzl/oracle-free:23，1521，testuser/FREEPDB1）+ `middleware-test-sqlserver`（mssql 2022，1433，sa/datanest_test）+ `test-oracle-data` volume；工程侧新增 `oracle`（id 2087429814056460290）与 `sqlserver`（id 2087429854464385026）两个 NORMAL 数据源。经 SQL 终端逐一实测 **MySQL / PostgreSQL / Oracle / SQL Server 4 种库查询全部通过**（MySQL `users`、PG `s4_orders`、Oracle `TESTUSER.test_orders`、SQL Server `dbo.test_orders`），并复验 MySQL `SELECT SLEEP(3)` timeout=1s→9003 超时中断、SQL Server `DELETE`→9001 只读拦截；数据源下拉确认内置 Doris + 4 类型平台数据源齐全。
 > - v1.6 (2026-08-12)：**导出统一走后端**——用户拍板「系统所有导出走后端」：① `XlsxExportHelper` 下沉 common（自动列宽 A/B + 表头加粗 C，治理域 3 个导出已改）并新增 `CsvExportHelper`（UTF-8 BOM + RFC4180）；② common 以 compile scope 统一提供 poi-ooxml（根 pom 管版本 5.4.1），governance/data-service 冗余声明移除；③ data-service SQL 终端新增 `POST /sql-console/export`（XLSX/CSV，复用 execute 全链路校验），前端 `exportSqlResult` 后端调用替代 SheetJS 前端生成；实测 xlsx（PK 头、数字列正确、列宽适配）+ CSV（EF BB BF BOM、内容正确）+ 导出只读拦截 9001 全通过。
 > - v1.6 (2026-08-12)：**F1 前端 + 联调 + 补 F1.1 后端**——① 前端 SQL 终端页（路由/菜单/Monaco Ctrl+Enter/运行·停止/KPI 4 卡/结果表/CSV·Excel 导出/历史回填+清空）实现并部署 app-frontend；② F1.1 后端补丁（用户授权「你来补后端」）：`POST /sql-console/cancel` + `queryId` 注册表取消（interrupt+关连接）、`SqlExecuteResult.tableCount/confidentialHits`、socketTimeout 参数化、durationMs int；③ §4.1/§5.1/§9 同步（本版本记录下段落地）。「扫描行」KPI 因 JDBC 无可靠 API 改「涉及表」（见 handoff §6.2 已知取舍）。
+> - v1.7 (2026-08-12)：**F2 数据 API + Key 管理端后端完成并部署**——① 4 项决策用户拍板：F2 只做管理端（对外调用入口归 F3）、自定义路径（Blocker 5 定稿）、软删加 deleted 列（V1.0.2，path 改部分唯一索引）、返回字段白名单并入 params_json 定义对象；② `DataApiController`/`DataApiService`（CRUD/发布/下线/软删 + 敏感度闸门 fail-closed + 路径归一查重 + 标识符/排序白名单防注入 + 自动文档）+ `ApiKeyController`/`ApiKeyService`（K- 明文一次性返回 + SHA-256 哈希 + 绑定/快捷启停/近 7 天调用聚合）；③ common 错误码补 9013/9014；④ API 自测 45 用例全通过（功能 38 + 敏感度闸门 7：机密/内部未开白 9004、开白放行、fail-closed 语义同 F1）；§3.0 补 V1.0.1/V1.0.2 迁移行、§8 Blocker 5 定稿、§9.1 补错误码。
+> - v1.8 (2026-08-12)：**F2 前端 + 联调**——① 前端：API 管理（列表+统计卡下钻/详情=概览+定义+文档+绑定 Key/3 步创建向导含 API 预览/编辑页）+ API Key 管理（列表+新建·编辑弹窗+明文一次性展示+快捷启停+僵尸 Key 灰显）+ Sidebar「数据服务」组补「API 管理」；roles 补 `DATA_SERVICE_WRITE_ROLES`；`types/metadata.ts` 补 sensitivityLevel/apiExempted；② 用户授权补后端 3 处：`GET /apis/summary`（列表统计卡）、`GET /api-keys/{id}`（编辑预填 apiIds）、`DataApiPageItem`/`DataApiDetailDTO` 加 sensitivityLevel（按 数据源+库+schema 分组批量反查 governance，读路径 fail-open 降级「未知」）；③ 与原型偏差（用户确认）：字段级「机密锁定」不做（NG5 无字段级敏感度，字段全可勾选）、详情页调用统计图表区占位待 F3 `/stats/*`、API 列表敏感度筛选下拉不做（列保留）；④ 踩坑：`@Select` 非 `<script>` 模式不解析 `&gt;` 转义（countCallsSince 9999，已修）；⑤ 验证：后端 python 联调 21 用例全过 + 前端冒烟（列表页用例通过、向导页快照确认渲染）；完整 E2E 由专门测试会话承担（用户明确），临时 spec 未入库。

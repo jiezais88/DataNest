@@ -24,6 +24,10 @@ export interface MetadataTable {
     sourceDagName?: string;
     sourceNodeId?: string;
     sourceNodeName?: string;
+    /** Sprint 10 F5：数据敏感度（PUBLIC 公开 / INTERNAL 内部 / CONFIDENTIAL 机密；未打标默认 PUBLIC） */
+    sensitivityLevel?: string;
+    /** Sprint 10 F5：内部表生成对外 API 的超管强制开白标记（1 = 已开白） */
+    apiExempted?: number;
     createdByName?: string;
     createdAt?: string;
     updatedByName?: string;
