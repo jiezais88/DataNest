@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.datanest</groupId>
+        <artifactId>data-nest-service-webmvc</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../data-nest-service-webmvc/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>data-nest-data-service</artifactId>
+    <packaging>jar</packaging>
+    <name>DataNest Data Service</name>
+    <description>DataNest Data Service: SQL console, data API gateway, WebSocket subscriptions</description>
+
+    <dependencies>
+        <!-- DataNest Common -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-common</artifactId>
+        </dependency>
+
+        <!-- DataNest Task Core（DorisSqlExecutor/DorisDataSourceConfig/MybatisPlusInterceptor） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-task-core</artifactId>
+        </dependency>
+
+        <!-- 跨域 Feign 契约：数据源连接信息（engineering）+ 用户名回填（system） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-engineering-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
+        </dependency>
+
+        <!-- 跨域 Feign 契约：元数据表清单/敏感度闸门（governance） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-governance-api</artifactId>
+        </dependency>
+
+        <!-- 自身 Feign 契约模块（复用内部运维 DTO/注解；本服务不 Feign 调自己，仅 job 侧经此契约触发） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-data-service-api</artifactId>
+        </dependency>
+
+        <!-- JSqlParser：SQL 只读校验 + 表集合提取（Sprint 10 F1）。
+             版本由 spring-boot-dependencies BOM 管理（经 mybatis-plus-jsqlparser 传递也提供一致版本），故无需显式声明 -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+        </dependency>
+
+        <!-- fastjson2（项目统一 JSON 库） -->
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2-extension</artifactId>
+        </dependency>
+
+        <!-- Caffeine cache for LoadBalancer service instance cache -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- JDBC Drivers（Doris 走 MySQL 协议；外部数据源直连） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Apache POI（xlsx 导出统一框架，对齐 governance；版本统一由根 pom dependencyManagement 管理） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

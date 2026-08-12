@@ -151,6 +151,20 @@ public enum ErrorCode {
     CDC_SAVEPOINT_TRIGGER_FAILED(8010, "savepoint 触发失败或超时"),
     CDC_PIPELINE_NOT_RUNNING(8011, "管道未在运行中，无法执行该操作"),
 
+    // Data Service errors — Sprint 10 数据服务（9xxx，对齐技术文档 §9.1）
+    SQL_NOT_READ_ONLY(9001, "SQL 非只读语句，禁止执行"),
+    SQL_SYNTAX_ERROR(9002, "SQL 语法错误"),
+    SQL_TIMEOUT(9003, "查询超时中断"),
+    TABLE_SENSITIVE(9004, "表为机密/内部敏感级，禁止操作"),
+    API_KEY_INVALID(9005, "API Key 无效/禁用/未绑定"),
+    API_RATE_LIMITED(9006, "请求超限"),
+    API_NOT_PUBLISHED(9007, "API 未发布或已下线"),
+    API_NOT_FOUND(9008, "API 不存在"),
+    API_KEY_NAME_EXISTS(9009, "Key 名称已存在"),
+    API_PATH_EXISTS(9010, "API 路径已存在"),
+    API_EXEMPT_NOT_ALLOWED(9011, "机密表不可开白 / 非超管不可开白"),
+    SENSITIVITY_SERVICE_UNAVAILABLE(9012, "分级服务暂不可用，请稍后重试"),
+
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),
     INTERNAL_ERROR(9999, "系统内部错误");

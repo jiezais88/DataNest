@@ -77,6 +77,14 @@ public class MetadataTable {
     @Schema(description = "表负责人用户 ID（关联 sys_user.id）", example = "1234567890123456789")
     private Long ownerUserId;
 
+    /** Sprint 10 F5：数据敏感度（PUBLIC 公开 / INTERNAL 内部 / CONFIDENTIAL 机密） */
+    @Schema(description = "数据敏感度（PUBLIC 公开 / INTERNAL 内部 / CONFIDENTIAL 机密）")
+    private String sensitivityLevel;
+
+    /** Sprint 10 F5：内部表生成对外 API 的超管强制开白标记（机密表恒为 0 不可开白） */
+    @Schema(description = "内部表生成对外 API 的超管强制开白标记（机密表恒为 0 不可开白）")
+    private Integer apiExempted;
+
     @Schema(description = "字段数量（非持久化，查询时统计回填）")
     @TableField(exist = false)
     private Integer columnCount;

@@ -6,63 +6,13 @@
 
     <parent>
         <groupId>com.datanest</groupId>
-        <artifactId>data-nest</artifactId>
+        <artifactId>data-nest-apis</artifactId>
         <version>1.0.0-SNAPSHOT</version>
-        <relativePath>../../pom.xml</relativePath>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>data-nest-engineering-api</artifactId>
     <packaging>jar</packaging>
     <name>DataNest Engineering API</name>
     <description>Feign API contract for data-nest-engineering</description>
-
-    <dependencies>
-        <!-- DataNest Common（Result 信封） -->
-        <dependency>
-            <groupId>com.datanest</groupId>
-            <artifactId>data-nest-common</artifactId>
-        </dependency>
-
-        <!-- OpenFeign（compile 作用域，消费方依赖本模块时传递获得 Feign） -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-openfeign</artifactId>
-        </dependency>
-
-        <!-- Resilience4j 熔断（compile 作用域，消费方依赖本模块时传递获得，供 Feign fallbackFactory 生效） -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-        </dependency>
-
-        <!-- Apache HttpClient 5（compile 传递，消费方 Feign 走 HC5 连接池，替代无池的 JDK HttpURLConnection） -->
-        <dependency>
-            <groupId>io.github.openfeign</groupId>
-            <artifactId>feign-hc5</artifactId>
-        </dependency>
-
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <scope>provided</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 </project>

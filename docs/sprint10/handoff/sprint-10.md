@@ -1,7 +1,7 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-12（M0 技术调研定稿会话）
-> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.3）· `../DataNest-Sprint10-原型.html/css`
+> 更新：2026-08-12（F1 SQL 终端后端实现 + 部署 + API 自测会话）
+> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.4）· `../DataNest-Sprint10-原型.html/css`
 
 ---
 
@@ -10,9 +10,9 @@
 | 交付物 | 状态 | 说明 |
 |--------|------|------|
 | PRD | ✅ v1.3 | **全部决策定稿（D1~D5）**；§6.3/6.4/6.5 已回落原型修正；§12.2/§13 决策记录含 D4 M0 结论 |
-| 技术文档 | ✅ v1.3 | 架构/数据模型/接口/实现清单（§9 P0）已齐；D-D6 改 **方案 B 事件管道分离**；§8 Blocker 1/2/6 已 M0 定稿 |
+| 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
-| 后端 | ⬜ 未开始 | **M0 已通过，可开后端骨架**（D4 已定：Kafka 事件总线 + 事件管道分离） |
+| 后端 | 🟡 F1 完成 | **F1 SQL 终端已部署 `datanest-app-data-service`（healthy）**；17 API 自测用例全通过；F2 API 管理/Key/F3 网关/F4 WebSocket/F5 分级对外端点未开始 |
 | 前端 | ⬜ 未开始 | 原型已定稿，可作实现基准 |
 
 ---
@@ -72,11 +72,12 @@
 
 ## 5. Next Action
 
-1. **后端骨架**（M0 已通过，可直接开始）：`data-nest-data-service` 新服务 + `datanest_service` 库 V1.0.0（6 表）+ compose/kafka（`apache/kafka:4.0.x`）+ 网关路由 + swagger，按 §9 P0 清单推进（含 `StatsController` 全局统计）。
-2. **realtime 事件作业联动**（方案 B 核心改造）：`CdcEventYamlBuilder`（Kafka 单 sink，latest-offset 增量）+ `CdcPipelineService.start/stop/delete` 联动 + `cdc_events_flink_job_id` 字段 + server-id 独立区间（6400+）/PG 额外槽；Flink lib 增 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2`。
-3. **健康分级阈值确认**：全局统计页「健康/警告/严重 + 综合健康分」的分级阈值（当前注记对齐告警 PASS/WARNING/SEVERE 语义），需后端定稿前与产品确认。
-4. **前端**：原型已定稿，可直接作为实现基准；实现时先建 `/data-service/*` 路由 + Sidebar「数据服务」菜单组（原型侧边栏已含「API 运行统计」入口）。
-5. **E2E 规划**：按技术文档 §9 部署与验证（SQL 终端/API 生成与 Key/限流 429/分级拦截/WebSocket 订阅）。
+1. **F2 API 管理 + Key**：`DataApiController` + `DataApiService`（CRUD/发布/下线 + 敏感度校验 + API 预览）+ `ApiKeyController`（一次性明文 + 近 7 天调用 + 快捷启用 `POST /api-keys/{id}/enable`）+ data_api/api_key/api_key_binding/api_key_pipeline 实体 Mapper（表已建，可直接用）。
+2. **F3 API 网关**：`OpenApiKeyFilter`（Key 哈希校验，open-api 路由网关已放行）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j）+ `ApiCallLogWriter`（异步队列写 api_call_log）；`StatsController` 全局统计（`/stats/*`）。
+3. **F5 分级对外端点**：governance `SensitivityController`（改级/批量/开白/审计，机密降级必经 INTERNAL 两步）+ 前端数据分级分类页。
+4. **F4 WebSocket 实时订阅**：依赖 Kafka 中间件——compose `middleware-kafka`（`apache/kafka:4.0.x`）+ Flink lib 增 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2` + realtime `CdcEventYamlBuilder` 事件作业联动（server-id 6400+/PG 额外槽）+ `WsEventsHandler` + `KafkaEventConsumer`。
+5. **健康分级阈值确认**：全局统计页「健康/警告/严重 + 综合健康分」的分级阈值（当前注记对齐告警 PASS/WARNING/SEVERE 语义），需后端定稿前与产品确认。
+6. **前端**：原型已定稿；先建 `/data-service/*` 路由 + Sidebar「数据服务」菜单组 + SQL 终端页（数据源下拉/执行/历史/导出，后端已就绪）。
 
 ---
 
@@ -84,3 +85,5 @@
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
 > - v1.1 (2026-08-12)：§3 待同步项 4 项全部回落完成（PRD v1.2 + 技术文档 v1.2：全局统计端点组 / API 预览 / Key 近 7 天调用与快捷启用）；状态看板与技术文档版本同步更新；Next Action 移除回落项、新增健康分级阈值确认。
 > - v1.2 (2026-08-12)：**M0 技术调研定稿会话（D4）**——反编译 `flink-cdc-composer-3.6.0-2.2.jar` 证实 Flink CDC 3.6 **不支持多 sink 双写**，原「Iceberg+Kafka 双写」废弃；与用户 4 问 4 答（q-0~q-3）拍板：**事件管道分离**（每可订阅管道独立 Kafka 单 sink 事件作业 latest-offset 增量）、**管道创建即建同生命周期**、**`apache/kafka:4.0.x` KRaft 单节点**、**仅增量推送**。PRD v1.3 + 技术文档 v1.3（D-D6 重写 / §0-F4 / §4.3 / §5.4 / §8 Blocker 1/2/6 定稿 / §9 实现清单）+ 本 handoff 状态看板/Blocker/Next Action 同步更新；Sprint 10 决策全部定稿，可开后端骨架。
+> - v1.3 (2026-08-12)：**F1 SQL 终端后端完成会话**——新增 `data-nest-data-service` 服务（骨架/库/网关路由/swagger/SQL 终端）并部署 `datanest-app-data-service`（healthy）；governance V1.6.0 + internal 表清单/敏感度契约；**用户拍板业务服务本地禁 `@Scheduled`**（清理改放 job：data-service-api `DataServiceOpsApi` + job `SqlHistoryCleanupHandler`，已注册 PowerJob jobId=293；规范写入 conventions-backend §7）；API 自测 17 用例全通过；技术文档 v1.4 + 本 handoff 同步；Next Action 更新为 F2~F4。
+> - v1.4 (2026-08-12)：**F1 多数据源 E2E**——放开 compose `middleware-test-oracle` + `middleware-test-sqlserver`（+`test-oracle-data` volume），新增 `oracle`/`sqlserver` 两个 NORMAL 数据源；经 SQL 终端实测 **MySQL/PG/Oracle/SQL Server 4 种库查询全通过** + MySQL 超时 9003 + SQL Server 只读拦截 9001；技术文档 v1.5。

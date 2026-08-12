@@ -99,34 +99,70 @@ public class DorisSqlExecutor {
     }
 
     /**
-     * 执行查询 SQL，返回列头 + 行数据
+     * 执行查询 SQL，返回列头 + 行数据（无超时限制）。
      */
     public QueryResult query(String sql) {
+        return query(sql, 0);
+    }
+
+    /**
+     * 执行查询 SQL，返回列头 + 行数据（Sprint 10 F1 数据服务 SQL 终端超时中断）。
+     * <p>
+     * timeoutSeconds &gt; 0 时对 Statement 设 setQueryTimeout（MySQL/Doris 驱动按秒超时，
+     * 超时抛 SQLTimeoutException，由上层转 SQL_TIMEOUT 语义）；&lt;= 0 表示不设超时（兼容原行为）。
+     */
+    public QueryResult query(String sql, int timeoutSeconds) {
         if (sql == null || sql.trim().isEmpty()) {
             throw new BusinessException(ErrorCode.SQL_EXECUTE_FAILED, "SQL 不能为空");
         }
         try (Connection conn = openConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
-            int colCount = rs.getMetaData().getColumnCount();
-            List<String> columns = new ArrayList<>();
-            for (int i = 1; i <= colCount; i++) {
-                columns.add(rs.getMetaData().getColumnLabel(i));
+             Statement st = conn.createStatement()) {
+            if (timeoutSeconds > 0) {
+                st.setQueryTimeout(timeoutSeconds);
             }
-            List<Map<String, Object>> rows = new ArrayList<>();
-            int maxRows = 1000;
-            while (rs.next() && rows.size() < maxRows) {
-                Map<String, Object> row = new HashMap<>();
+            try (ResultSet rs = st.executeQuery(sql)) {
+                int colCount = rs.getMetaData().getColumnCount();
+                List<String> columns = new ArrayList<>();
                 for (int i = 1; i <= colCount; i++) {
-                    row.put(columns.get(i - 1), rs.getObject(i));
+                    columns.add(rs.getMetaData().getColumnLabel(i));
                 }
-                rows.add(row);
+                List<Map<String, Object>> rows = new ArrayList<>();
+                int maxRows = 1000;
+                while (rs.next() && rows.size() < maxRows) {
+                    Map<String, Object> row = new HashMap<>();
+                    for (int i = 1; i <= colCount; i++) {
+                        row.put(columns.get(i - 1), rs.getObject(i));
+                    }
+                    rows.add(row);
+                }
+                return new QueryResult(columns, rows, rows.size() >= maxRows);
             }
-            return new QueryResult(columns, rows, rows.size() >= maxRows);
         } catch (Exception e) {
+            // Sprint 10 F1：Statement.setQueryTimeout 超时（JDBC 驱动抛 SQLTimeoutException 或
+            // 消息含 timeout 的 SQLException），映射为 SQL_TIMEOUT 语义，数据服务可明确提示「查询超时中断」
+            if (isTimeout(e)) {
+                logger.warn("Doris SQL 查询超时（{}s）: sql={}", timeoutSeconds, sql);
+                throw new BusinessException(ErrorCode.SQL_TIMEOUT, "查询超时中断（" + timeoutSeconds + "s）");
+            }
             logger.error("Doris SQL 查询失败: sql={}", sql, e);
             throw new BusinessException(ErrorCode.SQL_EXECUTE_FAILED, "SQL 查询失败: " + e.getMessage());
         }
+    }
+
+    /** 递归判断异常是否为查询超时（SQLTimeoutException 或消息含 timeout/超时） */
+    private static boolean isTimeout(Throwable t) {
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur instanceof java.sql.SQLTimeoutException) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null && (msg.toLowerCase().contains("timeout") || msg.contains("超时"))) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
     }
 
     public record QueryResult(List<String> columns, List<Map<String, Object>> rows, boolean truncated) {

@@ -42,6 +42,18 @@
         <swagger-annotations.version>2.2.43</swagger-annotations.version>
         <!-- MinIO Java Client（Sprint 9 F2：savepoint 文件物理清理；Maven Central 8.5.17 为 8.x 最新稳定版） -->
         <minio.version>8.5.17</minio.version>
+        <!-- MySQL Connector/J 8.x 线：realtime 提交端对齐 Flink CDC 3.6.0-2.2 依赖；业务库驱动不受影响（走 Boot BOM 9.x） -->
+        <mysql-connector.version>8.0.33</mysql-connector.version>
+        <!-- Apache POI（xlsx 导出统一框架：governance / data-service 共用） -->
+        <poi.version>5.4.1</poi.version>
+        <!-- PowerJob（与 middleware-powerjob 5.1.2 容器全局绑定，worker / job 共享） -->
+        <powerjob.version>5.1.2</powerjob.version>
+        <!-- 独立 Flink 2.2.1 Session 集群（realtime CDC 提交端对齐，Sprint 8 M0 已实测锁定） -->
+        <flink.version>2.2.1</flink.version>
+        <!-- Flink CDC 3.6.0-2.2（realtime 提交端 YAML 解析/连接器统一版本） -->
+        <cdc.version>3.6.0-2.2</cdc.version>
+        <!-- flink-core 2.2.1 配套 shaded guava（CDC 传递依赖带 31.1，显式锁定 33.4.0-jre-20.0） -->
+        <flink-shaded-guava.version>33.4.0-jre-20.0</flink-shaded-guava.version>
     </properties>
 
     <dependencyManagement>
@@ -138,6 +150,13 @@
                 <version>${commons-pool2.version}</version>
             </dependency>
 
+            <!-- JSqlParser（Sprint 10 F1 SQL 终端只读校验；版本对齐 mybatis-plus-jsqlparser 传递线 5.2） -->
+            <dependency>
+                <groupId>com.github.jsqlparser</groupId>
+                <artifactId>jsqlparser</artifactId>
+                <version>5.2</version>
+            </dependency>
+
             <!-- Commons CSV（导出统一框架；esc 转义/引号由 CSVPrinter 负责） -->
             <dependency>
                 <groupId>org.apache.commons</groupId>
@@ -204,10 +223,31 @@
                 <version>${project.version}</version>
             </dependency>
 
+            <!-- DataNest Data Service API（Sprint 10 F1：SQL 控制台/数据服务 Feign 契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-data-service-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- DataNest Task Core -->
             <dependency>
                 <groupId>com.datanest</groupId>
                 <artifactId>data-nest-task-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Data Service（Sprint 10：SQL 终端 / 数据 API / 实时订阅） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-data-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- DataNest Data Service API（Sprint 10 F1：job 定时清理等内部运维契约） -->
+            <dependency>
+                <groupId>com.datanest</groupId>
+                <artifactId>data-nest-data-service-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -230,6 +270,72 @@
                 <groupId>io.minio</groupId>
                 <artifactId>minio</artifactId>
                 <version>${minio.version}</version>
+            </dependency>
+
+            <!-- Apache POI（xlsx 导出统一框架：governance / data-service） -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+
+            <!-- PowerJob（与 middleware-powerjob 容器版本全局绑定；worker / job 共享） -->
+            <dependency>
+                <groupId>tech.powerjob</groupId>
+                <artifactId>powerjob-worker-spring-boot-starter</artifactId>
+                <version>${powerjob.version}</version>
+            </dependency>
+
+            <!-- Flink CDC 提交端依赖集（Sprint 8 M0 验证范本照抄，realtime 专用；版本统一由根 pom 管理） -->
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-cli</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-composer</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-flink2-compat</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-pipeline-connector-mysql</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-pipeline-connector-postgres</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-pipeline-connector-iceberg</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-clients</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-connector-base</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-table-common</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-shaded-guava</artifactId>
+                <version>${flink-shaded-guava.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

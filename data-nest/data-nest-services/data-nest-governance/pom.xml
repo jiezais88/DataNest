@@ -1,58 +1,55 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>com.datanest</groupId>
-        <artifactId>data-nest</artifactId>
+        <artifactId>data-nest-service-webmvc</artifactId>
         <version>1.0.0-SNAPSHOT</version>
-        <relativePath>../../pom.xml</relativePath>
+        <relativePath>../data-nest-service-webmvc/pom.xml</relativePath>
     </parent>
 
     <artifactId>data-nest-governance</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-    <name>data-nest-governance</name>
+    <name>DataNest Governance Service</name>
     <description>DataNest Governance Service - Metadata Collection &amp; Scheduling</description>
 
-    <properties>
-        <java.version>21</java.version>
-    </properties>
-
     <dependencies>
-        <!-- Common -->
+        <!-- DataNest Common -->
         <dependency>
             <groupId>com.datanest</groupId>
             <artifactId>data-nest-common</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
         <!-- DataNest Task Core -->
         <dependency>
             <groupId>com.datanest</groupId>
             <artifactId>data-nest-task-core</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
         <!-- DataNest Alert API（微服务化改造：告警域调用切换为 Feign） -->
         <dependency>
             <groupId>com.datanest</groupId>
             <artifactId>data-nest-alert-api</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
         <!-- DataNest Governance API（内部接口复用契约 DTO） -->
         <dependency>
             <groupId>com.datanest</groupId>
             <artifactId>data-nest-governance-api</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
         <!-- DataNest Engineering API（微服务化 3.4：datasource_connection 跨服务读取改 Feign，直接使用需显式声明） -->
         <dependency>
             <groupId>com.datanest</groupId>
             <artifactId>data-nest-engineering-api</artifactId>
+        </dependency>
+
+        <!-- DataNest System API（微服务化 4.3：原经 task-core-governance 传递，模块拆除后显式声明） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
         </dependency>
 
         <!-- Fastjson2（task-core 中为 provided，需在本服务显式声明，否则 AlertRuleService 等报 ClassNotFoundException） -->
@@ -65,36 +62,10 @@
             <artifactId>fastjson2-extension</artifactId>
         </dependency>
 
-        <!-- Web -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-
         <!-- Sprint 6 质量分级告警：governance 注入 QualityCheckService → AlertFiringService → MailService，需显式声明 mail（task-core 中为 provided） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
-        <!-- Nacos Discovery & Config -->
-        <dependency>
-            <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
-        </dependency>
-
-        <!-- Spring Cloud LoadBalancer (used by Nacos discovery) -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
 
         <!-- Caffeine cache for LoadBalancer service instance cache (production cache implementation) -->
@@ -103,79 +74,28 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- MyBatis-Plus -->
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-jsqlparser</artifactId>
-        </dependency>
-
-        <!-- Flyway -->
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
-
-        <!-- JDBC Drivers -->
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-        </dependency>
+        <!-- JDBC Drivers（Doris 走 MySQL 协议；外部数据源直连） -->
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.oracle.database.jdbc</groupId>
             <artifactId>ojdbc11</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
-        </dependency>
-
-        <!-- Sa-Token -->
-        <dependency>
-            <groupId>cn.dev33</groupId>
-            <artifactId>sa-token-spring-boot4-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>cn.dev33</groupId>
-            <artifactId>sa-token-redis-template</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>cn.dev33</groupId>
-            <artifactId>sa-token-spring-aop</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-pool2</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Apache POI（xlsx 导出统一框架，2026-08-11 起取代 Commons CSV；poi-ooxml 默认带 lite schemas，
-             不引 poi-ooxml-full 全量 schema 包；配合 XlsxExportHelper 使用） -->
+             不引 poi-ooxml-full 全量 schema 包；配合 XlsxExportHelper 使用；版本统一由根 pom dependencyManagement 管理） -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
-            <version>5.4.1</version>
-        </dependency>
-
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <scope>provided</scope>
         </dependency>
 
         <!-- Test -->
@@ -184,44 +104,5 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- DataNest System API（微服务化 4.3：原经 task-core-governance 传递，模块拆除后显式声明） -->
-        <dependency>
-            <groupId>com.datanest</groupId>
-            <artifactId>data-nest-system-api</artifactId>
-        </dependency>
-
-        <!-- springdoc OpenAPI 接口文档（Boot 4 线；网关聚合页按服务切换） -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-        </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
 </project>

@@ -347,29 +347,29 @@ services:
   # 镜像：gvenzl/oracle-free:23-slim（社区免费版，无需授权）
   # 持久化：test-oracle-data 卷
   # 启动慢（start_period=120s），需等 initdb 完成
-  # 2026-08-11 起停用（本期 CDC 只接 MySQL，Oracle 资源占用大，需要时取消注释即可）
+  # 2026-08-11 停用（资源占用大）；2026-08-12 Sprint 10 F1 数据服务多数据源测试重新启用
   # ============================================
-  # middleware-test-oracle:
-  #   image: gvenzl/oracle-free:23-slim
-  #   container_name: datanest-middleware-test-oracle
-  #   environment:
-  #     ORACLE_PASSWORD: root123
-  #     APP_USER: testuser
-  #     APP_USER_PASSWORD: testpass123
-  #     TZ: Asia/Shanghai
-  #   ports:
-  #     - "1521:1521"
-  #   volumes:
-  #     - test-oracle-data:/opt/oracle/oradata
-  #     - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
-  #   healthcheck:
-  #     test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
-  #     interval: 15s
-  #     timeout: 10s
-  #     retries: 20
-  #     start_period: 120s
-  #   networks:
-  #     - datanest-net
+  middleware-test-oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: datanest-middleware-test-oracle
+    environment:
+      ORACLE_PASSWORD: root123
+      APP_USER: testuser
+      APP_USER_PASSWORD: testpass123
+      TZ: Asia/Shanghai
+    ports:
+      - "1521:1521"
+    volumes:
+      - test-oracle-data:/opt/oracle/oradata
+      - ./scripts/test-oracle-init.sql:/container-entrypoint-initdb.d/01-test-oracle-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s SYSTEM/root123@FREEPDB1 | grep -q '1'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    networks:
+      - datanest-net
 
   # ============================================
   # Test SQL Server 2022 — 数据源 E2E 测试目标库
@@ -377,29 +377,29 @@ services:
   # 镜像：mcr.microsoft.com/mssql/server:2022-latest
   # 必须 ACCEPT_EULA=Y；用 sqlserver-entrypoint.sh 跑 initdb/*.sql
   # ============================================
-  # Sprint 5 临时注释：本机资源不足，暂不启动 SQL Server
-  # middleware-test-sqlserver:
-  #   image: mcr.microsoft.com/mssql/server:2022-latest
-  #   container_name: datanest-middleware-test-sqlserver
-  #   environment:
-  #     ACCEPT_EULA: "Y"
-  #     MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
-  #     MSSQL_PID: "Express"
-  #     TZ: Asia/Shanghai
-  #   ports:
-  #     - "1433:1433"
-  #   volumes:
-  #     - ./scripts/test-sqlserver-init.sql:/docker-entrypoint-initdb.d/01-test-sqlserver-init.sql:ro
-  #     - ./scripts/sqlserver-entrypoint.sh:/sqlserver-entrypoint.sh:ro
-  #   command: [ "/bin/bash", "/sqlserver-entrypoint.sh" ]
-  #   healthcheck:
-  #     test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1' | grep -q '1'" ]
-  #     interval: 15s
-  #     timeout: 10s
-  #     retries: 20
-  #     start_period: 60s
-  #   networks:
-  #     - datanest-net
+  # Sprint 5 临时注释（资源不足）；2026-08-12 Sprint 10 F1 数据服务多数据源测试重新启用
+  middleware-test-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: datanest-middleware-test-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
+      MSSQL_PID: "Express"
+      TZ: Asia/Shanghai
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./scripts/test-sqlserver-init.sql:/docker-entrypoint-initdb.d/01-test-sqlserver-init.sql:ro
+      - ./scripts/sqlserver-entrypoint.sh:/sqlserver-entrypoint.sh:ro
+    command: [ "/bin/bash", "/sqlserver-entrypoint.sh" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1' | grep -q '1'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    networks:
+      - datanest-net
 
   # ============================================
   # 应用层 (app-*) — 业务服务
@@ -580,6 +580,50 @@ services:
       timeout: 5s
       retries: 10
       # Flink 依赖重，启动较慢，给足预热时间
+      start_period: 90s
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Data Service — 数据服务（Sprint 10：SQL 终端 / 数据 API / 实时订阅）
+  # ============================================
+  app-data-service:
+    build:
+      context: .
+      dockerfile: docker/dataservice.Dockerfile
+    container_name: datanest-app-data-service
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_TOOL_OPTIONS=-Duser.timezone=Asia/Shanghai
+      - NACOS_HOST=middleware-nacos
+      - NACOS_PORT=8848
+      - NACOS_USERNAME=nacos
+      - NACOS_PASSWORD=nacos
+      - PG_HOST=middleware-postgres
+      - PG_PORT=5432
+      - PG_USER=datanest
+      - PG_PASSWORD=datanest123
+      - PG_DATABASE=datanest_dataservice
+      - REDIS_HOST=middleware-redis
+      - REDIS_PORT=6379
+    # 不暴露宿主机端口：对外统一走 gateway /api/data-service/**，容器间 Feign 走 datanest-net:8090
+    depends_on:
+      middleware-nacos:
+        condition: service_healthy
+      middleware-nacos-init:
+        condition: service_completed_successfully
+      middleware-postgres:
+        condition: service_healthy
+      middleware-redis:
+        condition: service_healthy
+      app-engineering:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8090" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
       start_period: 90s
     networks:
       - datanest-net
@@ -803,7 +847,8 @@ volumes:
   # Sprint 8 实时 CDC：Flink 作业数据与 checkpoint
   flink-data:
   flink-checkpoints:
-  # test-oracle-data:（2026-08-11 随 middleware-test-oracle 一起停用）
+  # 2026-08-12 Sprint 10 F1 数据服务多数据源测试重新启用
+  test-oracle-data:
   # PowerJob server 持久化（日志/H2 本地库等）
   powerjob-server-data:
 

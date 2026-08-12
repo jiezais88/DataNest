@@ -403,7 +403,7 @@ kafka:
 | 4 | **机密表改级降级是否需两步** | **两步已确认（2026-08-12）**：CONFIDENTIAL→PUBLIC 必经 INTERNAL，防一步误操作机密裸奔 | ✅ 已确认 |
 | 5 | **API 对外路径形态** | `/open-api/v1/{apiId}`（apiId 动态）vs `/open-api/v1/{自定义path}`；倾向自定义 path（`data_api.path` 唯一约束已设计），路径下又分 v1 版本段 | 实现定 |
 | 6 | **Kafka 消费端 offset 语义** | **已定（2026-08-12，q-3）**：`latest`（仅增量推送，订阅时刻后事件；无历史重放，PRD NG9） | ✅ 已定 |
-| 7 | **查询历史/调用统计清理** | 定时清理放数据服务 `@Scheduled`（对齐 MetricRetentionCleaner 模式）还是 app-job？倾向数据服务本地 `@Scheduled`（轻量、无跨服务） | 实现定 |
+| 7 | **查询历史/调用统计清理** | **已定（2026-08-12，用户拍板）**：**业务服务本地禁止 `@Scheduled`**，定时清理全部放 **app-job**（PowerJob cron）——清理逻辑下沉 data-service `/internal/**` 端点（经 data-service-api Feign 触发），job 新增 `sqlHistoryCleanupHandler`；规范已写入 `docs/agent/conventions-backend.md` §7「定时任务规范」 | ✅ 已定并实现 |
 | 8 | **X-API-Key 头名与文档** | `X-API-Key`（对齐规格示例），CORS allowed-headers 需补（shared-security.yaml 当前无此项） | 实现定 |
 
 ---
@@ -412,9 +412,12 @@ kafka:
 
 ### 后端
 
-- [ ] **新服务骨架**：`data-nest-services/data-nest-data-service`（启动类 scanBasePackages 约定 + FlywayConfig + 三件套依赖）+ `app-data-service` Dockerfile + compose + 网关路由 + swagger urls + `SaTokenConfig` 放行 open-api/ws
-- [ ] **dataservice 库** `V1.0.0__baseline.sql`（6 表）
-- [ ] SQL 终端：`SqlQueryController`（execute/history/clear）+ `ReadOnlySqlValidator`（JSqlParser 语法级）+ `SqlQueryService`（Doris/外部数据源双路径 + 超时 + 表集合敏感度校验）
+- [x] **新服务骨架**：`data-nest-services/data-nest-data-service`（启动类 scanBasePackages 约定 + FlywayConfig + 三件套依赖）+ `app-data-service` Dockerfile + compose + 网关路由 + swagger urls + `SaTokenConfig` 放行 open-api/ws（已部署 `datanest-app-data-service` healthy）
+- [x] **dataservice 库** `V1.0.0__baseline.sql`（6 表，已 Flyway v1.0.0 建表）
+- [x] SQL 终端：`SqlQueryController`（execute/history/clear/datasources）+ `ReadOnlySqlValidator`（JSqlParser 语法级）+ `SqlQueryService`（Doris/外部数据源双路径 + 超时 + 表集合敏感度校验 + fail-closed）——**API 自测 17 用例全通过**
+- [x] common：新增 ErrorCode 段（数据服务 9xxx：SQL 只读拦截/Key 无效/限流/API 未发布/表敏感度等）
+- [x] governance 依赖项：V1.6.0 迁移（metadata_table 加 sensitivity_level/api_exempted + sensitivity_change_log）+ internal `GovernanceMetadataController`（表清单+敏感度批量）+ governance-api `GovernanceMetadataApi` 契约（fallback fail-closed 已生效）——**SensitivityController 改级/批量/开白/审计仍归 F5**
+- [x] **定时清理规范落定**：业务服务本地禁 `@Scheduled`（写入 conventions-backend §7）；新增 data-service-api `DataServiceOpsApi` 契约 + data-service `/internal/sql-history/cleanup` + job `SqlHistoryCleanupHandler`（已注册 PowerJob jobId=293，cron `0 50 3 * * ?`）
 - [ ] API 定义：`DataApiController` + `DataApiService`（CRUD/发布/下线 + 敏感度校验）+ `data_api`/`api_key`/`api_key_binding`/`api_key_pipeline` 实体 Mapper
 - [ ] API 网关：`OpenApiKeyFilter`（Key 哈希校验）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j，数据源维度）+ `ApiCallLogWriter`（异步队列）
 - [ ] 全局统计：`StatsController` + `StatsQueryService`（`/stats/*` 聚合，D8 异步写入+聚合查询；健康分级阈值对齐告警 PASS/WARNING/SEVERE 语义）
@@ -487,3 +490,5 @@ kafka:
 > - v1.1 (2026-08-12)：用户确认 Blocker 3（governance 不可达时敏感度校验 **fail-closed**）与 Blocker 4（机密表降级**必经 INTERNAL 两步**），已回落 §4.4 与 §8。
 > - v1.2 (2026-08-12)：原型产品逻辑修正回落——§5.1 管理端新增全局统计端点组（`/stats/overview|trend|health-distribution|top-apis|error-codes|top-keys|rate-limit-trend`，服务「API 运行统计」页）；`/api-keys/page` 补近 7 天调用聚合字段；新增 `POST /api-keys/{id}/enable`（快捷启用）。实现清单 §9.1 错误码段（9001~9011）可复用，无需新增码。
 > - v1.3 (2026-08-12)：**M0 技术调研定稿（D4）**——反编译 `flink-cdc-composer-3.6.0-2.2.jar` 证实 `PipelineDef.sink` 为单个 `SinkDef`，**Flink CDC 3.6 YAML 不支持多 sink 双写**；原「Iceberg+Kafka 双写」方案废弃，改 **方案 B 事件管道分离**（用户 q-0~q-3 拍板：每可订阅管道独立 Kafka 单 sink 事件作业 latest-offset 增量、管道创建即建同生命周期、`apache/kafka:4.0.x` KRaft、仅增量推送）。更新 D-D6/§0-F4/§4.3/§5.4/§8/§9 实现清单与版本记录；依赖仅需 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2`（shade 含 flink-connector-kafka）。
+> - v1.4 (2026-08-12)：**F1 SQL 终端后端实现 + 部署 + API 自测通过**——① q-0~q-3 细化落地：JSqlParser 语法级只读校验（放行 SELECT/WITH/SHOW/DESC/EXPLAIN）、task-core `DorisSqlExecutor.query(sql, timeoutSeconds)` 超时重载（超时→9003）、数据服务聚合 `/sql-console/datasources`、governance V1.6.0 + internal 表清单/敏感度批量 + GovernanceMetadataApi（fail-closed）；② 新服务 `data-nest-data-service` 部署（容器 `datanest-app-data-service`，Flyway v1.0.0 建 6 表，网关 `/api/data-service/**` + swagger urls）；③ **用户拍板：业务服务本地禁止 `@Scheduled`**，SQL 查询历史清理改放 job——新增 data-service-api `DataServiceOpsApi` + data-service `/internal/sql-history/cleanup` + job `SqlHistoryCleanupHandler`（PowerJob jobId=293）；规范写入 `docs/agent/conventions-backend.md` §7；④ API 自测 **17 用例全通过**（只读拦截/语法错/多语句绕过/敏感度 9004/fail-closed 9012/超时 9003/外部数据源/Doris/SHOW/历史/权限/文档/internal 安全）。
+> - v1.5 (2026-08-12)：**F1 多数据源 E2E**——放开 compose `middleware-test-oracle`（gvenzl/oracle-free:23，1521，testuser/FREEPDB1）+ `middleware-test-sqlserver`（mssql 2022，1433，sa/datanest_test）+ `test-oracle-data` volume；工程侧新增 `oracle`（id 2087429814056460290）与 `sqlserver`（id 2087429854464385026）两个 NORMAL 数据源。经 SQL 终端逐一实测 **MySQL / PostgreSQL / Oracle / SQL Server 4 种库查询全部通过**（MySQL `users`、PG `s4_orders`、Oracle `TESTUSER.test_orders`、SQL Server `dbo.test_orders`），并复验 MySQL `SELECT SLEEP(3)` timeout=1s→9003 超时中断、SQL Server `DELETE`→9001 只读拦截；数据源下拉确认内置 Doris + 4 类型平台数据源齐全。

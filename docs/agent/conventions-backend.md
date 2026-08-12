@@ -94,6 +94,16 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - 查询结果需要脱敏或补充创建人/更新人名称时，批量查询后一次性回填，避免 N+1。
 - DTO 与 Entity 转换写私有 `toDTO` / `toEntity` 方法，不要直接返回 Entity。
 
+### 定时任务规范（2026-08-12 起，硬约束）
+
+- **业务服务本地禁止 `@Scheduled` / `@EnableScheduling`**（用户拍板：本地不能有 @Scheduled，全部放到 app-job）。
+- 所有定时任务（历史清理、状态刷新、定时扫描等）统一放 `data-nest-job`：
+  1. 业务逻辑下沉目标服务 `/internal/**` 端点（如 `POST /data-service/internal/sql-history/cleanup`），由 `InternalTokenFilter` 鉴权；
+  2. 在 `*-api` 契约模块新增对应 Ops 契约（`@FeignClient` + fallbackFactory + DTO），消费方启动类追加 scanBasePackages/EnableFeignClients；
+  3. `job` 侧写 `PlatformJobHandler` 实现（`getName()` = handler 名，`RemoteCalls.execute` 容错，失败抛 `IllegalStateException` 本轮跳过下轮重试）；
+  4. `JobRegistrar.platformJobs` 注册 cron（`handler -> "cron"`）+ `resolveJobDesc` 加中文描述。
+- 反例：realtime 的 `MetricRetentionCleaner`（本地 `@Scheduled`）为历史遗留，Sprint 10 起新代码禁止再这样写；清理类任务保留天数配置统一 `datanest.job.<xx>-cleanup.retain-days`，服务端 internal 端点再做兜底默认值。
+
 ## 8. Controller 与 URL 规范
 
 - Controller 加 `@RestController`，类级 `@RequestMapping("/<资源>")`。

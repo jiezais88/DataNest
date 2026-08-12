@@ -1,0 +1,36 @@
+server:
+  port: 8090
+  servlet:
+    context-path: /data-service
+
+spring:
+  application:
+    name: data-nest-data-service
+
+  config:
+    import:
+      - optional:nacos:shared-nacos.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-common.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-dataservice.yaml?group=shared-configs&refreshEnabled=true
+      - optional:nacos:shared-doris.yaml?group=shared-configs&refreshEnabled=true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+      config:
+        server-addr: ${NACOS_HOST:localhost}:${NACOS_PORT:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
+        file-extension: yaml
+
+datanest:
+  # 接口文档（springdoc，common DocsAutoConfiguration 读取；网关聚合页在线调试用前缀）
+  docs:
+    title: DataNest 数据服务 API（SQL 终端 / 数据 API / 实时订阅）
+    gateway-prefix: /api/data-service

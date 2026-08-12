@@ -7,10 +7,10 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication(scanBasePackages = {"com.datanest.job", "com.datanest.task.core", "com.datanest.common",
         "com.datanest.alert.api", "com.datanest.system.api", "com.datanest.governance.api", "com.datanest.engineering.api",
-        "com.datanest.realtime.api"})
+        "com.datanest.realtime.api", "com.datanest.dataservice.api"})
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = {"com.datanest.alert.api", "com.datanest.system.api", "com.datanest.governance.api",
-        "com.datanest.engineering.api", "com.datanest.realtime.api"})
+        "com.datanest.engineering.api", "com.datanest.realtime.api", "com.datanest.dataservice.api"})
 public class JobApplication {
 
     public static void main(String[] args) {

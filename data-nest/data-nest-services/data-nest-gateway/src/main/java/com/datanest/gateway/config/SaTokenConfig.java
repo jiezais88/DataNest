@@ -39,6 +39,10 @@ public class SaTokenConfig {
                         // 决策 ADR-S3-008：依赖 Docker 网络隔离（datanest-net）
                         "/api/engineering/dev/internal/**",
                         "/api/worker/dev/internal/**",
+                        // Sprint 10 数据服务对外端点（API Key / WebSocket 各自鉴权）：
+                        // open-api 走 X-API-Key，ws 握手校验 Key；登录态不适用，网关放行
+                        "/api/data-service/open-api/**",
+                        "/api/data-service/ws/**",
                         // 接口文档（springdoc 聚合页 + 各服务 OpenAPI JSON）：文档资源匿名可读，
                         // 业务接口调试仍需用户在 swagger-ui 配置 Authorization 头（sa-token 保护不变）
                         "/swagger-ui.html",

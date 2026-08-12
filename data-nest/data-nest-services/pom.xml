@@ -17,6 +17,7 @@
     <description>DataNest deployable services aggregator</description>
 
     <modules>
+        <module>data-nest-service-webmvc</module>
         <module>data-nest-gateway</module>
         <module>data-nest-system</module>
         <module>data-nest-alert-service</module>
@@ -25,5 +26,6 @@
         <module>data-nest-worker</module>
         <module>data-nest-job</module>
         <module>data-nest-realtime</module>
+        <module>data-nest-data-service</module>
     </modules>
 </project>

@@ -17,7 +17,7 @@
 
 DataNest 是一个数据平台，技术栈如下：
 
-- **后端**：Java 25 + Spring Boot 4.x，Maven 多模块（**三层目录**：`data-nest-libs/` 共享库、`data-nest-apis/` Feign 契约、`data-nest-services/` 可部署服务，目录名与聚合 artifactId 一致）
+- **后端**：Java 25 + Spring Boot 4.x，Maven 多模块（**三层目录**：`data-nest-libs/` 共享库、`data-nest-apis/` Feign 契约、`data-nest-services/` 可部署服务，目录名与聚合 artifactId 一致）。**2026-08-12 pom 重构**：`data-nest-service-webmvc` 为"带库 WebMVC 服务"中间父 pom（system/alert/engineering/governance/realtime/data-service 继承，集中 web/nacos/持库/sa-token/springdoc/lombok 公共依赖与分层构建）；`data-nest-apis` 聚合 pom 统管 6 个 Feign 契约模块公共依赖（common/openfeign/resilience4j/feign-hc5/lombok）；根 pom `properties` + `dependencyManagement` 统一管理全部第三方版本（`mysql-connector.version`=8.0.33，realtime 提交端专用 8.x 线；`poi.version`=5.4.1 xlsx 导出框架；`powerjob.version`=5.1.2 与 middleware-powerjob 容器全局绑定，worker/job 共享；`flink.version`=2.2.1、`cdc.version`=3.6.0-2.2、`flink-shaded-guava.version`=33.4.0-jre-20.0，realtime 提交端 Flink CDC 依赖集；均与业务库 BOM 分开管理。**子模块禁止再写第三方字面量版本或本地 properties 版本属性**）
 - **前端**：独立容器 `app-frontend`（源码目录 `data-nest/data-nest-frontend`），通过 `app-gateway:8080` 统一入口
 - **部署**：Docker Compose，所有服务在同一 `datanest-net` 网络
 - **配置中心**：Nacos，配置实际存储在 `middleware-mysql` 的 `nacos.config_info` 表
@@ -38,6 +38,7 @@ DataNest 是一个数据平台，技术栈如下：
 | `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
 | `data-nest-realtime-api` | app-realtime 的 Feign 契约（CdcPipelineApi + DTO，engineering 删除数据源校验依赖，fail-closed） |
 | `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（内部端点 + DTO + fallbackFactory） |
+| `data-nest-service-webmvc` | **带库 WebMVC 服务的中间父 pom**（2026-08-12 新增，system/alert/engineering/governance/realtime/data-service 的 parent）：集中公共依赖与分层可执行 jar 构建，无业务代码 |
 | `data-nest-alert-service` | **独立告警服务**（app-alert，com.datanest.alert.*）：告警规则/历史/触发/邮件 + dag_alert_config/history |
 | `data-nest-realtime` | **实时 CDC 服务**（app-realtime，com.datanest.realtime.*，Sprint 8 F2）：CDC 管道 CRUD/启停/监控/日志 + Flink YAML 组装经 REST 提交独立 Flink 集群；持 `datanest_realtime` 库 |
 | `data-nest-engineering` | 数据工程服务（同步任务 API、DAG API；13 表本地持有） |

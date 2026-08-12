@@ -75,6 +75,8 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("dorisCatalogAutoRefreshHandler", dorisCatalogAutoRefreshCron);
         // 微服务化阶段 2：质量自动触发漏触发对账补发（默认每 10 分钟，窗口 2 小时）
         platformJobs.put("qualityAutoTriggerReconcileHandler", qualityAutoTriggerReconcileCron);
+        // Sprint 10 F1：SQL 查询历史清理（默认每天凌晨 3 点 50 分，保留 30 天，data-service 经 Feign 清理）
+        platformJobs.put("sqlHistoryCleanupHandler", "0 50 3 * * ?");
 
         logger.info("Ensuring platform jobs registered in PowerJob, count={}", platformJobs.size());
 
@@ -107,6 +109,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "assetViewLogCleanupHandler" -> "资产热度记录清理";
             case "dorisCatalogAutoRefreshHandler" -> "Doris 湖仓 catalog 自动刷新";
             case "qualityAutoTriggerReconcileHandler" -> "质量自动触发对账补发";
+            case "sqlHistoryCleanupHandler" -> "SQL 查询历史清理";
             default -> handlerName;
         };
     }

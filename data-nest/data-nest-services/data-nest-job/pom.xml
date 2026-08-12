@@ -41,6 +41,12 @@
             <artifactId>data-nest-realtime-api</artifactId>
         </dependency>
 
+        <!-- DataNest Data Service API（Sprint 10 F1：SQL 查询历史定时清理走 Feign） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-data-service-api</artifactId>
+        </dependency>
+
         <!-- Feign lb:// 服务发现调用必需 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -87,26 +93,30 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.oracle.database.jdbc</groupId>
             <artifactId>ojdbc11</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- PowerJob Worker（替换 XXL-JOB executor：starter 基线为 Spring Boot 2.7，
-             spring-boot/h2/HikariCP 等版本由父 pom 的 Boot 4.0.7 BOM 统一仲裁，故无需 exclusions） -->
+             spring-boot/h2/HikariCP 等版本由父 pom 的 Boot 4.0.7 BOM 统一仲裁，故无需 exclusions；
+             版本统一由根 pom powerjob.version 管理） -->
         <dependency>
             <groupId>tech.powerjob</groupId>
             <artifactId>powerjob-worker-spring-boot-starter</artifactId>
-            <version>5.1.2</version>
         </dependency>
 
         <!-- Fastjson2（Sprint 3 起统一 JSON 序列化） -->

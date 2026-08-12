@@ -1,0 +1,19 @@
+# ============================================
+# shared-dataservice.yaml
+# 数据服务（data-nest-data-service）专属配置
+# 消费方: data-service
+# 注意：改后需重启 app-data-service（部分 @Value 非热生效）
+# ============================================
+
+datanest:
+  dataservice:
+    sql:
+      query-timeout-seconds: 60        # SQL 查询超时（F1，AC-2 用 SLEEP 验证）
+      max-rows: 1000                   # 结果上限（对齐 DorisSqlExecutor）
+    ratelimit:
+      window-seconds: 60               # Redis 滑动窗口（F3）
+    circuitbreaker:
+      failure-threshold: 5             # 熔断连续失败阈值（F3）
+      wait-seconds: 30                 # 半开探测等待（F3）
+    history:
+      retention-days: 30               # 查询历史/调用统计保留（F1 查询历史清理）
