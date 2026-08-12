@@ -160,21 +160,13 @@ public class GenericSqlExecutor {
     /**
      * Simple DML/DDL classification: only inspects the first keyword. Complex PL/SQL
      * may be misclassified but that does not affect actual execution in preview mode.
+     * <p>
+     * 2026-08-12 收敛：委托 {@link SqlStatementSplitter#classify}（四分类），
+     * 本方法调用场景为无结果集的非查询语句，QUERY 降级为 UNKNOWN 保持原语义。
      */
     private String classifyDmlDdl(String sql) {
-        String trimmed = sql.trim();
-        int firstSpace = trimmed.indexOf(' ');
-        String first = firstSpace > 0 ? trimmed.substring(0, firstSpace) : trimmed;
-        String upper = first.toUpperCase();
-        if (upper.startsWith("CREATE") || upper.startsWith("DROP") || upper.startsWith("ALTER")
-                || upper.startsWith("TRUNCATE") || upper.startsWith("RENAME") || upper.startsWith("COMMENT")) {
-            return "DDL";
-        }
-        if (upper.startsWith("INSERT") || upper.startsWith("UPDATE") || upper.startsWith("DELETE")
-                || upper.startsWith("MERGE")) {
-            return "DML";
-        }
-        return "UNKNOWN";
+        String type = SqlStatementSplitter.classify(sql);
+        return "QUERY".equals(type) ? "UNKNOWN" : type;
     }
 
     private String describeDmlDdl(String type, int affected, String sql) {

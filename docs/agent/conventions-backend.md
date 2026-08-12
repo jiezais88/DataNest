@@ -13,7 +13,7 @@
 | ORM | MyBatis-Plus 3.5.17 | PostgreSQL 分页插件已配置 |
 | 安全/登录 | Sa-Token 1.45.0 | Redis 集中式 Token |
 | JSON | Fastjson2 2.0.52（业务序列化）+ Jackson 3（Spring 默认） | Sprint 3 起 Fastjson2 替代 Jackson ObjectMapper |
-| 数据库迁移 | Flyway 10.22.0 | 每服务独立管理本库 `src/main/resources/db/migration`（基线 V1.0.0），代码驱动（FlywayConfig bean） |
+| 数据库迁移 | Flyway 10.22.0 | 每服务独立管理本库 `src/main/resources/db/migration`（基线 V1.0.0），代码驱动（共享 `FlywayAutoConfiguration`，2026-08-12 下沉，禁止自建 FlywayConfig） |
 | 密码加密 | Spring Security `PasswordEncoder`（BCrypt） | `data-nest-system` 已配置 |
 
 ## 2. 统一响应协议
@@ -74,7 +74,7 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 ### Flyway 脚本格式约定（硬约束）
 
 - **每服务独立管理本库迁移**：脚本在各持库服务自己的 `src/main/resources/db/migration`（system/alert-service/engineering/governance），基线为 `V1.0.0__baseline.sql`，后续各自从 `V1.1.0+` 独立演进。worker/job/gateway 无库无迁移。
-- **Flyway 是代码驱动的**：项目 jar 里没有 spring-boot-flyway autoconfigure 模块，`spring.flyway` 的 yaml **不生效**；各持库服务靠本地 `FlywayConfig`（@Bean initMethod=migrate，baselineOnMigrate）触发。新增迁移只需放脚本 + 重启对应服务。
+- **Flyway 是代码驱动的**：项目 jar 里没有 spring-boot-flyway autoconfigure 模块，`spring.flyway` 的 yaml **不生效**；持库服务统一由 common 的 `FlywayAutoConfiguration`（@Bean initMethod=migrate，baselineOnMigrate，`@ConditionalOnClass(Flyway)` + 方法级 `@ConditionalOnBean(DataSource)`）触发。**禁止再自建本地 FlywayConfig**。新增迁移只需放脚本 + 重启对应服务。
 - 旧单库时代的 72 个迁移脚本已归档 `scripts/migration-legacy/`，仅供追溯，不再执行。
 - **所有迁移脚本统一用紧凑单行 SQL 风格**（如 `id BIGSERIAL PRIMARY KEY,`、`VARCHAR(100) NOT NULL`、`COMMENT ON COLUMN x IS '...'` 单行）。
 - **禁止用 IDE/格式化工具拆分迁移 SQL**：格式化工具会破坏已应用脚本的 checksum，触发 Flyway validate 失败（见 gotchas.md）。

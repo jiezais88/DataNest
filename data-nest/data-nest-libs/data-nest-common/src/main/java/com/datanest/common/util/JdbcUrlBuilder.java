@@ -14,26 +14,41 @@ public final class JdbcUrlBuilder {
     }
 
     public static String buildJdbcUrl(String type, String host, int port, String database, String schema) {
+        return buildJdbcUrl(type, host, port, database, schema, 10);
+    }
+
+    /**
+     * 构建 JDBC URL（可指定 socket 超时秒数）。
+     *
+     * @param socketTimeoutSeconds socket 超时秒数（默认 10，同步任务沿用；SQL 终端可传入请求级超时，
+     *                             避免 queryTimeout 被 10s socket 超时提前截断），上限 300s
+     *                             <p>
+     *                             2026-08-12 新增：收敛 data-service ExternalSqlExecutor 自写的
+     *                             buildJdbcUrl（原实现与 JdbcUrlBuilder 仅差可配 socketTimeout，现统一委托此处）。
+     */
+    public static String buildJdbcUrl(String type, String host, int port, String database, String schema,
+                                      int socketTimeoutSeconds) {
         DataSourceType dataSourceType = DataSourceType.fromCode(type);
         if (dataSourceType == null) {
             throw new IllegalArgumentException("Unsupported data source type: " + type);
         }
+        int socketMs = Math.min(Math.max(socketTimeoutSeconds, 1), 300) * 1000;
         return switch (dataSourceType) {
             case MYSQL -> String.format(
-                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
-                    host, port, database);
+                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=%d",
+                    host, port, database, socketMs);
             case DORIS -> String.format(
-                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=10000",
-                    host, port, database);
+                    "jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=10000&socketTimeout=%d",
+                    host, port, database, socketMs);
             case POSTGRESQL -> {
                 if (schema != null && !schema.isBlank()) {
                     yield String.format(
-                            "jdbc:postgresql://%s:%d/%s?currentSchema=%s&connectTimeout=10&socketTimeout=10",
-                            host, port, database, schema);
+                            "jdbc:postgresql://%s:%d/%s?currentSchema=%s&connectTimeout=10&socketTimeout=%d",
+                            host, port, database, schema, socketMs);
                 }
                 yield String.format(
-                        "jdbc:postgresql://%s:%d/%s?connectTimeout=10&socketTimeout=10",
-                        host, port, database);
+                        "jdbc:postgresql://%s:%d/%s?connectTimeout=10&socketTimeout=%d",
+                        host, port, database, socketMs);
             }
             case ORACLE -> String.format(
                     "jdbc:oracle:thin:@//%s:%d/%s",

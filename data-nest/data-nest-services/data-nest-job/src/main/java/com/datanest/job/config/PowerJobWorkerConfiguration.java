@@ -1,16 +1,13 @@
 package com.datanest.job.config;
 
+import com.datanest.common.scheduler.PowerJobWorkerSupport;
 import com.datanest.job.powerjob.TechPowerJobRouterFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import tech.powerjob.common.utils.CommonUtils;
-import tech.powerjob.common.utils.NetUtils;
 import tech.powerjob.worker.PowerJobSpringWorker;
 import tech.powerjob.worker.autoconfigure.PowerJobProperties;
-import tech.powerjob.worker.common.PowerJobWorkerConfig;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -19,8 +16,7 @@ import java.util.List;
  * 官方 PowerJobAutoConfiguration#initPowerJob 带 @ConditionalOnMissingBean，
  * 这里显式声明 PowerJobSpringWorker Bean 使其自动配置回退；属性映射与官方保持一致，
  * 仅追加 TechPowerJobRouterFactory（processorInfo 按 handler 名路由到 PlatformJobHandler Bean）。
- * 注意：processorFactoryList 必须在 PowerJobSpringWorker 初始化前放入 config，
- * 其 setApplicationContext 会在自定义 factory 之后追加两个内建 Spring factory。
+ * 装配逻辑统一委托 {@link PowerJobWorkerSupport}（2026-08-12 下沉，与 worker 共用）。
  */
 @Configuration
 @ConditionalOnProperty(prefix = "powerjob.worker", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -30,39 +26,6 @@ public class PowerJobWorkerConfiguration {
     public PowerJobSpringWorker powerJobSpringWorker(PowerJobProperties properties,
                                                      TechPowerJobRouterFactory routerFactory,
                                                      com.datanest.common.scheduler.PowerJobAppBootstrap appBootstrap) {
-        PowerJobProperties.Worker worker = properties.getWorker();
-
-        // 以下属性映射与 PowerJobAutoConfiguration#initPowerJob 保持一致
-        CommonUtils.requireNonNull(worker.getServerAddress(), "serverAddress can't be empty! " +
-                "if you don't want to enable powerjob, please config program arguments: powerjob.worker.enabled=false");
-        // 新环境自举：确保 App 已在 server 注册（不存在则经管理员 API 创建，失败仅告警）
-        appBootstrap.ensureApp(worker.getAppName());
-        List<String> serverAddress = Arrays.asList(worker.getServerAddress().split(","));
-
-        PowerJobWorkerConfig config = new PowerJobWorkerConfig();
-        if (worker.getPort() != null) {
-            config.setPort(worker.getPort());
-        } else {
-            int port = worker.getAkkaPort();
-            if (port <= 0) {
-                port = NetUtils.getRandomPort();
-            }
-            config.setPort(port);
-        }
-        config.setAppName(worker.getAppName());
-        config.setServerAddress(serverAddress);
-        config.setProtocol(worker.getProtocol());
-        config.setStoreStrategy(worker.getStoreStrategy());
-        config.setAllowLazyConnectServer(worker.isAllowLazyConnectServer());
-        config.setMaxAppendedWfContextLength(worker.getMaxAppendedWfContextLength());
-        config.setTag(worker.getTag());
-        config.setMaxHeavyweightTaskNum(worker.getMaxHeavyweightTaskNum());
-        config.setMaxLightweightTaskNum(worker.getMaxLightweightTaskNum());
-        config.setHealthReportInterval(worker.getHealthReportInterval());
-
-        // 关键扩展点：自定义 ProcessorFactory（loader 链中先于内建 factory 被咨询）
-        config.setProcessorFactoryList(List.of(routerFactory));
-
-        return new PowerJobSpringWorker(config);
+        return PowerJobWorkerSupport.buildWorker(properties, List.of(routerFactory), appBootstrap);
     }
 }

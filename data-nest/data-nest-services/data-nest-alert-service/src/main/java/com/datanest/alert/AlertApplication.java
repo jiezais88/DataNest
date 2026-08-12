@@ -1,5 +1,6 @@
 package com.datanest.alert;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
@@ -14,6 +15,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
  * （避免误装配 SchedulerClient 等带强制配置项的组件）。
  */
 @EnableDiscoveryClient
+@MapperScan("com.datanest.alert.mapper")
 @SpringBootApplication(scanBasePackages = {"com.datanest.alert", "com.datanest.common.internal",
         "com.datanest.system.api", "com.datanest.engineering.api", "com.datanest.governance.api",
         "com.datanest.realtime.api"})

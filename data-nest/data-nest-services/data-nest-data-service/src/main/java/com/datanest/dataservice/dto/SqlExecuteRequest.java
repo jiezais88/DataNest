@@ -22,4 +22,7 @@ public class SqlExecuteRequest {
 
     @Schema(description = "查询超时秒数（默认取服务配置 60）", example = "60")
     private Integer timeoutSeconds;
+
+    @Schema(description = "前端生成的查询标识（UUID，用于「停止」按钮取消本次查询）", example = "8f14e45f-ea0d-4a1b-9c2d-6b1f3a5c7e9d")
+    private String queryId;
 }

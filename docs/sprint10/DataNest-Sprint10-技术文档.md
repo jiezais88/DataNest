@@ -205,15 +205,18 @@ COMMENT ON TABLE public.sensitivity_change_log IS '数据分级变更审计（Sp
 ### 4.1 SQL 查询终端（F1）
 
 ```
-前端 Monaco 编辑器 → POST /data-service/sql-console/execute
+前端 Monaco 编辑器 → POST /data-service/sql-console/execute（请求带前端生成 queryId，axios 超时 70s）
   ├─ JSqlParser 语法解析（只读校验：Select/SetOperation 放行，DML/DDL 拦截）
   ├─ 提取引用的表集合（visitor）→ governance-api 批量查敏感度
-  │     └─ 命中 CONFIDENTIAL → 6xxx 拦截（T5：默认隐藏 + 命中拦截）
-  ├─ 数据源路由：内置 Doris → DorisSqlExecutor.query（task-core）
-  │               外部数据源 → EngineeringDatasourceApi.getById + 解密 + JdbcPreviewHelper 分支 + setQueryTimeout
-  ├─ 结果 ≤1000 行 → 返回 columns/rows/truncated + durationMs
-  └─ 异步写 sql_query_history（不阻塞返回）
-导出：复用 XlsxExportHelper（xlsx）/ CSV BOM（下载工具收敛规范）——前端对返回结果再导出，或后端流式导出端点
+  │     └─ 命中 CONFIDENTIAL → 6xxx 拦截（T5：默认隐藏 + 命中拦截）；未命中返回 confidentialHits=0
+  ├─ 数据源路由：内置 Doris → CancelableSqlExecutor.queryDoris（连接注册可取消）
+  │               外部数据源 → EngineeringDatasourceApi.getById + 解密 + CancelableSqlExecutor.queryExternal（socketTimeout=请求超时，setQueryTimeout）
+  ├─ 结果 ≤1000 行 → 返回 columns/rows/truncated + durationMs(int) + tableCount + confidentialHits
+  ├─ 异步写 sql_query_history（不阻塞返回）
+  └─ 停止（F1.1）：前端 AbortController.abort + POST /sql-console/cancel {queryId}
+        → SqlQueryService 虚拟线程执行 + queryId→RunningQuery(Future+Connection) 注册表
+        → future.cancel(true) 中断线程 + 关闭连接立即打断 JDBC 阻塞读取（比 setQueryTimeout 提前终止）
+导出：前端对返回结果再导出（CSV 带 BOM / xlsx aoa_to_sheet 保列序），文件名 {数据源}_{首表}_{yyyyMMdd_HHmmss}
 ```
 
 ### 4.2 API 生成与对外调用（F2/F3）
@@ -265,7 +268,8 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
-| POST | `/sql-console/execute` | 执行只读 SQL（§4.1），返回 columns/rows/truncated | 四角色 OR |
+| POST | `/sql-console/execute` | 执行只读 SQL（§4.1），返回 columns/rows/truncated + durationMs + tableCount + confidentialHits；请求带 queryId 支持停止 | 四角色 OR |
+| POST | `/sql-console/cancel` | 停止查询（body `{queryId}`，幂等；中断线程 + 关闭连接） | 四角色 OR |
 | GET | `/sql-console/history?page=&pageSize=` | 我的查询历史（分页） | 四角色 OR |
 | DELETE | `/sql-console/history` | 清空我的查询历史 | 四角色 OR |
 | POST | `/apis` | 创建 API（校验表敏感度） | 超管/工程师 |
@@ -415,6 +419,7 @@ kafka:
 - [x] **新服务骨架**：`data-nest-services/data-nest-data-service`（启动类 scanBasePackages 约定 + FlywayConfig + 三件套依赖）+ `app-data-service` Dockerfile + compose + 网关路由 + swagger urls + `SaTokenConfig` 放行 open-api/ws（已部署 `datanest-app-data-service` healthy）
 - [x] **dataservice 库** `V1.0.0__baseline.sql`（6 表，已 Flyway v1.0.0 建表）
 - [x] SQL 终端：`SqlQueryController`（execute/history/clear/datasources）+ `ReadOnlySqlValidator`（JSqlParser 语法级）+ `SqlQueryService`（Doris/外部数据源双路径 + 超时 + 表集合敏感度校验 + fail-closed）——**API 自测 17 用例全通过**
+- [x] **F1.1 停止查询（2026-08-12）**：`POST /sql-console/cancel`（body `{queryId}` 幂等，四角色）+ `SqlExecuteRequest.queryId` + 虚拟线程执行 + `queryId→RunningQuery(Future+Connection)` 注册表（cancel=interrupt+关连接立即打断）；`SqlExecuteResult` 加 `tableCount`/`confidentialHits`（前端 KPI）、`durationMs` long→int（避免 Long 字符串化）；`ExternalSqlExecutor.buildJdbcUrl` socketTimeout 参数化（默认 10s 同步任务不变，SQL 终端用请求级超时）；新增 `CancelableSqlExecutor`（data-service 内，含 Doris+外部，复用 buildJdbcUrl/formatValue，**未改 task-core**）——实测 30s pg_sleep 3s 被 cancel 中断返回 9003
 - [x] common：新增 ErrorCode 段（数据服务 9xxx：SQL 只读拦截/Key 无效/限流/API 未发布/表敏感度等）
 - [x] governance 依赖项：V1.6.0 迁移（metadata_table 加 sensitivity_level/api_exempted + sensitivity_change_log）+ internal `GovernanceMetadataController`（表清单+敏感度批量）+ governance-api `GovernanceMetadataApi` 契约（fallback fail-closed 已生效）——**SensitivityController 改级/批量/开白/审计仍归 F5**
 - [x] **定时清理规范落定**：业务服务本地禁 `@Scheduled`（写入 conventions-backend §7）；新增 data-service-api `DataServiceOpsApi` 契约 + data-service `/internal/sql-history/cleanup` + job `SqlHistoryCleanupHandler`（已注册 PowerJob jobId=293，cron `0 50 3 * * ?`）
@@ -429,8 +434,8 @@ kafka:
 
 ### 前端
 
-- [ ] 路由 `/data-service/*` + Sidebar「数据服务」菜单组（全角色）
-- [ ] SQL 终端页：Monaco 编辑器（复用）+ 数据源下拉（含内置 Doris）+ 运行/停止 + 结果表 + 导出 CSV/Excel + 查询历史
+- [x] 路由 `/data-service/*` + Sidebar「数据服务」菜单组（全角色，**F1 仅 SQL 查询终端一项，F2/F3/F5 完成后再补**）
+- [x] SQL 终端页（产品化改版，紧凑 IDE 风格）：左侧 `SqlTree` 数据目录（sql-console 全部 NORMAL 数据源 + 元数据域库/表懒加载，内置 Doris 显示「Doris 数仓」+多库，未采集数据源「去采集」提示）+ 面包屑路径显示到表级（不显示 id）+ 点表插入 `SELECT * FROM 库.表 LIMIT 100` + Monaco（Ctrl+Enter）+ 运行/停止（AbortController+cancel 双管齐下）+ 结果表/KPI 紧凑化 + 导出 CSV/Excel + 查询历史 Drawer（按钮+Badge+回填/清空）——已部署 app-frontend
 - [ ] API 管理页：列表/详情（文档+统计）/新建向导（3 步，含 API 预览）/Key 管理（一次性明文展示 + 近 7 天调用列 + 快捷禁用/启用）
 - [ ] API 运行统计页：全局 KPI / 双线趋势 / 健康分布 / Top5 排行 / 错误码分布 / Key 排行 / 限流趋势 / 状态速览（`/stats/*`）
 - [ ] 数据分级分类页：敏感度筛选 + 批量打标 + 审计查询（调 governance API）
@@ -492,3 +497,4 @@ kafka:
 > - v1.3 (2026-08-12)：**M0 技术调研定稿（D4）**——反编译 `flink-cdc-composer-3.6.0-2.2.jar` 证实 `PipelineDef.sink` 为单个 `SinkDef`，**Flink CDC 3.6 YAML 不支持多 sink 双写**；原「Iceberg+Kafka 双写」方案废弃，改 **方案 B 事件管道分离**（用户 q-0~q-3 拍板：每可订阅管道独立 Kafka 单 sink 事件作业 latest-offset 增量、管道创建即建同生命周期、`apache/kafka:4.0.x` KRaft、仅增量推送）。更新 D-D6/§0-F4/§4.3/§5.4/§8/§9 实现清单与版本记录；依赖仅需 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2`（shade 含 flink-connector-kafka）。
 > - v1.4 (2026-08-12)：**F1 SQL 终端后端实现 + 部署 + API 自测通过**——① q-0~q-3 细化落地：JSqlParser 语法级只读校验（放行 SELECT/WITH/SHOW/DESC/EXPLAIN）、task-core `DorisSqlExecutor.query(sql, timeoutSeconds)` 超时重载（超时→9003）、数据服务聚合 `/sql-console/datasources`、governance V1.6.0 + internal 表清单/敏感度批量 + GovernanceMetadataApi（fail-closed）；② 新服务 `data-nest-data-service` 部署（容器 `datanest-app-data-service`，Flyway v1.0.0 建 6 表，网关 `/api/data-service/**` + swagger urls）；③ **用户拍板：业务服务本地禁止 `@Scheduled`**，SQL 查询历史清理改放 job——新增 data-service-api `DataServiceOpsApi` + data-service `/internal/sql-history/cleanup` + job `SqlHistoryCleanupHandler`（PowerJob jobId=293）；规范写入 `docs/agent/conventions-backend.md` §7；④ API 自测 **17 用例全通过**（只读拦截/语法错/多语句绕过/敏感度 9004/fail-closed 9012/超时 9003/外部数据源/Doris/SHOW/历史/权限/文档/internal 安全）。
 > - v1.5 (2026-08-12)：**F1 多数据源 E2E**——放开 compose `middleware-test-oracle`（gvenzl/oracle-free:23，1521，testuser/FREEPDB1）+ `middleware-test-sqlserver`（mssql 2022，1433，sa/datanest_test）+ `test-oracle-data` volume；工程侧新增 `oracle`（id 2087429814056460290）与 `sqlserver`（id 2087429854464385026）两个 NORMAL 数据源。经 SQL 终端逐一实测 **MySQL / PostgreSQL / Oracle / SQL Server 4 种库查询全部通过**（MySQL `users`、PG `s4_orders`、Oracle `TESTUSER.test_orders`、SQL Server `dbo.test_orders`），并复验 MySQL `SELECT SLEEP(3)` timeout=1s→9003 超时中断、SQL Server `DELETE`→9001 只读拦截；数据源下拉确认内置 Doris + 4 类型平台数据源齐全。
+> - v1.6 (2026-08-12)：**F1 前端 + 联调 + 补 F1.1 后端**——① 前端 SQL 终端页（路由/菜单/Monaco Ctrl+Enter/运行·停止/KPI 4 卡/结果表/CSV·Excel 导出/历史回填+清空）实现并部署 app-frontend；② F1.1 后端补丁（用户授权「你来补后端」）：`POST /sql-console/cancel` + `queryId` 注册表取消（interrupt+关连接）、`SqlExecuteResult.tableCount/confidentialHits`、socketTimeout 参数化、durationMs int；③ §4.1/§5.1/§9 同步（本版本记录下段落地）。「扫描行」KPI 因 JDBC 无可靠 API 改「涉及表」（见 handoff §6.2 已知取舍）。

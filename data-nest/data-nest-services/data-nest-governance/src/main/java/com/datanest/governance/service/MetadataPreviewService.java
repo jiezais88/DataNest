@@ -2,6 +2,7 @@ package com.datanest.governance.service;
 
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.DataSourceType;
+import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
 import com.datanest.common.exception.BusinessException;
@@ -53,7 +54,8 @@ public class MetadataPreviewService {
         if (table.getDatasourceId() == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
-        if (table.getDatasourceId() == -1L || SourceType.BUILTIN_DORIS.getCode().equals(table.getSourceType())) {
+        if (table.getDatasourceId() == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID
+                || SourceType.BUILTIN_DORIS.getCode().equals(table.getSourceType())) {
             result = JdbcPreviewHelper.preview(
                     DataSourceType.DORIS.getCode(), builtInDorisHost, builtInDorisQueryPort,
                     table.getDatabaseName(),

@@ -1,4 +1,6 @@
 com.datanest.common.config.CommonExceptionAutoConfiguration
 com.datanest.common.config.DocsAutoConfiguration
+com.datanest.common.config.FlywayAutoConfiguration
+com.datanest.common.config.MybatisPlusInterceptorAutoConfiguration
 com.datanest.common.jackson.JacksonConfig
 com.datanest.common.satoken.SaTokenCommonAutoConfiguration

@@ -1,6 +1,7 @@
 package com.datanest.task.core.service;
 
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.engineering.api.dto.DataSourceInfo;
@@ -31,9 +32,6 @@ public class PythonConnectionResolver {
 
     private static final Logger logger = LoggerFactory.getLogger(PythonConnectionResolver.class);
 
-    /** 内置 Doris 数据源 ID 标记（metadata_table.datasource_id = -1） */
-    private static final long DORIS_DATASOURCE_ID = -1L;
-
     private final GenericSqlExecutor genericSqlExecutor;
     private final EncryptionConfig encryptionConfig;
 
@@ -50,7 +48,7 @@ public class PythonConnectionResolver {
      * @param schemaName   目标表归属 schema（非空覆盖连接默认 schema，PG/Oracle 用）
      */
     public Map<String, Object> resolve(Long datasourceId, String databaseName, String schemaName) {
-        if (datasourceId == null || datasourceId == DORIS_DATASOURCE_ID) {
+        if (datasourceId == null || datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
             return resolveDoris(databaseName);
         }
         DataSourceInfo ds;

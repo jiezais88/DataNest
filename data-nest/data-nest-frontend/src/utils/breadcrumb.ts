@@ -34,6 +34,7 @@ export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/governance/quality-templates': {group: '数据治理', label: '规则模板库', leaf: true},
     '/governance/data-quality': {group: '数据治理', label: '质量任务', leaf: true},
     '/governance/quality-checks': {group: '数据治理', label: '质量检查历史', leaf: true},
+    '/data-service/sql-console': {group: '数据服务', label: 'SQL 查询终端', leaf: true},
 };
 
 /**

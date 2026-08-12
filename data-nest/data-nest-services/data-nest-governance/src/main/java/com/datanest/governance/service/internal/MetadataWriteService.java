@@ -1,6 +1,7 @@
 package com.datanest.governance.service.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
 import com.datanest.governance.api.dto.LineageRecordBatchRequest;
@@ -38,8 +39,6 @@ public class MetadataWriteService {
 
     private static final Logger logger = LoggerFactory.getLogger(MetadataWriteService.class);
     private static final String SOURCE_TYPE = SourceType.BUILTIN_DORIS.getCode();
-    private static final Long BUILTIN_DORIS_DATASOURCE_ID = -1L;
-
     private final MetadataTableMapper metadataTableMapper;
     private final MetadataColumnMapper metadataColumnMapper;
     private final LineageRecordMapper lineageRecordMapper;
@@ -171,7 +170,7 @@ public class MetadataWriteService {
         LocalDateTime now = LocalDateTime.now();
         if (existing == null) {
             MetadataTable table = new MetadataTable();
-            table.setDatasourceId(BUILTIN_DORIS_DATASOURCE_ID);
+            table.setDatasourceId(DorisConstants.BUILTIN_DORIS_DATASOURCE_ID);
             table.setDatabaseName(targetDb);
             table.setSchemaName(null);
             table.setTableName(targetTableName);
@@ -200,7 +199,7 @@ public class MetadataWriteService {
      */
     private MetadataTable selectBuiltinTable(String targetDb, String targetTableName) {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
-        wrapper.eq("datasource_id", BUILTIN_DORIS_DATASOURCE_ID)
+        wrapper.eq("datasource_id", DorisConstants.BUILTIN_DORIS_DATASOURCE_ID)
                 .eq("database_name", targetDb)
                 .apply("COALESCE(schema_name, '') = {0}", "")
                 .eq("table_name", targetTableName);

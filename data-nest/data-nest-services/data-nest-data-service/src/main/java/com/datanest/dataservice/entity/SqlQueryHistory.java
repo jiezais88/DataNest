@@ -35,6 +35,9 @@ public class SqlQueryHistory {
     @Schema(description = "返回行数")
     private Integer rowCount;
 
+    @Schema(description = "错误信息（成功查询为 null；失败查询记录错误详情供历史回显）")
+    private String errorMessage;
+
     @Schema(description = "创建时间")
     private LocalDateTime createdAt;
 }

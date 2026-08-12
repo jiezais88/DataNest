@@ -91,7 +91,12 @@ public final class JdbcPreviewHelper {
         }
     }
 
-    private static Object formatValue(Object value) {
+    /**
+     * JDBC 结果值统一格式化（Timestamp/Date/Time/LocalDateTime/Oracle 内部类型 → 标准字符串）。
+     * <p>
+     * 2026-08-12 提升可见性：供 data-service ExternalSqlExecutor 复用（原为 private 副本）。
+     */
+    public static Object formatValue(Object value) {
         if (value == null) {
             return null;
         }
@@ -220,7 +225,12 @@ public final class JdbcPreviewHelper {
         };
     }
 
-    private static String classifyError(SQLException e) {
+    /**
+     * SQL 异常友好分类（连接失败/认证失败/库表不存在）。
+     * <p>
+     * 2026-08-12 提升可见性：供 data-service ExternalSqlExecutor 复用（原为 private 副本）。
+     */
+    public static String classifyError(SQLException e) {
         String sqlState = e.getSQLState();
         String message = e.getMessage();
         if (message == null) {
@@ -236,7 +246,9 @@ public final class JdbcPreviewHelper {
         if (lower.contains("unknown database") || lower.contains("does not exist") || lower.contains("3d000")) {
             return "数据库或表不存在";
         }
-        return "查询失败: " + message;
+        // 2026-08-12 统一：返回裸消息，由调用方拼前缀（preview 拼「数据预览失败: 」；
+        // data-service ExternalSqlExecutor 拼「查询失败: 」，避免双重前缀）
+        return message;
     }
 
     public record PreviewResult(List<String> columns, List<Map<String, Object>> rows, int rowCount,

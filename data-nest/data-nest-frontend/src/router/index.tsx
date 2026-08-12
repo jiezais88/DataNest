@@ -39,6 +39,7 @@ const MyFavoritesPage = lazyPage(() => import('@/pages/assets/favorites'));
 const MyFollowsPage = lazyPage(() => import('@/pages/assets/follows'));
 const CdcPipelinesPage = lazyPage(() => import('@/pages/engineering/cdc-pipelines'));
 const CdcPipelineWizardPage = lazyPage(() => import('@/pages/engineering/cdc-pipelines/wizard'));
+const SqlConsolePage = lazyPage(() => import('@/pages/data-service/sql-console'));
 
 export const router = createBrowserRouter([
     {
@@ -111,6 +112,7 @@ export const router = createBrowserRouter([
             {path: 'asset-catalog/favorites', element: <MyFavoritesPage/>},
             {path: 'asset-catalog/follows', element: <MyFollowsPage/>},
             {path: 'asset-catalog/:tableId', element: <AssetDetailPage/>},
+            {path: 'data-service/sql-console', element: <SqlConsolePage/>},
         ],
     },
 ]);

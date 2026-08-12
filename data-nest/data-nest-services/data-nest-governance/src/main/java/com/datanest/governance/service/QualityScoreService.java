@@ -10,6 +10,7 @@ import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
+import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.constant.QualityScoreConstants;
 import com.datanest.task.core.dto.QualityScoreConfigDTO;
 import com.datanest.task.core.dto.QualityScoreDTO;
@@ -44,8 +45,6 @@ import java.util.stream.Collectors;
  */
 @Service
 public class QualityScoreService {
-
-    private static final long DORIS_DATASOURCE_ID = -1L;
 
     private final QualityScoreMapper scoreMapper;
     private final EngineeringDatasourceApi datasourceApi;
@@ -299,9 +298,9 @@ public class QualityScoreService {
         dto.setSevereRules(s.getSevereRules());
         dto.setLastCheckedAt(s.getLastCheckedAt());
         if (s.getDatasourceId() != null) {
-            if (s.getDatasourceId() == DORIS_DATASOURCE_ID) {
+            if (s.getDatasourceId() == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
                 // 内置 Doris 数仓（datasource_id=-1，datasource 表无记录），显式标注避免列表显示为「—」
-                dto.setDatasourceName("Doris 数仓");
+                dto.setDatasourceName(DorisConstants.BUILTIN_DORIS_NAME);
             } else {
                 // 经 engineering 服务 Feign 回填数据源名；失败经 RemoteCalls 降级为 null（名称列显示「—」），不阻断列表
                 String dsName = RemoteCalls.execute("engineering.datasource.getById", () -> {

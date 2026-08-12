@@ -2,6 +2,7 @@ package com.datanest.dataservice.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.datanest.common.config.EncryptionConfig;
+import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.dataservice.dto.SqlDatasourceDTO;
@@ -13,43 +14,50 @@ import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.governance.api.GovernanceMetadataApi;
 import com.datanest.governance.api.dto.MetadataTableSensitivityDTO;
-import com.datanest.task.core.service.DorisSqlExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
- * SQL 终端执行服务（Sprint 10 F1）。
+ * SQL 终端执行服务（Sprint 10 F1 + F1.1 取消支持）。
  * <p>
  * 流程（对齐技术文档 §4.1）：JSqlParser 语法级只读校验 + 表集合提取 → governance 批量查敏感度
- * （fail-closed：不可达拒绝）→ 数据源路由（内置 Doris=-1 走 DorisSqlExecutor；外部走
- * EngineeringDatasourceApi.getById + 解密 + ExternalSqlExecutor）→ 结果 ≤1000 行 + durationMs →
+ * （fail-closed：不可达拒绝）→ 数据源路由（内置 Doris=-1 / 外部数据源）→ 结果 ≤1000 行 + durationMs →
  * 异步写 sql_query_history（不阻塞返回）。
+ * <p>
+ * F1.1：整个校验+执行提交流程在虚拟线程中执行，按 queryId 注册 {@link RunningQuery}
+ * （Future + 打开的 Connection），「停止」时 interrupt 线程 + 关闭连接，立即中断 JDBC 阻塞读取。
  */
 @Service
 public class SqlQueryService {
 
     private static final Logger logger = LoggerFactory.getLogger(SqlQueryService.class);
 
-    /** 内置 Doris 数据源 ID（对齐治理侧 BUILTIN_DORIS_DATASOURCE_ID=-1） */
-    public static final long BUILTIN_DORIS_DATASOURCE_ID = -1L;
-
     private static final String CONFIDENTIAL = "CONFIDENTIAL";
 
     /** 单次查询超时上限（秒），防用户传超大值占用资源 */
     private static final int MAX_TIMEOUT_SECONDS = 300;
+
+    /** 查询执行线程池（虚拟线程语义，每查询独立线程，取消可中断） */
+    private static final ExecutorService QUERY_EXECUTOR = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
 
     /** 查询历史异步写线程池（虚拟线程语义，队列背压保护） */
     private static final ExecutorService HISTORY_WRITER = new ThreadPoolExecutor(
@@ -57,8 +65,11 @@ public class SqlQueryService {
             Thread.ofVirtual().name("sql-history-", 0).factory(),
             new ThreadPoolExecutor.CallerRunsPolicy());
 
+    /** 运行中的查询注册表：queryId -> RunningQuery（「停止」按钮取消用） */
+    private final Map<String, RunningQuery> runningQueries = new ConcurrentHashMap<>();
+
     private final ReadOnlySqlValidator readOnlySqlValidator;
-    private final DorisSqlExecutor dorisSqlExecutor;
+    private final CancelableSqlExecutor cancelableSqlExecutor;
     private final ExternalSqlExecutor externalSqlExecutor;
     private final EngineeringDatasourceApi datasourceApi;
     private final GovernanceMetadataApi governanceMetadataApi;
@@ -68,12 +79,15 @@ public class SqlQueryService {
     @Value("${datanest.dataservice.sql.query-timeout-seconds:60}")
     private int queryTimeoutSeconds;
 
-    public SqlQueryService(ReadOnlySqlValidator readOnlySqlValidator, DorisSqlExecutor dorisSqlExecutor,
-                           ExternalSqlExecutor externalSqlExecutor, EngineeringDatasourceApi datasourceApi,
-                           GovernanceMetadataApi governanceMetadataApi, EncryptionConfig encryptionConfig,
+    public SqlQueryService(ReadOnlySqlValidator readOnlySqlValidator,
+                           CancelableSqlExecutor cancelableSqlExecutor,
+                           ExternalSqlExecutor externalSqlExecutor,
+                           EngineeringDatasourceApi datasourceApi,
+                           GovernanceMetadataApi governanceMetadataApi,
+                           EncryptionConfig encryptionConfig,
                            SqlQueryHistoryMapper historyMapper) {
         this.readOnlySqlValidator = readOnlySqlValidator;
-        this.dorisSqlExecutor = dorisSqlExecutor;
+        this.cancelableSqlExecutor = cancelableSqlExecutor;
         this.externalSqlExecutor = externalSqlExecutor;
         this.datasourceApi = datasourceApi;
         this.governanceMetadataApi = governanceMetadataApi;
@@ -82,49 +96,106 @@ public class SqlQueryService {
     }
 
     /**
-     * 执行只读 SQL。
+     * 执行只读 SQL（可取消：请求带 queryId 时注册取消句柄，前端可经 {@link #cancel} 停止）。
      */
     public SqlExecuteResult execute(SqlExecuteRequest request) {
         long start = System.currentTimeMillis();
         int timeout = request.getTimeoutSeconds() != null && request.getTimeoutSeconds() > 0
                 ? Math.min(request.getTimeoutSeconds(), MAX_TIMEOUT_SECONDS) : queryTimeoutSeconds;
+        String queryId = request.getQueryId();
 
-        // 1. JSqlParser 语法级只读校验 + 表集合提取（AC-1：INSERT/UPDATE/DDL/注释绕过拦截）
-        List<String> tables = readOnlySqlValidator.validateAndExtractTables(request.getSql());
+        // 在请求线程（Sa-Token 上下文可访问）先取 userId，传入虚拟线程避免 ThreadLocal 丢失
+        Long userId = resolveCurrentUserId();
 
-        // 2. 敏感度闸门（fail-closed，AC-11）
-        checkSensitivity(request.getDatasourceId(), request.getSql(), tables);
+        RunningQuery runningQuery = new RunningQuery();
+        Future<SqlExecuteResult> future = QUERY_EXECUTOR.submit(() -> {
+            try {
+                // 1. JSqlParser 语法级只读校验 + 表集合提取（AC-1：INSERT/UPDATE/DDL/注释绕过拦截）
+                List<String> tables = readOnlySqlValidator.validateAndExtractTables(request.getSql());
 
-        // 3. 数据源路由执行
-        SqlExecuteResult result;
-        if (request.getDatasourceId() == BUILTIN_DORIS_DATASOURCE_ID) {
-            result = executeOnDoris(request.getSql(), timeout);
-        } else {
-            result = executeOnExternal(request.getDatasourceId(), request.getSql(), timeout);
+                // 2. 敏感度闸门（fail-closed，AC-11）——命中机密表抛 9004；否则返回命中数（成功恒 0）
+                int confidentialHits = checkSensitivity(request.getDatasourceId(), tables);
+
+                // 3. 数据源路由执行（连接建立即注册到 runningQuery，取消时关闭连接立即中断）
+                SqlExecuteResult result = executeQuery(request.getDatasourceId(), request.getSql(), timeout, runningQuery);
+                result.setDurationMs((int) (System.currentTimeMillis() - start));
+                result.setTableCount(tables.size());
+                result.setConfidentialHits(confidentialHits);
+
+                // 4. 异步写历史（不阻塞返回）
+                asyncSaveHistory(userId, request, (int) (System.currentTimeMillis() - start), result.getRowCount(), null);
+                return result;
+            } catch (BusinessException e) {
+                // 失败也写历史（含错误信息，供查询历史回显/回填重试）
+                asyncSaveHistory(userId, request, (int) (System.currentTimeMillis() - start), null, e.getMessage());
+                throw e;
+            } catch (Exception e) {
+                logger.warn("SQL 查询执行异常: sql={}, error={}", request.getSql(), e.getMessage());
+                BusinessException be = new BusinessException(ErrorCode.SQL_EXECUTE_FAILED, "查询失败: " + e.getMessage());
+                asyncSaveHistory(userId, request, (int) (System.currentTimeMillis() - start), null, be.getMessage());
+                throw be;
+            }
+        });
+        runningQuery.setFuture(future);
+        if (queryId != null && !queryId.isBlank()) {
+            runningQueries.put(queryId, runningQuery);
         }
-        result.setDurationMs(System.currentTimeMillis() - start);
 
-        // 4. 异步写历史（不阻塞返回）
-        asyncSaveHistory(request, result);
-        return result;
+        try {
+            try {
+                return future.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new BusinessException(ErrorCode.SQL_TIMEOUT, "查询已被停止");
+            } catch (CancellationException e) {
+                throw new BusinessException(ErrorCode.SQL_TIMEOUT, "查询已被停止");
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof BusinessException be) {
+                    throw be;
+                }
+                throw new BusinessException(ErrorCode.SQL_EXECUTE_FAILED,
+                        cause != null && cause.getMessage() != null ? cause.getMessage() : "查询失败");
+            }
+        } finally {
+            if (queryId != null && !queryId.isBlank()) {
+                runningQueries.remove(queryId);
+            }
+        }
     }
 
-    private SqlExecuteResult executeOnDoris(String sql, int timeout) {
-        DorisSqlExecutor.QueryResult qr = dorisSqlExecutor.query(sql, timeout);
-        SqlExecuteResult result = new SqlExecuteResult();
-        result.setColumns(qr.columns());
-        result.setRows(qr.rows());
-        result.setTruncated(qr.truncated());
-        result.setRowCount(qr.rows().size());
-        return result;
+    /**
+     * 取消指定 queryId 的查询：中断执行线程 + 关闭已建立的连接（幂等，查无此 id 返回 false）。
+     */
+    public boolean cancel(String queryId) {
+        if (queryId == null || queryId.isBlank()) {
+            return false;
+        }
+        RunningQuery runningQuery = runningQueries.get(queryId);
+        if (runningQuery == null) {
+            return false;
+        }
+        logger.info("取消 SQL 查询: queryId={}", queryId);
+        runningQuery.cancel();
+        return true;
     }
 
-    private SqlExecuteResult executeOnExternal(Long datasourceId, String sql, int timeout) {
+    private SqlExecuteResult executeQuery(Long datasourceId, String sql, int timeout, RunningQuery runningQuery) {
+        if (datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
+            CancelableSqlExecutor.QueryResult qr = cancelableSqlExecutor.queryDoris(
+                    sql, timeout, runningQuery::setConnection);
+            SqlExecuteResult result = new SqlExecuteResult();
+            result.setColumns(qr.columns());
+            result.setRows(qr.rows());
+            result.setTruncated(qr.truncated());
+            result.setRowCount(qr.rows().size());
+            return result;
+        }
         DataSourceInfo ds = resolveDatasource(datasourceId);
         String password = encryptionConfig.decrypt(ds.getEncryptedPassword());
-        ExternalSqlExecutor.QueryResult qr = externalSqlExecutor.query(
+        CancelableSqlExecutor.QueryResult qr = cancelableSqlExecutor.queryExternal(
                 ds.getType(), ds.getHost(), ds.getPort(), ds.getDatabaseName(), ds.getSchemaName(),
-                ds.getUsername(), password, sql, timeout);
+                ds.getUsername(), password, sql, timeout, runningQuery::setConnection);
         SqlExecuteResult result = new SqlExecuteResult();
         result.setColumns(qr.columns());
         result.setRows(qr.rows());
@@ -151,10 +222,12 @@ public class SqlQueryService {
      * <p>
      * fail-closed（用户已确认，技术文档 §8 Blocker 3）：governance 不可达（契约返回 null）时
      * 拒绝执行并提示「分级服务暂不可用」，避免机密表因治理故障裸奔。
+     *
+     * @return 命中机密表的数量（成功放行时恒为 0，供前端「机密拦截」KPI）
      */
-    private void checkSensitivity(Long datasourceId, String sql, List<String> tables) {
+    private int checkSensitivity(Long datasourceId, List<String> tables) {
         if (tables.isEmpty()) {
-            return; // SHOW/DESC 等无表引用语句不校验
+            return 0; // SHOW/DESC 等无表引用语句不校验
         }
         // 表引用可能带库前缀（db.table），批量查询用纯表名去重
         List<String> tableNames = tables.stream()
@@ -171,7 +244,7 @@ public class SqlQueryService {
         }
         List<MetadataTableSensitivityDTO> list = resp.data();
         if (list == null || list.isEmpty()) {
-            return; // 未打标（默认 PUBLIC）
+            return 0; // 未打标（默认 PUBLIC）
         }
         Set<String> confidentialTables = list.stream()
                 .filter(dto -> CONFIDENTIAL.equals(dto.getSensitivityLevel()))
@@ -181,6 +254,7 @@ public class SqlQueryService {
             throw new BusinessException(ErrorCode.TABLE_SENSITIVE,
                     "SQL 命中机密数据表，禁止查询: " + String.join(", ", confidentialTables));
         }
+        return 0;
     }
 
     /**
@@ -191,8 +265,8 @@ public class SqlQueryService {
         List<SqlDatasourceDTO> list = new ArrayList<>();
 
         SqlDatasourceDTO builtin = new SqlDatasourceDTO();
-        builtin.setId(BUILTIN_DORIS_DATASOURCE_ID);
-        builtin.setName("Doris 数仓");
+        builtin.setId(DorisConstants.BUILTIN_DORIS_DATASOURCE_ID);
+        builtin.setName(DorisConstants.BUILTIN_DORIS_NAME);
         builtin.setType("DORIS");
         builtin.setBuiltin(true);
         builtin.setDatabaseName(com.datanest.task.core.config.DorisDataSourceConfig.currentDatabase());
@@ -215,12 +289,30 @@ public class SqlQueryService {
         return list;
     }
 
-    private void asyncSaveHistory(SqlExecuteRequest request, SqlExecuteResult result) {
+    /**
+     * 请求线程内解析当前登录用户 id（Sa-Token ThreadLocal 仅请求线程可访问）。
+     * 取不到（内部场景/无登录态）返回 null，不写历史。
+     */
+    private Long resolveCurrentUserId() {
         try {
-            long userId;
-            try {
-                userId = StpUtil.getLoginIdAsLong();
-            } catch (Exception e) {
+            return StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 异步写查询历史（成功/失败统一走此方法，不阻塞返回）。
+     *
+     * @param userId       登录用户 id（请求线程已解析，避免虚拟线程 Sa-Token 上下文丢失）
+     * @param request      执行请求
+     * @param durationMs   耗时毫秒
+     * @param rowCount     返回行数（失败为 null）
+     * @param errorMessage 错误信息（成功为 null）
+     */
+    private void asyncSaveHistory(Long userId, SqlExecuteRequest request, int durationMs, Integer rowCount, String errorMessage) {
+        try {
+            if (userId == null) {
                 return; // 无登录态（内部场景）不写历史
             }
             long finalUserId = userId;
@@ -228,8 +320,9 @@ public class SqlQueryService {
             history.setUserId(finalUserId);
             history.setDatasourceId(request.getDatasourceId());
             history.setSqlText(request.getSql());
-            history.setDurationMs((int) result.getDurationMs());
-            history.setRowCount(result.getRowCount());
+            history.setDurationMs(durationMs);
+            history.setRowCount(rowCount);
+            history.setErrorMessage(errorMessage);
             CompletableFuture.runAsync(() -> {
                 try {
                     historyMapper.insert(history);
@@ -239,6 +332,47 @@ public class SqlQueryService {
             }, HISTORY_WRITER);
         } catch (Exception e) {
             logger.warn("SQL 查询历史异步提交失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 运行中查询句柄：Future（interrupt）+ Connection（关闭连接立即中断 JDBC 阻塞读取）。
+     */
+    static class RunningQuery {
+        private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private volatile Future<?> future;
+        private volatile Connection connection;
+
+        void setFuture(Future<?> future) {
+            this.future = future;
+        }
+
+        void setConnection(Connection connection) {
+            this.connection = connection;
+            // 竞态：cancel 发生在连接建立前（连接建立后才注册）——建立后立即关闭
+            if (cancelled.get() && connection != null) {
+                closeQuietly(connection);
+            }
+        }
+
+        void cancel() {
+            cancelled.set(true);
+            Future<?> f = future;
+            if (f != null) {
+                f.cancel(true);
+            }
+            Connection c = connection;
+            if (c != null) {
+                closeQuietly(c);
+            }
+        }
+
+        private static void closeQuietly(Connection c) {
+            try {
+                c.close();
+            } catch (Exception ignored) {
+                // 连接关闭失败无需处理（Statement 超时兜底）
+            }
         }
     }
 }

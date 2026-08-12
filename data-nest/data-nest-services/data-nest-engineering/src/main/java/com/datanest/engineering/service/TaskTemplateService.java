@@ -12,6 +12,7 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
+import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.engineering.dto.CreateTaskResultDTO;
 import com.datanest.engineering.dto.SyncJobCreateRequest;
 import com.datanest.engineering.dto.TaskTemplateDTO;
@@ -112,13 +113,9 @@ public class TaskTemplateService {
     private List<TaskTemplateDTO> attachCreatedByName(List<TaskTemplate> templates) {
         List<Long> userIds = templates.stream().map(TaskTemplate::getCreatedBy)
                 .filter(java.util.Objects::nonNull).distinct().collect(Collectors.toList());
-        // RemoteCalls 统一降级：兜住熔断 fallback 之外的异常；Result 非 200 返回 null data 时也按空 Map 处理
+        // 委托 task-core SystemUserResolver（统一降级空 Map，语义与原 RemoteCalls.execute 等价）
         Map<Long, String> usernameMap = userIds.isEmpty() ? Collections.emptyMap()
-                : RemoteCalls.execute("system.usernames", () -> {
-                    Result<Map<Long, String>> result = systemUserApi.usernames(userIds);
-                    return result == null || result.data() == null
-                            ? Collections.<Long, String>emptyMap() : result.data();
-                }, Collections.emptyMap());
+                : SystemUserResolver.usernames(systemUserApi, userIds);
 
         return templates.stream().map(t -> toDTO(t, usernameMap)).collect(Collectors.toList());
     }

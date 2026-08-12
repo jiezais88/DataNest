@@ -50,6 +50,9 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.19)
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@18.3.31)(react@18.3.1)(use-sync-external-store@1.2.0(react@18.3.1))
@@ -114,9 +117,6 @@ importers:
       vite-plugin-compression:
         specifier: ^0.5.1
         version: 0.5.1(vite@5.4.10(@types/node@26.1.2)(terser@5.49.0))
-      xlsx:
-        specifier: ^0.18.5
-        version: 0.18.5
 
 packages:
 

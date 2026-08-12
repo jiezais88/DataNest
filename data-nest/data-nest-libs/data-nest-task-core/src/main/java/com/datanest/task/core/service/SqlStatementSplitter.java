@@ -25,6 +25,34 @@ public final class SqlStatementSplitter {
     private SqlStatementSplitter() {
     }
 
+    /**
+     * SQL 语句类型分类（只取首词判断，SimpleEvaluationContext 同类朴素实现）。
+     * <p>
+     * 返回四分类：QUERY / DDL / DML / UNKNOWN。
+     * 2026-08-12 收敛来源：worker DagNodeExecuteService.classifySql 与
+     * engineering SqlPreviewService.classify 逐字相同，GenericSqlExecutor.classifyDmlDdl
+     * 是其子集（DDL/DML/UNKNOWN），统一委托到此处，避免三处重复维护。
+     */
+    public static String classify(String sql) {
+        String trimmed = sql.trim();
+        int firstSpace = trimmed.indexOf(' ');
+        String first = firstSpace > 0 ? trimmed.substring(0, firstSpace) : trimmed;
+        String upper = first.toUpperCase();
+        if (upper.startsWith("SELECT") || upper.startsWith("WITH") || upper.startsWith("SHOW")
+                || upper.startsWith("DESC") || upper.startsWith("EXPLAIN") || upper.startsWith("VALUES")) {
+            return "QUERY";
+        }
+        if (upper.startsWith("CREATE") || upper.startsWith("DROP") || upper.startsWith("ALTER")
+                || upper.startsWith("TRUNCATE") || upper.startsWith("RENAME") || upper.startsWith("COMMENT")) {
+            return "DDL";
+        }
+        if (upper.startsWith("INSERT") || upper.startsWith("UPDATE") || upper.startsWith("DELETE")
+                || upper.startsWith("MERGE")) {
+            return "DML";
+        }
+        return "UNKNOWN";
+    }
+
     public static List<String> split(String sql) {
         List<String> result = new ArrayList<>();
         if (sql == null) {

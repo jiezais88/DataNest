@@ -6,6 +6,11 @@ import com.datanest.common.constant.CollectTaskStatus;
 import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.constant.ScheduleType;
 import com.datanest.common.constant.TaskTriggerType;
+import com.datanest.common.exception.BusinessException;
+import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.model.Result;
+import com.datanest.engineering.api.EngineeringDatasourceApi;
+import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.governance.api.dto.AutoCreateCollectTaskRequest;
 import com.datanest.governance.api.dto.DatasourceReferencesDTO;
 import com.datanest.governance.api.dto.ReferenceItemDTO;
@@ -55,6 +60,7 @@ public class InternalDatasourceService {
     private final LineageRecordMapper lineageRecordMapper;
     private final SchedulerService schedulerService;
     private final AssetCollaborationService assetCollaborationService;
+    private final EngineeringDatasourceApi datasourceApi;
 
     public InternalDatasourceService(CollectTaskMapper collectTaskMapper,
                                      MetadataTableMapper metadataTableMapper,
@@ -64,7 +70,8 @@ public class InternalDatasourceService {
                                      QualityRuleMapper qualityRuleMapper,
                                      LineageRecordMapper lineageRecordMapper,
                                      SchedulerService schedulerService,
-                                     AssetCollaborationService assetCollaborationService) {
+                                     AssetCollaborationService assetCollaborationService,
+                                     EngineeringDatasourceApi datasourceApi) {
         this.collectTaskMapper = collectTaskMapper;
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
@@ -74,6 +81,7 @@ public class InternalDatasourceService {
         this.lineageRecordMapper = lineageRecordMapper;
         this.schedulerService = schedulerService;
         this.assetCollaborationService = assetCollaborationService;
+        this.datasourceApi = datasourceApi;
     }
 
     /**
@@ -179,6 +187,31 @@ public class InternalDatasourceService {
         logger.info("数据源保存后自动采集任务已触发: datasourceId={}, taskId={}, schedulerJobId={}",
                 request.getDatasourceId(), task.getId(), schedulerJobId);
         return task.getId();
+    }
+
+    /**
+     * 按数据源 ID 立即触发一次采集（SQL 终端「去采集」入口，Sprint 10 F1）：
+     * 经 engineering-api 回读数据源连接信息 → 组装 AutoCreateCollectTaskRequest
+     * → 复用 autoCreateCollectTask 建任务并立即触发。
+     * engineering 不可用或数据源不存在时抛错（fail-closed，避免静默失败误导用户）。
+     *
+     * @return collectTaskId
+     */
+    public Long collectNow(Long datasourceId, Long operatorId) {
+        Result<DataSourceInfo> readResult = datasourceApi.getById(datasourceId);
+        DataSourceInfo info = readResult == null ? null : readResult.data();
+        if (info == null) {
+            throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND, "数据源不存在或工程服务不可用: " + datasourceId);
+        }
+        AutoCreateCollectTaskRequest request = new AutoCreateCollectTaskRequest();
+        request.setDatasourceId(datasourceId);
+        request.setDatasourceName(info.getName());
+        request.setType(info.getType());
+        request.setDatabaseName(info.getDatabaseName());
+        request.setSchemaName(info.getSchemaName());
+        request.setUsername(info.getUsername());
+        request.setCreatedBy(operatorId == null ? 0L : operatorId);
+        return autoCreateCollectTask(request);
     }
 
     /** 按 dag_id 删除血缘记录（DAG 删除级联清理），返回删除条数。 */

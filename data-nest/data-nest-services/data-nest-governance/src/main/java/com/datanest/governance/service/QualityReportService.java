@@ -3,6 +3,7 @@ package com.datanest.governance.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
@@ -71,9 +72,6 @@ public class QualityReportService {
     private static final int DEFAULT_RANGE_DAYS = 30;
     /** 导出问题清单行数上限（超出截断 + warn，对齐收藏导出模式） */
     private static final int MAX_EXPORT_ROWS = 5000;
-    private static final long BUILTIN_DORIS_DATASOURCE_ID = -1L;
-    private static final String BUILTIN_DORIS_NAME = "Doris 数仓";
-
     private final QualityCheckDetailMapper detailMapper;
     private final QualityScoreMapper scoreMapper;
     private final QualityScoreHistoryMapper scoreHistoryMapper;
@@ -636,7 +634,7 @@ public class QualityReportService {
     /** 批量回填数据源名称（-1 内置 Doris 特判；失败经 RemoteCalls 降级空 Map，选项名退化为「数据源 id」）。 */
     private Map<Long, String> datasourceNames(List<Long> datasourceIds) {
         List<Long> externalIds = datasourceIds.stream()
-                .filter(id -> id != BUILTIN_DORIS_DATASOURCE_ID).toList();
+                .filter(id -> id != DorisConstants.BUILTIN_DORIS_DATASOURCE_ID).toList();
         Map<Long, String> nameMap = RemoteCalls.execute("engineering.datasource.batchGet", () -> {
             if (externalIds.isEmpty()) {
                 return Map.<Long, String>of();
@@ -652,8 +650,8 @@ public class QualityReportService {
                     .collect(Collectors.toMap(DataSourceInfo::getId, DataSourceInfo::getName, (a, b) -> a));
         }, Map.of());
         Map<Long, String> map = new HashMap<>(nameMap);
-        if (datasourceIds.contains(BUILTIN_DORIS_DATASOURCE_ID)) {
-            map.put(BUILTIN_DORIS_DATASOURCE_ID, BUILTIN_DORIS_NAME);
+        if (datasourceIds.contains(DorisConstants.BUILTIN_DORIS_DATASOURCE_ID)) {
+            map.put(DorisConstants.BUILTIN_DORIS_DATASOURCE_ID, DorisConstants.BUILTIN_DORIS_NAME);
         }
         return map;
     }

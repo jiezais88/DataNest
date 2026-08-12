@@ -63,3 +63,13 @@ export function updateColumnComment(columnId: string, manualComment: string) {
 export function updateColumnRemark(columnId: string, remark: string) {
     return request.put<Result<null>>(`/governance/metadata/columns/${columnId}/remark`, {remark} as MetadataRemarkRequest);
 }
+
+/** 按数据源立即触发一次元数据采集（SQL 终端「去采集」入口），返回 collectTaskId */
+export function collectMetadataNow(datasourceId: string) {
+    return request.post<Result<string>>(`/governance/metadata/datasources/${datasourceId}/collect-now`);
+}
+
+/** 查询采集任务状态（SQL 终端采集轮询用；status: NEVER_EXECUTED/RUNNING/SUCCESS/FAILED/TERMINATED） */
+export function getCollectTask(taskId: string) {
+    return request.get<Result<{id: string; status: string}>>(`/governance/collect-tasks/${taskId}`);
+}

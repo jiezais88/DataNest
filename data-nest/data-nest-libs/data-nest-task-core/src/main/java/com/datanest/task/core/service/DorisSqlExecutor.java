@@ -38,8 +38,10 @@ public class DorisSqlExecutor {
 
     /**
      * 拿 connection：先试连接池，失败则 DriverManager
+     * <p>
+     * 2026-08-12 提升可见性：供 data-service CancelableSqlExecutor 复用（原为 private 副本）。
      */
-    private Connection openConnection() throws java.sql.SQLException {
+    public Connection openConnection() throws java.sql.SQLException {
         javax.sql.DataSource ds = DorisDataSourceConfig.getDataSource();
         if (ds != null) {
             return ds.getConnection();

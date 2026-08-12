@@ -12,6 +12,7 @@
 | `docs/agent/conventions-frontend.md` | 前端技术栈、目录结构、API/错误/状态/路由/样式规范 | 写前端代码时 |
 | `docs/agent/gotchas.md` | 已知坑完整版 + 已解决坑 + E2E 测试细节 | 排查问题、写/改测试时 |
 | `docs/agent/prototype-guide.md` | UI 原型高保真制作规范 + 真实 token/组件速查表 | 做静态高保真原型时 |
+| `docs/agent/shared-code-governance.md` | 共享能力清单（common/task-core 已有能力）+ 复用检查清单 + 下沉判断标准与 SOP | 写任何通用能力/工具/配置/常量前，或发现多服务重复实现时 |
 
 ## 1. 项目概览
 
@@ -33,8 +34,8 @@ DataNest 是一个数据平台，技术栈如下：
 
 | 模块 | 说明 |
 |------|------|
-| `data-nest-common` | 公共组件（SchedulerClient/PowerJobWorkflowClient（PowerJob OpenAPI 直连）、InternalTokenFilter/Feign 拦截器等），最底层底座 |
-| `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等 + 共享 dto 包；全部 DB 访问经 Feign） |
+| `data-nest-common` | 公共组件（SchedulerClient/PowerJobWorkflowClient（PowerJob OpenAPI 直连）、InternalTokenFilter/Feign 拦截器等），最底层底座。**2026-08-12 增：FlywayAutoConfiguration（持库服务统一迁移）、MybatisPlusInterceptorAutoConfiguration（从 task-core 迁入，分页+乐观锁兜底）、DorisConstants（内置 Doris 数据源 ID=-1L 与展示名统一）、JdbcUrlBuilder（带 socketTimeout 重载）、JdbcPreviewHelper.formatValue/classifyError 公开** |
+| `data-nest-task-core` | 执行内核（SyncJobExecutorService/QualityCheckService/CollectExecutor 等 + 共享 dto 包；全部 DB 访问经 Feign）。**2026-08-12：新增 SystemUserResolver（用户名批量反查，engineering/governance 统一委托）、SqlStatementSplitter.classify（SQL 四分类，worker/engineering/GenericSqlExecutor 统一）** |
 | `data-nest-alert-api` | app-alert 的 Feign 契约（AlertApi + DTO）。worker/job/engineering/governance 依赖 |
 | `data-nest-realtime-api` | app-realtime 的 Feign 契约（CdcPipelineApi + DTO，engineering 删除数据源校验依赖，fail-closed） |
 | `data-nest-system-api` / `data-nest-engineering-api` / `data-nest-governance-api` | 各服务 Feign 契约（内部端点 + DTO + fallbackFactory） |
@@ -68,6 +69,7 @@ DataNest 是一个数据平台，技术栈如下：
 
 ## 2. 会话约定
 
+- **所有 agent 一律从产品角度思考**（全局纪律，不限会话类型、不限角色，包括子 agent/子会话）。做任何需求分析、技术方案、编码实现、接口设计、页面交互、Bug 修复前，先回答三问：①这个功能/改动给用户带来什么价值，解决什么真实场景？②现有的交互和边界是否符合用户心智（例如"数据源状态"是给运维看的，就要贴近运维认知而非技术字段名）？③有没有更贴合产品目标、更省用户操作的方案？技术可行性不能凌驾于产品合理性之上；当产品意图不明确或实现与产品初衷冲突时，先向用户澄清，不擅自替用户做产品决策。
 - **一个会话一个目标**。避免把技术选型、闲聊、无关 Bug 修复混进主线。
 - 回复和说明使用 **中文**；代码注释/提交信息跟随项目现有风格（中文为主）。
 - 跨会话恢复上下文时，先读 `docs/sprint<编号>/handoff/sprint-<编号>.md`；如不存在，请用户简述当前目标。
@@ -78,6 +80,7 @@ DataNest 是一个数据平台，技术栈如下：
 
 - **先读代码再动手**。修改代码前必须通过 `Read`/`Grep` 读透相关文件和调用链，不要凭记忆或猜测；特别是 `data-nest-task-core` 的改动，要确认 engineering、worker 等所有消费方。
 - **改接口必须同步前端/文档**。修改 DTO、返回结构、URL 路径、字段含义时，必须同步检查前端调用点和接口文档，避免前后端不一致。
+- **共享能力先查再建（DRY 硬约束）**。写任何通用能力（工具方法/配置类/常量/DTO/回填/校验/响应/异常）之前，**必须**先查 `data-nest-common` / `data-nest-task-core` 是否已有（详见 `docs/agent/shared-code-governance.md` 的清单与检查清单），已有则直接复用，**禁止**在服务本地再造一份；发现 ≥2 个服务重复实现时必须按下沉规范处理。已治理项（FlywayConfig、MyBatisPlusConfig、DorisConstants、SystemUserResolver、SqlStatementSplitter.classify、PowerJobWorkerSupport、JdbcUrlBuilder/JdbcPreviewHelper）**禁止回归自建**。
 
 ### 文档同步约定
 

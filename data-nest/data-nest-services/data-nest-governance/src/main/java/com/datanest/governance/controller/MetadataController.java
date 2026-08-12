@@ -2,10 +2,12 @@ package com.datanest.governance.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.stp.StpUtil;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.*;
 import com.datanest.governance.service.MetadataPreviewService;
 import com.datanest.governance.service.MetadataService;
+import com.datanest.governance.service.internal.InternalDatasourceService;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,16 +26,31 @@ public class MetadataController {
 
     private final MetadataService metadataService;
     private final MetadataPreviewService metadataPreviewService;
+    private final InternalDatasourceService internalDatasourceService;
 
-    public MetadataController(MetadataService metadataService, MetadataPreviewService metadataPreviewService) {
+    public MetadataController(MetadataService metadataService, MetadataPreviewService metadataPreviewService,
+                              InternalDatasourceService internalDatasourceService) {
         this.metadataService = metadataService;
         this.metadataPreviewService = metadataPreviewService;
+        this.internalDatasourceService = internalDatasourceService;
     }
 
     @Operation(summary = "已采集数据源列表")
     @GetMapping("/datasources")
     public Result<List<MetadataDatasourceDTO>> listDatasourceIds() {
         return Result.ok(metadataService.listDatasourceIds());
+    }
+
+    @Operation(summary = "按数据源立即触发一次元数据采集", description = "SQL 终端「去采集」入口：回读工程域连接信息 → 创建自动采集任务并立即执行，返回 collectTaskId")
+    @PostMapping("/datasources/{datasourceId}/collect-now")
+    public Result<Long> collectNow(@Parameter(description = "数据源 ID") @PathVariable Long datasourceId) {
+        Long operatorId;
+        try {
+            operatorId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            operatorId = 0L;
+        }
+        return Result.ok(internalDatasourceService.collectNow(datasourceId, operatorId));
     }
 
     @Operation(summary = "元数据搜索树")

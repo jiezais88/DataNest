@@ -17,6 +17,7 @@ import com.datanest.governance.api.dto.QualityExecutionPlanRequest;
 import com.datanest.governance.api.dto.QualityRulePlanRequest;
 import com.datanest.task.core.dto.PythonExecuteResult;
 import com.datanest.common.constant.AlertConstants;
+import com.datanest.common.constant.DorisConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,9 +51,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class QualityCheckService {
 
     private static final Logger logger = LoggerFactory.getLogger(QualityCheckService.class);
-
-    /** 内置 Doris 数据源 ID 标记（metadata_table.datasource_id = -1 时走 DorisSqlExecutor） */
-    private static final long DORIS_DATASOURCE_ID = -1L;
 
     /** 批次执行超时检测调度器（守护线程，不阻止 JVM 退出） */
     private static final ScheduledExecutorService TIMEOUT_SCHEDULER = Executors.newScheduledThreadPool(2, new java.util.concurrent.ThreadFactory() {
@@ -309,9 +307,10 @@ public class QualityCheckService {
         if (rule.getTableName() == null) {
             throw new BusinessException(ErrorCode.QUALITY_TABLE_NOT_FOUND, "目标表不存在: " + rule.getTableId());
         }
-        long datasourceId = rule.getDatasourceId() == null ? DORIS_DATASOURCE_ID : rule.getDatasourceId();
+        long datasourceId = rule.getDatasourceId() == null
+                ? DorisConstants.BUILTIN_DORIS_DATASOURCE_ID : rule.getDatasourceId();
 
-        if (datasourceId == DORIS_DATASOURCE_ID) {
+        if (datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
             // 内置 Doris：返回 columns + rows(List<Map>)
             DorisSqlExecutor.QueryResult result = dorisSqlExecutor.query(sql);
             return extractFromDoris(result, rule);

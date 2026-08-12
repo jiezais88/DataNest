@@ -16,6 +16,7 @@ import com.datanest.engineering.entity.*;
 import com.datanest.engineering.mapper.*;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -267,17 +268,10 @@ public class DagProjectService {
     }
 
     /**
-     * 经 system 服务 Feign 批量查询 userId → username 映射。
-     * system 不可用时降级为空 Map 并记 warn（列表页名称列退化为空），不拖垮本接口。
+     * 经 system 服务 Feign 批量查询 userId → username 映射（委托 task-core SystemUserResolver）。
+     * system 不可用时降级为空 Map（列表页名称列退化为空），不拖垮本接口。
      */
     private Map<Long, String> usernames(Collection<Long> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
-            return Map.of();
-        }
-        // RemoteCalls 统一降级：兜住熔断 fallback 之外的异常（如序列化错），warn + 计数后返回空 Map
-        return RemoteCalls.execute("system.usernames", () -> {
-            Result<Map<Long, String>> result = systemUserApi.usernames(userIds.stream().toList());
-            return result == null || result.data() == null ? Map.of() : result.data();
-        }, Map.of());
+        return SystemUserResolver.usernames(systemUserApi, userIds);
     }
 }

@@ -23,6 +23,7 @@ import {
     HiOutlineServer,
     HiOutlineShieldCheck,
     HiOutlineStar,
+    HiOutlineCommandLine,
     HiOutlineTableCells,
     HiOutlineUsers,
 } from 'react-icons/hi2';
@@ -78,6 +79,17 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 path: '/engineering/task-templates',
                 icon: <HiOutlineClipboardDocumentList size={18}/>,
                 roles: ENGINEERING_WRITE_ROLES
+            },
+        ],
+    },
+    {
+        group: '数据服务',
+        items: [
+            {
+                label: 'SQL 查询终端',
+                path: '/data-service/sql-console',
+                icon: <HiOutlineCommandLine size={18}/>,
+                roles: ALL_ROLES
             },
         ],
     },

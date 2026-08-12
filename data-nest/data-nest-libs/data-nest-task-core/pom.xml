@@ -41,6 +41,13 @@
             <artifactId>data-nest-governance-api</artifactId>
         </dependency>
 
+        <!-- DataNest System API（SystemUserResolver 用户名反查用，provided；消费方服务自身已引入） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-system-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Spring Context (provided by consumers) -->
         <dependency>
             <groupId>org.springframework</groupId>

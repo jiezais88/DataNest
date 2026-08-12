@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
+import com.datanest.dataservice.dto.SqlCancelRequest;
 import com.datanest.dataservice.dto.SqlDatasourceDTO;
 import com.datanest.dataservice.dto.SqlExecuteRequest;
 import com.datanest.dataservice.dto.SqlExecuteResult;
@@ -43,10 +44,16 @@ public class SqlQueryController {
         this.historyMapper = historyMapper;
     }
 
-    @Operation(summary = "执行只读 SQL", description = "JSqlParser 语法级只读校验（SELECT/WITH/SHOW/DESC/EXPLAIN），命中机密表拦截")
+    @Operation(summary = "执行只读 SQL", description = "JSqlParser 语法级只读校验（SELECT/WITH/SHOW/DESC/EXPLAIN），命中机密表拦截；请求带 queryId 时支持「停止」取消")
     @PostMapping("/execute")
     public Result<SqlExecuteResult> execute(@Valid @RequestBody SqlExecuteRequest request) {
         return Result.ok(sqlQueryService.execute(request));
+    }
+
+    @Operation(summary = "停止查询", description = "按执行时下发的 queryId 取消本次查询（中断线程 + 关闭连接）；查无此 id 幂等返回")
+    @PostMapping("/cancel")
+    public Result<Boolean> cancel(@Valid @RequestBody SqlCancelRequest request) {
+        return Result.ok(sqlQueryService.cancel(request.getQueryId()));
     }
 
     @Operation(summary = "数据源下拉", description = "内置 Doris + 状态 NORMAL 的平台数据源")

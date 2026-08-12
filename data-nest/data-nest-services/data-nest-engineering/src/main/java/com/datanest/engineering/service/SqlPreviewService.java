@@ -9,6 +9,7 @@ import com.datanest.task.core.service.DagParameterResolver;
 import com.datanest.task.core.service.DorisSqlExecutor;
 import com.datanest.task.core.service.GenericSqlExecutor;
 import com.datanest.task.core.service.SqlStatementSplitter;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -151,22 +152,6 @@ public class SqlPreviewService {
     }
 
     private String classify(String sql) {
-        String trimmed = sql.trim();
-        int firstSpace = trimmed.indexOf(' ');
-        String first = firstSpace > 0 ? trimmed.substring(0, firstSpace) : trimmed;
-        String upper = first.toUpperCase();
-        if (upper.startsWith("SELECT") || upper.startsWith("WITH") || upper.startsWith("SHOW")
-                || upper.startsWith("DESC") || upper.startsWith("EXPLAIN") || upper.startsWith("VALUES")) {
-            return "QUERY";
-        }
-        if (upper.startsWith("CREATE") || upper.startsWith("DROP") || upper.startsWith("ALTER")
-                || upper.startsWith("TRUNCATE") || upper.startsWith("RENAME") || upper.startsWith("COMMENT")) {
-            return "DDL";
-        }
-        if (upper.startsWith("INSERT") || upper.startsWith("UPDATE") || upper.startsWith("DELETE")
-                || upper.startsWith("MERGE")) {
-            return "DML";
-        }
-        return "UNKNOWN";
+        return SqlStatementSplitter.classify(sql);
     }
 }
