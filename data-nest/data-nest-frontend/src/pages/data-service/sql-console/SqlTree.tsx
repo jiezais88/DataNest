@@ -279,7 +279,13 @@ const SqlTree = forwardRef<SqlTreeHandle, {
         const next = new Set(expanded);
         const willExpand = !next.has(key);
         if (next.has(key)) {
-            next.delete(key);
+            // 已展开但子节点尚未加载（如默认展开的 Doris）→ 点击改为加载库列表，
+            // 避免「第一次点击收起、第二次点击才展开加载」的反直觉交互
+            if (!loadedRef.current.has(key) && item.children.length === 0) {
+                await loadChildren(item);
+            } else {
+                next.delete(key);
+            }
         } else {
             next.add(key);
             if (!loadedRef.current.has(key)) {

@@ -103,8 +103,12 @@ public class ExternalSqlExecutor {
     static boolean isTimeout(Throwable t) {
         Throwable cur = t;
         while (cur != null) {
-            if (cur instanceof SQLException se && "HYT00".equals(se.getSQLState())) {
-                return true;
+            if (cur instanceof SQLException se) {
+                String state = se.getSQLState();
+                // HYT00 = MySQL 驱动超时；57014 = PG 驱动 setQueryTimeout 触发 query_canceled（二者语义一致）
+                if ("HYT00".equals(state) || "57014".equals(state)) {
+                    return true;
+                }
             }
             if (cur instanceof java.sql.SQLTimeoutException) {
                 return true;

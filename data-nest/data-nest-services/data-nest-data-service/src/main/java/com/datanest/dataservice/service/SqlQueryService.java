@@ -127,6 +127,13 @@ public class SqlQueryService {
                 asyncSaveHistory(userId, request, (int) (System.currentTimeMillis() - start), result.getRowCount(), null);
                 return result;
             } catch (BusinessException e) {
+                // 用户主动停止：cancel 关闭连接导致 JDBC 抛异常（如 Communications link failure）
+                // → 统一映射为「查询已被停止」，避免历史/错误提示误报「查询失败」
+                if (runningQuery.isCancelled()) {
+                    BusinessException stopped = new BusinessException(ErrorCode.SQL_TIMEOUT, "查询已被停止");
+                    asyncSaveHistory(userId, request, (int) (System.currentTimeMillis() - start), null, stopped.getMessage());
+                    throw stopped;
+                }
                 // 失败也写历史（含错误信息，供查询历史回显/回填重试）
                 asyncSaveHistory(userId, request, (int) (System.currentTimeMillis() - start), null, e.getMessage());
                 throw e;
@@ -370,6 +377,10 @@ public class SqlQueryService {
 
         void setFuture(Future<?> future) {
             this.future = future;
+        }
+
+        boolean isCancelled() {
+            return cancelled.get();
         }
 
         void setConnection(Connection connection) {
