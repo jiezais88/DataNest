@@ -1,6 +1,6 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-12（F2 前端 + 联调会话）
+> 更新：2026-08-13（F3 前端 + 联调会话）
 > 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.8）· `../DataNest-Sprint10-原型.html/css`
 
 ---
@@ -13,7 +13,27 @@
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
 | 后端 | ✅ F1/F2/F3 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关（本会话）**：对外执行入口 `GET /open-api/v1/{path}` + `OpenApiKeyFilter`（Key 认证/绑定/限流）+ Redis 滑动窗口限流 + Resilience4j 数据源熔断 + 异步调用统计 + `StatsController` 全局统计（`/stats/*` 7 端点 + `/apis/{id}/stats`）已实现并部署（healthy），自测全通过；F4 WebSocket / F5 分级对外端点未开始 |
-| 前端 | ✅ F1/F2 完成 | **SQL 查询终端页已实现并部署 `app-frontend`**（`/data-service/sql-console`）；**F2（本会话）：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（列表/新建编辑弹窗/明文一次性展示/快捷启停/僵尸 Key 灰显）已实现并部署**，Sidebar「数据服务」组补「API 管理」；联调通过 |
+| 前端 | ✅ F1/F2/F3 完成 | **SQL 查询终端页**（`/data-service/sql-console`）；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（列表/新建编辑弹窗/明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3（本会话）：API 运行统计全局页（`/data-service/api-stats`）+ 单 API 详情统计区块 + 列表操作列统计按钮 + Sidebar 入口**，联调通过 |
+
+---
+
+## 1.1 本次会话变更清单（F3 前端 + 补后端单 API 统计，2026-08-13）
+
+### 1.1.1 后端补丁（data-service，未碰 task-core，已部署）
+- **`ApiStatsDTO` 扩展**：加 `hourly`（今日小时调用分布）/ `topKeys`（调用方 Key 排行 Top5）/ `statusBreakdown`（2xx/4xx/5xx 三档）——支撑单 API 详情完整原型图表；新建 `StatusBreakdownDTO`。
+- **`ApiCallLogMapper`** 加 3 查询（`hourlyByApiSince` / `topKeysByApiSince` / `statusBreakdownByApiSince`）；`StatsQueryService.apiStats` 填充三字段 + 私有 `topKeysByApi`（key 名反查）。
+- 用户拍板「补后端端点，做完整原型」。
+
+### 1.1.2 前端（app-frontend，已部署）
+- **API 运行统计全局页** `pages/data-service/api-stats/`：KPI 4 卡 + 全局调用量趋势（双线 LineChart）+ API 健康分布（综合分+三档占比+明细可跳）+ Top5 API 排行（可跳详情）+ 错误码分布（4xx/5xx + 429 突出）+ Key 排行（僵尸灰显）+ 限流趋势（柱状）+ 状态速览（复用 `/apis/summary`）。
+- **单 API 详情统计** `api-manage/ApiStatsSection.tsx`（替换「调用统计占位」）：健康评级条（0 调用显「暂无调用」）+ KPI 4 卡 + 调用量/错误率趋势（错误率由 trend 推导）+ 今日小时分布 + Key 排行 + 错误码分布（三档）+ 最近调用（最新 5 条·异常高亮）。
+- **共享组件** `api-stats/charts.tsx`：KpiCard/ChartCard/RankItem/SplitBar/Bars/RangeSeg 等（全局页与单 API 详情复用，对齐质量报告 charts 模式）。
+- **入口**：Sidebar「数据服务」组补「API 运行统计」；路由 `/data-service/api-stats` + 面包屑。**Review 决策（用户拍板）：操作列不加「运行统计」按钮**（单 API 统计走「查看详情」、全局统计走 Sidebar 入口，避免职责重叠）。
+
+### 1.1.3 验证
+- 后端 `mvn compile/package` 通过 + 镜像重建部署（healthy）；前端 `tsc --noEmit` + `pnpm build` 通过 + 部署。
+- 实测：`/stats/*` 7 端点 + `/apis/{id}/stats`（含新字段）返回 200 结构正确；浏览器驱动验证全局页 8 区块 + 单 API 详情统计区块渲染无 JS 错误；0 调用健康评级边界已修；测试 API 已清理。
+- Review 修复：两处 `useEffect` 加 cancelled 竞态防护（快速切 range 旧请求覆盖新数据）；`Bars` 用 `bucket` 作 key（原 index key 在 range 切换桶数变化时复用错位）。
 
 ---
 
@@ -73,7 +93,7 @@
 ## 5. Next Action
 
 1. ~~**F2 API 管理 + Key**~~ ✅ 已完成（见 §19 后端 + §20 前端/联调）。
-2. ~~**F3 API 网关**~~ ✅ 已完成（见 §21 后端）。
+2. ~~**F3 API 网关 + 调用统计**~~ ✅ 已完成（后端见 §21，前端见 §1.1）。
 3. **F5 分级对外端点**：governance `SensitivityController`（改级/批量/开白/审计，机密降级必经 INTERNAL 两步）+ 前端数据分级分类页。
 4. **F4 WebSocket 实时订阅**：依赖 Kafka 中间件——compose `middleware-kafka`（`apache/kafka:4.0.x`）+ Flink lib 增 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2` + realtime `CdcEventYamlBuilder` 事件作业联动（server-id 6400+/PG 额外槽）+ `WsEventsHandler` + `KafkaEventConsumer`。
 5. ~~**健康分级阈值确认**~~ ✅ 已定稿（对齐告警 PASS/WARNING/SEVERE，见 §21）。

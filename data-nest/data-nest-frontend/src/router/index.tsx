@@ -45,6 +45,7 @@ const ApiCreateWizardPage = lazyPage(() => import('@/pages/data-service/api-mana
 const ApiDetailPage = lazyPage(() => import('@/pages/data-service/api-manage/detail'));
 const ApiEditPage = lazyPage(() => import('@/pages/data-service/api-manage/edit'));
 const ApiKeysPage = lazyPage(() => import('@/pages/data-service/api-keys'));
+const ApiStatsPage = lazyPage(() => import('@/pages/data-service/api-stats'));
 
 export const router = createBrowserRouter([
     {
@@ -123,6 +124,7 @@ export const router = createBrowserRouter([
             {path: 'data-service/api-manage/:id', element: <ApiDetailPage/>},
             {path: 'data-service/api-manage/:id/edit', element: <ApiEditPage/>},
             {path: 'data-service/api-keys', element: <ApiKeysPage/>},
+            {path: 'data-service/api-stats', element: <ApiStatsPage/>},
         ],
     },
 ]);

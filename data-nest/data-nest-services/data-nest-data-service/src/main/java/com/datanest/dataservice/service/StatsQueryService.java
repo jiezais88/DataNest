@@ -217,10 +217,29 @@ public class StatsQueryService {
         dto.setTodayCalls(today == null ? 0 : today);
         dto.setTrend(callLogMapper.trendByApiSince(apiId, r.since(), r.unit()));
         dto.setRecentLogs(recentLogs(apiId));
+        dto.setHourly(callLogMapper.hourlyByApiSince(apiId, LocalDate.now().atStartOfDay()));
+        dto.setTopKeys(topKeysByApi(apiId, r.since()));
+        dto.setStatusBreakdown(callLogMapper.statusBreakdownByApiSince(apiId, r.since()));
         return dto;
     }
 
     // ---------- 内部方法 ----------
+
+    /** 单 API 调用方 Key 排行（Top 5，key 名反查；zombie 恒 false） */
+    private List<StatsTopKeyDTO> topKeysByApi(Long apiId, LocalDateTime since) {
+        List<RefCount> counts = callLogMapper.topKeysByApiSince(apiId, since, 5);
+        Map<Long, ApiKey> keyMap = keyMap(counts.stream().map(RefCount::getRefId).toList());
+        return counts.stream().map(c -> {
+            ApiKey key = keyMap.get(c.getRefId());
+            StatsTopKeyDTO dto = new StatsTopKeyDTO();
+            dto.setKeyId(c.getRefId());
+            dto.setName(key == null ? "已删除的 Key" : key.getName());
+            dto.setCalls(c.getCnt());
+            dto.setZombie(false);
+            return dto;
+        }).toList();
+    }
+
 
     /** 最近 5 条调用明细（PRD 6.5.2「最新 5 条 · 异常高亮」） */
     private List<ApiCallLogItemDTO> recentLogs(Long apiId) {

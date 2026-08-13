@@ -5,6 +5,7 @@ import com.datanest.dataservice.dto.CallStatAgg;
 import com.datanest.dataservice.dto.OverviewAgg;
 import com.datanest.dataservice.dto.RefCount;
 import com.datanest.dataservice.dto.StatusAgg;
+import com.datanest.dataservice.dto.StatusBreakdownDTO;
 import com.datanest.dataservice.dto.TrendAgg;
 import com.datanest.dataservice.entity.ApiCallLog;
 import org.apache.ibatis.annotations.Param;
@@ -96,6 +97,25 @@ public interface ApiCallLogMapper extends BaseMapper<ApiCallLog> {
             + "FROM api_call_log WHERE created_at >= #{since} AND api_id = #{apiId} GROUP BY bucket ORDER BY bucket")
     List<TrendAgg> trendByApiSince(@Param("apiId") Long apiId, @Param("since") LocalDateTime since,
                                    @Param("unit") String unit);
+
+    /** 单 API 今日小时调用分布（按小时分桶） */
+    @Select("SELECT date_trunc('hour', created_at) AS bucket, COUNT(*) AS total "
+            + "FROM api_call_log WHERE created_at >= #{since} AND api_id = #{apiId} GROUP BY bucket ORDER BY bucket")
+    List<TrendAgg> hourlyByApiSince(@Param("apiId") Long apiId, @Param("since") LocalDateTime since);
+
+    /** 单 API 调用方 Key 排行（TopN） */
+    @Select("SELECT key_id AS refId, COUNT(*) AS cnt FROM api_call_log "
+            + "WHERE created_at >= #{since} AND api_id = #{apiId} AND key_id IS NOT NULL "
+            + "GROUP BY key_id ORDER BY COUNT(*) DESC LIMIT #{limit}")
+    List<RefCount> topKeysByApiSince(@Param("apiId") Long apiId, @Param("since") LocalDateTime since,
+                                     @Param("limit") int limit);
+
+    /** 单 API 状态码三档汇总（2xx 成功 / 4xx 客户端 / 5xx 服务端） */
+    @Select("SELECT COUNT(*) FILTER (WHERE status_code >= 200 AND status_code < 300) AS success, "
+            + "COUNT(*) FILTER (WHERE status_code >= 400 AND status_code < 500) AS clientError, "
+            + "COUNT(*) FILTER (WHERE status_code >= 500) AS serverError "
+            + "FROM api_call_log WHERE created_at >= #{since} AND api_id = #{apiId}")
+    StatusBreakdownDTO statusBreakdownByApiSince(@Param("apiId") Long apiId, @Param("since") LocalDateTime since);
 
     /** 统计 since 以来的全部调用数（API 管理列表页「近 7 天总调用」统计卡） */
     @Select("<script>SELECT COUNT(*) FROM api_call_log WHERE created_at &gt;= #{since}</script>")

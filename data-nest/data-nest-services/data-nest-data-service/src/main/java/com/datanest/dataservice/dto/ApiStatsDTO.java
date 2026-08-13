@@ -32,4 +32,12 @@ public class ApiStatsDTO {
 
     @Schema(description = "最近调用明细")
     private List<ApiCallLogItemDTO> recentLogs;
+    @Schema(description = "今日小时调用分布（00-23 点，bucket=hour）")
+    private List<TrendAgg> hourly;
+
+    @Schema(description = "调用方 Key 排行（该 API 维度 TopN）")
+    private List<StatsTopKeyDTO> topKeys;
+
+    @Schema(description = "状态码三档汇总（2xx 成功 / 4xx 客户端 / 5xx 服务端）")
+    private StatusBreakdownDTO statusBreakdown;
 }

@@ -27,6 +27,7 @@ import DsSpinner from '@/components/DsSpinner';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import {ApiKeyStatusBadge, DataApiStatusBadge, SensitivityBadge} from '../badges';
 import type {DataApiDetail} from '@/types/data-service';
+import ApiStatsSection from './ApiStatsSection';
 
 export default function ApiDetailPage() {
     const {id} = useParams<{ id: string }>();
@@ -319,13 +320,8 @@ export default function ApiDetailPage() {
                 )}
             </section>
 
-            {/* 调用统计占位（F3 网关上线后开放） */}
-            <section
-                className="border border-dashed border-ds-border-strong rounded-ds-md p-ds-5 text-center">
-                <p className="text-ds-small text-ds-text-muted">
-                    调用统计（调用量、成功率、耗时趋势与调用明细）将在后续版本开放，敬请期待。
-                </p>
-            </section>
+            {/* 调用统计（F3：单 API 深度观测） */}
+            <ApiStatsSection apiId={detail.id} />
 
             <ConfirmDialog
                 open={deleteOpen}

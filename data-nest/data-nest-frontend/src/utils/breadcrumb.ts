@@ -37,6 +37,7 @@ export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/data-service/sql-console': {group: '数据服务', label: 'SQL 查询终端', leaf: true},
     '/data-service/api-manage': {group: '数据服务', label: 'API 管理', leaf: true},
     '/data-service/api-keys': {group: '数据服务', label: 'API Key 管理', leaf: true},
+    '/data-service/api-stats': {group: '数据服务', label: 'API 运行统计', leaf: true},
 };
 
 /**

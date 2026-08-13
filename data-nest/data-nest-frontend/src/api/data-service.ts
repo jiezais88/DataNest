@@ -2,10 +2,12 @@
 import request from './request';
 import type {Result, PageResult} from '@/types/common';
 import type {
+    ApiCallLogItem,
     ApiKeyCreateResult,
     ApiKeyDetail,
     ApiKeyPageItem,
     ApiKeySaveRequest,
+    ApiStats,
     DataApiCreateRequest,
     DataApiDetail,
     DataApiPageItem,
@@ -18,6 +20,14 @@ import type {
     SqlExecuteResult,
     SqlExportRequest,
     SqlQueryHistory,
+    StatsErrorCode,
+    StatsHealthDistribution,
+    StatsOverview,
+    StatsRange,
+    StatsTopApi,
+    StatsTopKey,
+    StatsTrendPoint,
+    StatusBreakdown,
 } from '@/types/data-service';
 
 /**
@@ -157,4 +167,46 @@ export function disableApiKey(id: string) {
 /** 删除 Key（同时清理 API 绑定与管道订阅授权） */
 export function deleteApiKey(id: string) {
     return request.delete<Result<null>>(`/data-service/api-keys/${id}`);
+}
+
+// ============ Sprint 10 F3：API 运行统计（全局）+ 单 API 统计 ============
+
+/** 全局 KPI 聚合 */
+export function getStatsOverview(range: StatsRange) {
+    return request.get<Result<StatsOverview>>(`/data-service/stats/overview?range=${range}`);
+}
+
+/** 全局调用量趋势（双线：调用量 + 失败数） */
+export function getStatsTrend(range: StatsRange) {
+    return request.get<Result<StatsTrendPoint[]>>(`/data-service/stats/trend?range=${range}`);
+}
+
+/** API 健康分布（综合健康分 + 健康/警告/严重） */
+export function getStatsHealthDistribution(range: StatsRange) {
+    return request.get<Result<StatsHealthDistribution>>(`/data-service/stats/health-distribution?range=${range}`);
+}
+
+/** Top API 调用排行 */
+export function getStatsTopApis(range: StatsRange, limit = 5) {
+    return request.get<Result<StatsTopApi[]>>(`/data-service/stats/top-apis?range=${range}&limit=${limit}`);
+}
+
+/** 错误码分布（4xx/5xx TopN） */
+export function getStatsErrorCodes(range: StatsRange, limit = 5) {
+    return request.get<Result<StatsErrorCode[]>>(`/data-service/stats/error-codes?range=${range}&limit=${limit}`);
+}
+
+/** 调用方 Key 排行（含僵尸 Key） */
+export function getStatsTopKeys(range: StatsRange, limit = 5) {
+    return request.get<Result<StatsTopKey[]>>(`/data-service/stats/top-keys?range=${range}&limit=${limit}`);
+}
+
+/** 限流命中趋势（429 按时间桶） */
+export function getStatsRateLimitTrend(range: StatsRange) {
+    return request.get<Result<StatsTrendPoint[]>>(`/data-service/stats/rate-limit-trend?range=${range}`);
+}
+
+/** 单 API 调用统计（KPI + 调用量趋势 + 今日小时分布 + Key 排行 + 错误码分布 + 最近明细） */
+export function getApiStats(id: string, range: StatsRange) {
+    return request.get<Result<ApiStats>>(`/data-service/apis/${id}/stats?range=${range}`);
 }

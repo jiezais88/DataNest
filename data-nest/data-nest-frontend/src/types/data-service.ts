@@ -257,3 +257,100 @@ export interface ApiKeyCreateResult {
     status: ApiKeyStatus;
     createdAt?: string;
 }
+
+// ============ Sprint 10 F3：API 网关调用统计 ============
+
+/** 统计时间范围（对齐后端 range=24h|7d|30d） */
+export type StatsRange = '24h' | '7d' | '30d';
+
+/** 时间桶趋势点（bucket ISO 时间；total/failed 为 Long → string） */
+export interface StatsTrendPoint {
+    bucket: string;
+    total: string;
+    failed?: string;
+}
+
+/** 全局 KPI 聚合（Long 计数 → string；Double 比率 → number） */
+export interface StatsOverview {
+    totalCalls: string;
+    successRate: number;
+    p95Ms: number;
+    rateLimitedCount: string;
+    rateLimitRatio: number;
+}
+
+/** 健康级别（对齐告警 PASS/WARNING/SEVERE） */
+export type HealthLevel = 'PASS' | 'WARNING' | 'SEVERE';
+
+/** 单 API 健康分级明细 */
+export interface StatsHealthItem {
+    apiId: string;
+    name: string;
+    path?: string | null;
+    level: HealthLevel;
+    totalCalls: string;
+    errorRate: number;
+    p95Ms: number;
+    rateLimitRatio: number;
+}
+
+/** API 健康分布 */
+export interface StatsHealthDistribution {
+    overallScore: number;
+    healthyCount: number;
+    warningCount: number;
+    severeCount: number;
+    items: StatsHealthItem[];
+}
+
+/** Top API 排行项 */
+export interface StatsTopApi {
+    apiId: string;
+    name: string;
+    path?: string | null;
+    calls: string;
+}
+
+/** 调用方 Key 排行项（zombie = 近 7 天 0 调用） */
+export interface StatsTopKey {
+    keyId: string;
+    name: string;
+    calls: string;
+    zombie: boolean;
+}
+
+/** 错误码分布项（ratio 为占错误总量比例 0~1） */
+export interface StatsErrorCode {
+    statusCode: number;
+    count: string;
+    ratio: number;
+}
+
+/** 状态码三档汇总（2xx 成功 / 4xx 客户端 / 5xx 服务端） */
+export interface StatusBreakdown {
+    success: string;
+    clientError: string;
+    serverError: string;
+}
+
+/** 调用明细行（单 API 最近调用） */
+export interface ApiCallLogItem {
+    keyName?: string | null;
+    statusCode: number;
+    durationMs?: number | null;
+    createdAt: string;
+}
+
+/** 单 API 调用统计 */
+export interface ApiStats {
+    totalCalls: string;
+    successRate: number;
+    avgMs: number;
+    p95Ms: number;
+    todayCalls: string;
+    trend: StatsTrendPoint[];
+    recentLogs: ApiCallLogItem[];
+    hourly: StatsTrendPoint[];
+    topKeys: StatsTopKey[];
+    statusBreakdown: StatusBreakdown;
+}

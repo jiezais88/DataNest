@@ -6,6 +6,7 @@ import {ALERT_VIEW_ROLES, ALL_ROLES, COMPLIANCE_VIEW_ROLES, ENGINEERING_WRITE_RO
 import LogoMark from './LogoMark';
 import {
     HiOutlineArrowsRightLeft,
+    HiOutlineArrowTrendingUp,
     HiOutlineBell,
     HiOutlineBellAlert,
     HiOutlineBolt,
@@ -97,6 +98,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 label: 'API 管理',
                 path: '/data-service/api-manage',
                 icon: <HiOutlineKey size={18}/>,
+                roles: ALL_ROLES
+            },
+            {
+                label: 'API 运行统计',
+                path: '/data-service/api-stats',
+                icon: <HiOutlineArrowTrendingUp size={18}/>,
                 roles: ALL_ROLES
             },
             {
