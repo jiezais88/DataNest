@@ -28,6 +28,8 @@ import type {
     StatsTopKey,
     StatsTrendPoint,
     StatusBreakdown,
+    SubscriberItem,
+    SubscriptionStats,
 } from '@/types/data-service';
 
 /**
@@ -209,4 +211,11 @@ export function getStatsRateLimitTrend(range: StatsRange) {
 /** 单 API 调用统计（KPI + 调用量趋势 + 今日小时分布 + Key 排行 + 错误码分布 + 最近明细） */
 export function getApiStats(id: string, range: StatsRange) {
     return request.get<Result<ApiStats>>(`/data-service/apis/${id}/stats?range=${range}`);
+}
+
+// ============ Sprint 10 F4：实时订阅监控（连接监控） ============
+
+/** 管道订阅监控（在线连接/今日事件/延迟 P95/推送失败 + 订阅方 Key 列表） */
+export function getSubscriptionStats(pipelineId: string) {
+    return request.get<Result<SubscriptionStats>>(`/data-service/subscriptions/${pipelineId}/stats`);
 }

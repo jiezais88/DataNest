@@ -14,6 +14,7 @@ import {CdcStatusBadge, LagValue} from './shared';
 import {STARTUP_MODE_LABEL, SYNC_MODE_LABEL, WRITE_MODE_LABEL} from './constants';
 import MonitoringTab from './MonitoringTab';
 import CheckpointTab from './CheckpointTab';
+import SubscribeTab from './SubscribeTab';
 
 /** 分区容器 */
 function Section({title, children}: { title: string; children: React.ReactNode }) {
@@ -153,6 +154,7 @@ const TABS = [
     {key: 'basic', label: '基本信息'},
     {key: 'monitor', label: '运行监控'},
     {key: 'checkpoint', label: '检查点'},
+    {key: 'subscribe', label: '实时订阅'},
 ] as const;
 
 interface CdcPipelineDetailDrawerProps {
@@ -224,6 +226,7 @@ export default function CdcPipelineDetailDrawer({pipelineId, onClose}: CdcPipeli
                             <CheckpointTab pipelineId={detail.id} canWrite={canWrite}/>
                         </div>
                     )}
+                    {activeTab === 'subscribe' && <SubscribeTab detail={detail}/>}
                 </div>
             )}
         </Drawer>

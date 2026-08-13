@@ -4,11 +4,14 @@ import {useEffect, useMemo, useState} from 'react';
 import {HiOutlineKey, HiOutlineClipboardDocument} from 'react-icons/hi2';
 import {notify} from '@/utils/notify';
 import {getErrorMessage} from '@/utils/error';
+import {pageCdcPipelines} from '@/api/cdc';
 import {createApiKey, getApiKey, pageDataApis, updateApiKey} from '@/api/data-service';
 import DsButton from '@/components/DsButton';
 import DsModal from '@/components/DsModal';
 import DsSpinner from '@/components/DsSpinner';
+import DsStatusBadge from '@/components/DsStatusBadge';
 import {DataApiStatusBadge} from '../badges';
+import type {CdcPipeline} from '@/types/cdc';
 import type {ApiKeyCreateResult, ApiKeyPageItem, DataApiPageItem} from '@/types/data-service';
 
 const INPUT_CLASS =
@@ -28,6 +31,8 @@ export default function KeyFormModal({open, editing, onClose, onSaved}: Props) {
     const [qpsLimit, setQpsLimit] = useState(50);
     const [apiOptions, setApiOptions] = useState<DataApiPageItem[]>([]);
     const [selectedApiIds, setSelectedApiIds] = useState<string[]>([]);
+    const [pipelineOptions, setPipelineOptions] = useState<CdcPipeline[]>([]);
+    const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
     const [loadingDetail, setLoadingDetail] = useState(false);
     const [saving, setSaving] = useState(false);
     const [createdKey, setCreatedKey] = useState<ApiKeyCreateResult | null>(null);
@@ -40,9 +45,13 @@ export default function KeyFormModal({open, editing, onClose, onSaved}: Props) {
         setName(editing?.name ?? '');
         setQpsLimit(editing?.qpsLimit ?? 50);
         setSelectedApiIds([]);
+        setSelectedPipelineIds([]);
         pageDataApis({page: 1, pageSize: 100})
             .then((res) => setApiOptions(res.data.records ?? []))
             .catch(() => setApiOptions([]));
+        pageCdcPipelines({page: 1, pageSize: 100})
+            .then((res) => setPipelineOptions(res.records ?? []))
+            .catch(() => setPipelineOptions([]));
         if (editing) {
             setLoadingDetail(true);
             getApiKey(editing.id)
@@ -50,6 +59,7 @@ export default function KeyFormModal({open, editing, onClose, onSaved}: Props) {
                     setName(res.data.name);
                     setQpsLimit(res.data.qpsLimit);
                     setSelectedApiIds(res.data.apiIds ?? []);
+                    setSelectedPipelineIds(res.data.pipelineIds ?? []);
                 })
                 .catch(() => {
                     // 拦截器已提示
@@ -62,6 +72,11 @@ export default function KeyFormModal({open, editing, onClose, onSaved}: Props) {
 
     const toggleApi = (apiId: string, checked: boolean) => {
         setSelectedApiIds(checked ? [...selectedApiIds, apiId] : selectedApiIds.filter((v) => v !== apiId));
+    };
+    const togglePipeline = (pipelineId: string, checked: boolean) => {
+        setSelectedPipelineIds(checked
+            ? [...selectedPipelineIds, pipelineId]
+            : selectedPipelineIds.filter((v) => v !== pipelineId));
     };
 
     const handleSave = async () => {
@@ -76,12 +91,12 @@ export default function KeyFormModal({open, editing, onClose, onSaved}: Props) {
         setSaving(true);
         try {
             if (editing) {
-                await updateApiKey(editing.id, {name: name.trim(), qpsLimit, apiIds: selectedApiIds});
+                await updateApiKey(editing.id, {name: name.trim(), qpsLimit, apiIds: selectedApiIds, pipelineIds: selectedPipelineIds});
                 notify.success(`Key「${name.trim()}」已保存`);
                 onSaved();
                 onClose();
             } else {
-                const res = await createApiKey({name: name.trim(), qpsLimit, apiIds: selectedApiIds});
+                const res = await createApiKey({name: name.trim(), qpsLimit, apiIds: selectedApiIds, pipelineIds: selectedPipelineIds});
                 setCreatedKey(res.data);
                 onSaved();
             }
@@ -212,9 +227,42 @@ export default function KeyFormModal({open, editing, onClose, onSaved}: Props) {
                                 </label>
                             ))}
                         </div>
-                        <p className="text-ds-caption text-ds-text-muted mt-1">
-                            后续还可绑定 CDC 管道，用于实时订阅数据变更
-                        </p>
+                    </div>
+                    <div>
+                        <label className="block text-ds-small text-ds-text-secondary mb-1">
+                            绑定 CDC 管道
+                            <span className="text-ds-caption text-ds-text-muted ml-ds-2">
+                                已选 {selectedPipelineIds.length} 个；绑定后该 Key 即可实时订阅管道变更
+                            </span>
+                        </label>
+                        <div className="border border-ds-border-subtle rounded-ds-sm max-h-[180px] overflow-y-auto">
+                            {pipelineOptions.length === 0 && (
+                                <p className="text-ds-small text-ds-text-muted text-center py-ds-4">
+                                    暂无可绑定的 CDC 管道，可先在「CDC 管道」新建
+                                </p>
+                            )}
+                            {pipelineOptions.map((p) => (
+                                <label key={p.id}
+                                       className="flex items-center gap-ds-2 px-ds-3 py-ds-2 border-t first:border-t-0 border-ds-border-subtle hover:bg-ds-bg-hover cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedPipelineIds.includes(p.id)}
+                                        onChange={(e) => togglePipeline(p.id, e.target.checked)}
+                                        className="accent-ds-accent"
+                                    />
+                                    <span className="flex-1 min-w-0 truncate">
+                                        <span className="text-ds-small text-ds-text-primary">{p.name}</span>
+                                        <span
+                                            className="text-ds-caption text-ds-text-muted font-mono ml-ds-2">{p.sourceDatabase}</span>
+                                    </span>
+                                    {p.status === 'RUNNING'
+                                        ? <DsStatusBadge variant="running" label="运行中"/>
+                                        : p.status === 'ERROR'
+                                            ? <DsStatusBadge variant="danger" label="异常"/>
+                                            : <DsStatusBadge variant="pending" label="已停止"/>}
+                                </label>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}

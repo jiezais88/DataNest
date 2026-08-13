@@ -13,7 +13,7 @@
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
 | 后端 | ✅ F1/F2/F3/F4 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关**：对外执行入口 + Key 认证/限流 + Resilience4j 熔断 + 异步统计 + `/stats/*` 全局统计（E2E 22 用例）；**F4 WebSocket（本会话）**：Kafka 事件总线 + realtime 事件管道 + data-service WebSocket（握手 Key 校验/subscribe/Kafka fan-out）已实现并部署（healthy），分层自测全通过；F5 分级对外端点未开始 |
-| 前端 | ✅ F1/F2/F3 完成 | **SQL 查询终端页**（`/data-service/sql-console`）；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（列表/新建编辑弹窗/明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3（本会话）：API 运行统计全局页（`/data-service/api-stats`）+ 单 API 详情统计区块 + 列表操作列统计按钮 + Sidebar 入口**，联调通过 |
+| 前端 | ✅ F1/F2/F3/F4 完成 | **SQL 查询终端页**；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3：API 运行统计全局页（`/data-service/api-stats`）+ 单 API 详情统计区块 + Sidebar 入口**（review 决策：操作列不加统计按钮）；**F4（本会话）：CDC 管道详情「实时订阅」页签（订阅文档 + 连接监控）+ Key 表单绑定管道多选**，联调通过 |
 
 ---
 
@@ -499,6 +499,27 @@
 - **心跳 60s ping/pong** 由 Spring 原生支持（客户端 ping 服务端 pong）；**空闲 120s 断开未实现**（依赖客户端心跳，断线重连由业务端负责，PRD §6.6）。
 - **事件作业端到端未验证**：realtime 事件作业 YAML 生成/启停联动代码编译通过，分层自测覆盖 data-service 消费/fan-out 全链路；真实 Flink CDC → Kafka 端到端（AC-10 的 10s 收到）归后续专门测试会话。
 
+
+## 24. F4 WebSocket 实时订阅前端 + 连接监控（2026-08-13，本会话）
+
+> 范围：CDC 管道详情「实时订阅」页签（订阅文档 + 连接监控）+ Key 表单「绑定管道」多选 + nginx WebSocket 升级头。用户拍板「订阅文档 + 连接监控」（超出技术文档 §9 原「订阅地址/协议/示例代码」范围）。
+
+### 24.1 后端补丁（data-service，已部署 healthy）
+- **连接监控埋点** `ws/SubscriptionMetrics.java`（内存态）：按管道统计今日事件数/推送失败数/端到端延迟 P95（环形采样 1024）+ 按订阅方 Key 统计接收事件数/最近事件时间；跨天自动重置。
+- **`KafkaEventConsumer`** 埋点：fan-out 成功送达记 `recordEvent(pipelineId, latencyMs, keyId)`、失败记 `recordFailure`；`normalize` 返回 `NormalizedEvent(json, latencyMs)`（ts_ms → 消费时刻延迟）。
+- **查询端点** `GET /subscriptions/{pipelineId}/stats`（`WsSubscriptionController` + `WsSubscriptionQueryService`）：在线连接（registry）+ 埋点快照 + 订阅授权（`api_key_pipeline` join `api_key`，批量无 N+1）+ 用户名回填（system-api）。
+
+### 24.2 前端（app-frontend，已部署）
+- **CDC 管道详情「实时订阅」页签** `SubscribeTab.tsx`（第 4 tab）：非 RUNNING 提示 + 连接监控（4 KPI 卡 + 订阅方 Key 表格，RUNNING 5s 轮询）+ 订阅文档（订阅地址/认证/订阅消息/变更事件示例/JS 示例/订阅说明，全部可复制）；订阅地址 host 由 `window.location` 推导。
+- **Key 表单「绑定管道」多选** `KeyFormModal.tsx`（`pipelineIds` 全量重绑）+ `types`/`api` 补 `SubscriptionStats`/`SubscriberItem`/`getSubscriptionStats`。
+- **`KpiCard` 提取** 到 `shared.tsx`（MonitoringTab/SubscribeTab 共用，DRY）。
+- **nginx** 补 WebSocket 升级头（`proxy_http_version 1.1` + `Upgrade`/`Connection` 头）。
+
+### 24.3 验证 / 踩坑
+- 后端端点 200 + 字段结构正确（Long 计数 → string）；Key 绑定管道后端（创建 → pipelineIds 保存 → 删除清理）通过；WebSocket 握手链路（nginx 101 转发 + 无 Key 拒连 1002）通过。
+- **踩坑（前端精度丢失）**：`Number(detail.id)` 对 19 位 Long 主键超 2^53 精度丢失（`...1073` → `...1000`），订阅消息 pipelineId 错误；改字符串持有 + 直接拼 JSON 数字（订阅消息/事件示例）+ JS 示例用字符串形式（后端 fastjson2 `getLong` 对 String 做 `Long.parseLong`，源码确认）。
+- **事件作业端到端未验证**：真实 Flink CDC → Kafka → WebSocket 端到端（AC-10 的 10s 收到）需 RUNNING 管道 + 有效 Key，归后续专门测试会话（当前管道均 ERROR/STOPPED）。
+
 ---
 
 > **版本记录**
@@ -525,3 +546,4 @@
 > - v1.19 (2026-08-13)：**F3 API 网关 + 调用统计后端完成**——对外执行入口（`OpenApiController`/`OpenApiService`，HTTP 状态码语义 401/404/429/503/200）+ `OpenApiKeyFilter`（Key 认证/绑定/限流）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreakerService`（Resilience4j 数据源维度熔断）+ `ApiCallLogWriter`（异步统计）+ `OpenApiSqlBuilder`（参数化 SQL，参数值类型启发式推断）+ 执行器 PreparedStatement 扩展（未碰 task-core）+ `StatsController` 7 全局端点 + `/apis/{id}/stats`；2 问 2 答拍板（**Key 级 QPS 限流** / **健康分级对齐告警 PASS/WARNING/SEVERE**）；common 补 `API_CIRCUIT_OPEN(9015)`；自测全通过（Key 认证 401/200、参数化 EQ/fields/分页、限流 429+Retry-After、熔断 500→503→闭合、未发布 404、统计 7 端点）+ 测试数据清理（handoff §21）。
 > - v1.20 (2026-08-13)：**F3 完整 E2E 测试会话**——新增 `open-api.spec.ts`（18 用例）+ `api-stats.spec.ts`（4 用例）+ `helpers/f3-seed.ts`，**22 用例全通过**（对外认证 401/404、参数化 EQ/RANGE/排序/分页/字段裁剪/clamp、限流 429+Retry-After+60s 恢复、熔断 503+数据源维度+30s 闭合、统计单 API+全局 7 端点+前端页）；技术文档 v1.11（§9 前端清单勾选补齐 + E2E 记录）；踩坑：熔断器内存态需干净状态（用例对历史残留稳健）、Long→string 断言需 `Number()`（handoff §22）。
 > - v1.21 (2026-08-13)：**F4 WebSocket 实时订阅后端完成**——中间件 `middleware-kafka`（apache/kafka:4.0.0 KRaft）+ Flink lib 增 kafka connector + TaskManager slot 1→2；realtime 事件管道（`cdc_events_flink_job_id` Flyway V1.4.0 + `CdcYamlBuilder.buildEvent` Kafka 单 sink + `start/stop/forceStop` 联动 + `pollEventJobs` 监控 + `cancelJob` + realtime-api `getSubscribeInfo`）；data-service WebSocket（`WsEventsHandler`/`WsHandshakeInterceptor`/`WebSocketSubscriptionRegistry`/`KafkaEventConsumer`/`WsSubscriptionService`）+ 补 Key 绑定管道端点（`pipelineIds`）+ common 9016；2 问 2 答（分层自测+部署 / 机密管道全建+订阅侧拒绝）；分层自测全通过（握手 401/连接、subscribe 9005/9016、Kafka fan-out 归一化事件）+ 测试数据清理（handoff §23）；踩坑：Spring Boot 4 spring-kafka 未自动配置 ListenerContainerFactory 需显式 bean。
+> - v1.22 (2026-08-13)：**F4 WebSocket 实时订阅前端 + 连接监控完成**——用户拍板「订阅文档 + 连接监控」（超出 §9 原范围）；后端补连接监控埋点 `SubscriptionMetrics`（今日事件/延迟 P95/推送失败/按 Key 接收统计，内存态跨天重置）+ `KafkaEventConsumer` 埋点 + `GET /subscriptions/{pipelineId}/stats`（registry + 埋点 + api_key_pipeline join api_key 批量无 N+1 + 用户名回填）；前端 CDC 管道详情「实时订阅」页签 `SubscribeTab.tsx`（订阅文档 + 连接监控 4 KPI + 订阅方 Key 表格，RUNNING 5s 轮询）+ Key 表单「绑定管道」多选 + `KpiCard` 提取 shared + nginx WebSocket 升级头；踩坑：`Number(detail.id)` 对 19 位 Long 精度丢失（订阅消息 pipelineId 错误），改字符串持有 + 直接拼 JSON 数字（handoff §24）；端点 200 / Key 绑定管道 / WebSocket 握手链路均验证通过。

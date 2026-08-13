@@ -236,6 +236,7 @@ export interface ApiKeyDetail {
     status: ApiKeyStatus;
     qpsLimit: number;
     apiIds: string[];
+    pipelineIds: string[];
     createdByName?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -246,6 +247,7 @@ export interface ApiKeySaveRequest {
     name: string;
     qpsLimit: number;
     apiIds?: string[];
+    pipelineIds?: string[];
 }
 
 /** 创建 Key 响应（apiKey 明文仅本次返回） */
@@ -353,4 +355,26 @@ export interface ApiStats {
     hourly: StatsTrendPoint[];
     topKeys: StatsTopKey[];
     statusBreakdown: StatusBreakdown;
+}
+
+/** 管道订阅监控统计（F4 连接监控） */
+export interface SubscriptionStats {
+    onlineConnections: number;
+    todayEvents: string;
+    p95Ms: string;
+    failedSends: string;
+    subscribers: SubscriberItem[];
+}
+
+/** 订阅方 Key 项（F4 连接监控） */
+export interface SubscriberItem {
+    keyId: string;
+    keyName: string;
+    online: boolean;
+    receivedEvents: string;
+    lastEventAt?: string | null;
+    createdByName?: string;
+    createdAt?: string;
+    updatedByName?: string;
+    updatedAt?: string;
 }
