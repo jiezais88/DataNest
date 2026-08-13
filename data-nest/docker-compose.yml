@@ -352,6 +352,7 @@ services:
   middleware-test-oracle:
     image: gvenzl/oracle-free:23-slim
     container_name: datanest-middleware-test-oracle
+    restart: unless-stopped
     environment:
       ORACLE_PASSWORD: root123
       APP_USER: testuser
@@ -381,6 +382,7 @@ services:
   middleware-test-sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: datanest-middleware-test-sqlserver
+    restart: unless-stopped
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
