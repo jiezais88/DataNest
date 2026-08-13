@@ -305,11 +305,12 @@ export interface StatsHealthDistribution {
     items: StatsHealthItem[];
 }
 
-/** Top API 排行项 */
+/** Top API 排行项（deleted = 软删/已清除，前端灰显 + 不提供详情跳转） */
 export interface StatsTopApi {
     apiId: string;
     name: string;
     path?: string | null;
+    deleted?: boolean | null;
     calls: string;
 }
 

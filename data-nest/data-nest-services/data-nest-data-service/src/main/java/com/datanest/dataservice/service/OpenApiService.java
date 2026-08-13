@@ -65,12 +65,12 @@ public class OpenApiService {
 
         // 1. 状态校验：仅 PUBLISHED 可调用（CREATED/DISABLED → 404，不涉熔断）
         if (!DataApi.STATUS_PUBLISHED.equals(api.getStatus())) {
-            callLogWriter.write(api.getId(), key.getId(), 404, elapsed(start));
+            callLogWriter.write(api.getId(), key.getId(), key.getName(), 404, elapsed(start));
             throw new BusinessException(ErrorCode.API_NOT_PUBLISHED, "API 未发布或已下线");
         }
         // 2. 熔断检查：数据源维度开闸 → 503
         if (!circuitBreakerService.tryAcquire(datasourceId)) {
-            callLogWriter.write(api.getId(), key.getId(), 503, elapsed(start));
+            callLogWriter.write(api.getId(), key.getId(), key.getName(), 503, elapsed(start));
             throw new BusinessException(ErrorCode.API_CIRCUIT_OPEN);
         }
 
@@ -94,14 +94,14 @@ public class OpenApiService {
             }
 
             circuitBreakerService.recordSuccess(datasourceId, elapsed(start));
-            callLogWriter.write(api.getId(), key.getId(), 200, elapsed(start));
+            callLogWriter.write(api.getId(), key.getId(), key.getName(), 200, elapsed(start));
             OpenApiResult result = new OpenApiResult();
             result.setRecords(qr.rows());
             result.setTotal(total);
             return result;
         } catch (BusinessException e) {
             circuitBreakerService.recordFailure(datasourceId, elapsed(start), e);
-            callLogWriter.write(api.getId(), key.getId(), 500, elapsed(start));
+            callLogWriter.write(api.getId(), key.getId(), key.getName(), 500, elapsed(start));
             throw e;
         }
     }

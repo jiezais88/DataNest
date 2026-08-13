@@ -26,6 +26,9 @@ public class ApiCallLog {
     @Schema(description = "API Key ID")
     private Long keyId;
 
+    @Schema(description = "Key 名称快照（写入时冗余；Key 物理删除后统计仍可显示原名）")
+    private String keyName;
+
     @Schema(description = "HTTP 状态码")
     private Integer statusCode;
 

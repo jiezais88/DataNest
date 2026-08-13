@@ -102,7 +102,8 @@ public class StatsQueryService {
             StatsHealthItemDTO item = new StatsHealthItemDTO();
             item.setApiId(agg.getRefId());
             item.setName(api == null ? "已删除的 API" : api.getName());
-            item.setPath(api == null ? null : api.getPath());
+            // 软删（deleted=1）API 保留原名，但 path 置空（详情页过滤软删行，点了会 404）
+            item.setPath(api == null || Integer.valueOf(1).equals(api.getDeleted()) ? null : api.getPath());
             long total = agg.getTotalCalls() == null ? 0 : agg.getTotalCalls();
             long failed = agg.getFailedCalls() == null ? 0 : agg.getFailedCalls();
             long limited = agg.getRateLimited() == null ? 0 : agg.getRateLimited();
@@ -139,7 +140,9 @@ public class StatsQueryService {
             StatsTopApiDTO dto = new StatsTopApiDTO();
             dto.setApiId(c.getRefId());
             dto.setName(api == null ? "已删除的 API" : api.getName());
+            // 软删（deleted=1）API 保留原名与 path 快照，但标记 deleted 供前端灰显 + 隐藏详情跳转
             dto.setPath(api == null ? null : api.getPath());
+            dto.setDeleted(api == null || Integer.valueOf(1).equals(api.getDeleted()));
             dto.setCalls(c.getCnt());
             return dto;
         }).toList();
@@ -178,7 +181,9 @@ public class StatsQueryService {
             ApiKey key = keyMap.get(c.getRefId());
             StatsTopKeyDTO dto = new StatsTopKeyDTO();
             dto.setKeyId(c.getRefId());
-            dto.setName(key == null ? "已删除的 Key" : key.getName());
+            // Key 物理删除后优先用调用日志里的名称快照（保留审计 + 展示原名）
+            dto.setName(key != null ? key.getName()
+                    : (c.getKeyName() != null ? c.getKeyName() : "已删除的 Key"));
             dto.setCalls(c.getCnt());
             dto.setZombie(false);
             return dto;
@@ -252,7 +257,8 @@ public class StatsQueryService {
             ApiKey key = keyMap.get(c.getRefId());
             StatsTopKeyDTO dto = new StatsTopKeyDTO();
             dto.setKeyId(c.getRefId());
-            dto.setName(key == null ? "已删除的 Key" : key.getName());
+            dto.setName(key != null ? key.getName()
+                    : (c.getKeyName() != null ? c.getKeyName() : "已删除的 Key"));
             dto.setCalls(c.getCnt());
             dto.setZombie(false);
             return dto;

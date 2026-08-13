@@ -41,16 +41,18 @@ public class ApiCallLogWriter {
      *
      * @param apiId      API ID（可空，如 Key 无效阶段无 API）
      * @param keyId      Key ID（可空）
+     * @param keyName    Key 名称快照（Key 物理删除后统计仍显示原名）
      * @param statusCode HTTP 状态码（200/401/404/429/500/503）
      * @param durationMs 耗时毫秒（限流/认证阶段为 null）
      */
-    public void write(Long apiId, Long keyId, int statusCode, Integer durationMs) {
+    public void write(Long apiId, Long keyId, String keyName, int statusCode, Integer durationMs) {
         if (apiId == null && keyId == null) {
             return; // 无归属的调用事件（Key 无效）不落库
         }
         ApiCallLog log = new ApiCallLog();
         log.setApiId(apiId);
         log.setKeyId(keyId);
+        log.setKeyName(keyName);
         log.setStatusCode(statusCode);
         log.setDurationMs(durationMs);
         log.setCreatedAt(LocalDateTime.now());

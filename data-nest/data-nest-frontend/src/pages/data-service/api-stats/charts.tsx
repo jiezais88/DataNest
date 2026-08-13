@@ -164,13 +164,13 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
             </span>
             <div className="flex-1 min-w-0">
                 <Tooltip title={title}>
-                    <span className={`block text-ds-small truncate ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-primary'}`}>
+                    <span className={`block text-ds-small truncate leading-tight ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-primary'}`}>
                         {title}
                     </span>
                 </Tooltip>
                 {sub && (
                     <Tooltip title={sub}>
-                        <span className="block text-ds-tiny text-ds-text-muted truncate">{sub}</span>
+                        <span className="block text-ds-tiny text-ds-text-muted truncate leading-tight">{sub}</span>
                     </Tooltip>
                 )}
             </div>
@@ -190,11 +190,11 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
         </>
     );
     if (!onClick) {
-        return <div className="flex items-center gap-ds-3 py-1.5">{content}</div>;
+        return <div className="flex-1 flex items-center gap-ds-3 py-1">{content}</div>;
     }
     return (
         <button type="button" onClick={onClick}
-                className="w-full flex items-center gap-ds-3 py-1.5 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
+                className="flex-1 w-full flex items-center gap-ds-3 py-1 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
             {content}
         </button>
     );
@@ -223,7 +223,7 @@ export function Bars({data, range, color, emptyText, xLabel}: {
                     const v = Number(d.total ?? 0);
                     return (
                         <Tooltip key={d.bucket} title={`${formatNumber(d.total)} 次`} placement="top">
-                            <div className="flex-1 max-w-[64px] flex items-end min-w-0">
+                            <div className="flex-1 max-w-[24px] flex items-end min-w-0">
                                 <div className="w-full rounded-t-sm"
                                      style={{
                                          height: v > 0 ? `${Math.max(2, (v / max) * 100)}%` : '0',

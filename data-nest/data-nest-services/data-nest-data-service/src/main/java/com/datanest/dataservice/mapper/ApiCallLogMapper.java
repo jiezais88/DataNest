@@ -70,8 +70,8 @@ public interface ApiCallLogMapper extends BaseMapper<ApiCallLog> {
             + "WHERE created_at >= #{since} AND api_id IS NOT NULL GROUP BY api_id ORDER BY COUNT(*) DESC LIMIT #{limit}")
     List<RefCount> topApisSince(@Param("since") LocalDateTime since, @Param("limit") int limit);
 
-    /** Top Key 调用排行 */
-    @Select("SELECT key_id AS refId, COUNT(*) AS cnt FROM api_call_log "
+    /** Top Key 调用排行（含 key_name 快照：Key 物理删除后仍显示原名） */
+    @Select("SELECT key_id AS refId, COUNT(*) AS cnt, MAX(key_name) AS keyName FROM api_call_log "
             + "WHERE created_at >= #{since} AND key_id IS NOT NULL GROUP BY key_id ORDER BY COUNT(*) DESC LIMIT #{limit}")
     List<RefCount> topKeysSince(@Param("since") LocalDateTime since, @Param("limit") int limit);
 
@@ -109,8 +109,8 @@ public interface ApiCallLogMapper extends BaseMapper<ApiCallLog> {
             + "FROM api_call_log WHERE created_at >= #{since} AND api_id = #{apiId} GROUP BY bucket ORDER BY bucket")
     List<TrendAgg> hourlyByApiSince(@Param("apiId") Long apiId, @Param("since") LocalDateTime since);
 
-    /** 单 API 调用方 Key 排行（TopN） */
-    @Select("SELECT key_id AS refId, COUNT(*) AS cnt FROM api_call_log "
+    /** 单 API 调用方 Key 排行（TopN，含 key_name 快照） */
+    @Select("SELECT key_id AS refId, COUNT(*) AS cnt, MAX(key_name) AS keyName FROM api_call_log "
             + "WHERE created_at >= #{since} AND api_id = #{apiId} AND key_id IS NOT NULL "
             + "GROUP BY key_id ORDER BY COUNT(*) DESC LIMIT #{limit}")
     List<RefCount> topKeysByApiSince(@Param("apiId") Long apiId, @Param("since") LocalDateTime since,

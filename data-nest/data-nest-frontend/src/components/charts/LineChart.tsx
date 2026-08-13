@@ -61,16 +61,25 @@ function computeScale(count: number, maxValue: number): Scale {
     };
 }
 
-/** 坐标网格 + Y 轴刻度文本 */
+/** Y 轴刻度文本：大数缩写（≥1000 → 1k），避免长数字贴边溢出 */
+function formatTick(v: number): string {
+    if (v >= 10000) return `${(v / 1000).toFixed(1)}k`;
+    if (v >= 1000) return `${Math.round(v / 1000)}k`;
+    return String(v);
+}
+
+/** 坐标网格 + Y 轴刻度文本（含左缘基线竖线） */
 function Grid({scale}: { scale: Scale }) {
     return (
         <>
+            {/* Y 轴基线（数据区左缘） */}
+            <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} stroke="rgb(203 213 225)" strokeWidth={1}/>
             {scale.ticks.map((t) => (
                 <g key={t}>
                     <line x1={PAD_L} y1={scale.y(t)} x2={W - PAD_R} y2={scale.y(t)}
                           stroke="rgb(226 232 240)" strokeWidth={1}/>
                     <text x={PAD_L - 8} y={scale.y(t) + 4} fontSize={10} fill="rgb(148 163 184)"
-                          textAnchor="end">{t}</text>
+                          textAnchor="end">{formatTick(t)}</text>
                 </g>
             ))}
         </>
@@ -106,11 +115,13 @@ function buildSegments(values: (number | null)[], scale: Scale) {
     return {segments, pathFor};
 }
 
-/** X 轴标签（最多 7 个均匀采样） */
+/** X 轴标签（最多 7 个均匀采样，含底部基线横线） */
 function XAxis({count, xLabel, scale}: { count: number; xLabel: (i: number) => string; scale: Scale }) {
     const step = Math.max(1, Math.ceil(count / 7));
     return (
         <>
+            {/* X 轴基线（数据区底部） */}
+            <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="rgb(203 213 225)" strokeWidth={1}/>
             {Array.from({length: count}).map((_, i) => (i % step === 0 || i === count - 1) && (
                 <text key={i} x={scale.x(i)} y={H - 8} fontSize={10} fill="rgb(148 163 184)"
                       textAnchor="middle">{xLabel(i)}</text>

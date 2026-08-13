@@ -105,7 +105,7 @@ public class OpenApiKeyFilter extends OncePerRequestFilter {
         // 4. Key 级限流（超限 → 429 + Retry-After，并记调用统计）
         int qpsLimit = key.getQpsLimit() == null ? 0 : key.getQpsLimit();
         if (!rateLimitService.tryAcquire(key.getId(), qpsLimit)) {
-            callLogWriter.write(api.getId(), key.getId(), SC_TOO_MANY_REQUESTS, null);
+            callLogWriter.write(api.getId(), key.getId(), key.getName(), SC_TOO_MANY_REQUESTS, null);
             response.setHeader("Retry-After", String.valueOf(rateLimitService.windowSeconds()));
             writeError(response, SC_TOO_MANY_REQUESTS, ErrorCode.API_RATE_LIMITED);
             return;

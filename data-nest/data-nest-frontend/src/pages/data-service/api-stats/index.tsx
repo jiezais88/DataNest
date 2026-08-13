@@ -128,8 +128,9 @@ export default function ApiStatsPage() {
                 />
             </div>
 
-            {/* 图表网格：3 行等高填充剩余空间（趋势/Top5 宽列，其余窄列） */}
-            <div className="grid grid-cols-6 grid-rows-3 gap-ds-3 flex-1 min-h-0">
+            {/* 图表区：内容自然高度 + 纵向滚动（排行/趋势总量超出单屏，滚动保证完整无裁剪；对齐质量报告滚动页模式） */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
+                <div className="grid grid-cols-6 gap-ds-3 pb-ds-1">
                 {/* 行1：全局调用量趋势 + API 健康分布 */}
                 <ChartCard
                     title="全局调用量趋势"
@@ -233,7 +234,7 @@ export default function ApiStatsPage() {
                     ) : topApis.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无 API 调用</div>
                     ) : (
-                        <div className="flex flex-col justify-center h-full">
+                        <div className="flex flex-col h-full">
                             {topApis.map((a, i) => (
                                 <RankItem
                                     key={a.apiId}
@@ -242,8 +243,8 @@ export default function ApiStatsPage() {
                                     sub={a.path ?? undefined}
                                     value={a.calls}
                                     maxValue={maxTopApi}
-                                    dimmed={!a.path}
-                                    onClick={a.path ? () => navigate(`/data-service/api-manage/${a.apiId}`) : undefined}
+                                    dimmed={!!a.deleted}
+                                    onClick={!a.deleted && a.path ? () => navigate(`/data-service/api-manage/${a.apiId}`) : undefined}
                                 />
                             ))}
                         </div>
@@ -281,15 +282,6 @@ export default function ApiStatsPage() {
                                     />
                                 ))}
                             </div>
-                            {top429 && (
-                                <div className="mt-auto pt-ds-2 flex items-start gap-1.5 text-ds-tiny text-ds-warning">
-                                    <HiOutlineExclamationTriangle size={14} className="flex-shrink-0 mt-0.5"/>
-                                    <span>
-                                        <b>429 限流占错误总量 {pct(top429.ratio, 0)}</b>
-                                        {top429.top429ApiName ? `，命中集中在「${top429.top429ApiName}」` : ''}；建议调高对应 Key 级 QPS。
-                                    </span>
-                                </div>
-                            )}
                         </div>
                     )}
                 </ChartCard>
@@ -301,7 +293,7 @@ export default function ApiStatsPage() {
                     ) : topKeys.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无调用方</div>
                     ) : (
-                        <div className="flex flex-col justify-center h-full">
+                        <div className="flex flex-col h-full">
                             {topKeys.map((k, i) => {
                                 const bound = k.boundApiCount != null && k.boundApiCount > 0 ? `绑定 ${k.boundApiCount} 个 API` : '未绑定 API';
                                 return (
@@ -321,21 +313,36 @@ export default function ApiStatsPage() {
                 </ChartCard>
 
                 <ChartCard title="限流命中趋势" sub={ratePeak ? `${rangeLabel} · 峰值 ${formatNumber(ratePeak.total)}（${bucketLabel(ratePeak.bucket, range)}）` : rangeLabel} className="col-span-2">
-                    {loading ? <StatsLoading/> : <Bars data={rateLimitTrend} range={range} emptyText="范围内无限流命中"/>}
+                    {loading ? <StatsLoading/> : (
+                        <div className="flex flex-col h-full min-h-0">
+                            <div className="flex-1 min-h-0">
+                                <Bars data={rateLimitTrend} range={range} emptyText="范围内无限流命中"/>
+                            </div>
+                            {top429 && (
+                                <div className="mt-auto pt-ds-2 flex items-start gap-1.5 text-ds-tiny text-ds-warning">
+                                    <HiOutlineExclamationTriangle size={14} className="flex-shrink-0 mt-0.5"/>
+                                    <span>
+                                        <b>429 限流占错误总量 {pct(top429.ratio, 0)}</b>
+                                        {top429.top429ApiName ? `，命中集中在「${top429.top429ApiName}」` : ''}；建议调高对应 Key 级 QPS。
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </ChartCard>
 
                 <ChartCard title="API 状态速览" sub="全量 API" className="col-span-2">
                     <div className="flex flex-col h-full min-h-0">
-                        <div className="grid grid-cols-3 gap-ds-2">
-                            <div className="flex flex-col items-center py-ds-2 bg-ds-success-light rounded-ds-md">
+                        <div className="grid grid-cols-3 gap-ds-2 flex-1">
+                            <div className="flex flex-col items-center justify-center py-ds-2 bg-ds-success-light rounded-ds-md">
                                 <span className="text-ds-heading font-bold text-ds-success">{summary ? formatNumber(summary.publishedCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">已发布</span>
                             </div>
-                            <div className="flex flex-col items-center py-ds-2 bg-ds-accent-light rounded-ds-md">
+                            <div className="flex flex-col items-center justify-center py-ds-2 bg-ds-accent-light rounded-ds-md">
                                 <span className="text-ds-heading font-bold text-ds-accent">{summary ? formatNumber(summary.createdCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">待发布</span>
                             </div>
-                            <div className="flex flex-col items-center py-ds-2 bg-ds-bg-hover rounded-ds-md">
+                            <div className="flex flex-col items-center justify-center py-ds-2 bg-ds-bg-hover rounded-ds-md">
                                 <span className="text-ds-heading font-bold text-ds-text-secondary">{summary ? formatNumber(summary.disabledCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">已下线</span>
                             </div>
@@ -350,6 +357,7 @@ export default function ApiStatsPage() {
                         </div>
                     </div>
                 </ChartCard>
+                </div>
             </div>
         </div>
     );

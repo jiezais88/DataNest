@@ -72,16 +72,25 @@ function dayLabel(day: string): string {
     return day.length >= 10 ? day.slice(5) : day;
 }
 
-/** 坐标网格 + 轴文本（折线图共用） */
+/** Y 轴刻度文本：大数缩写（≥1000 → 1k），避免长数字贴边溢出 */
+function formatTick(v: number): string {
+    if (v >= 10000) return `${(v / 1000).toFixed(1)}k`;
+    if (v >= 1000) return `${Math.round(v / 1000)}k`;
+    return String(v);
+}
+
+/** 坐标网格 + 轴文本（折线图共用；含左缘 Y 轴基线） */
 function Grid({scale}: { scale: Scale }) {
     return (
         <>
+            {/* Y 轴基线（数据区左缘） */}
+            <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} stroke="rgb(203 213 225)" /* border-strong */ strokeWidth={1}/>
             {scale.ticks.map((t) => (
                 <g key={t}>
                     <line x1={PAD_L} y1={scale.y(t)} x2={W - PAD_R} y2={scale.y(t)}
                           stroke="rgb(226 232 240)" /* border-subtle */ strokeWidth={1}/>
                     <text x={PAD_L - 10} y={scale.y(t) + 4} fontSize={11} fill="rgb(148 163 184)" /* text-muted */ textAnchor="end">
-                        {t}
+                        {formatTick(t)}
                     </text>
                 </g>
             ))}
@@ -89,11 +98,13 @@ function Grid({scale}: { scale: Scale }) {
     );
 }
 
-/** X 轴日期标签（最多 7 个均匀采样） */
+/** X 轴日期标签（最多 7 个均匀采样，含底部基线横线） */
 function XAxis({days, scale}: { days: string[]; scale: Scale }) {
     const step = Math.max(1, Math.ceil(days.length / 7));
     return (
         <>
+            {/* X 轴基线（数据区底部） */}
+            <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="rgb(203 213 225)" /* border-strong */ strokeWidth={1}/>
             {days.map((d, i) => (i % step === 0 || i === days.length - 1) && (
                 <text key={d + i} x={scale.x(i)} y={H - 8} fontSize={11} fill="rgb(148 163 184)" /* text-muted */ textAnchor="middle">
                     {dayLabel(d)}
