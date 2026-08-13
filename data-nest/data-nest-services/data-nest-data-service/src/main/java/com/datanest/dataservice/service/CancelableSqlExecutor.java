@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -83,28 +84,77 @@ public class CancelableSqlExecutor {
                 st.setQueryTimeout(timeoutSeconds);
             }
             try (ResultSet rs = st.executeQuery(sql)) {
-                ResultSetMetaData metaData = rs.getMetaData();
-                int colCount = metaData.getColumnCount();
-                List<String> columns = new ArrayList<>(colCount);
-                for (int i = 1; i <= colCount; i++) {
-                    columns.add(metaData.getColumnLabel(i));
-                }
-                List<Map<String, Object>> rows = new ArrayList<>();
-                boolean truncated = false;
-                while (rs.next()) {
-                    if (rows.size() >= MAX_ROWS) {
-                        truncated = true;
-                        break;
-                    }
-                    Map<String, Object> row = new LinkedHashMap<>(colCount);
-                    for (int i = 1; i <= colCount; i++) {
-                        row.put(columns.get(i - 1), ExternalSqlExecutor.formatValue(rs.getObject(i)));
-                    }
-                    rows.add(row);
-                }
-                return new QueryResult(columns, rows, truncated);
+                return collect(rs);
             }
         }
+    }
+
+    /**
+     * 带参数的外部数据源查询（对外 API 参数化筛选，PreparedStatement 绑定防注入）。
+     */
+    public QueryResult queryExternal(String type, String host, int port,
+                                     String database, String schema,
+                                     String username, String password,
+                                     String sql, List<Object> params, int timeoutSeconds) {
+        String url = ExternalSqlExecutor.buildJdbcUrl(type, host, port, database, schema, timeoutSeconds);
+        try (Connection conn = DriverManager.getConnection(url, username, password)) {
+            return executeWithParams(conn, sql, params, timeoutSeconds);
+        } catch (Exception e) {
+            throw translate(url, timeoutSeconds, e);
+        }
+    }
+
+    /**
+     * 带参数的内置 Doris 查询（对外 API 参数化筛选）。
+     */
+    public QueryResult queryDoris(String sql, List<Object> params, int timeoutSeconds) {
+        String url = "doris(" + DorisDataSourceConfig.currentDatabase() + ")";
+        try (Connection conn = openDorisConnection()) {
+            return executeWithParams(conn, sql, params, timeoutSeconds);
+        } catch (Exception e) {
+            throw translate(url, timeoutSeconds, e);
+        }
+    }
+
+    private QueryResult executeWithParams(Connection conn, String sql, List<Object> params,
+                                          int timeoutSeconds) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (timeoutSeconds > 0) {
+                ps.setQueryTimeout(timeoutSeconds);
+            }
+            if (params != null) {
+                for (int i = 0; i < params.size(); i++) {
+                    ps.setObject(i + 1, params.get(i));
+                }
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                return collect(rs);
+            }
+        }
+    }
+
+    /** 统一结果提取（列头 + 行数据 + 1000 行截断），Statement/PreparedStatement 共用 */
+    private QueryResult collect(ResultSet rs) throws SQLException {
+        ResultSetMetaData metaData = rs.getMetaData();
+        int colCount = metaData.getColumnCount();
+        List<String> columns = new ArrayList<>(colCount);
+        for (int i = 1; i <= colCount; i++) {
+            columns.add(metaData.getColumnLabel(i));
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        boolean truncated = false;
+        while (rs.next()) {
+            if (rows.size() >= MAX_ROWS) {
+                truncated = true;
+                break;
+            }
+            Map<String, Object> row = new LinkedHashMap<>(colCount);
+            for (int i = 1; i <= colCount; i++) {
+                row.put(columns.get(i - 1), ExternalSqlExecutor.formatValue(rs.getObject(i)));
+            }
+            rows.add(row);
+        }
+        return new QueryResult(columns, rows, truncated);
     }
 
     /**

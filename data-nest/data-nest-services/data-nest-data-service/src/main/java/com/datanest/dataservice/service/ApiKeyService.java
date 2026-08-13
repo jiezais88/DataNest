@@ -287,8 +287,8 @@ public class ApiKeyService {
         return KEY_PREFIX + HexFormat.of().formatHex(bytes);
     }
 
-    /** SHA-256 hex（key_hash 落库，明文不留痕） */
-    private String sha256Hex(String plainKey) {
+    /** SHA-256 hex（key_hash 落库，明文不留痕）；static 供 OpenApiKeyFilter 复用 */
+    public static String sha256Hex(String plainKey) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(plainKey.getBytes(StandardCharsets.UTF_8)));

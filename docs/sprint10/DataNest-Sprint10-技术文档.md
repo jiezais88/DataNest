@@ -429,8 +429,8 @@ kafka:
 - [x] governance 依赖项：V1.6.0 迁移（metadata_table 加 sensitivity_level/api_exempted + sensitivity_change_log）+ internal `GovernanceMetadataController`（表清单+敏感度批量）+ governance-api `GovernanceMetadataApi` 契约（fallback fail-closed 已生效）——**SensitivityController 改级/批量/开白/审计仍归 F5**
 - [x] **定时清理规范落定**：业务服务本地禁 `@Scheduled`（写入 conventions-backend §7）；新增 data-service-api `DataServiceOpsApi` 契约 + data-service `/internal/sql-history/cleanup` + job `SqlHistoryCleanupHandler`（已注册 PowerJob jobId=293，cron `0 50 3 * * ?`）
 - [x] API 定义：`DataApiController` + `DataApiService`（CRUD/发布/下线 + 敏感度校验）+ `data_api`/`api_key`/`api_key_binding`/`api_key_pipeline` 实体 Mapper——**F2 已完成并部署（2026-08-12）**：自定义路径归一/查重（V1.0.2 软删 + path 部分唯一索引）、params_json 定义对象（filters EQ/RANGE + fields 白名单，标识符/排序严格白名单防注入）、自动文档（参数说明 + curl 示例）、`ApiKeyController`（K- 明文一次 + SHA-256 哈希 + 绑定/快捷启停/近 7 天调用聚合识别僵尸 Key）；API 自测 45 用例全通过（含敏感度 9004 三门路、权限 403、软删路径复用）
-- [ ] API 网关：`OpenApiKeyFilter`（Key 哈希校验）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j，数据源维度）+ `ApiCallLogWriter`（异步队列）
-- [ ] 全局统计：`StatsController` + `StatsQueryService`（`/stats/*` 聚合，D8 异步写入+聚合查询；健康分级阈值对齐告警 PASS/WARNING/SEVERE 语义）
+- [x] API 网关：`OpenApiController`/`OpenApiService`（对外执行 `GET /open-api/v1/{path}`，状态校验/熔断/参数化 SQL 执行/分页 COUNT，**HTTP 状态码语义** 401/404/429/503/200）+ `OpenApiKeyFilter`（Key 哈希校验 + 绑定 + 限流）+ `RateLimitService`（Redis ZSET 滑动窗口，Key 级 QPS）+ `CircuitBreakerService`（Resilience4j 数据源维度）+ `ApiCallLogWriter`（异步队列写 api_call_log）+ `OpenApiSqlBuilder`（参数化 SQL，参数值类型启发式推断）+ `CancelableSqlExecutor` 扩展 PreparedStatement 路径——**F3 已完成并部署（2026-08-13），自测全通过**
+- [x] 全局统计：`StatsController`（`/stats/*` 7 端点）+ `StatsQueryService`（api_call_log 聚合 percentile_cont/FILTER）+ `DataApiController` 补 `/apis/{id}/stats`；健康分级对齐告警 PASS/WARNING/SEVERE（错误率≥5% 或 P95≥1000ms=SEVERE；错误率≥1% 或 P95≥500ms 或限流≥5%=WARNING），综合分 PASS100/WARNING60/SEVERE20 平均——**F3 已完成并部署（2026-08-13）**
 - [ ] WebSocket：`WsEventsHandler`（TextWebSocketHandler + 握手 Key 校验 + subscribe）+ `WebSocketSubscriptionRegistry` + `KafkaEventConsumer`（spring-kafka @KafkaListener → fan-out）
 - [ ] common：新增 ErrorCode 段（数据服务 9xxx：SQL 只读拦截/Key 无效/限流/API 未发布/表敏感度等）
 - [ ] governance：V1.6.0 迁移 + `SensitivityController`（改级/批量/开白/审计）+ internal `GovernanceMetadataController`（表清单+敏感度批量）+ governance-api `GovernanceMetadataApi` 契约
@@ -472,6 +472,7 @@ kafka:
 | 9012 | SENSITIVITY_SERVICE_UNAVAILABLE | 分级服务暂不可用（fail-closed） |
 | 9013 | API_DEFINITION_INVALID | API 定义参数非法（路径/筛选/字段/排序白名单校验失败） |
 | 9014 | API_KEY_NOT_FOUND | API Key 不存在 |
+| 9015 | API_CIRCUIT_OPEN | 数据源暂不可用（熔断开闸，503） |
 
 > 具体段号以实现时 common `ErrorCode` 实际布局为准（当前已用 2xxx~8xxx）。
 
@@ -509,3 +510,4 @@ kafka:
 > - v1.6 (2026-08-12)：**F1 前端 + 联调 + 补 F1.1 后端**——① 前端 SQL 终端页（路由/菜单/Monaco Ctrl+Enter/运行·停止/KPI 4 卡/结果表/CSV·Excel 导出/历史回填+清空）实现并部署 app-frontend；② F1.1 后端补丁（用户授权「你来补后端」）：`POST /sql-console/cancel` + `queryId` 注册表取消（interrupt+关连接）、`SqlExecuteResult.tableCount/confidentialHits`、socketTimeout 参数化、durationMs int；③ §4.1/§5.1/§9 同步（本版本记录下段落地）。「扫描行」KPI 因 JDBC 无可靠 API 改「涉及表」（见 handoff §6.2 已知取舍）。
 > - v1.7 (2026-08-12)：**F2 数据 API + Key 管理端后端完成并部署**——① 4 项决策用户拍板：F2 只做管理端（对外调用入口归 F3）、自定义路径（Blocker 5 定稿）、软删加 deleted 列（V1.0.2，path 改部分唯一索引）、返回字段白名单并入 params_json 定义对象；② `DataApiController`/`DataApiService`（CRUD/发布/下线/软删 + 敏感度闸门 fail-closed + 路径归一查重 + 标识符/排序白名单防注入 + 自动文档）+ `ApiKeyController`/`ApiKeyService`（K- 明文一次性返回 + SHA-256 哈希 + 绑定/快捷启停/近 7 天调用聚合）；③ common 错误码补 9013/9014；④ API 自测 45 用例全通过（功能 38 + 敏感度闸门 7：机密/内部未开白 9004、开白放行、fail-closed 语义同 F1）；§3.0 补 V1.0.1/V1.0.2 迁移行、§8 Blocker 5 定稿、§9.1 补错误码。
 > - v1.8 (2026-08-12)：**F2 前端 + 联调**——① 前端：API 管理（列表+统计卡下钻/详情=概览+定义+文档+绑定 Key/3 步创建向导含 API 预览/编辑页）+ API Key 管理（列表+新建·编辑弹窗+明文一次性展示+快捷启停+僵尸 Key 灰显）+ Sidebar「数据服务」组补「API 管理」；roles 补 `DATA_SERVICE_WRITE_ROLES`；`types/metadata.ts` 补 sensitivityLevel/apiExempted；② 用户授权补后端 3 处：`GET /apis/summary`（列表统计卡）、`GET /api-keys/{id}`（编辑预填 apiIds）、`DataApiPageItem`/`DataApiDetailDTO` 加 sensitivityLevel（按 数据源+库+schema 分组批量反查 governance，读路径 fail-open 降级「未知」）；③ 与原型偏差（用户确认）：字段级「机密锁定」不做（NG5 无字段级敏感度，字段全可勾选）、详情页调用统计图表区占位待 F3 `/stats/*`、API 列表敏感度筛选下拉不做（列保留）；④ 踩坑：`@Select` 非 `<script>` 模式不解析 `&gt;` 转义（countCallsSince 9999，已修）；⑤ 验证：后端 python 联调 21 用例全过 + 前端冒烟（列表页用例通过、向导页快照确认渲染）；完整 E2E 由专门测试会话承担（用户明确），临时 spec 未入库。
+> - v1.9 (2026-08-13)：**F3 API 网关 + 调用统计后端完成并部署**——对外执行入口（`OpenApiController`/`OpenApiService`，HTTP 状态码语义）+ `OpenApiKeyFilter`（Key 认证/绑定/限流）+ `RateLimitService`（Redis 滑动窗口，Key 级 QPS）+ `CircuitBreakerService`（数据源维度熔断）+ `ApiCallLogWriter`（异步统计）+ `OpenApiSqlBuilder`（参数化 SQL）+ 执行器 PreparedStatement 扩展 + `StatsController` 7 全局端点 + `/apis/{id}/stats`；2 问 2 答拍板（Key 级 QPS 限流 / 健康分级对齐告警）；common 补 9015；§9 勾选、§9.1 补错误码；自测全通过 + 测试数据清理（见 handoff §21）。

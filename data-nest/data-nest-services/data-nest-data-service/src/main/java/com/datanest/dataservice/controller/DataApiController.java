@@ -4,12 +4,14 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
+import com.datanest.dataservice.dto.ApiStatsDTO;
 import com.datanest.dataservice.dto.DataApiCreateRequest;
 import com.datanest.dataservice.dto.DataApiDetailDTO;
 import com.datanest.dataservice.dto.DataApiPageItem;
 import com.datanest.dataservice.dto.DataApiSummaryDTO;
 import com.datanest.dataservice.dto.DataApiUpdateRequest;
 import com.datanest.dataservice.service.DataApiService;
+import com.datanest.dataservice.service.StatsQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -36,9 +38,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataApiController {
 
     private final DataApiService dataApiService;
+    private final StatsQueryService statsQueryService;
 
-    public DataApiController(DataApiService dataApiService) {
+    public DataApiController(DataApiService dataApiService, StatsQueryService statsQueryService) {
         this.dataApiService = dataApiService;
+        this.statsQueryService = statsQueryService;
     }
 
     @Operation(summary = "创建 API", description = "校验表敏感度（机密禁止 / 内部需超管开白，fail-closed）；路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
@@ -101,5 +105,12 @@ public class DataApiController {
     public Result<Void> delete(@PathVariable("id") Long id) {
         dataApiService.delete(id);
         return Result.ok(null);
+    }
+
+    @Operation(summary = "单 API 调用统计", description = "调用量/成功率/平均/P95/今日 + 趋势 + 最近调用明细（Sprint 10 F3）")
+    @GetMapping("/{id}/stats")
+    public Result<ApiStatsDTO> stats(@PathVariable("id") Long id,
+                                     @RequestParam(value = "range", defaultValue = "24h") String range) {
+        return Result.ok(statsQueryService.apiStats(id, range));
     }
 }

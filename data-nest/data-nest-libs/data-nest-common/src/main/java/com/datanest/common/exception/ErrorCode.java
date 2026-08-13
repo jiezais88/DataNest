@@ -166,6 +166,7 @@ public enum ErrorCode {
     SENSITIVITY_SERVICE_UNAVAILABLE(9012, "分级服务暂不可用，请稍后重试"),
     API_DEFINITION_INVALID(9013, "API 定义参数非法"),
     API_KEY_NOT_FOUND(9014, "API Key 不存在"),
+    API_CIRCUIT_OPEN(9015, "数据源暂不可用，请稍后重试"),
 
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),

@@ -12,7 +12,7 @@
 | PRD | ✅ v1.3 | **全部决策定稿（D1~D5）**；§6.3/6.4/6.5 已回落原型修正；§12.2/§13 决策记录含 D4 M0 结论 |
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
-| 后端 | ✅ F1/F2 完成 | **F1 SQL 终端已部署 `datanest-app-data-service`（healthy）**；17 API 自测用例 + F1.1 cancel 补丁全通过；**F2（本会话）：数据 API 管理端（CRUD/发布/下线/软删 + 敏感度闸门 + 自动文档）+ API Key 管理（K- 明文一次 + SHA-256 + 绑定/快捷启停/近 7 天调用聚合）已实现并部署，API 自测 45 用例全通过**；F2 前端会话补：`/apis/summary` 汇总 + `/api-keys/{id}` 详情 + PageItem/Detail 敏感度反查（读路径降级）；F3 网关（对外入口/限流/熔断/统计）/F4 WebSocket/F5 分级对外端点未开始 |
+| 后端 | ✅ F1/F2/F3 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关（本会话）**：对外执行入口 `GET /open-api/v1/{path}` + `OpenApiKeyFilter`（Key 认证/绑定/限流）+ Redis 滑动窗口限流 + Resilience4j 数据源熔断 + 异步调用统计 + `StatsController` 全局统计（`/stats/*` 7 端点 + `/apis/{id}/stats`）已实现并部署（healthy），自测全通过；F4 WebSocket / F5 分级对外端点未开始 |
 | 前端 | ✅ F1/F2 完成 | **SQL 查询终端页已实现并部署 `app-frontend`**（`/data-service/sql-console`）；**F2（本会话）：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（列表/新建编辑弹窗/明文一次性展示/快捷启停/僵尸 Key 灰显）已实现并部署**，Sidebar「数据服务」组补「API 管理」；联调通过 |
 
 ---
@@ -65,18 +65,18 @@
 | # | 事项 | 说明 | 状态 |
 |---|------|------|------|
 | 1 | **D4 变更事件捕获**（Flink CDC 3.6 多 sink + Kafka） | **M0 已定稿（2026-08-12，q-0~q-3）**：Flink CDC 3.6 不支持多 sink 双写 → **事件管道分离**（每可订阅管道独立 Kafka 单 sink 事件作业，latest-offset 增量）；Kafka `apache/kafka:4.0.x` KRaft 单节点 | ✅ 已定稿 |
-| 2 | 全局统计接口聚合方式 | 调用统计异步写 + 聚合查询（对齐技术文档 D8），range 参数 24h/7d/30d；是否独立统计表需后端实现时定 | ⏳ 待后端 |
-| 3 | 健康分级口径（健康/警告/严重 + 综合健康分） | 原型以「非 2xx 占比 + P95 + 限流命中」综合打分；正式口径（分级阈值）建议对齐已有告警质量分级语义（PASS/WARNING/SEVERE），待产品确认 | ⏳ 待产品 |
+| 2 | 全局统计接口聚合方式 | **已定稿（2026-08-13 F3）**：api_call_log 异步写 + 直接 SQL 聚合（percentile_cont/FILTER），不建独立统计表；range=24h/7d/30d | ✅ 已定稿 |
+| 3 | 健康分级口径（健康/警告/严重 + 综合健康分） | **已定稿（2026-08-13 F3，用户拍板对齐告警）**：错误率/P95/限流命中任一命中升级（SEVERE 错误率≥5% 或 P95≥1000ms；WARNING 错误率≥1% 或 P95≥500ms 或限流≥5%），综合健康分 = PASS100/WARNING60/SEVERE20 平均 | ✅ 已定稿 |
 
 ---
 
 ## 5. Next Action
 
 1. ~~**F2 API 管理 + Key**~~ ✅ 已完成（见 §19 后端 + §20 前端/联调）。
-2. **F3 API 网关**：`OpenApiKeyFilter`（Key 哈希校验，open-api 路由网关已放行）+ 对外执行 `GET /open-api/v1/{自定义path}`（params 白名单绑定 + 分页 + orderBy）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreaker`（Resilience4j）+ `ApiCallLogWriter`（异步队列写 api_call_log）；`StatsController` 全局统计（`/stats/*`）。注意：对外路径按**自定义 path** 匹配（Blocker 5 已定，data_api.path 存完整路径）。
+2. ~~**F3 API 网关**~~ ✅ 已完成（见 §21 后端）。
 3. **F5 分级对外端点**：governance `SensitivityController`（改级/批量/开白/审计，机密降级必经 INTERNAL 两步）+ 前端数据分级分类页。
 4. **F4 WebSocket 实时订阅**：依赖 Kafka 中间件——compose `middleware-kafka`（`apache/kafka:4.0.x`）+ Flink lib 增 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2` + realtime `CdcEventYamlBuilder` 事件作业联动（server-id 6400+/PG 额外槽）+ `WsEventsHandler` + `KafkaEventConsumer`。
-5. **健康分级阈值确认**：全局统计页「健康/警告/严重 + 综合健康分」的分级阈值（当前注记对齐告警 PASS/WARNING/SEVERE 语义），需后端定稿前与产品确认。
+5. ~~**健康分级阈值确认**~~ ✅ 已定稿（对齐告警 PASS/WARNING/SEVERE，见 §21）。
 6. ~~前端 SQL 终端页~~ ✅ 已完成（本会话，见 §6 变更清单）。
 
 ---
@@ -402,6 +402,37 @@
 
 ---
 
+## 21. F3 API 网关 + 调用统计后端（2026-08-13，本会话）
+
+> 范围：对外执行入口 / 限流 / 熔断 / 调用统计 + 全局统计（技术文档 F3 行 + `/stats/*`）。2 问 2 答决策：**Key 级 QPS 限流**（对齐 PRD 6.4/AC-7，data_api 无 QPS 字段不引入 API 级）、**健康分级对齐告警 PASS/WARNING/SEVERE**。
+
+### 21.1 实现（data-service，已部署 healthy）
+- **对外执行入口**：`OpenApiController` `GET /open-api/v1/{path}` + `OpenApiService`——状态校验（未发布 404/9007）→ 熔断检查（数据源维度 503/9015）→ 参数化 SQL 执行（内置 Doris / 外部数据源）→ 分页 COUNT → 记录熔断结果 + 异步写 api_call_log。**对外用 HTTP 状态码语义**（401/404/429/503/200），区别于管理端 Result 信封 200。
+- **OpenApiKeyFilter**（OncePerRequestFilter 拦截 `/open-api/**`）：X-API-Key → SHA-256 命中启用 Key → 按 servlet path 查 API → 绑定校验 → Key 级限流；失败 401（无效/禁用/未绑定）/404（API 不存在）/429（限流 + Retry-After），通过后 request attribute 传递 api/key 避免 Controller 重复查库。
+- **RateLimitService**：Redis ZSET 滑动窗口（`datanest:ratelimit:{keyId}`，Key 级 QPS，窗口 60s 可配）。
+- **CircuitBreakerService**：Resilience4j 按数据源维度（`ds-{datasourceId}`，内置 Doris 同 -1 维度），COUNT_BASED 窗口=failure-threshold、失败率 50%、waitSeconds 半开探测。
+- **ApiCallLogWriter**：虚拟线程 + 队列背压异步写 api_call_log（不阻塞主链路，NAC-6）。
+- **OpenApiSqlBuilder**：参数化 SELECT 构造（filters EQ/RANGE 绑定 + fields 白名单按类型转义 + orderBy 白名单 + 分页按类型 LIMIT/OFFSET|OFFSET FETCH），参数值启发式推断类型（整数 Long / 小数 BigDecimal / 字符串）避免 PG 数值列 setString 类型不匹配。
+- **执行器扩展**：`CancelableSqlExecutor` 加 PreparedStatement 参数化查询路径（queryExternal/queryDoris 带 `List<Object>` params），抽 collect 复用结果提取（未碰 task-core）。
+- **统计**：`StatsController` 7 全局端点（overview/trend/health-distribution/top-apis/error-codes/top-keys/rate-limit-trend）+ `DataApiController` 补 `/apis/{id}/stats`；`StatsQueryService` 从 api_call_log 聚合（percentile_cont/FILTER，PG 语法）；健康分级对齐告警 PASS/WARNING/SEVERE（错误率/P95/限流命中任一命中升级，综合分 PASS100/WARNING60/SEVERE20 平均）。
+- **错误码**：common 补 `API_CIRCUIT_OPEN(9015)`。
+
+### 21.2 自测（全通过，测试数据已清理）
+- Key 认证：无 Key / 错 Key 401（9005）；正确 Key 200 ✅。
+- 参数化：`id=1` EQ 筛选返回 1 行；`fields=["id","username"]` 白名单只返两列；分页 total=3 ✅。
+- 限流：qpsLimit=2 第 3 次 429 + Retry-After=60（9006）✅。
+- 熔断：坏表连续 3 次 500 → 第 4 次起 503（9015）→ 30s 自动半开 + 成功请求闭合 ✅。
+- 未发布：CREATED API 调用 404（9007）✅。
+- 统计：overview（total/successRate/p95/rateLimited）、error-codes（429 TopN）、top-apis、health-distribution（SEVERE 分级 + overallScore）、单 API stats（total/successRate/avg/p95/today/trend/recentLogs）✅。
+- `mvn clean package` ✅ + 镜像重建部署 + 容器 healthy；api/api_key/api_call_log 测试数据已清理（0 残留）。
+
+### 21.3 Review（架构融洽 / 业务正确 / 实现高效）
+- 架构：跨服务走既有 Feign（engineering 数据源 / governance 敏感度）；复用 CancelableSqlExecutor 扩展（未碰 task-core）；统计聚合单 SQL 无 N+1；对外路径匹配 servlet path = data_api.path。
+- 已知取舍（待后续细化）：① 熔断把「表不存在」也记数据源失败（坏 API 会熔断整个数据源——数据源维度语义，可后续仅对连接失败/超时熔断）；② failureRateThreshold=50 实际 3 次失败开闸（比「连续 5 次」更敏感，可调 100 严格对齐）；③ Redis 限流非原子（removeRange+zCard+add，极端并发少量超发，顺序验收准确）。
+- bug 修复：`buildSelectColumns` 未传数据源类型致 PG/Oracle 字段反引号转义错误 → 已修复并重新部署。
+
+---
+
 > **版本记录**
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
 > - v1.1 (2026-08-12)：§3 待同步项 4 项全部回落完成（PRD v1.2 + 技术文档 v1.2：全局统计端点组 / API 预览 / Key 近 7 天调用与快捷启用）；状态看板与技术文档版本同步更新；Next Action 移除回落项、新增健康分级阈值确认。
@@ -423,3 +454,4 @@
 > - v1.16 (2026-08-12)：**F2 数据 API + Key 管理端后端完成**——4 项决策拍板（只做管理端/自定义路径/软删加列/白名单并入 params_json）；`DataApiController`+`ApiKeyController` 全端点实现并部署；V1.0.2 软删迁移（path 部分唯一索引）；敏感度闸门 fail-closed 三处（创建/编辑/发布）；标识符与排序白名单防注入；common 补 9013/9014；45 用例自测全通过（handoff §19）；技术文档 v1.7（Blocker 5 定稿 + §3.0/§9/§9.1 同步）。
 > - v1.17 (2026-08-12)：**F2 前端 + 联调完成**——用户 3 问 3 答（授权补后端 3 处：`/apis/summary`、`/api-keys/{id}`、PageItem/Detail 敏感度反查；详情页统计图表待 F3；字段级机密锁定不做）；前端 API 管理（列表+统计卡/详情/3 步向导/编辑）+ Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）实现并部署；踩坑 `@Select` 非 script 不解析 `&gt;`；后端 python 联调 21 用例全过 + 前端冒烟通过（完整 E2E 归专门测试会话，临时 spec 未入库，handoff §20）；技术文档 v1.8。
 > - v1.18 (2026-08-13)：**F2 完整 E2E 测试会话**——api-manage 24 用例 + api-keys 11 用例 **35 用例全通过**（覆盖 API 列表/3 步向导/详情/编辑/生命周期软删/权限矩阵 403/敏感度闸门 9004/Key 明文一次·启停·重绑·僵尸灰显/绑定联动）。修复 2 处：① **后端缺陷（用户授权）**——governance `MetadataTableMapper.selectTablesByDatasourceDatabaseSchema`/`selectTableDetailById` 手写 SQL 漏 SELECT `sensitivity_level`/`api_exempted` 两列，导致 F2 向导页「机密表禁选+机密徽章」「内部表开白警告」失效（后端 9004 闸门本身正常，走 internal 接口 fail-closed）；已补两列 + 重建部署 `app-governance`（实测 PUBLIC/CONFIDENTIAL 均正确返回）；② **测试定位器缺陷**——AM-21 删除按钮 `getByRole('button',{name:'删除'})` 因子串匹配「e2e_s10_待删除」触发 strict mode 歧义，改 `exact:true`。测试数据自清理（e2e_s10_ 前缀 0 残留）+ 敏感度复位 PUBLIC + 测试产物（pw-out/test-results）已清。
+> - v1.19 (2026-08-13)：**F3 API 网关 + 调用统计后端完成**——对外执行入口（`OpenApiController`/`OpenApiService`，HTTP 状态码语义 401/404/429/503/200）+ `OpenApiKeyFilter`（Key 认证/绑定/限流）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreakerService`（Resilience4j 数据源维度熔断）+ `ApiCallLogWriter`（异步统计）+ `OpenApiSqlBuilder`（参数化 SQL，参数值类型启发式推断）+ 执行器 PreparedStatement 扩展（未碰 task-core）+ `StatsController` 7 全局端点 + `/apis/{id}/stats`；2 问 2 答拍板（**Key 级 QPS 限流** / **健康分级对齐告警 PASS/WARNING/SEVERE**）；common 补 `API_CIRCUIT_OPEN(9015)`；自测全通过（Key 认证 401/200、参数化 EQ/fields/分页、限流 429+Retry-After、熔断 500→503→闭合、未发布 404、统计 7 端点）+ 测试数据清理（handoff §21）。
