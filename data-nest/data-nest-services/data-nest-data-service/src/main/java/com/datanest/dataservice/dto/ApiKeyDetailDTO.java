@@ -28,6 +28,9 @@ public class ApiKeyDetailDTO {
     @Schema(description = "当前绑定的 API ID 列表")
     private List<Long> apiIds;
 
+    @Schema(description = "当前绑定的 CDC 管道 ID 列表（F4 WebSocket 订阅授权）")
+    private List<Long> pipelineIds;
+
     @Schema(description = "创建人用户名")
     private String createdByName;
 

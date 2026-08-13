@@ -30,4 +30,7 @@ public class ApiKeyUpdateRequest {
 
     @Schema(description = "绑定的 API ID 列表（全量重绑）")
     private List<Long> apiIds;
+
+    @Schema(description = "绑定的 CDC 管道 ID 列表（全量重绑，F4 WebSocket 订阅授权）")
+    private List<Long> pipelineIds;
 }

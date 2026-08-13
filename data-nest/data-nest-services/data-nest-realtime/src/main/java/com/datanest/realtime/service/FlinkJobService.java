@@ -121,6 +121,19 @@ public class FlinkJobService {
         return info.getId();
     }
 
+
+    /**
+     * 取消作业（不做 savepoint，PATCH /jobs/{id}）。F4 事件作业停止用：
+     * 事件作业 latest-offset 仅增量，无需 savepoint，重启后从最新位点续读。
+     */
+    @SuppressWarnings("unchecked")
+    public void cancelJob(String jobId) {
+        restClient.patch()
+                .uri(jobmanagerUrl + "/jobs/{jobId}", jobId)
+                .body(Map.of("cancel-job", true))
+                .retrieve()
+                .body(Map.class);
+    }
     /**
      * cancel-with-savepoint 停止作业：触发停止 → 轮询取回 savepoint 路径。
      *

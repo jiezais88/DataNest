@@ -167,6 +167,7 @@ public enum ErrorCode {
     API_DEFINITION_INVALID(9013, "API 定义参数非法"),
     API_KEY_NOT_FOUND(9014, "API Key 不存在"),
     API_CIRCUIT_OPEN(9015, "数据源暂不可用，请稍后重试"),
+    API_PIPELINE_UNAVAILABLE(9016, "CDC 管道不可订阅（不存在或未运行）"),
 
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),

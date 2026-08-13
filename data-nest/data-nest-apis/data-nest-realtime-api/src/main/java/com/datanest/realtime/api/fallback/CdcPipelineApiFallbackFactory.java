@@ -5,6 +5,7 @@ import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
 import com.datanest.realtime.api.CdcPipelineApi;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
+import com.datanest.realtime.api.dto.CdcPipelineSubscribeDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.openfeign.FallbackFactory;
@@ -46,6 +47,12 @@ public class CdcPipelineApiFallbackFactory implements FallbackFactory<CdcPipelin
             public Result<Boolean> refreshCatalogIfRunning() {
                 // 定时调度场景：抛异常本轮跳过，下轮调度再来（对齐 job handler 的 RemoteCalls 容错语义）
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR, "实时服务不可用，本轮湖仓 catalog 自动刷新跳过");
+            }
+
+            @Override
+            public Result<CdcPipelineSubscribeDTO> getSubscribeInfo(Long id) {
+                // fail-closed：订阅校验需确认管道 RUNNING 状态，实时服务不可达时拒绝订阅（防订阅到未知状态管道）
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "实时服务不可用，订阅校验失败");
             }
         };
     }

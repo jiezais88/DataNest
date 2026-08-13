@@ -2,9 +2,11 @@ package com.datanest.realtime.controller;
 
 import com.datanest.common.model.Result;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
+import com.datanest.realtime.api.dto.CdcPipelineSubscribeDTO;
 import com.datanest.realtime.service.CdcPipelineService;
 import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -46,5 +48,11 @@ public class CdcInternalController {
     @PostMapping("/cdc/pipelines/refresh-catalog-if-running")
     public Result<Boolean> refreshCatalogIfRunning() {
         return Result.ok(pipelineService.refreshCatalogIfRunning());
+    }
+
+    /** 查询管道订阅信息（F4 WebSocket 订阅校验：状态 + 源数据源/库 + 源表清单） */
+    @GetMapping("/cdc/pipelines/{id}/subscribe")
+    public Result<CdcPipelineSubscribeDTO> getSubscribeInfo(@PathVariable("id") Long id) {
+        return Result.ok(pipelineService.subscribeInfo(id));
     }
 }

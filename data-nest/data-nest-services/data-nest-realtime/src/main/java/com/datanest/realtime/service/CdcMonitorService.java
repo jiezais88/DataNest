@@ -87,6 +87,60 @@ public class CdcMonitorService {
         }
     }
 
+    /**
+     * F4 事件作业监控：轮询 cdc_events_flink_job_id 非空的管道，事件作业 FAILED/外部停止时
+     * 清该字段 + WARN 日志。失败降级不影响主管道状态/指标（独立于 pollOne）。
+     */
+    @Scheduled(fixedDelayString = "${datanest.realtime.monitor.interval-ms:5000}", initialDelay = 15000)
+    public void pollEventJobs() {
+        List<CdcPipeline> withEventJob = pipelineMapper.selectList(new QueryWrapper<CdcPipeline>()
+                .isNotNull("cdc_events_flink_job_id"));
+        for (CdcPipeline pipeline : withEventJob) {
+            try {
+                pollEventJob(pipeline);
+            } catch (Exception e) {
+                logger.warn("CDC 事件作业监控单管道异常: pipelineId={}, error={}", pipeline.getId(), e.getMessage());
+            }
+        }
+    }
+
+    private void pollEventJob(CdcPipeline pipeline) {
+        String state;
+        try {
+            state = flinkJobService.extractState(flinkJobService.getJobOverview(pipeline.getCdcEventsFlinkJobId()));
+        } catch (Exception e) {
+            // 事件作业 404（已被外部删除）→ 清字段；其余（集群不可达）保持原状
+            if (isNotFound(e)) {
+                pipelineMapper.update(null, new UpdateWrapper<CdcPipeline>()
+                        .eq("id", pipeline.getId())
+                        .set("cdc_events_flink_job_id", null));
+                pipelineService.writeLog(pipeline.getId(), CdcPipelineLog.LEVEL_WARN,
+                        "事件作业不存在（已被外部删除），实时订阅已中断；重新启动管道可恢复");
+            }
+            return;
+        }
+        switch (state) {
+            case "FAILED" -> {
+                String rootException = flinkJobService.getJobRootException(pipeline.getCdcEventsFlinkJobId());
+                pipelineMapper.update(null, new UpdateWrapper<CdcPipeline>()
+                        .eq("id", pipeline.getId())
+                        .set("cdc_events_flink_job_id", null));
+                pipelineService.writeLog(pipeline.getId(), CdcPipelineLog.LEVEL_WARN,
+                        "事件作业失败（不影响主管道同步）: " + truncate(rootException == null ? "未知原因" : rootException, 2000));
+            }
+            case "CANCELED", "FINISHED", "SUSPENDED" -> {
+                pipelineMapper.update(null, new UpdateWrapper<CdcPipeline>()
+                        .eq("id", pipeline.getId())
+                        .set("cdc_events_flink_job_id", null));
+                pipelineService.writeLog(pipeline.getId(), CdcPipelineLog.LEVEL_WARN,
+                        "事件作业被外部停止（state=" + state + "），实时订阅已中断；重新启动管道可恢复");
+            }
+            default -> {
+                // RUNNING / 中间状态：忽略
+            }
+        }
+    }
+
     private void pollOne(CdcPipeline pipeline) {
         Map<String, Object> overview;
         String state;

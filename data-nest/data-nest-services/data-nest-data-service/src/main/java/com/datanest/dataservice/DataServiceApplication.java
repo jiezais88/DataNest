@@ -15,9 +15,10 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
  */
 @EnableDiscoveryClient
 @SpringBootApplication(scanBasePackages = {"com.datanest.dataservice", "com.datanest.common.internal",
-        "com.datanest.engineering.api", "com.datanest.system.api", "com.datanest.governance.api"})
+        "com.datanest.engineering.api", "com.datanest.system.api", "com.datanest.governance.api",
+        "com.datanest.realtime.api"})
 @EnableFeignClients(basePackages = {"com.datanest.engineering.api", "com.datanest.system.api",
-        "com.datanest.governance.api"})
+        "com.datanest.governance.api", "com.datanest.realtime.api"})
 @MapperScan("com.datanest.dataservice.mapper")
 public class DataServiceApplication {
 

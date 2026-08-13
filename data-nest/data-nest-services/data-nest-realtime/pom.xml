@@ -89,6 +89,12 @@
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-cdc-pipeline-connector-iceberg</artifactId>
         </dependency>
+        <!-- Kafka 单 sink 事件作业提交端依赖（F4 WebSocket 实时订阅：YAML 解析时识别 kafka sink Factory；
+             运行时 jar 已预置集群 /opt/flink/lib） -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-cdc-pipeline-connector-kafka</artifactId>
+        </dependency>
         <!-- mysql connector 不含 JDBC 驱动，需手动带；源库预检也走它。
              8.x 线对齐 Flink CDC 依赖（版本统一由根 pom mysql-connector.version 管理，勿改） -->
         <dependency>

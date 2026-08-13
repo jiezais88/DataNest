@@ -319,6 +319,11 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.flink</groupId>
+                <artifactId>flink-cdc-pipeline-connector-kafka</artifactId>
+                <version>${cdc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
                 <artifactId>flink-clients</artifactId>
                 <version>${flink.version}</version>
             </dependency>

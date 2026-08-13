@@ -12,7 +12,7 @@
 | PRD | ✅ v1.3 | **全部决策定稿（D1~D5）**；§6.3/6.4/6.5 已回落原型修正；§12.2/§13 决策记录含 D4 M0 结论 |
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
-| 后端 | ✅ F1/F2/F3 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关（本会话）**：对外执行入口 `GET /open-api/v1/{path}` + `OpenApiKeyFilter`（Key 认证/绑定/限流）+ Redis 滑动窗口限流 + Resilience4j 数据源熔断 + 异步调用统计 + `StatsController` 全局统计（`/stats/*` 7 端点 + `/apis/{id}/stats`）已实现并部署（healthy），自测全通过；F4 WebSocket / F5 分级对外端点未开始 |
+| 后端 | ✅ F1/F2/F3/F4 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关**：对外执行入口 + Key 认证/限流 + Resilience4j 熔断 + 异步统计 + `/stats/*` 全局统计（E2E 22 用例）；**F4 WebSocket（本会话）**：Kafka 事件总线 + realtime 事件管道 + data-service WebSocket（握手 Key 校验/subscribe/Kafka fan-out）已实现并部署（healthy），分层自测全通过；F5 分级对外端点未开始 |
 | 前端 | ✅ F1/F2/F3 完成 | **SQL 查询终端页**（`/data-service/sql-console`）；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（列表/新建编辑弹窗/明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3（本会话）：API 运行统计全局页（`/data-service/api-stats`）+ 单 API 详情统计区块 + 列表操作列统计按钮 + Sidebar 入口**，联调通过 |
 
 ---
@@ -95,7 +95,7 @@
 1. ~~**F2 API 管理 + Key**~~ ✅ 已完成（见 §19 后端 + §20 前端/联调）。
 2. ~~**F3 API 网关 + 调用统计**~~ ✅ 已完成（后端见 §21，前端见 §1.1）。
 3. **F5 分级对外端点**：governance `SensitivityController`（改级/批量/开白/审计，机密降级必经 INTERNAL 两步）+ 前端数据分级分类页。
-4. **F4 WebSocket 实时订阅**：依赖 Kafka 中间件——compose `middleware-kafka`（`apache/kafka:4.0.x`）+ Flink lib 增 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2` + realtime `CdcEventYamlBuilder` 事件作业联动（server-id 6400+/PG 额外槽）+ `WsEventsHandler` + `KafkaEventConsumer`。
+4. ~~**F4 WebSocket 实时订阅**~~ ✅ 已完成（见 §23）。
 5. ~~**健康分级阈值确认**~~ ✅ 已定稿（对齐告警 PASS/WARNING/SEVERE，见 §21）。
 6. ~~前端 SQL 终端页~~ ✅ 已完成（本会话，见 §6 变更清单）。
 
@@ -476,6 +476,31 @@
 
 ---
 
+## 23. F4 WebSocket 实时订阅后端（2026-08-13，本会话）
+
+> 范围：Kafka 事件总线 + Flink CDC 事件管道 + data-service WebSocket（技术文档 F4 行）。2 问 2 答拍板：**分层自测 + 部署**（真实 CDC 端到端归后续专门测试会话）、**机密管道全建事件作业 + 订阅侧拒绝**（realtime 不依赖 governance，服务边界清晰）。
+
+### 23.1 实现（已部署 healthy）
+- **中间件**：compose 新增 `middleware-kafka`（`apache/kafka:4.0.0` KRaft 单节点，9092，topic 保留 7d，仅内网）+ `kafka-data` volume；Flink lib 增 `flink-cdc-pipeline-connector-kafka-3.6.0-2.2.jar`；TaskManager `numberOfTaskSlots` 1→2（事件作业额外占 1 slot）。
+- **realtime 事件管道**：`CdcPipeline` 加 `cdc_events_flink_job_id`（Flyway V1.4.0）；`CdcYamlBuilder.buildEvent`（Kafka 单 sink 事件 YAML，latest-offset 仅增量，MySQL server-id 6400+ / PG 复制槽 `datanest_cdc_ev_` 错开主管道）；`start/stop/forceStop` 联动事件作业（best effort，失败不阻断主管道）；`CdcMonitorService.pollEventJobs` 覆盖事件作业（FAILED/404/外部停止清字段）；`FlinkJobService.cancelJob`（PATCH /jobs/{id} 不做 savepoint）；realtime-api 加 `getSubscribeInfo`（管道状态+源表清单）+ internal 端点。
+- **data-service WebSocket**：`WsEventsHandler`（握手+subscribe/unsubscribe）+ `WsHandshakeInterceptor`（X-API-Key SHA-256 校验，401 拒连）+ `WebSocketSubscriptionRegistry`（双向索引 fan-out）+ `KafkaEventConsumer`（@KafkaListener topicPattern 消费 `cdc-events-*`，Debezium→归一化 fan-out）+ `WsSubscriptionService`（Key 绑定 9005 / 管道 RUNNING 9016 / 机密表 9004 / 治理不可达 9012 fail-closed）。
+- **补 F2 缺口**：`ApiKey` 绑定管道管理端点（create/update/detail 加 `pipelineIds`，`api_key_pipeline` 全量重绑）。
+- **common 补 9016** `API_PIPELINE_UNAVAILABLE`。
+
+### 23.2 自测（全通过，测试数据已清理）
+- 握手：无/错 Key 拒连、正确 Key 连接成功 ✅
+- subscribe：绑定管道 → subscribed；未绑定 → 9005；ERROR 管道 → 9016 ✅
+- Kafka fan-out：向 `cdc-events-{pipelineId}` 发 Debezium UPDATE → 收到归一化 `{pipelineId/table/opType/data/ts}` ✅
+- 部署：Kafka + Flink + realtime + data-service 全部 healthy；Flyway V1.4.0 应用 ✅
+
+### 23.3 Review / 已知取舍
+- **Spring Boot 4 spring-kafka 未自动配置 `kafkaListenerContainerFactory`**：显式在 `DataServiceConfig` 定义 ConsumerFactory + ListenerContainerFactory（`@EnableKafka` + 显式 bean）。
+- **网关 WebSocket 代理先 101**：data-service 握手拦截器拒绝后连接关闭（1002），而非 HTTP 401（网关代理限制；拒连语义正确，AC-10 满足）。
+- **心跳 60s ping/pong** 由 Spring 原生支持（客户端 ping 服务端 pong）；**空闲 120s 断开未实现**（依赖客户端心跳，断线重连由业务端负责，PRD §6.6）。
+- **事件作业端到端未验证**：realtime 事件作业 YAML 生成/启停联动代码编译通过，分层自测覆盖 data-service 消费/fan-out 全链路；真实 Flink CDC → Kafka 端到端（AC-10 的 10s 收到）归后续专门测试会话。
+
+---
+
 > **版本记录**
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
 > - v1.1 (2026-08-12)：§3 待同步项 4 项全部回落完成（PRD v1.2 + 技术文档 v1.2：全局统计端点组 / API 预览 / Key 近 7 天调用与快捷启用）；状态看板与技术文档版本同步更新；Next Action 移除回落项、新增健康分级阈值确认。
@@ -499,3 +524,4 @@
 > - v1.18 (2026-08-13)：**F2 完整 E2E 测试会话**——api-manage 24 用例 + api-keys 11 用例 **35 用例全通过**（覆盖 API 列表/3 步向导/详情/编辑/生命周期软删/权限矩阵 403/敏感度闸门 9004/Key 明文一次·启停·重绑·僵尸灰显/绑定联动）。修复 2 处：① **后端缺陷（用户授权）**——governance `MetadataTableMapper.selectTablesByDatasourceDatabaseSchema`/`selectTableDetailById` 手写 SQL 漏 SELECT `sensitivity_level`/`api_exempted` 两列，导致 F2 向导页「机密表禁选+机密徽章」「内部表开白警告」失效（后端 9004 闸门本身正常，走 internal 接口 fail-closed）；已补两列 + 重建部署 `app-governance`（实测 PUBLIC/CONFIDENTIAL 均正确返回）；② **测试定位器缺陷**——AM-21 删除按钮 `getByRole('button',{name:'删除'})` 因子串匹配「e2e_s10_待删除」触发 strict mode 歧义，改 `exact:true`。测试数据自清理（e2e_s10_ 前缀 0 残留）+ 敏感度复位 PUBLIC + 测试产物（pw-out/test-results）已清。
 > - v1.19 (2026-08-13)：**F3 API 网关 + 调用统计后端完成**——对外执行入口（`OpenApiController`/`OpenApiService`，HTTP 状态码语义 401/404/429/503/200）+ `OpenApiKeyFilter`（Key 认证/绑定/限流）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreakerService`（Resilience4j 数据源维度熔断）+ `ApiCallLogWriter`（异步统计）+ `OpenApiSqlBuilder`（参数化 SQL，参数值类型启发式推断）+ 执行器 PreparedStatement 扩展（未碰 task-core）+ `StatsController` 7 全局端点 + `/apis/{id}/stats`；2 问 2 答拍板（**Key 级 QPS 限流** / **健康分级对齐告警 PASS/WARNING/SEVERE**）；common 补 `API_CIRCUIT_OPEN(9015)`；自测全通过（Key 认证 401/200、参数化 EQ/fields/分页、限流 429+Retry-After、熔断 500→503→闭合、未发布 404、统计 7 端点）+ 测试数据清理（handoff §21）。
 > - v1.20 (2026-08-13)：**F3 完整 E2E 测试会话**——新增 `open-api.spec.ts`（18 用例）+ `api-stats.spec.ts`（4 用例）+ `helpers/f3-seed.ts`，**22 用例全通过**（对外认证 401/404、参数化 EQ/RANGE/排序/分页/字段裁剪/clamp、限流 429+Retry-After+60s 恢复、熔断 503+数据源维度+30s 闭合、统计单 API+全局 7 端点+前端页）；技术文档 v1.11（§9 前端清单勾选补齐 + E2E 记录）；踩坑：熔断器内存态需干净状态（用例对历史残留稳健）、Long→string 断言需 `Number()`（handoff §22）。
+> - v1.21 (2026-08-13)：**F4 WebSocket 实时订阅后端完成**——中间件 `middleware-kafka`（apache/kafka:4.0.0 KRaft）+ Flink lib 增 kafka connector + TaskManager slot 1→2；realtime 事件管道（`cdc_events_flink_job_id` Flyway V1.4.0 + `CdcYamlBuilder.buildEvent` Kafka 单 sink + `start/stop/forceStop` 联动 + `pollEventJobs` 监控 + `cancelJob` + realtime-api `getSubscribeInfo`）；data-service WebSocket（`WsEventsHandler`/`WsHandshakeInterceptor`/`WebSocketSubscriptionRegistry`/`KafkaEventConsumer`/`WsSubscriptionService`）+ 补 Key 绑定管道端点（`pipelineIds`）+ common 9016；2 问 2 答（分层自测+部署 / 机密管道全建+订阅侧拒绝）；分层自测全通过（握手 401/连接、subscribe 9005/9016、Kafka fan-out 归一化事件）+ 测试数据清理（handoff §23）；踩坑：Spring Boot 4 spring-kafka 未自动配置 ListenerContainerFactory 需显式 bean。

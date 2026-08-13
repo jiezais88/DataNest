@@ -29,6 +29,15 @@ spring:
         password: ${NACOS_PASSWORD:nacos}
         file-extension: yaml
 
+  kafka:
+    # F4 事件总线（Kafka 单节点，compose 容器名 middleware-kafka）；消费者 offset=latest（仅增量推送）
+    bootstrap-servers: ${KAFKA_HOST:middleware-kafka}:${KAFKA_PORT:9092}
+    consumer:
+      group-id: datanest-data-service
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
 datanest:
   # 接口文档（springdoc，common DocsAutoConfiguration 读取；网关聚合页在线调试用前缀）
   docs:

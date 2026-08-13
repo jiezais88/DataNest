@@ -245,7 +245,7 @@ services:
       - JOB_MANAGER_RPC_ADDRESS=middleware-flink-jobmanager
       - |-
         FLINK_PROPERTIES=taskmanager.memory.process.size:1728m
-        taskmanager.numberOfTaskSlots:1
+        taskmanager.numberOfTaskSlots:2
         pekko.ask.timeout: 120s
         classloader.check-leaked-classloader: false
       # MinIO S3 凭据（flink-s3-fs-hadoop 的 S3A 从环境变量读凭据）
@@ -257,6 +257,39 @@ services:
     volumes:
       - flink-data:/opt/flink/data
       - flink-checkpoints:/opt/flink/checkpoints
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Kafka 4.0.0 单节点（KRaft）— Sprint 10 F4 事件总线（CDC 变更事件管道）
+  # 每可订阅管道专属 topic cdc-events-{pipelineId}（分区 1，保留 7d，仅内网不暴露宿主端口）
+  # ============================================
+  middleware-kafka:
+    image: apache/kafka:4.0.0
+    container_name: datanest-middleware-kafka
+    restart: unless-stopped
+    environment:
+      # KRaft 单节点：broker 兼 controller
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://middleware-kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@middleware-kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     networks:
       - datanest-net
 
@@ -849,7 +882,8 @@ volumes:
   # Sprint 8 实时 CDC：Flink 作业数据与 checkpoint
   flink-data:
   flink-checkpoints:
-  # 2026-08-12 Sprint 10 F1 数据服务多数据源测试重新启用
+  # Sprint 10 F4 事件总线：Kafka KRaft 数据（topic/offset/日志）
+  kafka-data:
   test-oracle-data:
   # PowerJob server 持久化（日志/H2 本地库等）
   powerjob-server-data:

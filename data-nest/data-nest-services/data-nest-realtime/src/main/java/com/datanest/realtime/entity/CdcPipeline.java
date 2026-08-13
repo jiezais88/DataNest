@@ -75,6 +75,9 @@ public class CdcPipeline {
     /** Flink 作业 ID（RUNNING 时有值） */
     private String flinkJobId;
 
+    /** 事件作业 Flink Job ID（F4 WebSocket 实时订阅：Kafka 单 sink 事件管道，与主管道同生命周期；RUNNING 时有值） */
+    private String cdcEventsFlinkJobId;
+
     /** 最近一次 stop-with-savepoint 的 savepoint 路径（启动优先恢复；编辑后清空） */
     private String savepointPath;
 

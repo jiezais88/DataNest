@@ -82,6 +82,7 @@ public class ApiKeyService {
     public ApiKeyCreateResult create(ApiKeyCreateRequest request) {
         assertNameAvailable(request.getName(), null);
         List<Long> apiIds = validateApiIds(request.getApiIds());
+        List<Long> pipelineIds = normalizePipelineIds(request.getPipelineIds());
 
         String plainKey = generateKey();
         ApiKey key = new ApiKey();
@@ -93,6 +94,7 @@ public class ApiKeyService {
         key.setCreatedAt(LocalDateTime.now());
         apiKeyMapper.insert(key);
         replaceBindings(key.getId(), apiIds);
+        replacePipelineBindings(key.getId(), pipelineIds);
         logger.info("创建 API Key: id={}, name={}, boundApis={}", key.getId(), key.getName(), apiIds.size());
 
         ApiKeyCreateResult result = new ApiKeyCreateResult();
@@ -113,6 +115,7 @@ public class ApiKeyService {
         ApiKey key = loadKey(id);
         assertNameAvailable(request.getName(), id);
         List<Long> apiIds = validateApiIds(request.getApiIds());
+        List<Long> pipelineIds = normalizePipelineIds(request.getPipelineIds());
 
         key.setName(request.getName().trim());
         key.setQpsLimit(request.getQpsLimit());
@@ -120,6 +123,7 @@ public class ApiKeyService {
         key.setUpdatedAt(LocalDateTime.now());
         apiKeyMapper.updateById(key);
         replaceBindings(id, apiIds);
+        replacePipelineBindings(id, pipelineIds);
         logger.info("编辑 API Key: id={}, name={}, boundApis={}", id, key.getName(), apiIds.size());
     }
 
@@ -220,6 +224,8 @@ public class ApiKeyService {
         dto.setQpsLimit(key.getQpsLimit());
         dto.setApiIds(bindingMapper.selectList(new QueryWrapper<ApiKeyBinding>().eq("key_id", id))
                 .stream().map(ApiKeyBinding::getApiId).toList());
+        dto.setPipelineIds(pipelineMapper.selectList(new QueryWrapper<ApiKeyPipeline>().eq("key_id", id))
+                .stream().map(ApiKeyPipeline::getPipelineId).toList());
         Map<Long, String> usernames = SystemUserResolver.usernames(systemUserApi,
                 java.util.stream.Stream.of(key.getCreatedBy(), key.getUpdatedBy())
                         .filter(Objects::nonNull).distinct().toList());
@@ -278,6 +284,26 @@ public class ApiKeyService {
             binding.setCreatedAt(LocalDateTime.now());
             bindingMapper.insert(binding);
         }
+    }
+
+    /** 全量重绑管道订阅授权（先删后插；绑定关系无审计字段，直接替换） */
+    private void replacePipelineBindings(Long keyId, List<Long> pipelineIds) {
+        pipelineMapper.delete(new QueryWrapper<ApiKeyPipeline>().eq("key_id", keyId));
+        for (Long pipelineId : pipelineIds) {
+            ApiKeyPipeline binding = new ApiKeyPipeline();
+            binding.setKeyId(keyId);
+            binding.setPipelineId(pipelineId);
+            binding.setCreatedAt(LocalDateTime.now());
+            pipelineMapper.insert(binding);
+        }
+    }
+
+    /** 管道 ID 去重/去 null（不校验存在性——订阅时 WsSubscriptionService 二次校验管道存在+RUNNING） */
+    private List<Long> normalizePipelineIds(List<Long> pipelineIds) {
+        if (pipelineIds == null || pipelineIds.isEmpty()) {
+            return List.of();
+        }
+        return pipelineIds.stream().filter(Objects::nonNull).distinct().toList();
     }
 
     /** 生成 Key 明文：K- + 32 位小写 hex（16 字节安全随机） */

@@ -33,6 +33,7 @@ import com.datanest.realtime.mapper.CdcPipelineLogMapper;
 import com.datanest.realtime.mapper.CdcPipelineMapper;
 import com.datanest.realtime.mapper.CdcPipelineTableMapper;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
+import com.datanest.realtime.api.dto.CdcPipelineSubscribeDTO;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -495,6 +496,8 @@ public class CdcPipelineService {
                     restoreFromSavepoint
                             ? "管道启动成功（从 savepoint 恢复: " + savepointPath + "），Flink 作业 ID: " + flinkJobId
                             : "管道启动成功，Flink 作业 ID: " + flinkJobId);
+            // F4：主管道启动成功后，尝试启动事件作业（best effort，失败不阻断主管道）
+            startEventJob(id, entity, datasource, tables);
             return detail(id);
         } catch (Exception e) {
             logger.error("CDC 管道启动失败: pipelineId={}", id, e);
@@ -549,6 +552,9 @@ public class CdcPipelineService {
                 .set("updated_at", LocalDateTime.now());
         pipelineMapper.update(null, update);
         writeLog(id, CdcPipelineLog.LEVEL_INFO, "管道已停止（savepoint: " + savepointPath + "）");
+
+        // F4：主管道停止成功后，尝试停止事件作业（best effort，失败不阻断）
+        stopEventJob(id, entity.getCdcEventsFlinkJobId());
 
         // Sprint 9 F2（T3）：停止生成新 savepoint 替换旧路径时，旧文件已失效，物理清理。
         // Review 2026-08-11 修复：挪到 DB 更新成功后（防 update 失败后旧路径仍指向已删文件）。
@@ -647,6 +653,7 @@ public class CdcPipelineService {
                 .set("flink_job_id", null)
                 .set("savepoint_path", null)
                 .set("current_lag_seconds", null)
+                .set("cdc_events_flink_job_id", null)
                 .set("updated_by", currentUserId())
                 .set("updated_at", LocalDateTime.now()));
         if (updated == 0) {
@@ -654,6 +661,8 @@ public class CdcPipelineService {
             logger.info("强制停止 CAS 未命中（状态已变化），返回当前状态: pipelineId={}", id);
             return detail(id);
         }
+        // F4：强制停止同步停事件作业（best effort，实际 cancel + 日志；DB 已在上方清 cdc_events_flink_job_id）
+        stopEventJob(id, entity.getCdcEventsFlinkJobId());
         // 清理 savepoint 文件（强制停止语义：未保存位点，下次启动按启动位点重新同步）。
         // Review 2026-08-11 修复：挪到 DB 更新成功后。
         if (oldSavepoint != null && !oldSavepoint.isBlank()) {
@@ -666,6 +675,55 @@ public class CdcPipelineService {
         writeLog(id, CdcPipelineLog.LEVEL_INFO,
                 "管道强制停止成功（作业已丢失，未保存位点；下次启动将按启动位点重新同步）");
         return detail(id);
+    }
+
+    /**
+     * 启动事件作业（F4 WebSocket 实时订阅：Kafka 单 sink 事件管道，latest-offset 仅增量）。
+     * <p>
+     * best effort：失败不阻断主管道启动，仅记 WARN 日志（cdc_events_flink_job_id 保持 null）。
+     */
+    private void startEventJob(Long pipelineId, CdcPipeline entity, DataSourceInfo datasource,
+                               List<CdcPipelineTable> tables) {
+        try {
+            String eventYaml = yamlBuilder.buildEvent(entity, tables, datasource.getType(), datasource.getHost(),
+                    datasource.getPort(), datasource.getUsername(), precheckService.decryptPassword(datasource));
+            String eventJobId = flinkJobService.submit(eventYaml, null, null);
+            pipelineMapper.update(null, new UpdateWrapper<CdcPipeline>()
+                    .eq("id", pipelineId)
+                    .set("cdc_events_flink_job_id", eventJobId)
+                    .set("updated_by", currentUserId())
+                    .set("updated_at", LocalDateTime.now()));
+            writeLog(pipelineId, CdcPipelineLog.LEVEL_INFO,
+                    "事件作业启动成功（Kafka 实时订阅），Flink 作业 ID: " + eventJobId);
+        } catch (Exception e) {
+            logger.warn("CDC 事件作业启动失败（不影响主管道）: pipelineId={}, error={}",
+                    pipelineId, e.getMessage());
+            writeLog(pipelineId, CdcPipelineLog.LEVEL_WARN,
+                    "事件作业启动失败（不影响主管道同步）: " + truncate(e.getMessage(), 2000));
+        }
+    }
+
+    /**
+     * 停止事件作业（cancel 不做 savepoint）。best effort：失败不阻断主管道停止，仅记 WARN 日志。
+     */
+    private void stopEventJob(Long pipelineId, String eventJobId) {
+        if (eventJobId == null || eventJobId.isBlank()) {
+            return;
+        }
+        try {
+            flinkJobService.cancelJob(eventJobId);
+            pipelineMapper.update(null, new UpdateWrapper<CdcPipeline>()
+                    .eq("id", pipelineId)
+                    .set("cdc_events_flink_job_id", null)
+                    .set("updated_by", currentUserId())
+                    .set("updated_at", LocalDateTime.now()));
+            writeLog(pipelineId, CdcPipelineLog.LEVEL_INFO, "事件作业已停止");
+        } catch (Exception e) {
+            logger.warn("CDC 事件作业停止失败（不影响主管道）: pipelineId={}, error={}",
+                    pipelineId, e.getMessage());
+            writeLog(pipelineId, CdcPipelineLog.LEVEL_WARN,
+                    "事件作业停止失败（可能残留，请运维侧处理）: " + truncate(e.getMessage(), 2000));
+        }
     }
 
     private void fillCheckpointSummary(CdcPipelineCheckpointsDTO.Checkpoints dto, Map<String, Object> raw) {
@@ -824,6 +882,19 @@ public class CdcPipelineService {
         return pipelineMapper.selectList(wrapper)
                 .stream()
                 .collect(Collectors.toMap(CdcPipeline::getId, CdcPipeline::getName, (a, b) -> a));
+    }
+
+    /** 管道订阅信息（F4 WebSocket 订阅校验：状态 + 源数据源/库 + 源表清单，供数据服务反查敏感度） */
+    public CdcPipelineSubscribeDTO subscribeInfo(Long id) {
+        CdcPipeline entity = getPipeline(id);
+        CdcPipelineSubscribeDTO dto = new CdcPipelineSubscribeDTO();
+        dto.setId(entity.getId());
+        dto.setName(entity.getName());
+        dto.setStatus(entity.getStatus());
+        dto.setSourceDatasourceId(entity.getSourceDatasourceId());
+        dto.setSourceDatabase(entity.getSourceDatabase());
+        dto.setSourceTables(listTables(id).stream().map(CdcTableMappingDTO::getSourceTable).toList());
+        return dto;
     }
 
     /** 写管道运行日志（供监控轮询等服务复用） */

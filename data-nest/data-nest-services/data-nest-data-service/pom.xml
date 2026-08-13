@@ -45,6 +45,12 @@
             <artifactId>data-nest-governance-api</artifactId>
         </dependency>
 
+        <!-- 跨域 Feign 契约：CDC 管道订阅信息（F4 WebSocket 订阅校验） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-realtime-api</artifactId>
+        </dependency>
+
         <!-- 自身 Feign 契约模块（复用内部运维 DTO/注解；本服务不 Feign 调自己，仅 job 侧经此契约触发） -->
         <dependency>
             <groupId>com.datanest</groupId>
@@ -72,6 +78,17 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- WebSocket 实时订阅（F4）：原生 WebSocket 端点 + 握手 Key 校验 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <!-- Kafka 事件总线消费（F4）：消费 cdc-events-* topic fan-out 到订阅连接 -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
         </dependency>
 
         <!-- JDBC Drivers（Doris 走 MySQL 协议；外部数据源直连） -->

@@ -95,6 +95,10 @@ public class CdcYamlBuilder {
     @Value("${datanest.realtime.flink.parallelism:1}")
     private Integer parallelism;
 
+    /** Kafka 事件总线地址（F4 事件作业 sink；data-service 消费侧同键） */
+    @Value("${datanest.kafka.bootstrap-servers:middleware-kafka:9092}")
+    private String kafkaBootstrapServers;
+
     /**
      * 组装 CDC YAML。
      *
@@ -116,10 +120,10 @@ public class CdcYamlBuilder {
         StringBuilder yaml = new StringBuilder();
         if (postgres) {
             appendPostgresSource(yaml, pipeline, tables, host, port, username, plainPassword, startupMode,
-                    advanced.scanChunkSize());
+                    advanced.scanChunkSize(), "datanest_cdc_" + pipeline.getId());
         } else {
             appendMysqlSource(yaml, pipeline, tables, host, port, username, plainPassword, startupMode,
-                    advanced.scanChunkSize());
+                    advanced.scanChunkSize(), 5400 + (pipeline.getId() % 100) * 100L);
         }
 
         yaml.append("sink:\n");
@@ -162,13 +166,46 @@ public class CdcYamlBuilder {
         return yaml.toString();
     }
 
+    /**
+     * 组装 F4 事件作业 CDC YAML（Kafka 单 sink，仅增量 latest-offset）。
+     * <p>
+     * source 段复用主管道（MySQL server-id 6400 区间 / PG 复制槽 {@code datanest_cdc_ev_} 前缀，错开主管道），
+     * sink 段单 Kafka（debezium-json），topic 每管道专属 {@code cdc-events-{pipelineId}}。
+     */
+    public String buildEvent(CdcPipeline pipeline, List<CdcPipelineTable> tables, String sourceType,
+                             String host, Integer port, String username, String plainPassword) {
+        boolean postgres = SourcePrecheckService.TYPE_POSTGRESQL.equalsIgnoreCase(sourceType);
+        StringBuilder yaml = new StringBuilder();
+        // 事件作业固定 latest-offset（仅增量推送，q-3）；无快照，scanChunkSize 传 null
+        if (postgres) {
+            appendPostgresSource(yaml, pipeline, tables, host, port, username, plainPassword,
+                    "latest-offset", null, "datanest_cdc_ev_" + pipeline.getId());
+        } else {
+            appendMysqlSource(yaml, pipeline, tables, host, port, username, plainPassword,
+                    "latest-offset", null, 6400 + (pipeline.getId() % 100) * 100L);
+        }
+
+        yaml.append("sink:\n");
+        yaml.append("  type: kafka\n");
+        yaml.append("  name: Kafka Event Sink\n");
+        yaml.append("  properties.bootstrap.servers: ").append(quote(kafkaBootstrapServers)).append('\n');
+        yaml.append("  topic: ").append(quote("cdc-events-" + pipeline.getId())).append('\n');
+        yaml.append("  value.format: debezium-json\n");
+
+        yaml.append("pipeline:\n");
+        yaml.append("  name: ")
+                .append(quote("cdc-pipeline-events-" + pipeline.getId() + "-" + pipeline.getName())).append('\n');
+        // 事件作业固定并行度 1（仅透传变更，无需高吞吐，省 TaskManager slot）
+        yaml.append("  parallelism: 1\n");
+        return yaml.toString();
+    }
+
     /** MySQL source 段（binlog server-id 区间 + jdbc 公钥检索透传） */
     private void appendMysqlSource(StringBuilder yaml, CdcPipeline pipeline, List<CdcPipelineTable> tables,
                                    String host, Integer port, String username, String plainPassword,
-                                   String startupMode, Integer scanChunkSize) {
+                                   String startupMode, Integer scanChunkSize, long serverIdBase) {
         // server-id：同源并发管道靠管道 id 取模错开区间（每条管道占 100 个 id 区间）；
-        // 区间起点 5400 + (id % 100) * 100，100 个区间内冲突概率可接受
-        long serverIdBase = 5400 + (pipeline.getId() % 100) * 100L;
+        // 主管道区间起点 5400，事件作业 6400（错开避免并发 binlog 干扰）
         String serverIdRange = serverIdBase + "-" + (serverIdBase + 99);
 
         String tableList = tables.stream()
@@ -201,7 +238,7 @@ public class CdcYamlBuilder {
      */
     private void appendPostgresSource(StringBuilder yaml, CdcPipeline pipeline, List<CdcPipelineTable> tables,
                                       String host, Integer port, String username, String plainPassword,
-                                      String startupMode, Integer scanChunkSize) {
+                                      String startupMode, Integer scanChunkSize, String slotName) {
         String tableList = tables.stream()
                 .map(t -> pipeline.getSourceDatabase() + "." + SourcePrecheckService.PG_SCHEMA + "." + t.getSourceTable())
                 .collect(Collectors.joining(","));
@@ -215,7 +252,7 @@ public class CdcYamlBuilder {
         yaml.append("  password: ").append(quote(plainPassword)).append('\n');
         yaml.append("  tables: ").append(quote(tableList)).append('\n');
         // 复制槽名仅允许小写字母/数字/下划线；每管道唯一（同名槽并发占用会直接报错）
-        yaml.append("  slot.name: ").append(quote("datanest_cdc_" + pipeline.getId())).append('\n');
+        yaml.append("  slot.name: ").append(quote(slotName)).append('\n');
         yaml.append("  decoding.plugin.name: pgoutput\n");
         // 仅无 savepoint 恢复时生效（有 savepoint 时 Flink 从 savepoint 状态续跑，忽略启动位点）
         yaml.append("  scan.startup.mode: ").append(startupMode).append('\n');
