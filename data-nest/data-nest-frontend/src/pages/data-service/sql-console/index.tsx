@@ -4,6 +4,7 @@
 // · Monaco 编辑器（Ctrl+Enter）· 运行/停止 · 结果卡片化 · CSV/Excel 导出
 // · 查询历史 Drawer（顶部按钮 + badge，显示数据源名，回填联动左侧树高亮 + 面包屑更新）。
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import {
     HiOutlineArrowDownTray,
@@ -112,6 +113,7 @@ function KpiItem({label, value, sub, icon: Icon, tone}: {
 }
 
 export default function SqlConsolePage() {
+    const [searchParams] = useSearchParams();
     const [sql, setSql] = useState(DEFAULT_SQL);
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState<SqlExecuteResult | null>(null);
@@ -241,6 +243,30 @@ export default function SqlConsolePage() {
             editorRef.current?.setPosition({lineNumber: 1, column: stmt.length + 1});
         }, 0);
         notify.info(`已插入 ${qualified} 的查询模板`);
+    }, []);
+
+    // ============ 资产详情页「去查询」跳转预填（URL 参数一次性读取） ============
+    useEffect(() => {
+        const table = searchParams.get('table');
+        if (!table) return;
+        const datasourceId = searchParams.get('datasourceId');
+        const database = searchParams.get('database');
+        const schema = searchParams.get('schema');
+        const qualified = schema && schema !== database
+            ? `${database}.${schema}.${table}`
+            : `${database}.${table}`;
+        handleInsertTable(qualified);
+        if (datasourceId) {
+            treeRef.current?.selectByPath(datasourceId, database ?? undefined, schema ?? undefined, table);
+            setContext({
+                datasourceId,
+                dsName: dsNameOf(datasourceId),
+                databaseName: database ?? undefined,
+                schemaName: schema ?? undefined,
+                tableName: table,
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleContextChange = useCallback((ctx: SqlTreeContext | null) => {

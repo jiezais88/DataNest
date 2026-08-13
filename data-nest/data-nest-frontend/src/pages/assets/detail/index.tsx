@@ -7,8 +7,10 @@ import {useCallback, useEffect, useState} from 'react';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {Spin, Tabs, Tooltip} from 'antd';
 import {
+    HiOutlineBolt,
     HiOutlineChatBubbleLeftRight,
     HiOutlineCheckCircle,
+    HiOutlineCommandLine,
     HiOutlineFire,
     HiOutlineInformationCircle,
     HiOutlineQueueList,
@@ -36,6 +38,7 @@ import CollaborationBar from './CollaborationBar';
 import ColumnsTab from './ColumnsTab';
 import CommentsTab from './CommentsTab';
 import QualityTab from './QualityTab';
+import {SensitivityBadge} from '@/pages/data-service/badges';
 
 /** 热度埋点会话级去重 key（同一会话同一表只上报一次，PRD NAC-4） */
 const viewedKey = (tableId: string) => `asset-viewed:${tableId}`;
@@ -74,6 +77,19 @@ function BasicInfoTab({table}: { table: MetadataTable }) {
                 : (table.sourceType || '—'),
         },
         {label: '数据域 / 主题', value: table.dataDomain ? `${table.dataDomain}${table.dataTopic ? ` / ${table.dataTopic}` : ''}` : '—'},
+        {
+            label: '敏感度',
+            value: (
+                <span className="flex items-center gap-ds-2">
+                    <SensitivityBadge level={table.sensitivityLevel}/>
+                    {table.sensitivityLevel === 'INTERNAL' && (
+                        <span className="text-ds-tiny text-ds-text-muted">
+                            {table.apiExempted === 1 ? '已开白' : '未开白'}
+                        </span>
+                    )}
+                </span>
+            ),
+        },
         {label: '负责人', value: table.ownerName || '—'},
         {label: '最近采集时间', value: formatDateTime(table.lastCollectTime)},
         {label: '最近更新', value: formatDateTime(table.updatedAt)},
@@ -199,6 +215,23 @@ export default function AssetDetailPage() {
     }
 
     const fullName = `${table.databaseName}.${table.tableName}`;
+    const confidential = table.sensitivityLevel === 'CONFIDENTIAL';
+    const goQuery = () => {
+        const p = new URLSearchParams();
+        p.set('datasourceId', table.datasourceId);
+        p.set('database', table.databaseName);
+        if (table.schemaName) p.set('schema', table.schemaName);
+        p.set('table', table.tableName);
+        navigate(`/data-service/sql-console?${p.toString()}`);
+    };
+    const goApi = () => {
+        const p = new URLSearchParams();
+        p.set('datasourceId', table.datasourceId);
+        p.set('database', table.databaseName);
+        if (table.schemaName) p.set('schema', table.schemaName);
+        p.set('table', table.tableName);
+        navigate(`/data-service/api-manage/new?${p.toString()}`);
+    };
 
     return (
         <div className="flex flex-col">
@@ -218,18 +251,33 @@ export default function AssetDetailPage() {
                         {table.dataDomain && <DsStatusBadge variant="accent" label={table.dataDomain}/>}
                         {table.dataTopic && <DsStatusBadge variant="disabled" label={table.dataTopic}/>}
                         <QualityScoreBadge score={score?.score ?? null} healthLevel={score?.healthLevel}/>
+                        <SensitivityBadge level={table.sensitivityLevel}/>
                     </div>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
                         {table.tableComment || table.manualComment || '暂无注释'}
                         {'　'}负责人：{table.ownerName || '—'}
                     </p>
                 </div>
-                {canWrite && (
-                    <div className="flex items-center gap-ds-2 flex-shrink-0">
-                        <DsButton variant="secondary" onClick={() => setClassifyOpen(true)}>分配分类</DsButton>
-                        <DsButton variant="secondary" onClick={() => setOwnerOpen(true)}>配置负责人</DsButton>
-                    </div>
-                )}
+                <div className="flex items-center gap-ds-2 flex-shrink-0 flex-wrap justify-end">
+                    <Tooltip title={confidential ? '机密级表，无权查询' : '跳 SQL 终端预填查询'}>
+                        <DsButton variant="secondary" onClick={goQuery} disabled={confidential}>
+                            <HiOutlineCommandLine size={14}/>
+                            去查询
+                        </DsButton>
+                    </Tooltip>
+                    <Tooltip title={confidential ? '机密级表，禁止生成对外 API' : '跳 API 创建向导预选该表'}>
+                        <DsButton variant="secondary" onClick={goApi} disabled={confidential}>
+                            <HiOutlineBolt size={14}/>
+                            生成 API
+                        </DsButton>
+                    </Tooltip>
+                    {canWrite && (
+                        <>
+                            <DsButton variant="secondary" onClick={() => setClassifyOpen(true)}>分配分类</DsButton>
+                            <DsButton variant="secondary" onClick={() => setOwnerOpen(true)}>配置负责人</DsButton>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Sprint 8 F1：协作条（标签区 + 收藏/关注，全角色可用） */}

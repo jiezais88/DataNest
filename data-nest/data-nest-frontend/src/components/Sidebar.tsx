@@ -112,6 +112,12 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
                 icon: <HiOutlineFingerPrint size={18}/>,
                 roles: ALL_ROLES
             },
+            {
+                label: '数据分级分类',
+                path: '/data-service/classification',
+                icon: <HiOutlineShieldCheck size={18}/>,
+                roles: ALL_ROLES
+            },
         ],
     },
     {

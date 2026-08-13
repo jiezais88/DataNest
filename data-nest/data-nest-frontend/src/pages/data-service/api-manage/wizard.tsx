@@ -1,7 +1,7 @@
 // API 创建向导（Sprint 10 F2）：3 步 —— 选择数据表 → 配置接口 → 绑定 API Key。
 // 选表即生成接口雏形（右侧 API 预览：路径 + 暴露字段勾选）；机密表禁选、内部表提示需超管开白。
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Tooltip} from 'antd';
 import {
     HiOutlineCheckCircle,
@@ -46,6 +46,17 @@ type BindMode = 'none' | 'existing' | 'new';
 export default function ApiCreateWizardPage() {
     const navigate = useNavigate();
     const [step, setStep] = useState(0);
+    const [searchParams] = useSearchParams();
+    const preset = useMemo(() => {
+        const table = searchParams.get('table');
+        if (!table) return null;
+        return {
+            datasourceId: searchParams.get('datasourceId'),
+            database: searchParams.get('database'),
+            schema: searchParams.get('schema'),
+            table,
+        };
+    }, [searchParams]);
 
     // ============ 第 1 步：选表 ============
     const [datasources, setDatasources] = useState<SqlDatasource[]>([]);
@@ -98,7 +109,11 @@ export default function ApiCreateWizardPage() {
                 const list = res.data ?? [];
                 setDatasources(list);
                 const doris = list.find((d) => d.builtin);
-                if (doris) setDatasourceId(doris.id);
+                if (preset?.datasourceId && list.some(d => d.id === preset.datasourceId)) {
+                    setDatasourceId(preset.datasourceId);
+                } else if (doris) {
+                    setDatasourceId(doris.id);
+                }
             })
             .catch(() => {
                 // 拦截器已提示
@@ -118,7 +133,11 @@ export default function ApiCreateWizardPage() {
             .then((res) => {
                 const dbs = res.data ?? [];
                 setDatabases(dbs);
-                if (dbs.length > 0) setDatabaseName(dbs[0]);
+                if (preset?.database && dbs.includes(preset.database)) {
+                    setDatabaseName(preset.database);
+                } else if (dbs.length > 0) {
+                    setDatabaseName(dbs[0]);
+                }
             })
             .catch(() => {
                 // 拦截器已提示
@@ -137,7 +156,11 @@ export default function ApiCreateWizardPage() {
                 .then((res) => {
                     const list = res.data ?? [];
                     setSchemas(list);
-                    if (list.length > 0) setSchemaName(list[0]);
+                    if (preset?.schema && list.includes(preset.schema)) {
+                        setSchemaName(preset.schema);
+                    } else if (list.length > 0) {
+                        setSchemaName(list[0]);
+                    }
                 })
                 .catch(() => {
                     // 拦截器已提示
@@ -159,6 +182,7 @@ export default function ApiCreateWizardPage() {
             .catch(() => setTables([]))
             .finally(() => setTablesLoading(false));
     }, [datasourceId, databaseName, schemaName, needSchema]);
+
 
     // 选表 → 列清单 + 生成接口雏形（默认名称/路径/全字段暴露）
     const handleSelectTable = useCallback((table: MetadataTable) => {
@@ -187,6 +211,15 @@ export default function ApiCreateWizardPage() {
             })
             .finally(() => setColumnsLoading(false));
     }, []);
+    // 资产详情页「生成 API」跳转预填：表列表加载后自动选中 URL 指定表（机密表不预选）
+    useEffect(() => {
+        if (!preset) return;
+        const target = tables.find(t => t.tableName === preset.table && t.sensitivityLevel !== 'CONFIDENTIAL');
+        if (target && selectedTable?.id !== target.id) {
+            handleSelectTable(target);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tables, selectedTable, handleSelectTable, preset]);
 
     // 进入第 3 步时加载启用态 Key
     useEffect(() => {

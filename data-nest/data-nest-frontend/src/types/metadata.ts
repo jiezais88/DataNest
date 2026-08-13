@@ -75,3 +75,36 @@ export interface MetadataTreeNode {
     schemaName?: string;
     datasourceType?: string;
 }
+
+/** 数据分级分类表列表项（Sprint 10 F5，调 governance /metadata/sensitivity/tables） */
+export interface SensitivityTableItem {
+    tableId: string;
+    tableName: string;
+    databaseName: string;
+    schemaName?: string;
+    datasourceId: string;
+    datasourceName?: string;
+    sensitivityLevel: string;
+    apiExempted?: number;
+    sourceStatus: string;
+    /** 任务来源类型（COLLECT/SYNC/SQL/PYTHON；手工录入为 null） */
+    taskSourceType?: string;
+    ownerName?: string;
+    createdByName?: string;
+    createdAt?: string;
+    updatedByName?: string;
+    updatedAt?: string;
+}
+
+/** 数据分级变更审计项（Sprint 10 F5） */
+export interface SensitivityAuditItem {
+    id: string;
+    tableId: string;
+    tableName: string;
+    oldLevel?: string;
+    newLevel: string;
+    action: string;
+    remark?: string;
+    operatorName?: string;
+    createdAt?: string;
+}

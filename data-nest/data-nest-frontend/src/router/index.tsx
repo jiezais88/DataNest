@@ -46,6 +46,7 @@ const ApiDetailPage = lazyPage(() => import('@/pages/data-service/api-manage/det
 const ApiEditPage = lazyPage(() => import('@/pages/data-service/api-manage/edit'));
 const ApiKeysPage = lazyPage(() => import('@/pages/data-service/api-keys'));
 const ApiStatsPage = lazyPage(() => import('@/pages/data-service/api-stats'));
+const ClassificationPage = lazyPage(() => import('@/pages/data-service/classification'));
 
 export const router = createBrowserRouter([
     {
@@ -125,6 +126,7 @@ export const router = createBrowserRouter([
             {path: 'data-service/api-manage/:id/edit', element: <ApiEditPage/>},
             {path: 'data-service/api-keys', element: <ApiKeysPage/>},
             {path: 'data-service/api-stats', element: <ApiStatsPage/>},
+            {path: 'data-service/classification', element: <ClassificationPage/>},
         ],
     },
 ]);

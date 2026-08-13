@@ -235,9 +235,12 @@ public class SensitivityService {
         dto.setSensitivityLevel(t.getSensitivityLevel());
         dto.setApiExempted(t.getApiExempted());
         dto.setSourceStatus(t.getSourceStatus());
+        dto.setTaskSourceType(t.getTaskSourceType());
         dto.setOwnerUserId(t.getOwnerUserId());
         dto.setUpdatedBy(t.getUpdatedBy());
+        dto.setCreatedBy(t.getCreatedBy());
         dto.setUpdatedAt(t.getUpdatedAt());
+        dto.setCreatedAt(t.getCreatedAt());
         return dto;
     }
 
@@ -252,12 +255,13 @@ public class SensitivityService {
 
     private void fillItemUserNames(List<SensitivityTableItemDTO> items) {
         List<Long> ids = items.stream()
-                .flatMap(i -> java.util.stream.Stream.of(i.getUpdatedBy(), i.getOwnerUserId()))
+                .flatMap(i -> java.util.stream.Stream.of(i.getUpdatedBy(), i.getOwnerUserId(), i.getCreatedBy()))
                 .filter(Objects::nonNull).distinct().toList();
         Map<Long, String> nameMap = SystemUserResolver.usernames(systemUserApi, ids);
         for (SensitivityTableItemDTO item : items) {
             item.setUpdatedByName(item.getUpdatedBy() == null ? null : nameMap.get(item.getUpdatedBy()));
             item.setOwnerName(item.getOwnerUserId() == null ? null : nameMap.get(item.getOwnerUserId()));
+            item.setCreatedByName(item.getCreatedBy() == null ? null : nameMap.get(item.getCreatedBy()));
         }
     }
 

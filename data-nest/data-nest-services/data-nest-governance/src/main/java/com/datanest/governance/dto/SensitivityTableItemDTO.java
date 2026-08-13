@@ -38,6 +38,17 @@ public class SensitivityTableItemDTO {
 
     @Schema(description = "元数据状态（ONLINE/OFFLINE）")
     private String sourceStatus;
+    @Schema(description = "任务来源类型（COLLECT/SYNC/SQL/PYTHON；手工录入为 null）")
+    private String taskSourceType;
+
+    @Schema(description = "创建人用户 ID")
+    private Long createdBy;
+
+    @Schema(description = "创建人用户名")
+    private String createdByName;
+
+    @Schema(description = "创建时间")
+    private LocalDateTime createdAt;
 
     @Schema(description = "表负责人用户 ID")
     private Long ownerUserId;

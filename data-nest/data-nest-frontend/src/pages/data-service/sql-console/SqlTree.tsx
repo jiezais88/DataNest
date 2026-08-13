@@ -10,6 +10,7 @@ import {
     HiChevronRight,
     HiOutlineFolder,
     HiOutlineMagnifyingGlass,
+    HiOutlineLockClosed,
     HiOutlineTableCells,
     HiOutlineXMark,
 } from 'react-icons/hi2';
@@ -43,6 +44,7 @@ interface TreeNodeMeta {
     name: string;
     builtin?: boolean;
     qualified?: string;
+    sensitivityLevel?: string;
     /** 表数量（库/模式节点展示「N表」） */
     count?: number;
 }
@@ -239,6 +241,7 @@ const SqlTree = forwardRef<SqlTreeHandle, {
                         schemaName: meta.schemaName,
                         name: t.tableName,
                         qualified: `${meta.databaseName}.${meta.schemaName}.${t.tableName}`,
+                        sensitivityLevel: t.sensitivityLevel,
                     },
                     children: [],
                 }));
@@ -257,6 +260,10 @@ const SqlTree = forwardRef<SqlTreeHandle, {
     const handleToggle = useCallback(async (item: TreeItem) => {
         const key = nodeKey(item.meta);
         if (item.meta.type === 'table') {
+            if (item.meta.sensitivityLevel === 'CONFIDENTIAL') {
+                notify.warning(`表「${item.meta.name}」为机密级，无权查询`);
+                return;
+            }
             // 表节点：插入 SELECT 模板 + 更新上下文
             onInsert(item.meta.qualified!);
             setSelectedKey(key);
@@ -549,7 +556,12 @@ const SqlTree = forwardRef<SqlTreeHandle, {
                     )}
                     {!hasChildren && <span className="w-4 flex-shrink-0"/>}
                     {renderIcon(meta)}
-                    <Tooltip title={meta.type === 'table' ? `点击插入 SELECT：${meta.qualified}` : meta.name} placement="top">
+                    {meta.type === 'table' && meta.sensitivityLevel === 'CONFIDENTIAL' && (
+                        <HiOutlineLockClosed size={12} className="text-ds-danger flex-shrink-0"/>
+                    )}
+                    <Tooltip title={meta.type === 'table'
+                        ? (meta.sensitivityLevel === 'CONFIDENTIAL' ? `机密级表，无权查询：${meta.qualified}` : `点击插入 SELECT：${meta.qualified}`)
+                        : meta.name} placement="top">
                         <span className="truncate min-w-0 flex-1" title={meta.name}>{meta.name}</span>
                     </Tooltip>
                     {meta.count !== undefined && meta.count > 0 && meta.type !== 'table' && (
