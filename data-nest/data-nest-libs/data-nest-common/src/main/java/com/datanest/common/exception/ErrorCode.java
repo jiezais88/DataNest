@@ -39,6 +39,8 @@ public enum ErrorCode {
     CLASSIFICATION_NAME_EXISTS(4008, "同级分类名称已存在"),
     CLASSIFICATION_IN_USE(4009, "分类仍被元数据表引用，请先解除分配"),
     CLASSIFICATION_PARENT_INVALID(4010, "父分类非法（主题必须挂在数据域下）"),
+    SENSITIVITY_LEVEL_INVALID(4011, "敏感度级别非法（仅 PUBLIC/INTERNAL/CONFIDENTIAL）"),
+    CONFIDENTIAL_DOWNGRADE_FORBIDDEN(4012, "机密表不可直接降级为公开，需先降为内部"),
 
     // Asset collaboration errors — Sprint 8 资产目录深化（DC-06~09）
     // 注：4021 为技术文档 §9.1 规划码，当前删标签绑定按幂等设计不抛错，预留待单标签查询类端点使用
