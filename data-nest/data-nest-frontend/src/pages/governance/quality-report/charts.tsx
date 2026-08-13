@@ -1,11 +1,33 @@
 // Sprint 8 F3：质量报告 SVG 图表组件（项目无图表库，对齐原型手写 SVG）。
 // 全部用 viewBox + preserveAspectRatio 自适应卡片宽度。
+// 2026-08-13：折线图加 hover 十字线 + 浮动数值卡（复用 LineChart 的 ChartTip）。
+import {useState} from 'react';
+import type {MouseEvent} from 'react';
+import {Tooltip} from 'antd';
+import {ChartTip} from '@/components/charts/LineChart';
 import type {
     DatasourceScoreComparison,
     QualityLevelTrendPoint,
     QualityScoreDistribution,
     QualityScoreTrendPoint,
 } from '@/types/quality-report';
+
+/** 折线图 hover 状态（十字线 + 浮动数值卡共用逻辑） */
+function useLineHover(count: number) {
+    const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+    return {
+        hoverIndex,
+        handlers: {
+            onMouseMove: (e: MouseEvent<HTMLDivElement>) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+                const idx = Math.round(ratio * (count - 1));
+                setHoverIndex(Math.max(0, Math.min(count - 1, idx)));
+            },
+            onMouseLeave: () => setHoverIndex(null),
+        },
+    };
+}
 
 /** 四档配色（SVG 属性直读 ds token；与原型图例一致） */
 const LEVEL_COLORS = {
@@ -96,6 +118,7 @@ export function LevelTrendChart({data}: { data: QualityLevelTrendPoint[] }) {
     ];
     const maxValue = Math.max(...series.flatMap(s => s.values));
     const scale = computeScale(data.length, maxValue);
+    const {hoverIndex, handlers} = useLineHover(data.length);
     return (
         <div className="h-full flex flex-col">
             <div className="flex items-center gap-ds-3 mb-ds-1 flex-shrink-0">
@@ -106,23 +129,46 @@ export function LevelTrendChart({data}: { data: QualityLevelTrendPoint[] }) {
                     </span>
                 ))}
             </div>
-            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="flex-1 min-h-0 w-full">
-                <Grid scale={scale}/>
-                {series.map(s => (
-                    <path key={s.key} d={toPath(s.values, scale)} fill="none"
-                          stroke={LEVEL_COLORS[s.key]} strokeWidth={2}/>
-                ))}
-                <XAxis days={data.map(p => p.day)} scale={scale}/>
-            </svg>
+            <div className="relative flex-1 min-h-0" {...handlers}>
+                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                    <Grid scale={scale}/>
+                    {series.map(s => (
+                        <path key={s.key} d={toPath(s.values, scale)} fill="none"
+                              stroke={LEVEL_COLORS[s.key]} strokeWidth={2}/>
+                    ))}
+                    {hoverIndex != null && (
+                        <g>
+                            <line x1={scale.x(hoverIndex)} y1={PAD_T} x2={scale.x(hoverIndex)} y2={H - PAD_B}
+                                  stroke="rgb(148 163 184)" strokeWidth={1} strokeDasharray="3 3"/>
+                            {series.map(s => {
+                                const v = s.values[hoverIndex];
+                                return (
+                                    <circle key={s.key} cx={scale.x(hoverIndex)} cy={scale.y(v)} r={3.5}
+                                            fill={LEVEL_COLORS[s.key]} stroke="#fff" strokeWidth={1.5}/>
+                                );
+                            })}
+                        </g>
+                    )}
+                    <XAxis days={data.map(p => p.day)} scale={scale}/>
+                </svg>
+                {hoverIndex != null && (
+                    <ChartTip
+                        leftPct={(hoverIndex / Math.max(1, data.length - 1)) * 100}
+                        label={dayLabel(data[hoverIndex].day)}
+                        rows={series.map(s => ({color: LEVEL_COLORS[s.key], label: s.label, value: String(s.values[hoverIndex])}))}
+                    />
+                )}
+            </div>
         </div>
     );
 }
 
-/** 表评分分布环图（donut + 图例） */
+/** 表评分分布环图（donut + 图例；hover 环段/图例行 → 中间联动该段数量与占比 + 其余段淡化） */
 export function ScoreDonut({data, avgScore}: { data: QualityScoreDistribution; avgScore?: number }) {
+    const [hoverSeg, setHoverSeg] = useState<string | null>(null);
     const segments = [
         {label: '优秀', count: Number(data.excellentCount ?? 0), color: 'rgb(var(--color-success))'},
-        {label: '良好', count: Number(data.goodCount ?? 0), color: 'rgb(101 163 13)'},
+        {label: '良好', count: Number(data.goodCount ?? 0), color: 'rgb(74 222 128)'}, // green-400：与优秀同系递进（深→浅）
         {label: '一般', count: Number(data.warningCount ?? 0), color: '#d97706'},
         {label: '差', count: Number(data.badCount ?? 0), color: 'rgb(var(--color-danger))'},
         {label: '无评分', count: Number(data.noScoreCount ?? 0), color: 'rgb(148 163 184)'},
@@ -131,6 +177,7 @@ export function ScoreDonut({data, avgScore}: { data: QualityScoreDistribution; a
     if (total === 0) {
         return <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无评分表</div>;
     }
+    const active = hoverSeg ? segments.find(s => s.label === hoverSeg) : undefined;
     const R = 34;
     const C = 2 * Math.PI * R;
     let offset = C / 4; // 从 12 点方向开始
@@ -142,21 +189,30 @@ export function ScoreDonut({data, avgScore}: { data: QualityScoreDistribution; a
                     const len = (s.count / total) * C;
                     const el = (
                         <circle key={s.label} cx={52} cy={52} r={R} fill="none"
-                                stroke={s.color} strokeWidth={10}
+                                stroke={s.color}
+                                strokeWidth={hoverSeg === s.label ? 14 : 10}
                                 strokeDasharray={`${len} ${C - len}`} strokeDashoffset={offset}
-                                transform="rotate(-90 52 52)"/>
+                                transform="rotate(-90 52 52)"
+                                opacity={hoverSeg && hoverSeg !== s.label ? 0.35 : 1}
+                                onMouseEnter={() => setHoverSeg(s.label)}
+                                onMouseLeave={() => setHoverSeg(null)}/>
                     );
                     offset -= len;
                     return el;
                 })}
                 <text x={52} y={52} fontSize={16} fontWeight={700} fill="rgb(15 23 42)" /* text-primary */ textAnchor="middle">
-                    {avgScore != null ? avgScore : '—'}
+                    {active ? String(active.count) : (avgScore != null ? avgScore : '—')}
                 </text>
-                <text x={52} y={66} fontSize={9} fill="rgb(148 163 184)" /* text-muted */ textAnchor="middle">平均分</text>
+                <text x={52} y={66} fontSize={9} fill="rgb(148 163 184)" /* text-muted */ textAnchor="middle">
+                    {active ? `${active.label} · ${((active.count / total) * 100).toFixed(1)}%` : '平均分'}
+                </text>
             </svg>
             <div className="flex flex-col gap-ds-1 min-w-0">
                 {segments.map(s => (
-                    <div key={s.label} className="flex items-center gap-ds-2 text-ds-tiny">
+                    <div key={s.label}
+                         className={`flex items-center gap-ds-2 text-ds-tiny rounded-ds-sm px-ds-1 transition-opacity ${hoverSeg && hoverSeg !== s.label ? 'opacity-40' : ''}`}
+                         onMouseEnter={() => setHoverSeg(s.label)}
+                         onMouseLeave={() => setHoverSeg(null)}>
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background: s.color}}/>
                         <span className="text-ds-text-secondary w-10">{s.label}</span>
                         <span className="text-ds-text-muted w-12">{((s.count / total) * 100).toFixed(1)}%</span>
@@ -178,13 +234,17 @@ export function ComparisonBars({data}: { data: DatasourceScoreComparison[] }) {
         <div className="h-full flex flex-col justify-center gap-ds-3">
             {data.map(d => (
                 <div key={d.datasourceId} className="flex items-center gap-ds-2">
-                    <span className="w-24 truncate text-ds-tiny text-ds-text-secondary" title={d.datasourceName}>
-                        {d.datasourceName ?? `数据源 ${d.datasourceId}`}
-                    </span>
-                    <div className="flex-1 h-2.5 rounded-full bg-ds-bg-hover overflow-hidden">
-                        <div className="h-full rounded-full transition-all"
-                             style={{width: `${Math.min(100, d.avgScore ?? 0)}%`, background: barColor(d.avgScore)}}/>
-                    </div>
+                    <Tooltip title={d.datasourceName ?? `数据源 ${d.datasourceId}`}>
+                        <span className="w-24 truncate text-ds-tiny text-ds-text-secondary">
+                            {d.datasourceName ?? `数据源 ${d.datasourceId}`}
+                        </span>
+                    </Tooltip>
+                    <Tooltip title={`${d.datasourceName ?? `数据源 ${d.datasourceId}`} · ${d.avgScore ?? '无评分'} 分`} placement="top">
+                        <div className="flex-1 h-2.5 rounded-full bg-ds-bg-hover overflow-hidden">
+                            <div className="h-full rounded-full transition-all"
+                                 style={{width: `${Math.min(100, d.avgScore ?? 0)}%`, background: barColor(d.avgScore)}}/>
+                        </div>
+                    </Tooltip>
                     <span className="w-10 text-right text-ds-tiny font-semibold text-ds-text-primary">
                         {d.avgScore ?? '—'}
                     </span>
@@ -205,21 +265,39 @@ export function ScoreTrendChart({data}: { data: QualityScoreTrendPoint[] }) {
     const scale = computeScale(data.length, 100);
     const line = toPath(values, scale);
     const area = `${line} L${scale.x(data.length - 1).toFixed(1)},${scale.y(0)} L${scale.x(0).toFixed(1)},${scale.y(0)} Z`;
+    const {hoverIndex, handlers} = useLineHover(data.length);
     return (
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
-            <defs>
-                <linearGradient id="scoreAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT} stopOpacity={0.25}/>
-                    <stop offset="100%" stopColor={ACCENT} stopOpacity={0}/>
-                </linearGradient>
-            </defs>
-            <Grid scale={scale}/>
-            <path d={area} fill="url(#scoreAreaGrad)"/>
-            <path d={line} fill="none" stroke={ACCENT} strokeWidth={2}/>
-            {data.map((p, i) => (
-                <circle key={i} cx={scale.x(i)} cy={scale.y(pointValue(p))} r={3} fill={ACCENT}/>
-            ))}
-            <XAxis days={data.map(pointDay)} scale={scale}/>
-        </svg>
+        <div className="relative h-full w-full" {...handlers}>
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                <defs>
+                    <linearGradient id="scoreAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={ACCENT} stopOpacity={0.25}/>
+                        <stop offset="100%" stopColor={ACCENT} stopOpacity={0}/>
+                    </linearGradient>
+                </defs>
+                <Grid scale={scale}/>
+                <path d={area} fill="url(#scoreAreaGrad)"/>
+                <path d={line} fill="none" stroke={ACCENT} strokeWidth={2}/>
+                {data.map((p, i) => (
+                    <circle key={i} cx={scale.x(i)} cy={scale.y(pointValue(p))} r={3} fill={ACCENT}/>
+                ))}
+                {hoverIndex != null && (
+                    <g>
+                        <line x1={scale.x(hoverIndex)} y1={PAD_T} x2={scale.x(hoverIndex)} y2={H - PAD_B}
+                              stroke="rgb(148 163 184)" strokeWidth={1} strokeDasharray="3 3"/>
+                        <circle cx={scale.x(hoverIndex)} cy={scale.y(values[hoverIndex])} r={4}
+                                fill={ACCENT} stroke="#fff" strokeWidth={1.5}/>
+                    </g>
+                )}
+                <XAxis days={data.map(pointDay)} scale={scale}/>
+            </svg>
+            {hoverIndex != null && (
+                <ChartTip
+                    leftPct={(hoverIndex / Math.max(1, data.length - 1)) * 100}
+                    label={dayLabel(pointDay(data[hoverIndex]))}
+                    rows={[{color: ACCENT, label: '评分', value: String(values[hoverIndex])}]}
+                />
+            )}
+        </div>
     );
 }

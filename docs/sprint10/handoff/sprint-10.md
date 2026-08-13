@@ -1,6 +1,6 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-13（F4 端到端 E2E 会话）
+> 更新：2026-08-13（F5 端到端 E2E 会话）
 > 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.11）· `../DataNest-Sprint10-原型.html/css`
 
 ---
@@ -12,8 +12,8 @@
 | PRD | ✅ v1.3 | **全部决策定稿（D1~D5）**；§6.3/6.4/6.5 已回落原型修正；§12.2/§13 决策记录含 D4 M0 结论 |
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
-| 后端 | ✅ F1/F2/F3/F4/F5 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关**：对外执行入口 + Key 认证/限流 + Resilience4j 熔断 + 异步统计 + `/stats/*` 全局统计（E2E 22 用例）；**F4 WebSocket**：Kafka 事件总线 + realtime 事件管道 + data-service WebSocket（分层自测 + 真实 CDC 端到端 E2E 4 用例全通过，§25）；**F5 分级分类（本会话）**：governance `SensitivityController`（改级/批量/开白/审计 + 分级列表分页，机密降级两步 + 开白仅 INTERNAL + 审计 action 区分）已实现并部署（healthy），自测全通过 |
-| 前端 | ✅ F1/F2/F3/F4/F5 完成 | **SQL 查询终端页**；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3：API 运行统计全局页 + 单 API 详情统计区块 + Sidebar 入口**（review 决策：操作列不加统计按钮）；**F4：CDC 管道详情「实时订阅」页签（订阅文档 + 连接监控）+ Key 表单绑定管道多选**；**F5（本会话）：数据分级分类页（筛选/批量打标/改级/开白/审计）+ 资产详情敏感度标签与去查询/生成 API 入口 + SQL 树机密锁标记**，联调通过 |
+| 后端 | ✅ F1/F2/F3/F4/F5 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关**：对外执行入口 + Key 认证/限流 + Resilience4j 熔断 + 异步统计 + `/stats/*` 全局统计（E2E 22 用例）；**F4 WebSocket**：Kafka 事件总线 + realtime 事件管道 + data-service WebSocket（分层自测 + 真实 CDC 端到端 E2E 4 用例全通过，§25）；**F5 分级分类**：governance `SensitivityController`（改级/批量/开白/审计 + 分级列表分页，机密降级两步 + 开白仅 INTERNAL + 审计 action 区分）已实现并部署（healthy），自测 + **E2E 14 用例全通过**（§28） |
+| 前端 | ✅ F1/F2/F3/F4/F5 完成 | **SQL 查询终端页**；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3：API 运行统计全局页 + 单 API 详情统计区块 + Sidebar 入口**（review 决策：操作列不加统计按钮）；**F4：CDC 管道详情「实时订阅」页签（订阅文档 + 连接监控）+ Key 表单绑定管道多选**；**F5：数据分级分类页（筛选/批量打标/改级/开白/审计）+ 资产详情敏感度标签与去查询/生成 API 入口 + SQL 树机密锁标记**，联调 + **E2E 验证通过**（修复无 schema 分支 sensitivityLevel 漏映射，§28） |
 
 ---
 
@@ -589,6 +589,27 @@
 - **教训**：`npx tsc --noEmit` 在本项目无效（tsconfig.json 空 files + references），真正的类型检查是 `pnpm build` 的 `tsc -b`。
 - **已知局限（不修）**：SQL 树搜索模式不标记机密（执行时后端兜底拦截，无安全漏洞）；分级页数据源筛选不含内置 Doris（-1 伪数据源）；批量设为公开含机密表时后端拒绝（前端无预校验，后端 4012 兜底）。
 
+---
+
+## 28. F5 数据分级分类完整 E2E（2026-08-13，本会话）
+
+> 范围：兑现 F5 的「业务流程 E2E」（AC-11 分级拦截闭环 + AC-12 审计 + AC-13 资产联动）。覆盖全部功能点：分级管理（改级/批量/开白/审计/列表/权限）+ 三端闸门联动（SQL/API/WebSocket）+ 资产详情。用户拍板：**完整闭环**（三端闸门联动）+ **复用现有元数据表**（测后复位）+ **浏览器 E2E 为主、API 辅助诊断**。
+
+### 28.1 E2E 测试（14 用例全通过）
+- 新增 `e2e/sprint10/e2e/helpers/f5-seed.ts`（复用现有 ONLINE 元数据表 target_products/e2e_s5_lin_target + 测后复位 PUBLIC + 清开白 + 清审计 + 复用 F2 测试用户）+ `classification.spec.ts`（serial）。
+- **分级管理核心**（CL-1~7，浏览器）：页面加载 / 关键词搜索 / 单表改级下拉（PUBLIC→INTERNAL）/ 机密降级两步（INTERNAL→CONFIDENTIAL 成功、CONFIDENTIAL→PUBLIC 4012 徽章仍机密）/ 批量打标 / 超管开白（已开白标记）/ 审计弹窗（改级+开白记录）。
+- **三端闸门联动**（CL-8~11，浏览器 + `ensureConfidential` API 前置设机密）：SQL 终端机密拦截（9004「SQL 命中机密数据表」错误面板「机密数据保护」）/ SQL 树机密锁标记+点击拦截「机密级，无权查询」/ 资产详情「去查询/生成 API」机密禁用 / API 向导机密表禁选。
+- **权限矩阵 + 后端规则**（CL-12~14，API 辅助）：工程师/分析师改级拦截（envelope code=1005「无权限访问」，非 HTTP 403 直接）/ 治理员可改级/开白仅超管；4012 两步 / 4011 非法 / 批量含机密→公开整体回滚 4012 / 9011 开白；审计完整性（CHANGE_LEVEL/API_EXEMPT 区分 + 操作人回填）。
+
+### 28.2 发现并修复缺陷
+- **真实缺陷（SqlTree 无 schema 分支漏映射 sensitivityLevel）**：`SqlTree.tsx` 的「无 schema 数据源」表节点映射（`listMetadataTablesWithoutSchema` 分支，Doris/MySQL 单库）漏了 `sensitivityLevel` 字段，而有 schema 分支（PG 多库）正确映射——导致 datanest 库（Doris 无 schema）的 SQL 树机密表锁标记/点击拦截**不生效**（E2E 发现：API 返回 CONFIDENTIAL 但树节点 tooltip 显示「点击插入 SELECT」）。已修复（补 `sensitivityLevel: t.sensitivityLevel`），`pnpm build` 通过 + 重建部署 app-frontend。
+
+### 28.3 踩坑
+- 「查询」按钮 `getByRole('button',{name:'查询'})` 子串匹配到 sidebar「SQL 查询终端」→ 加 `exact: true`；改级下拉选项与工具栏原生 `<option>` 冲突 → 用 `.ant-select-item-option`；审计弹窗/关闭按钮多匹配 → `.first()`/`.last()`；权限拦截 envelope code=1005（非 HTTP 层 403）；Monaco `keyboard.type` 被自动补全干扰丢字符（SELECT→SEL、datanest.target_products→datanesarget_products）→ 用 `window.monaco.editor.getModels()[0].setValue()`（monacoSetup 暴露全局，注释注明供 e2e 探测）+ 「运行」按钮。
+- 测试数据自清理：敏感度复位 PUBLIC + 开白清零 + 审计 0 残留 + 测试用户 0 残留；test-results/pw-out 产物已清。
+
+---
+
 > **版本记录**
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
 > - v1.1 (2026-08-12)：§3 待同步项 4 项全部回落完成（PRD v1.2 + 技术文档 v1.2：全局统计端点组 / API 预览 / Key 近 7 天调用与快捷启用）；状态看板与技术文档版本同步更新；Next Action 移除回落项、新增健康分级阈值确认。
@@ -617,3 +638,5 @@
 > - v1.23 (2026-08-13)：**F4 真实 CDC 端到端 E2E 会话**——三处缺陷定位修复：① realtime 缺 `flink-json` 依赖（事件作业 Kafka sink 序列化启动失败）② data-service topicPattern 消费者不发现新 topic（`METADATA_MAX_AGE_CONFIG=10000`）③ Flink CDC 3.6 debezium-json 不输出 ts_ms（反编译 jar 确认，normalize 退用 `record.timestamp()`）；新增 `f4-seed.ts` + `ws-subscription.spec.ts`（4 用例：握手拒连 1002 / 订阅成功 / 端到端 AC-10 576ms 收事件 / 未绑定 9005）+ `ws`/`@types/ws` devDeps；`tsc` + `playwright test` 全通过；测试数据/产物已清（handoff §25）。
 > - v1.24 (2026-08-13)：**F5 数据分级分类后端完成**——governance `SensitivityController`（改级/批量/开白/审计 + 分级列表分页）+ `SensitivityService`（机密降级两步 4012 / 开白仅 INTERNAL 9011 / 审计 action 区分 CHANGE_LEVEL/API_EXEMPT）+ `SensitivityChangeLog` 实体 + Flyway V1.7.0（action/remark）+ common 4011/4012；3 问 3 答（补分级列表 / 批量全有或全无 / 审计加 action）；自测全通过（改级 6 场景 + 开白 + 批量回滚 + 审计 + 分级列表）+ 测试数据清理（handoff §26）。
 > - v1.25 (2026-08-13)：**F5 数据分级分类前端 + 联调完成**——2 问 2 答拍板（SQL 树机密表锁标记而非隐藏 / 分级页补后端 DTO 对齐原型）；后端补 `SensitivityTableItemDTO` 加 taskSourceType/createdBy/createdByName/createdAt；前端数据分级分类页（筛选/批量打标/改级下拉/开白/审计弹窗）+ 资产详情敏感度标签与去查询/生成 API 入口（机密禁用）+ SQL 终端/API 向导 URL 参数跳转预填 + SQL 树机密锁标记（点击拦截）；踩坑 3 处：DsButton 无 size、wizard handleSelectTable 声明前使用、生成 API 跳转路径 /wizard 应为 /new（handoff §27）；`npx tsc --noEmit` 无效需 `pnpm build` 校验；联调全通过。
+> - v1.26 (2026-08-13)：**F3 运行统计页一屏紧凑布局**（用户反馈「太丑、需一页显示不滚动、去掉返回按钮」）——根容器 `h-full` + 页头去返回按钮/描述行精简 + 图表网格 `grid-cols-6 grid-rows-3 flex-1 min-h-0`（趋势/Top5 宽列 col-span-4，其余窄列 col-span-2，3 行等高填充剩余空间）+ KpiCard/ChartCard 紧凑 padding（p-ds-4→px-3 py-2.5）+ 内容多的区块（健康分布/错误码列表）区块内 overflow-y-auto；实测整页 scrollHeight==clientHeight 无溢出、底部区块 bottom<视口高未裁剪、返回按钮已去掉。
+> - v1.27 (2026-08-13)：**F5 数据分级分类完整 E2E 会话**——3 问 3 答拍板（完整闭环 / 复用现有元数据表测后复位 / 浏览器 E2E 为主+API 辅助）；新增 `f5-seed.ts` + `classification.spec.ts`（**14 用例全通过**：分级管理核心 CL-1~7 改级/降级两步/批量/开白/审计弹窗 + 三端闸门联动 CL-8~11 SQL 拦截/树锁/资产详情禁用/向导禁选 + 权限与后端规则 CL-12~14）；**发现并修复真实缺陷**：`SqlTree.tsx` 无 schema 分支（Doris/MySQL 单库）表节点漏映射 `sensitivityLevel` 导致机密锁不生效（补字段 + `pnpm build` 重建部署）；踩坑：查询按钮子串匹配 sidebar / 改级下拉选项冲突 / 权限 envelope code=1005 非 403 / Monaco keyboard.type 丢字符改 window.monaco setValue（handoff §28）。

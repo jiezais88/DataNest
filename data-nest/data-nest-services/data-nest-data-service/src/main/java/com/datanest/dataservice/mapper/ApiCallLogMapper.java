@@ -80,6 +80,12 @@ public interface ApiCallLogMapper extends BaseMapper<ApiCallLog> {
             + "WHERE created_at >= #{since} AND status_code >= 400 GROUP BY status_code ORDER BY COUNT(*) DESC LIMIT #{limit}")
     List<StatusAgg> errorCodesSince(@Param("since") LocalDateTime since, @Param("limit") int limit);
 
+    /** 429 限流命中最多的 API（错误码分布提示「命中集中在 X」，0 或 1 条） */
+    @Select("SELECT api_id AS refId, COUNT(*) AS cnt FROM api_call_log "
+            + "WHERE created_at >= #{since} AND status_code = 429 AND api_id IS NOT NULL "
+            + "GROUP BY api_id ORDER BY COUNT(*) DESC LIMIT 1")
+    RefCount top429ApiSince(@Param("since") LocalDateTime since);
+
     /** 全局调用量趋势（unit=hour/day），total 调用量 + failed 失败数 */
     @Select("SELECT date_trunc(#{unit}, created_at) AS bucket, COUNT(*) AS total, "
             + "COUNT(*) FILTER (WHERE status_code >= 400) AS failed "

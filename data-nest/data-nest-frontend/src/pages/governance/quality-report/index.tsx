@@ -2,7 +2,8 @@
 // 三区结构：KPI×5（现在怎么样）→ 趋势区（四档分布 + 平均评分，均聚合口径）→ 结构/行动区（评分分布 + 数据源对比 + 问题清单）。
 // 筛选草稿 → 「查询」统一应用；数据源↔库双向联动、任务随数据源联动；查看全角色，导出治理员/超管（后端 1005 兜底）。
 import {useCallback, useEffect, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
+import {Tooltip} from 'antd';
 import {
     HiOutlineArrowDownTray,
     HiOutlineArrowRight,
@@ -101,6 +102,7 @@ function ChartCard({title, sub, action, children, className = ''}: {
 
 export default function QualityReportPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const canExport = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
     // ============ 筛选（草稿 → 查询时应用） ============
@@ -343,16 +345,18 @@ export default function QualityReportPage() {
                         <div className="h-full overflow-y-auto flex flex-col">
                             {topIssues.list.map(issue => (
                                 <button key={issue.detailId} type="button"
-                                        onClick={() => navigate(`/asset-catalog/${issue.tableId}?tab=quality`)}
+                                        onClick={() => navigate(`/asset-catalog/${issue.tableId}?tab=quality`, {state: {from: location.pathname}})}
                                         className="w-full flex-1 min-h-[36px] flex items-center gap-ds-3 py-[6px] border-b border-ds-border-subtle last:border-b-0 text-left hover:bg-ds-bg-hover transition-colors">
-                                    <span className="font-mono text-ds-small text-ds-accent w-36 truncate"
-                                          title={issue.tableName}>
-                                        {issue.tableName}
-                                    </span>
-                                    <span className="flex-1 min-w-0 text-ds-small text-ds-text-secondary truncate"
-                                          title={issue.ruleName}>
-                                        {issue.ruleName}
-                                    </span>
+                                    <Tooltip title={issue.tableName}>
+                                        <span className="font-mono text-ds-small text-ds-accent w-36 truncate">
+                                            {issue.tableName}
+                                        </span>
+                                    </Tooltip>
+                                    <Tooltip title={issue.ruleName}>
+                                        <span className="flex-1 min-w-0 text-ds-small text-ds-text-secondary truncate">
+                                            {issue.ruleName}
+                                        </span>
+                                    </Tooltip>
                                     <DsStatusBadge
                                         variant={issue.resultLevel === 'SEVERE' ? 'danger' : 'warning'}
                                         label={levelLabel(issue.resultLevel)}/>
@@ -379,13 +383,15 @@ export default function QualityReportPage() {
                     {issuesPager.list.map(issue => (
                         <div key={issue.detailId}
                              className="flex items-center gap-ds-3 py-ds-2 border-b border-ds-border-subtle last:border-b-0">
-                            <span className="font-mono text-ds-small text-ds-text-primary w-44 truncate"
-                                  title={issue.tableName}>
-                                {issue.tableName}
-                            </span>
+                            <Tooltip title={issue.tableName}>
+                                <span className="font-mono text-ds-small text-ds-text-primary w-44 truncate">
+                                    {issue.tableName}
+                                </span>
+                            </Tooltip>
                             <span className="flex-1 min-w-0">
-                                <span className="block text-ds-small text-ds-text-secondary truncate"
-                                      title={issue.ruleName}>{issue.ruleName}</span>
+                                <Tooltip title={issue.ruleName}>
+                                    <span className="block text-ds-small text-ds-text-secondary truncate">{issue.ruleName}</span>
+                                </Tooltip>
                                 <span className="text-ds-tiny text-ds-text-muted">
                                     {QUALITY_TYPE_LABEL[issue.ruleType as keyof typeof QUALITY_TYPE_LABEL] ?? issue.ruleType ?? '—'}
                                     {' · '}结果值 {issue.resultValue ?? '—'} / 阈值 {issue.threshold ?? '—'}

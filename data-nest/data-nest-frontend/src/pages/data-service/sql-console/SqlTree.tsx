@@ -212,6 +212,7 @@ const SqlTree = forwardRef<SqlTreeHandle, {
                             databaseName: meta.databaseName,
                             name: t.tableName,
                             qualified: `${meta.databaseName}.${t.tableName}`,
+                            sensitivityLevel: t.sensitivityLevel,
                         },
                         children: [],
                     }));

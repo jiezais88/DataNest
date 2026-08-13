@@ -206,9 +206,9 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                         <div className="flex flex-col h-full min-h-[160px]">
                             <SplitBar
                                 segments={[
-                                    {color: 'rgb(var(--color-success))', ratio: Number(bd.success ?? 0)},
-                                    {color: 'rgb(var(--color-warning))', ratio: Number(bd.clientError ?? 0)},
-                                    {color: 'rgb(var(--color-danger))', ratio: Number(bd.serverError ?? 0)},
+                                    {color: 'rgb(var(--color-success))', ratio: Number(bd.success ?? 0), label: `2xx 成功 ${formatNumber(bd.success)} 次`},
+                                    {color: 'rgb(var(--color-warning))', ratio: Number(bd.clientError ?? 0), label: `4xx 客户端 ${formatNumber(bd.clientError)} 次`},
+                                    {color: 'rgb(var(--color-danger))', ratio: Number(bd.serverError ?? 0), label: `5xx 服务端 ${formatNumber(bd.serverError)} 次`},
                                 ]}
                             />
                             <div className="flex items-center gap-ds-4 mt-ds-2 text-ds-tiny text-ds-text-muted">

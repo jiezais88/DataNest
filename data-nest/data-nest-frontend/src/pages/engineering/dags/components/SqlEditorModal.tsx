@@ -265,6 +265,7 @@ export default function SqlEditorModal({
                         onChange={(v) => setSql(v || '')}
                         onMount={handleEditorMount}
                         options={{
+                            padding: {top: 8, bottom: 8},
                             fontSize: 13,
                             minimap: {enabled: false},
                             wordWrap: 'on',

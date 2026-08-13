@@ -1,9 +1,11 @@
 // Sprint 10 F3：API 运行统计（全局观测域，PRD §6.5.1）。
 // 平台全部 API 的运行态势：总量趋势、健康分级、Top 调用与限流命中；点击排行条目进单 API 详情。
 // 数据来源：GET /data-service/stats/*（7 端点）+ /apis/summary（状态速览），range=24h|7d|30d。
+// 布局：紧凑一屏（h-full + grid-rows-3，去掉返回按钮与描述行，卡片紧凑 padding）。
 import {useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {HiOutlineChartBar, HiOutlineChevronLeft, HiOutlineExclamationTriangle, HiOutlineShieldCheck} from 'react-icons/hi2';
+import {Tooltip} from 'antd';
+import {HiOutlineChartBar, HiOutlineExclamationTriangle, HiOutlineShieldCheck} from 'react-icons/hi2';
 import {
     getDataApiSummary,
     getStatsErrorCodes,
@@ -15,7 +17,6 @@ import {
     getStatsTrend,
 } from '@/api/data-service';
 import LineChart from '@/components/charts/LineChart';
-import DsButton from '@/components/DsButton';
 import {formatNumber} from '@/utils/format';
 import {
     Bars,
@@ -84,31 +85,23 @@ export default function ApiStatsPage() {
     const err5xx = errTotal - err4xx;
     const maxErr = Math.max(1, ...errorCodes.map(e => Number(e.count ?? 0)));
     const top429 = errorCodes.find(e => e.statusCode === 429);
+    // 限流趋势峰值（原型：sub 标注「峰值 N（日期）」）
+    const ratePeak = rateLimitTrend.reduce<StatsTrendPoint | null>((m, d) =>
+        !m || Number(d.total ?? 0) > Number(m.total ?? 0) ? d : m, null);
 
     return (
-        <div className="flex flex-col gap-ds-4">
-            {/* 页头 */}
-            <div className="flex items-start justify-between gap-ds-4 flex-wrap flex-shrink-0">
-                <div>
-                    <h1 className="text-ds-display text-ds-text-primary flex items-center gap-ds-2">
-                        <HiOutlineChartBar className="text-ds-accent"/>
-                        API 运行统计
-                    </h1>
-                    <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        平台全部 API 的运行态势：总量趋势、健康分级、Top 调用与限流命中；点击排行条目可进入单 API 详情。
-                    </p>
-                </div>
-                <div className="flex items-center gap-ds-2 flex-wrap">
-                    <RangeSeg range={range} onChange={setRange}/>
-                    <DsButton variant="secondary" onClick={() => navigate('/data-service/api-manage')}>
-                        <HiOutlineChevronLeft size={14}/>
-                        返回 API 列表
-                    </DsButton>
-                </div>
+        <div className="flex flex-col h-full gap-ds-3">
+            {/* 页头（紧凑）：标题 + RangeSeg */}
+            <div className="flex items-center justify-between gap-ds-4 flex-shrink-0">
+                <h1 className="text-ds-heading text-ds-text-primary flex items-center gap-ds-2">
+                    <HiOutlineChartBar className="text-ds-accent"/>
+                    API 运行统计
+                </h1>
+                <RangeSeg range={range} onChange={setRange}/>
             </div>
 
-            {/* KPI 4 卡 */}
-            <div className="grid grid-cols-4 gap-ds-4 flex-shrink-0">
+            {/* KPI 4 卡（紧凑） */}
+            <div className="grid grid-cols-4 gap-ds-3 flex-shrink-0">
                 <KpiCard
                     label="总调用量"
                     value={loading ? '…' : formatNumber(overview?.totalCalls)}
@@ -135,12 +128,13 @@ export default function ApiStatsPage() {
                 />
             </div>
 
-            {/* 全局调用量趋势 + API 健康分布 */}
-            <div className="grid grid-cols-3 gap-ds-4">
+            {/* 图表网格：3 行等高填充剩余空间（趋势/Top5 宽列，其余窄列） */}
+            <div className="grid grid-cols-6 grid-rows-3 gap-ds-3 flex-1 min-h-0">
+                {/* 行1：全局调用量趋势 + API 健康分布 */}
                 <ChartCard
                     title="全局调用量趋势"
                     sub={rangeLabel}
-                    className="col-span-2"
+                    className="col-span-4"
                     action={(
                         <>
                             <LegendDot color="rgb(var(--color-accent))" label="调用量"/>
@@ -150,6 +144,11 @@ export default function ApiStatsPage() {
                 >
                     {loading ? (
                         <StatsLoading/>
+                    ) : trend.filter(t => t.total != null).length < 2 ? (
+                        <div className="h-full flex flex-col items-center justify-center gap-1 text-ds-small text-ds-text-muted">
+                            <HiOutlineChartBar size={24} className="opacity-40"/>
+                            范围内数据点不足，暂无趋势
+                        </div>
                     ) : (
                         <LineChart
                             data={trend}
@@ -171,30 +170,36 @@ export default function ApiStatsPage() {
 
                 <ChartCard
                     title="API 健康分布"
-                    sub={`${rangeLabel} · 共 ${(health?.healthyCount ?? 0) + (health?.warningCount ?? 0) + (health?.severeCount ?? 0)} 个`}
+                    sub={`共 ${(health?.healthyCount ?? 0) + (health?.warningCount ?? 0) + (health?.severeCount ?? 0)} 个`}
+                    className="col-span-2"
                 >
                     {loading ? (
                         <StatsLoading/>
                     ) : health ? (
-                        <div className="flex flex-col h-full min-h-[180px]">
+                        <div className="flex flex-col h-full min-h-0">
                             <div className="flex items-end gap-2">
-                                <span className="text-ds-display font-bold leading-none text-ds-success">{health.overallScore}</span>
+                                <span className="text-ds-heading font-bold leading-none text-ds-success">{health.overallScore}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mb-0.5">平台综合健康分</span>
                             </div>
-                            <SplitBar
-                                segments={[
-                                    {color: 'rgb(var(--color-success))', ratio: health.healthyCount},
-                                    {color: 'rgb(var(--color-warning))', ratio: health.warningCount},
-                                    {color: 'rgb(var(--color-danger))', ratio: health.severeCount},
-                                ]}
-                            />
-                            <div className="flex items-center gap-ds-4 mt-ds-2 text-ds-tiny text-ds-text-muted">
+                            <div className="mt-ds-2">
+                                <SplitBar
+                                    segments={[
+                                        {color: 'rgb(var(--color-success))', ratio: health.healthyCount, label: `健康 ${formatNumber(health.healthyCount)} 个`},
+                                        {color: 'rgb(var(--color-warning))', ratio: health.warningCount, label: `警告 ${formatNumber(health.warningCount)} 个`},
+                                        {color: 'rgb(var(--color-danger))', ratio: health.severeCount, label: `严重 ${formatNumber(health.severeCount)} 个`},
+                                    ]}
+                                />
+                            </div>
+                            <div className="flex items-center gap-ds-3 mt-ds-2 text-ds-tiny text-ds-text-muted">
                                 <LegendDot color="rgb(var(--color-success))" label={`健康 ${health.healthyCount}`}/>
                                 <LegendDot color="rgb(var(--color-warning))" label={`警告 ${health.warningCount}`}/>
                                 <LegendDot color="rgb(var(--color-danger))" label={`严重 ${health.severeCount}`}/>
                             </div>
-                            <div className="flex flex-col gap-1 mt-ds-3">
-                                {health.items.map((it) => {
+                            <div className="flex flex-col gap-0.5 mt-ds-2 pt-ds-2 border-t border-ds-border-subtle flex-1 min-h-0 overflow-y-auto">
+                                {[...health.items].sort((a, b) => {
+                                    const order: Record<string, number> = {SEVERE: 0, WARNING: 1, PASS: 2};
+                                    return (order[a.level] ?? 3) - (order[b.level] ?? 3);
+                                }).map((it) => {
                                     const color = it.level === 'PASS' ? 'rgb(var(--color-success))' : it.level === 'WARNING' ? 'rgb(var(--color-warning))' : 'rgb(var(--color-danger))';
                                     const clickable = !!it.path;
                                     return (
@@ -204,10 +209,11 @@ export default function ApiStatsPage() {
                                             disabled={!clickable}
                                             onClick={() => clickable && navigate(`/data-service/api-manage/${it.apiId}`)}
                                             className={`flex items-center gap-2 text-left text-ds-tiny ${clickable ? 'hover:text-ds-accent cursor-pointer' : 'cursor-default'}`}
-                                            title={it.name}
                                         >
                                             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background: color}}/>
-                                            <span className="flex-1 min-w-0 truncate text-ds-text-secondary">{it.name}</span>
+                                            <Tooltip title={it.name}>
+                                                <span className="flex-1 min-w-0 truncate text-ds-text-secondary">{it.name}</span>
+                                            </Tooltip>
                                             {clickable && <span className="text-ds-accent font-medium flex-shrink-0">详情</span>}
                                         </button>
                                     );
@@ -219,17 +225,15 @@ export default function ApiStatsPage() {
                         </div>
                     ) : null}
                 </ChartCard>
-            </div>
 
-            {/* Top 5 API 调用排行 + 错误码分布 */}
-            <div className="grid grid-cols-3 gap-ds-4">
-                <ChartCard title="Top 5 API 调用排行" sub={`按 ${rangeLabel}调用量`} className="col-span-2">
+                {/* 行2：Top 5 API 调用排行 + 错误码分布 */}
+                <ChartCard title="Top 5 API 调用排行" sub={`按 ${rangeLabel}调用量`} className="col-span-4">
                     {loading ? (
                         <StatsLoading/>
                     ) : topApis.length === 0 ? (
-                        <div className="h-full min-h-[180px] flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无 API 调用</div>
+                        <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无 API 调用</div>
                     ) : (
-                        <div className="flex flex-col">
+                        <div className="flex flex-col justify-center h-full">
                             {topApis.map((a, i) => (
                                 <RankItem
                                     key={a.apiId}
@@ -246,25 +250,25 @@ export default function ApiStatsPage() {
                     )}
                 </ChartCard>
 
-                <ChartCard title="错误码分布" sub={errTotal > 0 ? `非 2xx 请求 · 共 ${formatNumber(errTotal)}` : undefined}>
+                <ChartCard title="错误码分布" sub={errTotal > 0 ? `非 2xx · 共 ${formatNumber(errTotal)}` : undefined} className="col-span-2">
                     {loading ? (
                         <StatsLoading/>
                     ) : errorCodes.length === 0 ? (
-                        <div className="h-full min-h-[180px] flex items-center justify-center text-ds-small text-ds-text-muted">范围内无错误请求</div>
+                        <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内无错误请求</div>
                     ) : (
-                        <div className="flex flex-col h-full min-h-[180px]">
+                        <div className="flex flex-col h-full min-h-0">
                             <div className="flex items-center gap-2">
                                 <SplitBar
                                     segments={[
-                                        {color: 'rgb(var(--color-warning))', ratio: err4xx},
-                                        {color: 'rgb(var(--color-danger))', ratio: err5xx},
+                                        {color: 'rgb(var(--color-warning))', ratio: err4xx, label: `4xx 客户端 ${formatNumber(err4xx)} 次`},
+                                        {color: 'rgb(var(--color-danger))', ratio: err5xx, label: `5xx 服务端 ${formatNumber(err5xx)} 次`},
                                     ]}
                                 />
                                 <span className="text-ds-tiny text-ds-text-muted whitespace-nowrap">
                                     {errTotal > 0 ? `${Math.round((err4xx / errTotal) * 100)}% 客户端 · ${Math.round((err5xx / errTotal) * 100)}% 服务端` : ''}
                                 </span>
                             </div>
-                            <div className="flex flex-col mt-ds-3">
+                            <div className="flex flex-col mt-ds-2 flex-1 min-h-0 overflow-y-auto">
                                 {errorCodes.map((e, i) => (
                                     <RankItem
                                         key={e.statusCode}
@@ -272,73 +276,76 @@ export default function ApiStatsPage() {
                                         title={`${e.statusCode} ${statusName(e.statusCode)}`}
                                         value={e.count}
                                         maxValue={maxErr}
+                                        plain
                                         barColor={e.statusCode >= 500 ? 'rgb(var(--color-danger))' : 'rgb(var(--color-warning))'}
                                     />
                                 ))}
                             </div>
                             {top429 && (
-                                <div className="mt-auto pt-ds-3 flex items-start gap-1.5 text-ds-tiny text-ds-warning">
+                                <div className="mt-auto pt-ds-2 flex items-start gap-1.5 text-ds-tiny text-ds-warning">
                                     <HiOutlineExclamationTriangle size={14} className="flex-shrink-0 mt-0.5"/>
                                     <span>
-                                        <b>429 限流占错误总量 {pct(top429.ratio, 0)}</b>，命中集中在高频 API；建议调高对应 Key 级 QPS 或增加结果缓存。
+                                        <b>429 限流占错误总量 {pct(top429.ratio, 0)}</b>
+                                        {top429.top429ApiName ? `，命中集中在「${top429.top429ApiName}」` : ''}；建议调高对应 Key 级 QPS。
                                     </span>
                                 </div>
                             )}
                         </div>
                     )}
                 </ChartCard>
-            </div>
 
-            {/* 调用方 Key 排行 + 限流趋势 + 状态速览 */}
-            <div className="grid grid-cols-3 gap-ds-4">
-                <ChartCard title="调用方 Key 排行" sub={`按 ${rangeLabel}调用量`}>
+                {/* 行3：调用方 Key 排行 + 限流命中趋势 + API 状态速览 */}
+                <ChartCard title="调用方 Key 排行" sub={`按 ${rangeLabel}调用量`} className="col-span-2">
                     {loading ? (
                         <StatsLoading/>
                     ) : topKeys.length === 0 ? (
-                        <div className="h-full min-h-[180px] flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无调用方</div>
+                        <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无调用方</div>
                     ) : (
-                        <div className="flex flex-col">
-                            {topKeys.map((k, i) => (
-                                <RankItem
-                                    key={k.keyId}
-                                    rank={i + 1}
-                                    title={k.name}
-                                    sub={k.zombie ? '近 7 天 0 调用' : undefined}
-                                    value={k.calls}
-                                    maxValue={maxTopKey}
-                                    dimmed={k.zombie}
-                                />
-                            ))}
+                        <div className="flex flex-col justify-center h-full">
+                            {topKeys.map((k, i) => {
+                                const bound = k.boundApiCount != null && k.boundApiCount > 0 ? `绑定 ${k.boundApiCount} 个 API` : '未绑定 API';
+                                return (
+                                    <RankItem
+                                        key={k.keyId}
+                                        rank={i + 1}
+                                        title={k.name}
+                                        sub={k.zombie ? `${bound} · 近 7 天 0 调用` : bound}
+                                        value={k.calls}
+                                        maxValue={maxTopKey}
+                                        dimmed={k.zombie}
+                                    />
+                                );
+                            })}
                         </div>
                     )}
                 </ChartCard>
 
-                <ChartCard title="限流命中趋势" sub={rangeLabel}>
+                <ChartCard title="限流命中趋势" sub={ratePeak ? `${rangeLabel} · 峰值 ${formatNumber(ratePeak.total)}（${bucketLabel(ratePeak.bucket, range)}）` : rangeLabel} className="col-span-2">
                     {loading ? <StatsLoading/> : <Bars data={rateLimitTrend} range={range} emptyText="范围内无限流命中"/>}
                 </ChartCard>
 
-                <ChartCard title="API 状态速览" sub="全量 API">
-                    <div className="flex flex-col h-full min-h-[180px]">
-                        <div className="grid grid-cols-3 gap-ds-3">
-                            <div className="flex flex-col items-center py-ds-3 bg-ds-success-light rounded-ds-md">
+                <ChartCard title="API 状态速览" sub="全量 API" className="col-span-2">
+                    <div className="flex flex-col h-full min-h-0">
+                        <div className="grid grid-cols-3 gap-ds-2">
+                            <div className="flex flex-col items-center py-ds-2 bg-ds-success-light rounded-ds-md">
                                 <span className="text-ds-heading font-bold text-ds-success">{summary ? formatNumber(summary.publishedCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">已发布</span>
                             </div>
-                            <div className="flex flex-col items-center py-ds-3 bg-ds-accent-light rounded-ds-md">
+                            <div className="flex flex-col items-center py-ds-2 bg-ds-accent-light rounded-ds-md">
                                 <span className="text-ds-heading font-bold text-ds-accent">{summary ? formatNumber(summary.createdCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">待发布</span>
                             </div>
-                            <div className="flex flex-col items-center py-ds-3 bg-ds-bg-hover rounded-ds-md">
+                            <div className="flex flex-col items-center py-ds-2 bg-ds-bg-hover rounded-ds-md">
                                 <span className="text-ds-heading font-bold text-ds-text-secondary">{summary ? formatNumber(summary.disabledCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">已下线</span>
                             </div>
                         </div>
-                        <div className="mt-auto pt-ds-3 flex items-start gap-1.5 text-ds-tiny text-ds-text-muted">
+                        <div className="mt-auto pt-ds-2 flex items-start gap-1.5 text-ds-tiny text-ds-text-muted">
                             <HiOutlineShieldCheck size={14} className="flex-shrink-0 mt-0.5 text-ds-success"/>
                             <span>
-                                近 7 天 <b>0 调用</b> 的 Key 为僵尸 Key，建议停用以防泄露；可在
+                                近 7 天 <b>{topKeys.filter(k => k.zombie).length} 个 Key</b> 0 调用（僵尸 Key），建议停用；可在
                                 <button type="button" className="text-ds-accent hover:underline mx-0.5" onClick={() => navigate('/data-service/api-keys')}>API Key 管理</button>
-                                页一键处置。
+                                页处置。
                             </span>
                         </div>
                     </div>

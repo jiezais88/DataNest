@@ -1,12 +1,14 @@
 // Sprint 10 F3：数据服务域统计共享组件与工具（全局 API 运行统计页 + 单 API 详情统计区块复用）。
 // 对齐质量报告 charts.tsx 手写 SVG/div 模式，无图表库依赖。
+import {Tooltip} from 'antd';
+import {HiOutlineArrowRight} from 'react-icons/hi2';
 import DsSpinner from '@/components/DsSpinner';
 import {formatNumber, formatTimeHm} from '@/utils/format';
 import type {StatsRange} from '@/types/data-service';
 
 /** 时间范围快捷项（对齐原型 seg：近24h/近7天/近30天，默认近7天） */
 export const RANGE_OPTIONS: { value: StatsRange; label: string }[] = [
-    {value: '24h', label: '近24h'},
+    {value: '24h', label: '近24小时'},
     {value: '7d', label: '近7天'},
     {value: '30d', label: '近30天'},
 ];
@@ -77,9 +79,9 @@ export function KpiCard({label, value, unit, sub, valueClass}: {
     valueClass?: string;
 }) {
     return (
-        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-4">
+        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-4 py-ds-3">
             <div className="text-ds-tiny text-ds-text-muted">{label}</div>
-            <div className={`text-ds-display font-bold mt-ds-1 leading-tight ${valueClass ?? 'text-ds-text-primary'}`}>
+            <div className={`text-ds-heading font-bold mt-ds-1 leading-tight ${valueClass ?? 'text-ds-text-primary'}`}>
                 {value}
                 {unit && <span className="text-ds-small font-normal text-ds-text-muted ml-1">{unit}</span>}
             </div>
@@ -97,13 +99,13 @@ export function ChartCard({title, sub, action, children, className}: {
     className?: string;
 }) {
     return (
-        <div className={`bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-4 flex flex-col min-h-0 ${className ?? ''}`}>
+        <div className={`bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-4 py-ds-3 flex flex-col min-h-0 ${className ?? ''}`}>
             <div className="flex items-center gap-ds-2 mb-ds-3 flex-shrink-0">
                 <span className="text-ds-small font-semibold text-ds-text-primary">{title}</span>
                 {sub && <span className="text-ds-tiny text-ds-text-muted">{sub}</span>}
                 {action && <div className="ml-auto flex items-center gap-ds-3">{action}</div>}
             </div>
-            <div className="flex-1 min-h-0">{children}</div>
+            <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
         </div>
     );
 }
@@ -118,20 +120,23 @@ export function LegendDot({color, label}: { color: string; label: string }) {
     );
 }
 
-/** 三档占比条（健康分布 / 错误码 4xx/5xx） */
-export function SplitBar({segments}: { segments: { color: string; ratio: number }[] }) {
+/** 三档占比条（健康分布 / 错误码 4xx/5xx）；段带 label 时 hover 显示「label · 占比」 */
+export function SplitBar({segments}: { segments: { color: string; ratio: number; label?: string }[] }) {
     const total = segments.reduce((s, x) => s + x.ratio, 0) || 1;
     return (
         <div className="flex h-2.5 rounded-full overflow-hidden bg-ds-bg-hover w-full">
             {segments.filter(s => s.ratio > 0).map((s, i) => (
-                <div key={i} style={{width: `${(s.ratio / total) * 100}%`, background: s.color}}/>
+                <Tooltip key={i} title={s.label ? `${s.label} · ${((s.ratio / total) * 100).toFixed(0)}%` : undefined} placement="top">
+                    <div style={{width: `${(s.ratio / total) * 100}%`, background: s.color}}/>
+                </Tooltip>
             ))}
         </div>
     );
 }
 
-/** 排名条目：序号 + 主标题/副标题 + 占比条 + 值；dimmed 灰显（僵尸 Key / 已删除）；可点击跳详情 */
-export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, barColor}: {
+/** 排名条目：序号 + 主标题/副标题 + 占比条 + 值；dimmed 灰显（僵尸 Key / 已删除，仅内容淡化徽章不淡化）；
+ *  plain 用于问题分布类排行（错误码），序号一律中性灰；可点击跳详情 */
+export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, barColor, plain}: {
     rank: number;
     title: string;
     sub?: string;
@@ -140,34 +145,56 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
     onClick?: () => void;
     dimmed?: boolean;
     barColor?: string;
+    plain?: boolean;
 }) {
     const width = maxValue > 0 ? Math.max(0, (Number(value) / maxValue) * 100) : 0;
-    const topColor = rank === 1 ? 'bg-ds-accent text-white' : rank === 2 ? 'bg-ds-accent/70 text-white' : rank === 3 ? 'bg-ds-accent/40 text-white' : 'bg-ds-bg-hover text-ds-text-muted';
+    // 排名徽章由深到浅（同色系 accent 明度梯度：1 实心 → 2 中 → 3 浅底 → 4/5 中性灰）；
+    // plain（问题分布类排行）不区分名次、一律中性灰（对齐原型错误码 rr-no）。
+    const rankBadge = (r: number) => {
+        if (plain) return 'bg-ds-bg-root text-ds-text-muted';
+        if (r === 1) return 'bg-ds-accent text-white';
+        if (r === 2) return 'bg-ds-accent/75 text-white';
+        if (r === 3) return 'bg-ds-accent-light text-ds-accent';
+        return 'bg-ds-bg-root text-ds-text-muted';
+    };
     const content = (
         <>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-ds-tiny font-bold flex-shrink-0 ${topColor}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-ds-tiny font-bold flex-shrink-0 ${rankBadge(rank)}`}>
                 {rank}
             </span>
             <div className="flex-1 min-w-0">
-                <span className={`block text-ds-small truncate ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-primary'}`} title={title}>
-                    {title}
+                <Tooltip title={title}>
+                    <span className={`block text-ds-small truncate ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-primary'}`}>
+                        {title}
+                    </span>
+                </Tooltip>
+                {sub && (
+                    <Tooltip title={sub}>
+                        <span className="block text-ds-tiny text-ds-text-muted truncate">{sub}</span>
+                    </Tooltip>
+                )}
+            </div>
+            <div className="flex items-center gap-ds-2 flex-shrink-0 ml-auto">
+                <div className="w-24 flex-shrink-0 h-1.5 rounded-full bg-ds-bg-hover overflow-hidden">
+                    <div className="h-full rounded-full" style={{width: `${width}%`, background: dimmed ? 'rgb(203 213 225)' : (barColor ?? 'rgb(var(--color-accent))')}}/>
+                </div>
+                <span className={`w-16 text-right text-ds-small font-mono tabular-nums flex-shrink-0 ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-secondary'}`}>
+                    {formatNumber(value)}
                 </span>
-                {sub && <span className="block text-ds-tiny text-ds-text-muted truncate" title={sub}>{sub}</span>}
+                {onClick && (
+                    <span className="text-ds-accent text-ds-tiny font-semibold flex-shrink-0 inline-flex items-center gap-0.5">
+                        详情<HiOutlineArrowRight size={10}/>
+                    </span>
+                )}
             </div>
-            <div className="w-28 flex-shrink-0 h-1.5 rounded-full bg-ds-bg-hover overflow-hidden">
-                <div className="h-full rounded-full" style={{width: `${width}%`, background: barColor ?? 'rgb(var(--color-accent))'}}/>
-            </div>
-            <span className={`w-20 text-right text-ds-small font-mono tabular-nums flex-shrink-0 ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-secondary'}`}>
-                {formatNumber(value)}
-            </span>
         </>
     );
     if (!onClick) {
-        return <div className={`flex items-center gap-ds-3 py-1.5 ${dimmed ? 'opacity-55' : ''}`}>{content}</div>;
+        return <div className="flex items-center gap-ds-3 py-1.5">{content}</div>;
     }
     return (
         <button type="button" onClick={onClick}
-                className={`w-full flex items-center gap-ds-3 py-1.5 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors ${dimmed ? 'opacity-55' : ''}`}>
+                className="w-full flex items-center gap-ds-3 py-1.5 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
             {content}
         </button>
     );
@@ -183,25 +210,27 @@ export function Bars({data, range, color, emptyText, xLabel}: {
 }) {
     if (data.length === 0) {
         return (
-            <div className="h-full min-h-[120px] flex items-center justify-center text-ds-small text-ds-text-muted">
+            <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">
                 {emptyText ?? '范围内暂无数据'}
             </div>
         );
     }
     const max = Math.max(1, ...data.map(d => Number(d.total ?? 0)));
     return (
-        <div className="h-full min-h-[120px] flex flex-col">
-            <div className="flex-1 flex items-end gap-1 min-h-0">
+        <div className="h-full flex flex-col min-h-0">
+            <div className="flex-1 flex gap-1 min-h-0 justify-center">
                 {data.map((d, i) => {
                     const v = Number(d.total ?? 0);
                     return (
-                        <div key={d.bucket} className="flex-1 flex items-end min-w-0" title={`${formatNumber(d.total)} 次`}>
-                            <div className="w-full rounded-t-sm"
-                                 style={{
-                                     height: v > 0 ? `${Math.max(2, (v / max) * 100)}%` : '0',
-                                     background: color ?? 'rgb(var(--color-warning))',
-                                 }}/>
-                        </div>
+                        <Tooltip key={d.bucket} title={`${formatNumber(d.total)} 次`} placement="top">
+                            <div className="flex-1 max-w-[64px] flex items-end min-w-0">
+                                <div className="w-full rounded-t-sm"
+                                     style={{
+                                         height: v > 0 ? `${Math.max(2, (v / max) * 100)}%` : '0',
+                                         background: color ?? 'rgb(var(--color-warning))',
+                                     }}/>
+                            </div>
+                        </Tooltip>
                     );
                 })}
             </div>

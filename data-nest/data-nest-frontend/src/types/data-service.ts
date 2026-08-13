@@ -319,13 +319,17 @@ export interface StatsTopKey {
     name: string;
     calls: string;
     zombie: boolean;
+    /** 绑定的 API 数（0 = 未绑定） */
+    boundApiCount?: number;
 }
 
-/** 错误码分布项（ratio 为占错误总量比例 0~1） */
+/** 错误码分布项（ratio 为占错误总量比例 0~1；429 条目带 top429ApiName） */
 export interface StatsErrorCode {
     statusCode: number;
     count: string;
     ratio: number;
+    /** 429 限流命中最多的 API 名（null = 无 429 或 API 已删除） */
+    top429ApiName?: string | null;
 }
 
 /** 状态码三档汇总（2xx 成功 / 4xx 客户端 / 5xx 服务端） */

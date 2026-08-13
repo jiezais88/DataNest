@@ -21,4 +21,7 @@ public class StatsTopKeyDTO {
 
     @Schema(description = "是否僵尸 Key（近 7 天 0 调用，前端灰显）")
     private Boolean zombie;
+
+    @Schema(description = "绑定的 API 数（Key 管理绑定关系，0 = 未绑定）")
+    private Long boundApiCount;
 }

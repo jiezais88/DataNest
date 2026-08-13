@@ -19,6 +19,7 @@ import com.datanest.dataservice.entity.ApiCallLog;
 import com.datanest.dataservice.entity.ApiKey;
 import com.datanest.dataservice.entity.DataApi;
 import com.datanest.dataservice.mapper.ApiCallLogMapper;
+import com.datanest.dataservice.mapper.ApiKeyBindingMapper;
 import com.datanest.dataservice.mapper.ApiKeyMapper;
 import com.datanest.dataservice.mapper.DataApiMapper;
 import org.springframework.stereotype.Service;
@@ -57,11 +58,14 @@ public class StatsQueryService {
     private final ApiCallLogMapper callLogMapper;
     private final DataApiMapper dataApiMapper;
     private final ApiKeyMapper apiKeyMapper;
+    private final ApiKeyBindingMapper bindingMapper;
 
-    public StatsQueryService(ApiCallLogMapper callLogMapper, DataApiMapper dataApiMapper, ApiKeyMapper apiKeyMapper) {
+    public StatsQueryService(ApiCallLogMapper callLogMapper, DataApiMapper dataApiMapper, ApiKeyMapper apiKeyMapper,
+                             ApiKeyBindingMapper bindingMapper) {
         this.callLogMapper = callLogMapper;
         this.dataApiMapper = dataApiMapper;
         this.apiKeyMapper = apiKeyMapper;
+        this.bindingMapper = bindingMapper;
     }
 
     /** 全局 KPI：总调用量/成功率/P95/限流命中 */
@@ -141,18 +145,27 @@ public class StatsQueryService {
         }).toList();
     }
 
-    /** 错误码分布（4xx/5xx TopN，含占比） */
+    /** 错误码分布（4xx/5xx TopN，含占比；429 条目附带限流命中最多的 API 名） */
     public List<StatsErrorCodeDTO> errorCodes(String range, int limit) {
         Range r = parseRange(range);
         List<StatusAgg> aggs = callLogMapper.errorCodesSince(r.since(), limit);
         long totalErrors = aggs.stream().mapToLong(a -> a.getCnt() == null ? 0 : a.getCnt()).sum();
-        return aggs.stream().map(a -> {
+        List<StatsErrorCodeDTO> dtos = aggs.stream().map(a -> {
             StatsErrorCodeDTO dto = new StatsErrorCodeDTO();
             dto.setStatusCode(a.getStatusCode());
             dto.setCount(a.getCnt());
             dto.setRatio(totalErrors == 0 ? 0 : round2((double) a.getCnt() / totalErrors));
             return dto;
         }).toList();
+        // 429 命中集中的 API（原型：错误码提示「命中集中在 X」；API 软删显示「已删除的 API」）
+        RefCount top429 = callLogMapper.top429ApiSince(r.since());
+        if (top429 != null) {
+            DataApi api = apiMap(List.of(top429.getRefId())).get(top429.getRefId());
+            String name = api == null ? "已删除的 API" : api.getName();
+            dtos.stream().filter(d -> d.getStatusCode() != null && d.getStatusCode() == 429)
+                    .findFirst().ifPresent(d -> d.setTop429ApiName(name));
+        }
+        return dtos;
     }
 
     /** 调用方 Key 排行（Top N 有调用 + 近 7 天 0 调用的僵尸 Key 灰显） */
@@ -190,6 +203,12 @@ public class StatsQueryService {
                     }).toList();
             items.addAll(zombies);
         }
+        // 绑定 API 数批量回填（有调用 TopN + 僵尸全量，一次查询避免 N+1）
+        List<Long> allKeyIds = items.stream().map(StatsTopKeyDTO::getKeyId).toList();
+        Map<Long, Long> boundApiCounts = allKeyIds.isEmpty() ? Map.of()
+                : bindingMapper.countApisByKeyIds(allKeyIds).stream()
+                .collect(Collectors.toMap(RefCount::getRefId, RefCount::getCnt, (a, b) -> a));
+        items.forEach(i -> i.setBoundApiCount(boundApiCounts.getOrDefault(i.getKeyId(), 0L)));
         return items;
     }
 

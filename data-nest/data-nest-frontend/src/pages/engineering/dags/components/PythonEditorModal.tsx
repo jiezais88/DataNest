@@ -234,6 +234,7 @@ export default function PythonEditorModal({
                         onChange={(v) => setScript(v || '')}
                         onMount={handleEditorMount}
                         options={{
+                            padding: {top: 8, bottom: 8},
                             fontSize: 13,
                             minimap: {enabled: false},
                             wordWrap: 'on',

@@ -1,6 +1,8 @@
 // Sprint 9：通用 SVG 折线/面积图组件（项目无图表库，沿用 quality-report/charts.tsx 手写 SVG 模式）。
-// 能力：多系列（折线/面积）、null 值断点跳空（不插值造假）、超阈值区段标红、Y 轴刻度、X 轴标签采样、图例。
+// 能力：多系列（折线/面积）、null 值断点跳空（不插值造假）、超阈值区段标红、Y 轴刻度、X 轴标签采样、图例；
+// hover 十字线 + 浮动数值卡（2026-08-13 增，质量报告/API 统计/CDC 监控共用）。
 // 全部用 viewBox + preserveAspectRatio 自适应卡片宽度。
+import {useState} from 'react';
 import type {ReactNode} from 'react';
 
 const W = 640;
@@ -117,8 +119,32 @@ function XAxis({count, xLabel, scale}: { count: number; xLabel: (i: number) => s
     );
 }
 
+/** hover 浮动数值卡（折线图十字线跟随；x 越界自动内收防溢出卡片） */
+export function ChartTip({leftPct, label, rows}: {
+    leftPct: number;
+    label: string;
+    rows: { color: string; label: string; value: string }[];
+}) {
+    const left = Math.max(16, Math.min(84, leftPct));
+    return (
+        <div className="absolute top-1 z-10 pointer-events-none -translate-x-1/2 bg-ds-bg-surface border border-ds-border-subtle rounded-ds-sm shadow-lg px-ds-2 py-ds-1.5 min-w-[110px]"
+             style={{left: `${left}%`}}>
+            <div className="text-ds-tiny text-ds-text-muted whitespace-nowrap">{label}</div>
+            {rows.map(r => (
+                <div key={r.label} className="flex items-center gap-1.5 text-ds-tiny mt-0.5 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background: r.color}}/>
+                    <span className="text-ds-text-secondary">{r.label}</span>
+                    <span className="font-mono font-semibold text-ds-text-primary ml-auto pl-2">{r.value}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export default function LineChart({data, series, xLabel, legend, emptyText, maxY}: LineChartProps) {
     const valuesBySeries = series.map(s => data.map((item, i) => s.value(item, i)));
+    /** hover 数据点下标（十字线 + 浮动数值卡） */
+    const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
     // 是否有任何有效值（无则显示空态）
     const hasAny = valuesBySeries.some(vals => vals.some(v => v != null));
@@ -138,48 +164,84 @@ export default function LineChart({data, series, xLabel, legend, emptyText, maxY
                     {emptyText || '范围内暂无数据'}
                 </div>
             ) : (
-                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-                     className="flex-1 min-h-0 w-full" style={{minHeight: 140}}>
-                    <Grid scale={scale}/>
-                    {series.map((s, si) => {
-                        const values = valuesBySeries[si];
-                        const {segments, pathFor} = buildSegments(values, scale);
-                        return (
-                            <g key={s.key}>
-                                {/* 面积填充 */}
-                                {s.area && segments.map((seg, j) => (
-                                    <path key={j}
-                                          d={`${pathFor(seg)} L${scale.x(seg.end).toFixed(1)},${scale.y(0)} L${scale.x(seg.start).toFixed(1)},${scale.y(0)} Z`}
-                                          fill={s.color} opacity={0.18}/>
-                                ))}
-                                {/* 折线主体 */}
-                                {segments.map((seg, j) => (
-                                    <path key={j} d={pathFor(seg)} fill="none"
-                                          stroke={s.color} strokeWidth={2}/>
-                                ))}
-                                {/* 阈值标红：超过阈值的点之间线段用阈值色 */}
-                                {s.threshold != null && (() => {
-                                    const thrSegs: { start: number; end: number }[] = [];
-                                    let start = -1;
-                                    values.forEach((v, i) => {
-                                        const over = v != null && v > s.threshold!;
-                                        if (over && start < 0) start = i;
-                                        if (!over && start >= 0) {
-                                            thrSegs.push({start, end: i - 1});
-                                            start = -1;
-                                        }
-                                    });
-                                    if (start >= 0) thrSegs.push({start, end: values.length - 1});
-                                    return thrSegs.map((seg, j) => (
+                <div
+                    className="relative flex-1 min-h-0"
+                    style={{minHeight: 140}}
+                    onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+                        const idx = Math.round(ratio * (data.length - 1));
+                        setHoverIndex(Math.max(0, Math.min(data.length - 1, idx)));
+                    }}
+                    onMouseLeave={() => setHoverIndex(null)}
+                >
+                    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+                         className="absolute inset-0 w-full h-full">
+                        <Grid scale={scale}/>
+                        {series.map((s, si) => {
+                            const values = valuesBySeries[si];
+                            const {segments, pathFor} = buildSegments(values, scale);
+                            return (
+                                <g key={s.key}>
+                                    {/* 面积填充 */}
+                                    {s.area && segments.map((seg, j) => (
+                                        <path key={j}
+                                              d={`${pathFor(seg)} L${scale.x(seg.end).toFixed(1)},${scale.y(0)} L${scale.x(seg.start).toFixed(1)},${scale.y(0)} Z`}
+                                              fill={s.color} opacity={0.18}/>
+                                    ))}
+                                    {/* 折线主体 */}
+                                    {segments.map((seg, j) => (
                                         <path key={j} d={pathFor(seg)} fill="none"
-                                              stroke={s.thresholdColor || 'rgb(var(--color-danger))'} strokeWidth={2}/>
-                                    ));
-                                })()}
+                                              stroke={s.color} strokeWidth={2}/>
+                                    ))}
+                                    {/* 阈值标红：超过阈值的点之间线段用阈值色 */}
+                                    {s.threshold != null && (() => {
+                                        const thrSegs: { start: number; end: number }[] = [];
+                                        let start = -1;
+                                        values.forEach((v, i) => {
+                                            const over = v != null && v > s.threshold!;
+                                            if (over && start < 0) start = i;
+                                            if (!over && start >= 0) {
+                                                thrSegs.push({start, end: i - 1});
+                                                start = -1;
+                                            }
+                                        });
+                                        if (start >= 0) thrSegs.push({start, end: values.length - 1});
+                                        return thrSegs.map((seg, j) => (
+                                            <path key={j} d={pathFor(seg)} fill="none"
+                                                  stroke={s.thresholdColor || 'rgb(var(--color-danger))'} strokeWidth={2}/>
+                                        ));
+                                    })()}
+                                </g>
+                            );
+                        })}
+                        {/* hover 十字线 + 各系列数据点 */}
+                        {hoverIndex != null && (
+                            <g>
+                                <line x1={scale.x(hoverIndex)} y1={PAD_T} x2={scale.x(hoverIndex)} y2={H - PAD_B}
+                                      stroke="rgb(148 163 184)" strokeWidth={1} strokeDasharray="3 3"/>
+                                {series.map((s, si) => {
+                                    const v = valuesBySeries[si][hoverIndex];
+                                    return v != null ? (
+                                        <circle key={s.key} cx={scale.x(hoverIndex)} cy={scale.y(v)} r={4}
+                                                fill={s.color} stroke="#fff" strokeWidth={1.5}/>
+                                    ) : null;
+                                })}
                             </g>
-                        );
-                    })}
-                    <XAxis count={data.length} xLabel={xLabel} scale={scale}/>
-                </svg>
+                        )}
+                        <XAxis count={data.length} xLabel={xLabel} scale={scale}/>
+                    </svg>
+                    {hoverIndex != null && (
+                        <ChartTip
+                            leftPct={(hoverIndex / Math.max(1, data.length - 1)) * 100}
+                            label={xLabel(hoverIndex)}
+                            rows={series.map((s, si) => {
+                                const v = valuesBySeries[si][hoverIndex];
+                                return {color: s.color, label: s.label, value: v == null ? '—' : String(v)};
+                            })}
+                        />
+                    )}
+                </div>
             )}
         </div>
     );

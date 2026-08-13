@@ -431,6 +431,7 @@ export default function SqlConsolePage() {
                             onChange={(v) => setSql(v || '')}
                             onMount={handleEditorMount}
                             options={{
+                                padding: {top: 8, bottom: 8},
                                 fontSize: 12,
                                 minimap: {enabled: false},
                                 wordWrap: 'on',

@@ -4,7 +4,7 @@
 // 页签懒加载（antd Tabs 默认首个激活页签才挂载，切到才拉取）。
 // Sprint 8 F1：协作条（标签/收藏/关注，DC-06/07）+ 热度指标卡与埋点（DC-09）+ 评论页签（DC-08）。
 import {useCallback, useEffect, useState} from 'react';
-import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
+import {useNavigate, useLocation, useParams, useSearchParams} from 'react-router-dom';
 import {Spin, Tabs, Tooltip} from 'antd';
 import {
     HiOutlineBolt,
@@ -110,6 +110,9 @@ function BasicInfoTab({table}: { table: MetadataTable }) {
 export default function AssetDetailPage() {
     const {tableId = ''} = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
+    /** 来源页（质量报告等经 state.from 进入）：「返回」优先回来源，否则回资产目录 */
+    const fromPath = (location.state as { from?: string } | null)?.from;
     const [searchParams, setSearchParams] = useSearchParams();
     const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
 
@@ -204,7 +207,7 @@ export default function AssetDetailPage() {
     if (!table) {
         return (
             <div className="flex flex-col">
-                <DsButton variant="secondary" className="self-start mb-ds-4" onClick={() => navigate('/asset-catalog')}>
+                <DsButton variant="secondary" className="self-start mb-ds-4" onClick={() => navigate(fromPath || '/asset-catalog')}>
                     ← 返回
                 </DsButton>
                 <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md p-ds-10 text-center text-ds-small text-ds-text-muted">
@@ -238,7 +241,7 @@ export default function AssetDetailPage() {
             {/* 头部：返回（平台深层页惯例：secondary「← 返回」按钮）+ 路径条 + 徽章 + 操作 */}
             <div className="flex items-start justify-between mb-ds-4 flex-shrink-0 gap-ds-4">
                 <div className="min-w-0">
-                    <DsButton variant="secondary" className="mb-ds-3" onClick={() => navigate('/asset-catalog')}>
+                    <DsButton variant="secondary" className="mb-ds-3" onClick={() => navigate(fromPath || '/asset-catalog')}>
                         ← 返回
                     </DsButton>
                     <div className="flex items-center gap-ds-2 flex-wrap">
