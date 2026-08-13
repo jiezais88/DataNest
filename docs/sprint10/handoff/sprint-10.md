@@ -1,7 +1,7 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-13（F3 前端 + 联调会话）
-> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.8）· `../DataNest-Sprint10-原型.html/css`
+> 更新：2026-08-13（F3 E2E 测试会话）
+> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.11）· `../DataNest-Sprint10-原型.html/css`
 
 ---
 
@@ -453,6 +453,29 @@
 
 ---
 
+## 22. F3 完整 E2E 测试会话（2026-08-13，本会话）
+
+> 范围：F3 对外网关（认证/参数化执行/限流/熔断）+ 调用统计（单 API + 全局 + 前端观测页）。新增 3 个测试文件，**22 用例全通过**。
+
+### 22.1 测试文件
+- **`e2e/sprint10/e2e/helpers/f3-seed.ts`**：自播种自清理（F3 前缀 `e2e_s10_f3_`）+ `openApiCall`（带 `X-API-Key` 头直调对外入口，不登录，与业务系统视角一致）。
+- **`e2e/sprint10/e2e/open-api.spec.ts`（18 用例）**：对外认证 / 参数化执行 / 限流 / 熔断。
+- **`e2e/sprint10/e2e/api-stats.spec.ts`（4 用例）**：单 API 统计 / 全局统计 7 端点 / 前端运行统计页 + 详情页统计区块。
+
+### 22.2 覆盖点（对齐 PRD AC-6/7/8/9 + DS-04）
+- **认证**：无/错/禁用/未绑定 Key → 401（9005）；路径不存在 → 404（9008）；未发布/下线 → 404（9007）。
+- **参数化**：EQ 等值（category=手机 → 6 行）、RANGE 范围（4000~7000 → 4 行）、orderBy（price DESC）、分页 page+pageSize+total、fields 字段裁剪、pageSize 超上限 clamp（pageSizeMax=3）。
+- **限流**：QPS=1 第 2 次 429 + `Retry-After`；**窗口 60s 过期后恢复可调**（实测等 63s）。
+- **熔断**：坏表连续失败 → 开闸 503（9015）+ 同数据源其它 API 一并 503（数据源维度）；**30s 半开探测通过自动闭合**（实测等 35s）。
+- **统计**：api_call_log 异步落库轮询；单 API `/apis/{id}/stats`（total=5/successRate=0.8/today/recentLogs 429 异常高亮/statusBreakdown 三档）；全局 `/stats/*` 7 端点；前端运行统计页（KPI 4 卡 + 7 区块）+ 详情页统计区块（429 明细端到端打通）。
+
+### 22.3 Review / 踩坑
+- **熔断器内存态按数据源维度（Doris=-1）**：历史失败残留（含手动冒烟）会污染「连续 5 次失败」计数，导致熔断提前开闸。用例改为「开闸前均为 500 + 必然出现 503」的稳健断言（容忍 ≤4 次残留）；**E2E 跑熔断前需干净状态**（容器重启或前次自愈后）。
+- **Long 序列化为字符串**（全局约定）：`todayCalls`/`statusBreakdown.*`/`mine.totalCalls` 需 `Number()` 包裹再断言。
+- 测试数据自清理（`e2e_s10_f3_` 前缀 0 残留）+ 测试产物（test-results/pw-out）已清。
+
+---
+
 > **版本记录**
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
 > - v1.1 (2026-08-12)：§3 待同步项 4 项全部回落完成（PRD v1.2 + 技术文档 v1.2：全局统计端点组 / API 预览 / Key 近 7 天调用与快捷启用）；状态看板与技术文档版本同步更新；Next Action 移除回落项、新增健康分级阈值确认。
@@ -475,3 +498,4 @@
 > - v1.17 (2026-08-12)：**F2 前端 + 联调完成**——用户 3 问 3 答（授权补后端 3 处：`/apis/summary`、`/api-keys/{id}`、PageItem/Detail 敏感度反查；详情页统计图表待 F3；字段级机密锁定不做）；前端 API 管理（列表+统计卡/详情/3 步向导/编辑）+ Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）实现并部署；踩坑 `@Select` 非 script 不解析 `&gt;`；后端 python 联调 21 用例全过 + 前端冒烟通过（完整 E2E 归专门测试会话，临时 spec 未入库，handoff §20）；技术文档 v1.8。
 > - v1.18 (2026-08-13)：**F2 完整 E2E 测试会话**——api-manage 24 用例 + api-keys 11 用例 **35 用例全通过**（覆盖 API 列表/3 步向导/详情/编辑/生命周期软删/权限矩阵 403/敏感度闸门 9004/Key 明文一次·启停·重绑·僵尸灰显/绑定联动）。修复 2 处：① **后端缺陷（用户授权）**——governance `MetadataTableMapper.selectTablesByDatasourceDatabaseSchema`/`selectTableDetailById` 手写 SQL 漏 SELECT `sensitivity_level`/`api_exempted` 两列，导致 F2 向导页「机密表禁选+机密徽章」「内部表开白警告」失效（后端 9004 闸门本身正常，走 internal 接口 fail-closed）；已补两列 + 重建部署 `app-governance`（实测 PUBLIC/CONFIDENTIAL 均正确返回）；② **测试定位器缺陷**——AM-21 删除按钮 `getByRole('button',{name:'删除'})` 因子串匹配「e2e_s10_待删除」触发 strict mode 歧义，改 `exact:true`。测试数据自清理（e2e_s10_ 前缀 0 残留）+ 敏感度复位 PUBLIC + 测试产物（pw-out/test-results）已清。
 > - v1.19 (2026-08-13)：**F3 API 网关 + 调用统计后端完成**——对外执行入口（`OpenApiController`/`OpenApiService`，HTTP 状态码语义 401/404/429/503/200）+ `OpenApiKeyFilter`（Key 认证/绑定/限流）+ `RateLimitService`（Redis ZSET 滑动窗口）+ `CircuitBreakerService`（Resilience4j 数据源维度熔断）+ `ApiCallLogWriter`（异步统计）+ `OpenApiSqlBuilder`（参数化 SQL，参数值类型启发式推断）+ 执行器 PreparedStatement 扩展（未碰 task-core）+ `StatsController` 7 全局端点 + `/apis/{id}/stats`；2 问 2 答拍板（**Key 级 QPS 限流** / **健康分级对齐告警 PASS/WARNING/SEVERE**）；common 补 `API_CIRCUIT_OPEN(9015)`；自测全通过（Key 认证 401/200、参数化 EQ/fields/分页、限流 429+Retry-After、熔断 500→503→闭合、未发布 404、统计 7 端点）+ 测试数据清理（handoff §21）。
+> - v1.20 (2026-08-13)：**F3 完整 E2E 测试会话**——新增 `open-api.spec.ts`（18 用例）+ `api-stats.spec.ts`（4 用例）+ `helpers/f3-seed.ts`，**22 用例全通过**（对外认证 401/404、参数化 EQ/RANGE/排序/分页/字段裁剪/clamp、限流 429+Retry-After+60s 恢复、熔断 503+数据源维度+30s 闭合、统计单 API+全局 7 端点+前端页）；技术文档 v1.11（§9 前端清单勾选补齐 + E2E 记录）；踩坑：熔断器内存态需干净状态（用例对历史残留稳健）、Long→string 断言需 `Number()`（handoff §22）。

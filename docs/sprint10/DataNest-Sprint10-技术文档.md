@@ -441,17 +441,17 @@ kafka:
 
 - [x] 路由 `/data-service/*` + Sidebar「数据服务」菜单组（全角色，**F1 仅 SQL 查询终端一项，F2/F3/F5 完成后再补**）
 - [x] SQL 终端页（产品化改版，紧凑 IDE 风格）：左侧 `SqlTree` 数据目录（sql-console 全部 NORMAL 数据源 + 元数据域库/表懒加载，内置 Doris 显示「Doris 数仓」+多库，未采集数据源「去采集」提示）+ 面包屑路径显示到表级（不显示 id）+ 点表插入 `SELECT * FROM 库.表 LIMIT 100` + Monaco（Ctrl+Enter）+ 运行/停止（AbortController+cancel 双管齐下）+ 结果表/KPI 紧凑化 + 导出 CSV/Excel + 查询历史 Drawer（按钮+Badge+回填/清空）——已部署 app-frontend
-- [ ] API 管理页：列表/详情（文档+统计）/新建向导（3 步，含 API 预览）/Key 管理（一次性明文展示 + 近 7 天调用列 + 快捷禁用/启用）
-- [ ] API 运行统计页：全局 KPI / 双线趋势 / 健康分布 / Top5 排行 / 错误码分布 / Key 排行 / 限流趋势 / 状态速览（`/stats/*`）
+- [x] API 管理页：列表/详情（文档+统计）/新建向导（3 步，含 API 预览）/Key 管理（一次性明文展示 + 近 7 天调用列 + 快捷禁用/启用）——F2 已完成并部署（handoff §20）
+- [x] API 运行统计页：全局 KPI / 双线趋势 / 健康分布 / Top5 排行 / 错误码分布 / Key 排行 / 限流趋势 / 状态速览（`/stats/*`）——F3 已完成并部署（handoff §1.1）
 - [ ] 数据分级分类页：敏感度筛选 + 批量打标 + 审计查询（调 governance API）
 - [ ] 资产详情页：敏感度标签 + 「去查询」/「生成 API」入口
 - [ ] CDC 管道详情：「实时订阅」页签（订阅地址/协议/示例代码）
-- [ ] `types/data-service.ts` + `api/data-service.ts`；`types/metadata.ts` 补 sensitivityLevel
+- [x] `types/data-service.ts` + `api/data-service.ts`（含 `/stats/*` + `/apis/{id}/stats`）；`types/metadata.ts` 补 sensitivityLevel
 
 ### 部署与验证
 
 - [ ] Nacos 发布 `shared-dataservice.yaml` + 网关放行 + Kafka 起容器 + Flink lib 增 jar
-- [ ] E2E：新建 `e2e/sprint10/e2e/`（SQL 终端/API 生成与 Key/限流 429/分级拦截/WebSocket 订阅 MailHog 或 ws 断言）；回归 sprint8/9 关键规格
+- [x] E2E：`e2e/sprint10/e2e/` F1 SQL 终端（sql-console）+ F2 API 管理/Key（api-manage 24 + api-keys 11）+ F3 对外网关/限流/熔断/统计（open-api 18 + api-stats 4，本会话）全通过；F5 分级拦截 / F4 WebSocket 订阅 E2E 待后续；回归 sprint8/9 关键规格待补
 - [ ] M0 验证记录回落本文档 §8
 
 ### 9.1 新增错误码（common `ErrorCode`，建议 9xxx 段）
@@ -512,3 +512,4 @@ kafka:
 > - v1.8 (2026-08-12)：**F2 前端 + 联调**——① 前端：API 管理（列表+统计卡下钻/详情=概览+定义+文档+绑定 Key/3 步创建向导含 API 预览/编辑页）+ API Key 管理（列表+新建·编辑弹窗+明文一次性展示+快捷启停+僵尸 Key 灰显）+ Sidebar「数据服务」组补「API 管理」；roles 补 `DATA_SERVICE_WRITE_ROLES`；`types/metadata.ts` 补 sensitivityLevel/apiExempted；② 用户授权补后端 3 处：`GET /apis/summary`（列表统计卡）、`GET /api-keys/{id}`（编辑预填 apiIds）、`DataApiPageItem`/`DataApiDetailDTO` 加 sensitivityLevel（按 数据源+库+schema 分组批量反查 governance，读路径 fail-open 降级「未知」）；③ 与原型偏差（用户确认）：字段级「机密锁定」不做（NG5 无字段级敏感度，字段全可勾选）、详情页调用统计图表区占位待 F3 `/stats/*`、API 列表敏感度筛选下拉不做（列保留）；④ 踩坑：`@Select` 非 `<script>` 模式不解析 `&gt;` 转义（countCallsSince 9999，已修）；⑤ 验证：后端 python 联调 21 用例全过 + 前端冒烟（列表页用例通过、向导页快照确认渲染）；完整 E2E 由专门测试会话承担（用户明确），临时 spec 未入库。
 > - v1.9 (2026-08-13)：**F3 API 网关 + 调用统计后端完成并部署**——对外执行入口（`OpenApiController`/`OpenApiService`，HTTP 状态码语义）+ `OpenApiKeyFilter`（Key 认证/绑定/限流）+ `RateLimitService`（Redis 滑动窗口，Key 级 QPS）+ `CircuitBreakerService`（数据源维度熔断）+ `ApiCallLogWriter`（异步统计）+ `OpenApiSqlBuilder`（参数化 SQL）+ 执行器 PreparedStatement 扩展 + `StatsController` 7 全局端点 + `/apis/{id}/stats`；2 问 2 答拍板（Key 级 QPS 限流 / 健康分级对齐告警）；common 补 9015；§9 勾选、§9.1 补错误码；自测全通过 + 测试数据清理（见 handoff §21）。
 > - v1.10 (2026-08-13)：**F3 前端 + 补单 API 统计端点**——① 用户拍板「补后端端点，做完整原型」：`ApiStatsDTO` 加 `hourly`/`topKeys`/`statusBreakdown`（新建 `StatusBreakdownDTO`），`ApiCallLogMapper` 加 3 查询，`StatsQueryService.apiStats` 填充；② 前端 API 运行统计全局页（`/data-service/api-stats`，8 区块）+ 单 API 详情统计区块（`ApiStatsSection.tsx`，健康评级 0 调用显「暂无调用」）+ 共享组件 `api-stats/charts.tsx` + 入口（Sidebar/路由/面包屑，操作列不加统计按钮）；③ 验证：`tsc --noEmit` + `pnpm build` 通过 + 浏览器驱动联调（全局页 8 区块 + 单 API 统计区块渲染无 JS 错误，`/stats/*` + `/apis/{id}/stats` 返回 200 结构正确）；测试 API 已清理。
+> - v1.11 (2026-08-13)：**F3 完整 E2E 测试会话**——新增 `e2e/sprint10/e2e/open-api.spec.ts`（18 用例）+ `api-stats.spec.ts`（4 用例）+ `helpers/f3-seed.ts`（自播种自清理 + `openApiCall` 带 X-API-Key 直调对外入口）**22 用例全通过**；覆盖：对外认证（无/错/禁用/未绑定 Key 401、路径不存在 404、未发布/下线 404）、参数化执行（EQ/RANGE/orderBy/分页+total/字段裁剪/pageSize clamp）、限流（QPS=1 第 2 次 429 + Retry-After + 窗口 60s 恢复）、熔断（坏表连续失败 → 503 + 数据源维度 + 30s 半开探测闭合）、调用统计（异步落库轮询 + 单 API `/apis/{id}/stats` + 全局 `/stats/*` 7 端点 + 前端统计页/详情区块渲染）；§9 前端清单勾选补齐（API 管理页/运行统计页/types）；E2E 环境注意：熔断器内存态按数据源维度，需干净状态（容器重启后或前次自愈后），用例对历史残留失败稳健（见 handoff §22）。
