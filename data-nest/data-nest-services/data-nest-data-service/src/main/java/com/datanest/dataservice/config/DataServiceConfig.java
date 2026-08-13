@@ -53,6 +53,9 @@ public class DataServiceConfig {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        // F4：topicPattern 消费者需及时感知「管道启动后新建的 cdc-events-*」topic，
+        // 否则默认 metadata 刷新（5min）期间新管道事件无法被消费。缩短到 10s。
+        props.put(ConsumerConfig.METADATA_MAX_AGE_CONFIG, 10000);
         return new DefaultKafkaConsumerFactory<>(props);
     }
 

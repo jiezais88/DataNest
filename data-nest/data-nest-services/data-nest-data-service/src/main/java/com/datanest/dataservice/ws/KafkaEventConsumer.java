@@ -44,7 +44,7 @@ public class KafkaEventConsumer {
         if (sessions.isEmpty()) {
             return; // 无订阅者，事件丢弃（NG9）
         }
-        NormalizedEvent event = normalize(pipelineId, record.value());
+        NormalizedEvent event = normalize(pipelineId, record.value(), record.timestamp());
         if (event == null) {
             return;
         }
@@ -84,9 +84,9 @@ public class KafkaEventConsumer {
      * Debezium JSON → PRD §6.6 订阅事件格式 {@code {pipelineId, table, opType, data, ts}}。
      * <p>
      * op 映射：c→INSERT / u→UPDATE / d→DELETE；r(read snapshot)、t(truncate) 忽略。
-     * data 取 after（DELETE 时 after 为 null，退 before）。ts 取 ts_ms → ISO-8601 UTC。
+     * data 取 after（DELETE 时 after 为 null，退 before）。ts 取 ts_ms → ISO-8601 UTC；ts_ms 缺失（Flink CDC 3.6 debezium-json 不输出）退 Kafka 消息时间戳。
      */
-    private NormalizedEvent normalize(Long pipelineId, String value) {
+    private NormalizedEvent normalize(Long pipelineId, String value, long kafkaTsMs) {
         try {
             JSONObject debezium = JSON.parseObject(value);
             if (debezium == null) {
@@ -103,8 +103,11 @@ public class KafkaEventConsumer {
                 data = debezium.getJSONObject("before");
             }
             Long tsMs = debezium.getLong("ts_ms");
-            String ts = tsMs == null ? null : Instant.ofEpochMilli(tsMs).toString();
-            long latencyMs = tsMs == null ? 0 : Math.max(System.currentTimeMillis() - tsMs, 0);
+            // Flink CDC 3.6 debezium-json 不输出 ts_ms（序列化枚举固定为 before/after/op/source{db,table}），
+            // 退用 Kafka 消息时间戳（Flink 写入 Kafka 时刻，接近事件发生时间）。
+            long effectiveTsMs = tsMs != null ? tsMs : kafkaTsMs;
+            String ts = Instant.ofEpochMilli(effectiveTsMs).toString();
+            long latencyMs = Math.max(System.currentTimeMillis() - effectiveTsMs, 0);
 
             JSONObject event = new JSONObject();
             event.put("pipelineId", pipelineId);

@@ -1,6 +1,6 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-13（F3 E2E 测试会话）
+> 更新：2026-08-13（F4 端到端 E2E 会话）
 > 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.11）· `../DataNest-Sprint10-原型.html/css`
 
 ---
@@ -12,7 +12,7 @@
 | PRD | ✅ v1.3 | **全部决策定稿（D1~D5）**；§6.3/6.4/6.5 已回落原型修正；§12.2/§13 决策记录含 D4 M0 结论 |
 | 技术文档 | ✅ v1.4 | F1 SQL 终端后端实现+部署+API 自测通过（§9 勾选）；新增 `data-service-api` 契约 + job `SqlHistoryCleanupHandler`；§8 Blocker 7 定稿「业务服务本地禁 @Scheduled」 |
 | 原型（HTML/CSS） | ✅ 产品逻辑修正完成 | 4 项决策落地 + 「API 运行统计」独立页；原型 = 实现基准 |
-| 后端 | ✅ F1/F2/F3/F4 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关**：对外执行入口 + Key 认证/限流 + Resilience4j 熔断 + 异步统计 + `/stats/*` 全局统计（E2E 22 用例）；**F4 WebSocket（本会话）**：Kafka 事件总线 + realtime 事件管道 + data-service WebSocket（握手 Key 校验/subscribe/Kafka fan-out）已实现并部署（healthy），分层自测全通过；F5 分级对外端点未开始 |
+| 后端 | ✅ F1/F2/F3/F4 完成 | **F1 SQL 终端** 17 用例 + F1.1 cancel 全通过；**F2 数据 API 管理端 + Key 管理**（K- 明文一次 + SHA-256 + 绑定/启停/近 7 天调用聚合）45 用例全通过 + `/apis/summary`/`/api-keys/{id}`/敏感度反查；**F3 API 网关**：对外执行入口 + Key 认证/限流 + Resilience4j 熔断 + 异步统计 + `/stats/*` 全局统计（E2E 22 用例）；**F4 WebSocket**：Kafka 事件总线 + realtime 事件管道 + data-service WebSocket（握手 Key 校验/subscribe/Kafka fan-out）已实现并部署（healthy），分层自测 + **真实 CDC 端到端 E2E（4 用例）全通过**（§25）；F5 分级对外端点未开始 |
 | 前端 | ✅ F1/F2/F3/F4 完成 | **SQL 查询终端页**；**F2：API 管理（列表+统计卡/详情/3 步创建向导/编辑）+ API Key 管理（明文一次性展示/快捷启停/僵尸 Key 灰显）**；**F3：API 运行统计全局页（`/data-service/api-stats`）+ 单 API 详情统计区块 + Sidebar 入口**（review 决策：操作列不加统计按钮）；**F4（本会话）：CDC 管道详情「实时订阅」页签（订阅文档 + 连接监控）+ Key 表单绑定管道多选**，联调通过 |
 
 ---
@@ -497,7 +497,7 @@
 - **Spring Boot 4 spring-kafka 未自动配置 `kafkaListenerContainerFactory`**：显式在 `DataServiceConfig` 定义 ConsumerFactory + ListenerContainerFactory（`@EnableKafka` + 显式 bean）。
 - **网关 WebSocket 代理先 101**：data-service 握手拦截器拒绝后连接关闭（1002），而非 HTTP 401（网关代理限制；拒连语义正确，AC-10 满足）。
 - **心跳 60s ping/pong** 由 Spring 原生支持（客户端 ping 服务端 pong）；**空闲 120s 断开未实现**（依赖客户端心跳，断线重连由业务端负责，PRD §6.6）。
-- **事件作业端到端未验证**：realtime 事件作业 YAML 生成/启停联动代码编译通过，分层自测覆盖 data-service 消费/fan-out 全链路；真实 Flink CDC → Kafka 端到端（AC-10 的 10s 收到）归后续专门测试会话。
+- **事件作业端到端已验证（§25）**：真实 Flink CDC → Kafka → WebSocket 端到端（AC-10 的 10s 收到）4 用例全通过；期间修复 flink-json 依赖缺失 + topicPattern 消费者不发现新 topic + ts_ms 缺失三处缺陷。
 
 
 ## 24. F4 WebSocket 实时订阅前端 + 连接监控（2026-08-13，本会话）
@@ -518,7 +518,29 @@
 ### 24.3 验证 / 踩坑
 - 后端端点 200 + 字段结构正确（Long 计数 → string）；Key 绑定管道后端（创建 → pipelineIds 保存 → 删除清理）通过；WebSocket 握手链路（nginx 101 转发 + 无 Key 拒连 1002）通过。
 - **踩坑（前端精度丢失）**：`Number(detail.id)` 对 19 位 Long 主键超 2^53 精度丢失（`...1073` → `...1000`），订阅消息 pipelineId 错误；改字符串持有 + 直接拼 JSON 数字（订阅消息/事件示例）+ JS 示例用字符串形式（后端 fastjson2 `getLong` 对 String 做 `Long.parseLong`，源码确认）。
-- **事件作业端到端未验证**：真实 Flink CDC → Kafka → WebSocket 端到端（AC-10 的 10s 收到）需 RUNNING 管道 + 有效 Key，归后续专门测试会话（当前管道均 ERROR/STOPPED）。
+- **事件作业端到端已验证（§25）**：真实 Flink CDC → Kafka → WebSocket 端到端（AC-10 的 10s 收到）4 用例全通过。
+
+## 25. F4 真实 CDC 端到端 E2E（2026-08-13，本会话）
+
+> 范围：兑现 §23.3/§24.3 预留的「真实 Flink CDC → Kafka → WebSocket 端到端（AC-10 10s 收到）」专门测试会话。核心是让 RUNNING 管道的事件作业真正跑通，并固化为 Playwright E2E。
+
+### 25.1 三处缺陷定位与修复
+- **realtime 缺 `flink-json` 依赖**：事件作业 Kafka sink 序列化需 `flink-json` 的 `JsonFormatOptionsUtil`（KeySerializationFactory 依赖），缺失导致事件作业启动失败。修复：`data-nest-realtime/pom.xml` 加 `flink-json`（版本由根 `pom.xml` `${flink.version}` 统一管理）。
+- **data-service topicPattern 消费者不发现新 topic**：`cdc-events-{pipelineId}` topic 在 data-service 启动后才创建，`@KafkaListener(topicPattern)` 消费者默认 metadata 刷新（5min）期间无法感知。修复：`DataServiceConfig` 加 `ConsumerConfig.METADATA_MAX_AGE_CONFIG=10000`（10s 刷新，实测 15s 内动态发现新 topic）。
+- **Flink CDC 3.6 debezium-json 不输出 ts_ms**：反编译 `flink-cdc-pipeline-connector-kafka-3.6.0-2.2.jar` 确认序列化枚举固定为 before/after/op/source{db,table}（无 ts_ms，不可配置），data-service 归一化事件 `ts` 恒 null。修复：`KafkaEventConsumer.normalize` 在 ts_ms 缺失时退用 `record.timestamp()`（Kafka 消息时间戳，Flink 写入时刻，接近事件发生时间）。
+
+### 25.2 E2E 测试（4 用例全通过）
+- 新增 `e2e/sprint10/e2e/helpers/f4-seed.ts`（自播种自清理：查找 RUNNING `e2e_s10_f4_` 管道 + 创建绑定 Key + MySQL 源表直写 + 删除 Key/清源表数据）。
+- 新增 `e2e/sprint10/e2e/ws-subscription.spec.ts`（serial，前置缺管道自动 skip 不误报失败）：
+  - WS-1 握手认证：无 Key / 错 Key 拒连 1002，未收到 subscribed
+  - WS-2 订阅成功：正确 Key 绑定管道 → subscribed
+  - WS-3 端到端 AC-10：订阅后源表 INSERT → 10s 内收到 INSERT 事件（实测 576ms），字段校验（table/opType/data.name/ts）
+  - WS-4 订阅校验：未绑定管道 → error 9005
+- 依赖 `ws` 库（握手 X-API-Key 头，浏览器原生 WebSocket 无法自定义头），加 `ws` + `@types/ws` 到 devDependencies。
+
+### 25.3 验证
+- `npx tsc --noEmit` 通过；`npx playwright test e2e/sprint10/e2e/ws-subscription.spec.ts` 4 用例全通过。
+- 测试数据自清理：源表 `e2e-s10-f4-` 前缀 0 残留、api_key 表 `e2e_s10_f4_` 前缀 0 残留；test-results/pw-out 产物已清。
 
 ---
 
@@ -547,3 +569,4 @@
 > - v1.20 (2026-08-13)：**F3 完整 E2E 测试会话**——新增 `open-api.spec.ts`（18 用例）+ `api-stats.spec.ts`（4 用例）+ `helpers/f3-seed.ts`，**22 用例全通过**（对外认证 401/404、参数化 EQ/RANGE/排序/分页/字段裁剪/clamp、限流 429+Retry-After+60s 恢复、熔断 503+数据源维度+30s 闭合、统计单 API+全局 7 端点+前端页）；技术文档 v1.11（§9 前端清单勾选补齐 + E2E 记录）；踩坑：熔断器内存态需干净状态（用例对历史残留稳健）、Long→string 断言需 `Number()`（handoff §22）。
 > - v1.21 (2026-08-13)：**F4 WebSocket 实时订阅后端完成**——中间件 `middleware-kafka`（apache/kafka:4.0.0 KRaft）+ Flink lib 增 kafka connector + TaskManager slot 1→2；realtime 事件管道（`cdc_events_flink_job_id` Flyway V1.4.0 + `CdcYamlBuilder.buildEvent` Kafka 单 sink + `start/stop/forceStop` 联动 + `pollEventJobs` 监控 + `cancelJob` + realtime-api `getSubscribeInfo`）；data-service WebSocket（`WsEventsHandler`/`WsHandshakeInterceptor`/`WebSocketSubscriptionRegistry`/`KafkaEventConsumer`/`WsSubscriptionService`）+ 补 Key 绑定管道端点（`pipelineIds`）+ common 9016；2 问 2 答（分层自测+部署 / 机密管道全建+订阅侧拒绝）；分层自测全通过（握手 401/连接、subscribe 9005/9016、Kafka fan-out 归一化事件）+ 测试数据清理（handoff §23）；踩坑：Spring Boot 4 spring-kafka 未自动配置 ListenerContainerFactory 需显式 bean。
 > - v1.22 (2026-08-13)：**F4 WebSocket 实时订阅前端 + 连接监控完成**——用户拍板「订阅文档 + 连接监控」（超出 §9 原范围）；后端补连接监控埋点 `SubscriptionMetrics`（今日事件/延迟 P95/推送失败/按 Key 接收统计，内存态跨天重置）+ `KafkaEventConsumer` 埋点 + `GET /subscriptions/{pipelineId}/stats`（registry + 埋点 + api_key_pipeline join api_key 批量无 N+1 + 用户名回填）；前端 CDC 管道详情「实时订阅」页签 `SubscribeTab.tsx`（订阅文档 + 连接监控 4 KPI + 订阅方 Key 表格，RUNNING 5s 轮询）+ Key 表单「绑定管道」多选 + `KpiCard` 提取 shared + nginx WebSocket 升级头；踩坑：`Number(detail.id)` 对 19 位 Long 精度丢失（订阅消息 pipelineId 错误），改字符串持有 + 直接拼 JSON 数字（handoff §24）；端点 200 / Key 绑定管道 / WebSocket 握手链路均验证通过。
+> - v1.23 (2026-08-13)：**F4 真实 CDC 端到端 E2E 会话**——三处缺陷定位修复：① realtime 缺 `flink-json` 依赖（事件作业 Kafka sink 序列化启动失败）② data-service topicPattern 消费者不发现新 topic（`METADATA_MAX_AGE_CONFIG=10000`）③ Flink CDC 3.6 debezium-json 不输出 ts_ms（反编译 jar 确认，normalize 退用 `record.timestamp()`）；新增 `f4-seed.ts` + `ws-subscription.spec.ts`（4 用例：握手拒连 1002 / 订阅成功 / 端到端 AC-10 576ms 收事件 / 未绑定 9005）+ `ws`/`@types/ws` devDeps；`tsc` + `playwright test` 全通过；测试数据/产物已清（handoff §25）。

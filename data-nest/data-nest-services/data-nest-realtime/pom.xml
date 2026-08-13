@@ -126,6 +126,11 @@
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-table-common</artifactId>
         </dependency>
+        <!-- Kafka 单 sink 事件作业 JSON 序列化（F4：KeySerializationFactory 需要 flink-json 的 JsonFormatOptionsUtil） -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-json</artifactId>
+        </dependency>
         <!-- ========== Flink CDC 依赖集结束 ========== -->
     </dependencies>
 </project>
