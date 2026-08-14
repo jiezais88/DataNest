@@ -79,7 +79,7 @@ export function KpiCard({label, value, unit, sub, valueClass}: {
     valueClass?: string;
 }) {
     return (
-        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-4 py-ds-3">
+        <div className="bg-ds-bg-surface border border-ds-border-subtle rounded-ds-md px-ds-4 py-ds-2">
             <div className="text-ds-tiny text-ds-text-muted">{label}</div>
             <div className={`text-ds-heading font-bold mt-ds-1 leading-tight ${valueClass ?? 'text-ds-text-primary'}`}>
                 {value}
@@ -90,7 +90,7 @@ export function KpiCard({label, value, unit, sub, valueClass}: {
     );
 }
 
-/** 图表卡片容器（对齐质量报告 ChartCard） */
+/** 图表卡片容器（对齐质量报告 ChartCard）；内容区为 flex 容器，子内容可 flex-1 填满或垂直居中 */
 export function ChartCard({title, sub, action, children, className}: {
     title: string;
     sub?: string;
@@ -105,7 +105,7 @@ export function ChartCard({title, sub, action, children, className}: {
                 {sub && <span className="text-ds-tiny text-ds-text-muted">{sub}</span>}
                 {action && <div className="ml-auto flex items-center gap-ds-3">{action}</div>}
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">{children}</div>
         </div>
     );
 }
@@ -135,8 +135,9 @@ export function SplitBar({segments}: { segments: { color: string; ratio: number;
 }
 
 /** 排名条目：序号 + 主标题/副标题 + 占比条 + 值；dimmed 灰显（僵尸 Key / 已删除，仅内容淡化徽章不淡化）；
- *  plain 用于问题分布类排行（错误码），序号一律中性灰；可点击跳详情 */
-export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, barColor, plain}: {
+ *  plain（问题分布类排行）不区分名次、一律中性灰（对齐原型错误码 rr-no）；可点击跳详情；
+ *  compact 单行模式（sub 并入 hover tooltip，不占独立行——一屏排行容量内 5 行完整显示） */
+export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, barColor, plain, compact}: {
     rank: number;
     title: string;
     sub?: string;
@@ -146,6 +147,7 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
     dimmed?: boolean;
     barColor?: string;
     plain?: boolean;
+    compact?: boolean;
 }) {
     const width = maxValue > 0 ? Math.max(0, (Number(value) / maxValue) * 100) : 0;
     // 排名徽章由深到浅（同色系 accent 明度梯度：1 实心 → 2 中 → 3 浅底 → 4/5 中性灰）；
@@ -163,12 +165,12 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
                 {rank}
             </span>
             <div className="flex-1 min-w-0">
-                <Tooltip title={title}>
+                <Tooltip title={sub ? `${title} · ${sub}` : title}>
                     <span className={`block text-ds-small truncate leading-tight ${dimmed ? 'text-ds-text-muted' : 'text-ds-text-primary'}`}>
                         {title}
                     </span>
                 </Tooltip>
-                {sub && (
+                {!compact && sub && (
                     <Tooltip title={sub}>
                         <span className="block text-ds-tiny text-ds-text-muted truncate leading-tight">{sub}</span>
                     </Tooltip>
@@ -190,34 +192,35 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
         </>
     );
     if (!onClick) {
-        return <div className="flex-1 flex items-center gap-ds-3 py-1">{content}</div>;
+        return <div className="flex-1 flex items-center gap-ds-3 py-0.5">{content}</div>;
     }
     return (
         <button type="button" onClick={onClick}
-                className="flex-1 w-full flex items-center gap-ds-3 py-1 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
+                className="flex-1 w-full flex items-center gap-ds-3 py-0.5 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
             {content}
         </button>
     );
 }
 
-/** 柱状图（限流命中趋势 / 今日小时分布，按时间桶） */
-export function Bars({data, range, color, emptyText, xLabel}: {
+/** 柱状图（限流命中趋势 / 今日小时分布，按时间桶）；minHeight 保底高度（自适应网格场景防塌陷） */
+export function Bars({data, range, color, emptyText, xLabel, minHeight = 0}: {
     data: { bucket: string; total: string }[];
     range: StatsRange;
     color?: string;
     emptyText?: string;
     xLabel?: (index: number) => string;
+    minHeight?: number;
 }) {
     if (data.length === 0) {
         return (
-            <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">
+            <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted" style={{minHeight}}>
                 {emptyText ?? '范围内暂无数据'}
             </div>
         );
     }
     const max = Math.max(1, ...data.map(d => Number(d.total ?? 0)));
     return (
-        <div className="h-full flex flex-col min-h-0">
+        <div className="h-full flex flex-col min-h-0" style={{minHeight}}>
             <div className="flex-1 flex gap-1 min-h-0 justify-center">
                 {data.map((d, i) => {
                     const v = Number(d.total ?? 0);

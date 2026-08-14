@@ -40,6 +40,8 @@ interface LineChartProps {
     emptyText?: string;
     /** 统一 Y 轴最大值（如阈值需纳入刻度） */
     maxY?: number;
+    /** 图表区保底高度（自适应网格场景防塌陷，默认 100） */
+    minHeight?: number;
 }
 
 interface Scale {
@@ -68,19 +70,15 @@ function formatTick(v: number): string {
     return String(v);
 }
 
-/** 坐标网格 + Y 轴刻度文本（含左缘基线竖线） */
+/** 坐标网格线（含左缘 Y 轴基线；刻度文字改 HTML 渲染，避免 preserveAspectRatio 拉伸变形） */
 function Grid({scale}: { scale: Scale }) {
     return (
         <>
             {/* Y 轴基线（数据区左缘） */}
             <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} stroke="rgb(203 213 225)" strokeWidth={1}/>
             {scale.ticks.map((t) => (
-                <g key={t}>
-                    <line x1={PAD_L} y1={scale.y(t)} x2={W - PAD_R} y2={scale.y(t)}
-                          stroke="rgb(226 232 240)" strokeWidth={1}/>
-                    <text x={PAD_L - 8} y={scale.y(t) + 4} fontSize={10} fill="rgb(148 163 184)"
-                          textAnchor="end">{formatTick(t)}</text>
-                </g>
+                <line key={t} x1={PAD_L} y1={scale.y(t)} x2={W - PAD_R} y2={scale.y(t)}
+                      stroke="rgb(226 232 240)" strokeWidth={1}/>
             ))}
         </>
     );
@@ -115,19 +113,9 @@ function buildSegments(values: (number | null)[], scale: Scale) {
     return {segments, pathFor};
 }
 
-/** X 轴标签（最多 7 个均匀采样，含底部基线横线） */
-function XAxis({count, xLabel, scale}: { count: number; xLabel: (i: number) => string; scale: Scale }) {
-    const step = Math.max(1, Math.ceil(count / 7));
-    return (
-        <>
-            {/* X 轴基线（数据区底部） */}
-            <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="rgb(203 213 225)" strokeWidth={1}/>
-            {Array.from({length: count}).map((_, i) => (i % step === 0 || i === count - 1) && (
-                <text key={i} x={scale.x(i)} y={H - 8} fontSize={10} fill="rgb(148 163 184)"
-                      textAnchor="middle">{xLabel(i)}</text>
-            ))}
-        </>
-    );
+/** X 轴基线（数据区底部；日期文字改 HTML 渲染，避免拉伸变形） */
+function XAxis() {
+    return <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="rgb(203 213 225)" strokeWidth={1}/>;
 }
 
 /** hover 浮动数值卡（折线图十字线跟随；x 越界自动内收防溢出卡片） */
@@ -152,7 +140,7 @@ export function ChartTip({leftPct, label, rows}: {
     );
 }
 
-export default function LineChart({data, series, xLabel, legend, emptyText, maxY}: LineChartProps) {
+export default function LineChart({data, series, xLabel, legend, emptyText, maxY, minHeight = 100}: LineChartProps) {
     const valuesBySeries = series.map(s => data.map((item, i) => s.value(item, i)));
     /** hover 数据点下标（十字线 + 浮动数值卡） */
     const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -177,7 +165,7 @@ export default function LineChart({data, series, xLabel, legend, emptyText, maxY
             ) : (
                 <div
                     className="relative flex-1 min-h-0"
-                    style={{minHeight: 140}}
+                    style={{minHeight}}
                     onMouseMove={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
@@ -240,8 +228,26 @@ export default function LineChart({data, series, xLabel, legend, emptyText, maxY
                                 })}
                             </g>
                         )}
-                        <XAxis count={data.length} xLabel={xLabel} scale={scale}/>
+                        <XAxis/>
                     </svg>
+                    {/* 轴文字改 HTML 绝对定位（preserveAspectRatio="none" 会非等比拉伸 SVG 文字；HTML 文字按容器百分比对齐不拉伸） */}
+                    {scale.ticks.map((t) => (
+                        <span key={t} className="absolute leading-none text-ds-text-muted pointer-events-none select-none"
+                              style={{fontSize: 10, left: 0, width: `${(PAD_L / W) * 100}%`, top: `${(scale.y(t) / H) * 100}%`,
+                                      transform: 'translateY(-50%)', textAlign: 'right', paddingRight: 8, boxSizing: 'border-box'}}>
+                            {formatTick(t)}
+                        </span>
+                    ))}
+                    {(() => {
+                        const step = Math.max(1, Math.ceil(data.length / 7));
+                        return Array.from({length: data.length}).map((_, i) => (i % step === 0 || i === data.length - 1) && (
+                            <span key={i} className="absolute leading-none text-ds-text-muted pointer-events-none select-none whitespace-nowrap"
+                                  style={{fontSize: 10, left: `${(scale.x(i) / W) * 100}%`, top: `${((H - PAD_B + 5) / H) * 100}%`,
+                                          transform: 'translateX(-50%)'}}>
+                                {xLabel(i)}
+                            </span>
+                        ));
+                    })()}
                     {hoverIndex != null && (
                         <ChartTip
                             leftPct={(hoverIndex / Math.max(1, data.length - 1)) * 100}

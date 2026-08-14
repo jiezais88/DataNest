@@ -123,6 +123,7 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                             data={trend}
                             xLabel={(i) => bucketLabel(trend[i]?.bucket ?? '', range)}
                             emptyText="范围内暂无调用记录"
+                            minHeight={130}
                             series={[
                                 {
                                     key: 'total', label: '调用量', color: 'rgb(var(--color-accent))',
@@ -145,6 +146,7 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                             data={trend}
                             xLabel={(i) => bucketLabel(trend[i]?.bucket ?? '', range)}
                             emptyText="范围内暂无调用记录"
+                            minHeight={130}
                             series={[
                                 {
                                     key: 'errorRate', label: '错误率', color: 'rgb(var(--color-danger))',
@@ -171,6 +173,7 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                             range="24h"
                             color="rgb(var(--color-accent))"
                             emptyText="今日暂无调用"
+                            minHeight={120}
                             xLabel={(i) => (stats?.hourly?.[i]?.bucket ?? '').slice(11, 13)}
                         />
                     )}
@@ -203,7 +206,19 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                     {loading ? (
                         <StatsLoading minHeight={160}/>
                     ) : bd ? (
-                        <div className="flex flex-col h-full min-h-[160px]">
+                        <div className="flex flex-col flex-1 min-h-[160px] justify-center">
+                            {(() => {
+                                const total = Number(bd.success ?? 0) + Number(bd.clientError ?? 0) + Number(bd.serverError ?? 0);
+                                const rate = total > 0 ? Number(bd.success ?? 0) / total : null;
+                                return (
+                                    <div className="flex items-end gap-2 mb-ds-2">
+                                        <span className={`text-ds-heading font-bold leading-none ${rate == null ? 'text-ds-text-muted' : rate >= 0.99 ? 'text-ds-success' : rate >= 0.95 ? 'text-ds-warning' : 'text-ds-danger'}`}>
+                                            {rate == null ? '—' : pct(rate)}
+                                        </span>
+                                        <span className="text-ds-tiny text-ds-text-muted mb-0.5">2xx 成功率</span>
+                                    </div>
+                                );
+                            })()}
                             <SplitBar
                                 segments={[
                                     {color: 'rgb(var(--color-success))', ratio: Number(bd.success ?? 0), label: `2xx 成功 ${formatNumber(bd.success)} 次`},
@@ -212,9 +227,9 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                                 ]}
                             />
                             <div className="flex items-center gap-ds-4 mt-ds-2 text-ds-tiny text-ds-text-muted">
-                                <LegendDot color="rgb(var(--color-success))" label={`2xx 成功 ${formatNumber(bd.success)}`}/>
-                                <LegendDot color="rgb(var(--color-warning))" label={`4xx 客户端 ${formatNumber(bd.clientError)}`}/>
-                                <LegendDot color="rgb(var(--color-danger))" label={`5xx 服务端 ${formatNumber(bd.serverError)}`}/>
+                                <LegendDot color="rgb(var(--color-success))" label="2xx 成功"/>
+                                <LegendDot color="rgb(var(--color-warning))" label="4xx 客户端"/>
+                                <LegendDot color="rgb(var(--color-danger))" label="5xx 服务端"/>
                             </div>
                         </div>
                     ) : null}
@@ -236,7 +251,7 @@ export default function ApiStatsSection({apiId}: { apiId: string }) {
                             {(stats?.recentLogs ?? []).map((log, i) => {
                                 const statusClass = log.statusCode >= 500 ? 'text-ds-danger' : log.statusCode >= 400 ? 'text-ds-warning' : 'text-ds-success';
                                 return (
-                                    <div key={i} className="flex px-ds-1 py-1.5 text-ds-small border-b border-ds-border-subtle last:border-b-0">
+                                    <div key={i} className="flex px-ds-1 py-1 text-ds-small border-b border-ds-border-subtle last:border-b-0">
                                         <span className="w-20 flex-shrink-0 font-mono text-ds-text-muted">{log.createdAt.slice(11, 19)}</span>
                                         <span className="flex-1 min-w-0 truncate text-ds-text-secondary" title={log.keyName ?? '—'}>{log.keyName ?? '—'}</span>
                                         <span className={`w-16 flex-shrink-0 text-right font-mono font-semibold ${statusClass}`}>{log.statusCode}</span>

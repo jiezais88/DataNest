@@ -5,7 +5,7 @@
 import {useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Tooltip} from 'antd';
-import {HiOutlineChartBar, HiOutlineExclamationTriangle, HiOutlineShieldCheck} from 'react-icons/hi2';
+import {HiOutlineArrowRight, HiOutlineChartBar, HiOutlineExclamationTriangle, HiOutlineShieldCheck} from 'react-icons/hi2';
 import {
     getDataApiSummary,
     getStatsErrorCodes,
@@ -105,7 +105,7 @@ export default function ApiStatsPage() {
                 <KpiCard
                     label="总调用量"
                     value={loading ? '…' : formatNumber(overview?.totalCalls)}
-                    sub={`${rangeLabel} · ${summary ? `${formatNumber(summary.publishedCount)} 个已发布 API` : '—'}`}
+                    sub={rangeLabel}
                 />
                 <KpiCard
                     label="平均成功率"
@@ -128,14 +128,13 @@ export default function ApiStatsPage() {
                 />
             </div>
 
-            {/* 图表区：内容自然高度 + 纵向滚动（排行/趋势总量超出单屏，滚动保证完整无裁剪；对齐质量报告滚动页模式） */}
-            <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
-                <div className="grid grid-cols-6 gap-ds-3 pb-ds-1">
+            {/* 图表区：固定三行一屏（不滚动）；信息权重驱动空间分配——趋势/Top5 重（8 列）> 健康/错误码（4 列）> Key/限流/状态（4 列行3） */}
+            <div className="grid grid-cols-12 grid-rows-[1.4fr_1.3fr_1fr] gap-ds-3 flex-1 min-h-0">
                 {/* 行1：全局调用量趋势 + API 健康分布 */}
                 <ChartCard
                     title="全局调用量趋势"
                     sub={rangeLabel}
-                    className="col-span-4"
+                    className="col-span-8"
                     action={(
                         <>
                             <LegendDot color="rgb(var(--color-accent))" label="调用量"/>
@@ -172,7 +171,7 @@ export default function ApiStatsPage() {
                 <ChartCard
                     title="API 健康分布"
                     sub={`共 ${(health?.healthyCount ?? 0) + (health?.warningCount ?? 0) + (health?.severeCount ?? 0)} 个`}
-                    className="col-span-2"
+                    className="col-span-4"
                 >
                     {loading ? (
                         <StatsLoading/>
@@ -209,13 +208,17 @@ export default function ApiStatsPage() {
                                             type="button"
                                             disabled={!clickable}
                                             onClick={() => clickable && navigate(`/data-service/api-manage/${it.apiId}`)}
-                                            className={`flex items-center gap-2 text-left text-ds-tiny ${clickable ? 'hover:text-ds-accent cursor-pointer' : 'cursor-default'}`}
+                                            className={`flex items-center gap-2 text-left text-ds-tiny rounded-ds-sm transition-colors ${clickable ? 'hover:bg-ds-bg-hover cursor-pointer' : 'cursor-default'}`}
                                         >
                                             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background: color}}/>
                                             <Tooltip title={it.name}>
                                                 <span className="flex-1 min-w-0 truncate text-ds-text-secondary">{it.name}</span>
                                             </Tooltip>
-                                            {clickable && <span className="text-ds-accent font-medium flex-shrink-0">详情</span>}
+                                            {clickable && (
+                                                <span className="text-ds-accent text-ds-tiny font-semibold flex-shrink-0 inline-flex items-center gap-0.5">
+                                                    详情<HiOutlineArrowRight size={10}/>
+                                                </span>
+                                            )}
                                         </button>
                                     );
                                 })}
@@ -228,7 +231,7 @@ export default function ApiStatsPage() {
                 </ChartCard>
 
                 {/* 行2：Top 5 API 调用排行 + 错误码分布 */}
-                <ChartCard title="Top 5 API 调用排行" sub={`按 ${rangeLabel}调用量`} className="col-span-4">
+                <ChartCard title="Top 5 API 调用排行" sub={`按 ${rangeLabel}调用量`} className="col-span-8">
                     {loading ? (
                         <StatsLoading/>
                     ) : topApis.length === 0 ? (
@@ -244,6 +247,7 @@ export default function ApiStatsPage() {
                                     value={a.calls}
                                     maxValue={maxTopApi}
                                     dimmed={!!a.deleted}
+                                    compact
                                     onClick={!a.deleted && a.path ? () => navigate(`/data-service/api-manage/${a.apiId}`) : undefined}
                                 />
                             ))}
@@ -251,7 +255,7 @@ export default function ApiStatsPage() {
                     )}
                 </ChartCard>
 
-                <ChartCard title="错误码分布" sub={errTotal > 0 ? `非 2xx · 共 ${formatNumber(errTotal)}` : undefined} className="col-span-2">
+                <ChartCard title="错误码分布" sub={errTotal > 0 ? `非 2xx · 共 ${formatNumber(errTotal)}` : undefined} className="col-span-4">
                     {loading ? (
                         <StatsLoading/>
                     ) : errorCodes.length === 0 ? (
@@ -287,7 +291,7 @@ export default function ApiStatsPage() {
                 </ChartCard>
 
                 {/* 行3：调用方 Key 排行 + 限流命中趋势 + API 状态速览 */}
-                <ChartCard title="调用方 Key 排行" sub={`按 ${rangeLabel}调用量`} className="col-span-2">
+                <ChartCard title="调用方 Key 排行" sub={`按 ${rangeLabel}调用量`} className="col-span-4">
                     {loading ? (
                         <StatsLoading/>
                     ) : topKeys.length === 0 ? (
@@ -305,6 +309,7 @@ export default function ApiStatsPage() {
                                         value={k.calls}
                                         maxValue={maxTopKey}
                                         dimmed={k.zombie}
+                                        compact
                                     />
                                 );
                             })}
@@ -312,7 +317,7 @@ export default function ApiStatsPage() {
                     )}
                 </ChartCard>
 
-                <ChartCard title="限流命中趋势" sub={ratePeak ? `${rangeLabel} · 峰值 ${formatNumber(ratePeak.total)}（${bucketLabel(ratePeak.bucket, range)}）` : rangeLabel} className="col-span-2">
+                <ChartCard title="限流命中趋势" sub={ratePeak ? `${rangeLabel} · 峰值 ${formatNumber(ratePeak.total)}（${bucketLabel(ratePeak.bucket, range)}）` : rangeLabel} className="col-span-4">
                     {loading ? <StatsLoading/> : (
                         <div className="flex flex-col h-full min-h-0">
                             <div className="flex-1 min-h-0">
@@ -331,20 +336,20 @@ export default function ApiStatsPage() {
                     )}
                 </ChartCard>
 
-                <ChartCard title="API 状态速览" sub="全量 API" className="col-span-2">
+                <ChartCard title="API 概览" sub="全量 API" className="col-span-4">
                     <div className="flex flex-col h-full min-h-0">
                         <div className="grid grid-cols-3 gap-ds-2 flex-1">
-                            <div className="flex flex-col items-center justify-center py-ds-2 bg-ds-success-light rounded-ds-md">
-                                <span className="text-ds-heading font-bold text-ds-success">{summary ? formatNumber(summary.publishedCount) : '—'}</span>
+                            <div className="flex flex-col items-center justify-center py-ds-1 bg-ds-success-light rounded-ds-md">
+                                <span className="text-ds-heading font-bold text-ds-success">{health ? formatNumber((health.healthyCount ?? 0) + (health.warningCount ?? 0) + (health.severeCount ?? 0)) : '—'}</span>
+                                <span className="text-ds-tiny text-ds-text-muted mt-1">活跃（有调用）</span>
+                            </div>
+                            <div className="flex flex-col items-center justify-center py-ds-1 bg-ds-accent-light rounded-ds-md">
+                                <span className="text-ds-heading font-bold text-ds-accent">{summary ? formatNumber(summary.publishedCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">已发布</span>
                             </div>
-                            <div className="flex flex-col items-center justify-center py-ds-2 bg-ds-accent-light rounded-ds-md">
-                                <span className="text-ds-heading font-bold text-ds-accent">{summary ? formatNumber(summary.createdCount) : '—'}</span>
+                            <div className="flex flex-col items-center justify-center py-ds-1 bg-ds-bg-hover rounded-ds-md">
+                                <span className="text-ds-heading font-bold text-ds-text-secondary">{summary ? formatNumber(summary.createdCount) : '—'}</span>
                                 <span className="text-ds-tiny text-ds-text-muted mt-1">待发布</span>
-                            </div>
-                            <div className="flex flex-col items-center justify-center py-ds-2 bg-ds-bg-hover rounded-ds-md">
-                                <span className="text-ds-heading font-bold text-ds-text-secondary">{summary ? formatNumber(summary.disabledCount) : '—'}</span>
-                                <span className="text-ds-tiny text-ds-text-muted mt-1">已下线</span>
                             </div>
                         </div>
                         <div className="mt-auto pt-ds-2 flex items-start gap-1.5 text-ds-tiny text-ds-text-muted">
@@ -357,7 +362,6 @@ export default function ApiStatsPage() {
                         </div>
                     </div>
                 </ChartCard>
-                </div>
             </div>
         </div>
     );

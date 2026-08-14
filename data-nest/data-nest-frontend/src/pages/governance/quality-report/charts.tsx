@@ -79,39 +79,46 @@ function formatTick(v: number): string {
     return String(v);
 }
 
-/** 坐标网格 + 轴文本（折线图共用；含左缘 Y 轴基线） */
+/** 坐标网格线（折线图共用；含左缘 Y 轴基线；刻度文字改 HTML 渲染，避免 preserveAspectRatio 拉伸变形） */
 function Grid({scale}: { scale: Scale }) {
     return (
         <>
             {/* Y 轴基线（数据区左缘） */}
             <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} stroke="rgb(203 213 225)" /* border-strong */ strokeWidth={1}/>
             {scale.ticks.map((t) => (
-                <g key={t}>
-                    <line x1={PAD_L} y1={scale.y(t)} x2={W - PAD_R} y2={scale.y(t)}
-                          stroke="rgb(226 232 240)" /* border-subtle */ strokeWidth={1}/>
-                    <text x={PAD_L - 10} y={scale.y(t) + 4} fontSize={11} fill="rgb(148 163 184)" /* text-muted */ textAnchor="end">
-                        {formatTick(t)}
-                    </text>
-                </g>
+                <line key={t} x1={PAD_L} y1={scale.y(t)} x2={W - PAD_R} y2={scale.y(t)}
+                      stroke="rgb(226 232 240)" /* border-subtle */ strokeWidth={1}/>
             ))}
         </>
     );
 }
 
-/** X 轴日期标签（最多 7 个均匀采样，含底部基线横线） */
-function XAxis({days, scale}: { days: string[]; scale: Scale }) {
+/** 轴文字层（HTML 绝对定位，不随 SVG 拉伸变形；按容器百分比对齐刻度线） */
+function AxisLabels({scale, days}: { scale: Scale; days: string[] }) {
     const step = Math.max(1, Math.ceil(days.length / 7));
     return (
         <>
-            {/* X 轴基线（数据区底部） */}
-            <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="rgb(203 213 225)" /* border-strong */ strokeWidth={1}/>
+            {scale.ticks.map((t) => (
+                <span key={t} className="absolute leading-none text-ds-text-muted pointer-events-none select-none"
+                      style={{fontSize: 11, left: 0, width: `${(PAD_L / W) * 100}%`, top: `${(scale.y(t) / H) * 100}%`,
+                              transform: 'translateY(-50%)', textAlign: 'right', paddingRight: 10, boxSizing: 'border-box'}}>
+                    {formatTick(t)}
+                </span>
+            ))}
             {days.map((d, i) => (i % step === 0 || i === days.length - 1) && (
-                <text key={d + i} x={scale.x(i)} y={H - 8} fontSize={11} fill="rgb(148 163 184)" /* text-muted */ textAnchor="middle">
+                <span key={d + i} className="absolute leading-none text-ds-text-muted pointer-events-none select-none whitespace-nowrap"
+                      style={{fontSize: 11, left: `${(scale.x(i) / W) * 100}%`, top: `${((H - PAD_B + 6) / H) * 100}%`,
+                              transform: 'translateX(-50%)'}}>
                     {dayLabel(d)}
-                </text>
+                </span>
             ))}
         </>
     );
+}
+
+/** X 轴基线（数据区底部；日期文字改 HTML 渲染，见 AxisLabels） */
+function XAxis() {
+    return <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="rgb(203 213 225)" /* border-strong */ strokeWidth={1}/>;
 }
 
 /** 四档分布趋势（多系列折线） */
@@ -160,8 +167,9 @@ export function LevelTrendChart({data}: { data: QualityLevelTrendPoint[] }) {
                             })}
                         </g>
                     )}
-                    <XAxis days={data.map(p => p.day)} scale={scale}/>
+                    <XAxis/>
                 </svg>
+                <AxisLabels scale={scale} days={data.map(p => p.day)}/>
                 {hoverIndex != null && (
                     <ChartTip
                         leftPct={(hoverIndex / Math.max(1, data.length - 1)) * 100}
@@ -219,6 +227,11 @@ export function ScoreDonut({data, avgScore}: { data: QualityScoreDistribution; a
                 </text>
             </svg>
             <div className="flex flex-col gap-ds-1 min-w-0">
+                {Number(data.noScoreCount ?? 0) / total > 0.6 && (
+                    <div className="text-ds-tiny text-ds-text-muted mb-ds-1 leading-snug">
+                        大部分表暂无评分，建议配置质量规则并执行检查
+                    </div>
+                )}
                 {segments.map(s => (
                     <div key={s.label}
                          className={`flex items-center gap-ds-2 text-ds-tiny rounded-ds-sm px-ds-1 transition-opacity ${hoverSeg && hoverSeg !== s.label ? 'opacity-40' : ''}`}
@@ -300,8 +313,9 @@ export function ScoreTrendChart({data}: { data: QualityScoreTrendPoint[] }) {
                                 fill={ACCENT} stroke="#fff" strokeWidth={1.5}/>
                     </g>
                 )}
-                <XAxis days={data.map(pointDay)} scale={scale}/>
+                <XAxis/>
             </svg>
+            <AxisLabels scale={scale} days={data.map(pointDay)}/>
             {hoverIndex != null && (
                 <ChartTip
                     leftPct={(hoverIndex / Math.max(1, data.length - 1)) * 100}
