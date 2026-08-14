@@ -106,7 +106,7 @@ export default function ClassificationPage() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [batchLoading, setBatchLoading] = useState(false);
 
-    const batchSetLevel = async (newLevel: string) => {
+    const doBatchSetLevel = async (newLevel: string) => {
         if (selectedIds.length === 0) return;
         setBatchLoading(true);
         try {
@@ -122,6 +122,32 @@ export default function ClassificationPage() {
         } finally {
             setBatchLoading(false);
         }
+    };
+
+    /** 批量改级入口：选中项中任一张为降级（机密→内部/公开、内部→公开）则先弹确认框，纯升级直接执行 */
+    const batchSetLevel = (newLevel: string) => {
+        if (selectedIds.length === 0) return;
+        const rank: Record<string, number> = {PUBLIC: 1, INTERNAL: 2, CONFIDENTIAL: 3};
+        const newRank = rank[newLevel] ?? 1;
+        const downgraded = list.filter(
+            it => selectedIds.includes(it.tableId) && (rank[it.sensitivityLevel ?? 'PUBLIC'] ?? 1) > newRank);
+        if (downgraded.length === 0) {
+            void doBatchSetLevel(newLevel);
+            return;
+        }
+        const newLabel = LEVEL_OPTIONS.find(o => o.value === newLevel)?.label ?? newLevel;
+        const consequence = newLevel === 'PUBLIC'
+            ? '降级后这些表所有用户均可在 SQL 终端查询，且可生成对外 API。'
+            : '降级后这些表有查询权限的用户可在 SQL 终端查询。';
+        Modal.confirm({
+            centered: true,
+            wrapClassName: 'prototype-modal',
+            title: '确认批量降级',
+            content: `选中的 ${selectedIds.length} 张表中有 ${downgraded.length} 张将降为「${newLabel}」。${consequence}`,
+            okText: '确认降级',
+            cancelText: '取消',
+            onOk: () => doBatchSetLevel(newLevel),
+        });
     };
 
     // ============ 单表改级 + 特批开放 ============
