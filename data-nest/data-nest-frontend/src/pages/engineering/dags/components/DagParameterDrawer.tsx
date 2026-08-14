@@ -9,6 +9,7 @@ import {HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
 import DsIconButton from '@/components/DsIconButton';
+import DsSelect from '@/components/DsSelect';
 import {createDagParameter, deleteDagParameter, listDagParameters, updateDagParameter,} from '@/pages/engineering/dags/api';
 import type {DagParameter} from '@/pages/engineering/dags/types';
 import {notify} from '@/utils/notify';
@@ -249,17 +250,17 @@ export default function DagParameterDrawer({
                                             placeholder="参数名称"
                                             className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small font-mono focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
                                         />
-                                        <select
+                                        <DsSelect
                                             value={p.paramType}
-                                            onChange={e => updateRow(p._key, {paramType: e.target.value})}
+                                            onChange={v => updateRow(p._key, {paramType: v})}
                                             disabled={readOnly}
                                             data-testid="param-type-select"
-                                            className="w-[110px] px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
+                                            className="w-[110px] px-ds-2 py-ds-1.5 text-ds-small"
                                         >
                                             {PARAM_TYPE_OPTIONS.map(t => (
                                                 <option key={t} value={t}>{t}</option>
                                             ))}
-                                        </select>
+                                        </DsSelect>
                                         <label
                                             className="flex items-center gap-1 text-ds-small text-ds-text-secondary shrink-0">
                                             <input
@@ -291,15 +292,15 @@ export default function DagParameterDrawer({
                                                 className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
                                             />
                                         ) : p.paramType === 'BOOLEAN' ? (
-                                            <select
+                                            <DsSelect
                                                 value={p.defaultValue || 'true'}
-                                                onChange={e => updateRow(p._key, {defaultValue: e.target.value})}
+                                                onChange={v => updateRow(p._key, {defaultValue: v})}
                                                 disabled={readOnly}
-                                                className="flex-1 min-w-0 px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent disabled:opacity-60"
+                                                className="flex-1 min-w-0 px-ds-2 py-ds-1.5 text-ds-small"
                                             >
                                                 <option value="true">true</option>
                                                 <option value="false">false</option>
-                                            </select>
+                                            </DsSelect>
                                         ) : (
                                             <input
                                                 type={p.paramType === 'NUMBER' ? 'number' : 'text'}

@@ -96,6 +96,11 @@ catch (err) {
 - **弹窗 vs 抽屉分工（2026-08-08 定）**：实体的创建/编辑主表单（字段多、含配置，从列表页进入）一律用右侧 `components/Drawer`（命名 `XxxDrawer.tsx`，范本：DataSourceDrawer/SyncJobDrawer/QualityJobDrawer）；面板类查看/分析（字段血缘、执行详情）也用 Drawer。居中 `DsModal` 只用于：确认（ConfirmDialog）、轻量操作（分配、3-5 个字段以内的小表单）、聚焦代码编辑器（SQL/Python）、结果/详情查看。
 - 表格列宽参考 `src/constants/table.ts` 中的 `COL`，同类列在不同页面保持相近宽度。
 - **源码全部为 `.tsx`**，不要新增 `.jsx`；图标统一使用 `react-icons`（以 `HiOutline*` 系列为主）。
+- **下拉组件选型规则（2026-08-14 定）**：新增下拉先查再建，按场景选型，**禁止再手写裸 `<select>`**：
+  - 列表页筛选工具栏（简单枚举）→ `components/DsFilterSelect`（12+ 页已统一，勿回退）；
+  - 表单 / 内联简单枚举（w-full 或紧凑尺寸，支持自定义 option / data-testid）→ `components/DsSelect`（2026-08-14 新建，已收编 CronPicker / TaskDrawer / TemplateFormDrawer 的裸 select）；
+  - 搜索 / 多选 / 异步 / 远程加载 → antd `Select`（全局主题已对齐 tokens.css：选中项 accent-light 浅底 + accent 文字、hover 用 bg-hover，见 `src/main.tsx` `ConfigProvider components.Select`）；
+  - 尺寸 / 宽度覆盖一律走 `className`（`utils/cn` 为 tailwind-merge，后传冲突类安全覆盖）。
 
 ## 8. 列表页与分页
 

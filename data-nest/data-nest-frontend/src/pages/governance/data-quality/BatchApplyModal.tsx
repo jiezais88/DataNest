@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import DsButton from '@/components/DsButton';
 import DsModal from '@/components/DsModal';
+import DsSelect from '@/components/DsSelect';
 import {listQualityTemplates, queryQualityJobs} from '@/api/quality';
 import {
     listMetadataColumns,
@@ -238,7 +239,6 @@ export default function BatchApplyModal({
     };
 
     const inputClass = 'w-full px-ds-3 py-ds-1.5 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors';
-    const selectClass = 'w-full px-ds-3 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent';
 
     // 内嵌两列选择面板：数据库列（+Schema 列）→ 表列（多选勾表）
     const renderColumn = (title: string, selectedKey: string | null, onSelect: (key: string) => void) => {
@@ -339,19 +339,19 @@ export default function BatchApplyModal({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 目标任务 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 value={selectedJobId}
-                                onChange={(e) => {
-                                    setSelectedJobId(e.target.value);
+                                onChange={(v) => {
+                                    setSelectedJobId(v);
                                     setErrors('');
                                 }}
-                                className={selectClass}
+                                className="text-ds-small py-ds-1.5"
                             >
                                 <option value="">请选择目标任务</option>
                                 {jobOptions.map((j) => (
                                     <option key={j.id} value={j.id}>{j.name}</option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
                                 批量生成的规则将绑定到该质量任务
                             </p>
@@ -361,20 +361,20 @@ export default function BatchApplyModal({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             选择模板 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={templateId}
-                            onChange={(e) => {
-                                setTemplateId(e.target.value);
+                            onChange={(v) => {
+                                setTemplateId(v);
                                 setItems([]);
                                 setErrors('');
                             }}
-                            className={selectClass}
+                            className="text-ds-small py-ds-1.5"
                         >
                             <option value="">请选择模板</option>
                             {templates.map((t) => (
                                 <option key={String(t.id)} value={String(t.id)}>{t.name}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                         {selectedTemplate && (
                             <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
                                 模板类型：{QUALITY_TYPE_LABEL[selectedTemplate.type] || selectedTemplate.type}
@@ -386,10 +386,10 @@ export default function BatchApplyModal({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             数据源 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={datasourceId}
-                            onChange={(e) => handleDatasourceChange(e.target.value)}
-                            className={selectClass}
+                            onChange={handleDatasourceChange}
+                            className="text-ds-small py-ds-1.5"
                         >
                             <option value="">请选择数据源</option>
                             {datasourceOptions.map((d) => (
@@ -397,7 +397,7 @@ export default function BatchApplyModal({
                                     {d.name || `数据源 ${d.id}`}
                                 </option>
                             ))}
-                        </select>
+                        </DsSelect>
                         <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
                             仅展示已采集元数据的数据源，批量应用的表将取自该数据源
                         </p>
@@ -451,16 +451,16 @@ export default function BatchApplyModal({
                                                 </td>
                                                 {needsColumn && (
                                                     <td className="px-ds-2 py-ds-2">
-                                                        <select
+                                                        <DsSelect
                                                             value={item.columnName || ''}
-                                                            onChange={(e) => updateItem(String(item.tableId), {columnName: e.target.value})}
-                                                            className={selectClass}
+                                                            onChange={(v) => updateItem(String(item.tableId), {columnName: v})}
+                                                            className="text-ds-small py-ds-1.5"
                                                         >
                                                             <option value="">选择字段</option>
                                                             {cols.map((c) => (
                                                                 <option key={c.id} value={c.columnName}>{c.columnName}</option>
                                                             ))}
-                                                        </select>
+                                                        </DsSelect>
                                                     </td>
                                                 )}
                                                 {isRange && (

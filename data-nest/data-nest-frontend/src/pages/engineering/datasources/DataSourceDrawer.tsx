@@ -12,6 +12,7 @@ import {HiOutlineEye, HiOutlineEyeSlash} from 'react-icons/hi2';
 import TestResultModal from '@/components/TestResultModal';
 import DsButton from '@/components/DsButton';
 import Drawer from '@/components/Drawer';
+import DsSelect from '@/components/DsSelect';
 
 type FormData = {
     name: string;
@@ -263,18 +264,18 @@ export default function DataSourceDrawer({open, editItem, mode, onClose, onSubmi
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     数据源类型 <span className="text-ds-danger">*</span>
                                 </label>
-                                <select
+                                <DsSelect
                                     data-testid="datasource-type-select"
                                     value={form.type}
-                                    onChange={(e) => updateField('type', e.target.value as DataSourceType | '')}
+                                    onChange={(v) => updateField('type', v as DataSourceType | '')}
                                     disabled={isView}
-                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary disabled:bg-ds-bg-disabled disabled:text-ds-text-muted focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors"
+                                    className="disabled:bg-ds-bg-disabled disabled:text-ds-text-muted"
                                 >
                                     <option value="">请选择</option>
                                     {TYPE_OPTIONS.map((o) => (
                                         <option key={o.value} value={o.value}>{o.label}</option>
                                     ))}
-                                </select>
+                                </DsSelect>
                                 {errors.type && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.type}</p>}
                             </div>
                             <div>

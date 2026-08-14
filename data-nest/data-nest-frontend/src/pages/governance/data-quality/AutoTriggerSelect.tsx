@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
+import DsSelect from '@/components/DsSelect';
 import type {AutoTriggerObjectType} from '@/types/quality';
 import {
     getDag,
@@ -202,8 +203,6 @@ export default function AutoTriggerSelect({
         setNodeId('');
     };
 
-    const selectClass = 'w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed';
-
     const objectTypeOptions = useMemo(() => OBJECT_TYPE_OPTIONS, []);
 
     return (
@@ -212,17 +211,17 @@ export default function AutoTriggerSelect({
                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                     绑定对象类型
                 </label>
-                <select
+                <DsSelect
                     value={objectType}
-                    onChange={(e) => handleTypeChange(e.target.value as AutoTriggerObjectType | '')}
+                    onChange={(v) => handleTypeChange(v as AutoTriggerObjectType | '')}
                     disabled={readOnly}
-                    className={selectClass}
+                    className="text-ds-small"
                 >
                     <option value="">请选择对象类型</option>
                     {objectTypeOptions.map((o) => (
                         <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
-                </select>
+                </DsSelect>
             </div>
 
             {objectType === 'DAG_NODE' && (
@@ -231,54 +230,53 @@ export default function AutoTriggerSelect({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             项目 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={projectId}
-                            onChange={(e) => setProjectId(e.target.value)}
+                            onChange={setProjectId}
                             disabled={readOnly}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             <option value="">请选择项目</option>
                             {projects.map((p) => (
                                 <option key={String(p.id)} value={String(p.id)}>{p.name}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                     </div>
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             DAG <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={dagId}
-                            onChange={(e) => setDagId(e.target.value)}
+                            onChange={setDagId}
                             disabled={readOnly || !projectId}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             <option value="">{dagLoading ? '加载中...' : '请选择 DAG'}</option>
                             {dags.map((d) => (
                                 <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                     </div>
                     <div>
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             节点 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={nodeId}
-                            onChange={(e) => {
-                                const v = e.target.value;
+                            onChange={(v) => {
                                 setNodeId(v);
                                 const hit = nodes.find((n) => String(n.id) === String(v));
                                 if (hit) onChange('DAG_NODE', String(hit.id), hit.nodeName);
                             }}
                             disabled={readOnly || !dagId}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             <option value="">{dagLoading ? '加载中...' : '请选择节点'}</option>
                             {nodes.map((n) => (
                                 <option key={n.id} value={String(n.id)}>{n.nodeName}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                     </div>
                 </>
             )}
@@ -288,21 +286,20 @@ export default function AutoTriggerSelect({
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         同步任务 <span className="text-ds-danger">*</span>
                     </label>
-                    <select
+                    <DsSelect
                         value={objectId}
-                        onChange={(e) => {
-                            const v = e.target.value;
+                        onChange={(v) => {
                             const hit = syncJobs.find((j) => String(j.id) === String(v));
                             onChange('SYNC_JOB', v, hit?.name || '');
                         }}
                         disabled={readOnly}
-                        className={selectClass}
+                        className="text-ds-small"
                     >
                         <option value="">请选择同步任务</option>
                         {syncJobs.map((j) => (
                             <option key={j.id} value={j.id}>{j.name}</option>
                         ))}
-                    </select>
+                    </DsSelect>
                 </div>
             )}
 
@@ -311,21 +308,20 @@ export default function AutoTriggerSelect({
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         采集任务 <span className="text-ds-danger">*</span>
                     </label>
-                    <select
+                    <DsSelect
                         value={objectId}
-                        onChange={(e) => {
-                            const v = e.target.value;
+                        onChange={(v) => {
                             const hit = collectTasks.find((t) => String(t.id) === String(v));
                             onChange('COLLECT_TASK', v, hit?.name || '');
                         }}
                         disabled={readOnly}
-                        className={selectClass}
+                        className="text-ds-small"
                     >
                         <option value="">请选择采集任务</option>
                         {collectTasks.map((t) => (
                             <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
-                    </select>
+                    </DsSelect>
                 </div>
             )}
         </div>

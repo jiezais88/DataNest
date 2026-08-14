@@ -5,6 +5,11 @@ import cn.dev33.satoken.annotation.SaMode;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.audit.AuditContent;
+import com.datanest.common.audit.AuditLogEvent;
+import com.datanest.common.audit.AuditLogRecorder;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.dto.SqlCancelRequest;
@@ -50,16 +55,62 @@ public class SqlQueryController {
 
     private final SqlQueryService sqlQueryService;
     private final SqlQueryHistoryMapper historyMapper;
+    private final AuditLogRecorder auditLogRecorder;
 
-    public SqlQueryController(SqlQueryService sqlQueryService, SqlQueryHistoryMapper historyMapper) {
+    public SqlQueryController(SqlQueryService sqlQueryService, SqlQueryHistoryMapper historyMapper,
+                              AuditLogRecorder auditLogRecorder) {
         this.sqlQueryService = sqlQueryService;
         this.historyMapper = historyMapper;
+        this.auditLogRecorder = auditLogRecorder;
     }
 
     @Operation(summary = "执行只读 SQL", description = "JSqlParser 语法级只读校验（SELECT/WITH/SHOW/DESC/EXPLAIN），命中机密表拦截；请求带 queryId 时支持「停止」取消")
     @PostMapping("/execute")
     public Result<SqlExecuteResult> execute(@Valid @RequestBody SqlExecuteRequest request) {
-        return Result.ok(sqlQueryService.execute(request));
+        long start = System.currentTimeMillis();
+        try {
+            SqlExecuteResult result = sqlQueryService.execute(request);
+            writeSqlAudit(request, result, null, start);
+            return Result.ok(result);
+        } catch (RuntimeException e) {
+            writeSqlAudit(request, null, e, start);
+            throw e;
+        }
+    }
+
+    /** SQL 查询审计（AL-2/AL-3）：数据源名 + SQL 摘要 + 行数 + 耗时 + 失败原因，fail-open */
+    private void writeSqlAudit(SqlExecuteRequest request, SqlExecuteResult result, RuntimeException error, long start) {
+        try {
+            String datasourceName = sqlQueryService.datasourceName(request.getDatasourceId());
+            int durationMs = (int) (System.currentTimeMillis() - start);
+            String content = AuditContent.sql(request.getSql(),
+                    result == null ? null : result.getRowCount(), durationMs);
+            Long operatorId = null;
+            String operatorName = null;
+            try {
+                operatorId = StpUtil.getLoginIdAsLong();
+                Object name = StpUtil.getSession().get("username");
+                operatorName = name == null ? null : String.valueOf(name);
+            } catch (Exception ex) {
+                // 未登录/无 session，operator 信息留空由 system 回填
+            }
+            auditLogRecorder.record(new AuditLogEvent(
+                    operatorId, operatorName,
+                    AuditOpType.EXECUTE.name(), AuditResourceType.SQL_QUERY.name(),
+                    String.valueOf(request.getDatasourceId()), datasourceName,
+                    content,
+                    error == null ? AuditLogEvent.RESULT_SUCCESS : AuditLogEvent.RESULT_FAILURE,
+                    error == null ? null : truncate(error.getMessage(), 500), null));
+        } catch (Exception e) {
+            // fail-open：审计失败不影响 SQL 执行
+        }
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() > max ? value.substring(0, max) : value;
     }
 
     @Operation(summary = "导出查询结果（XLSX/CSV，后端生成）", description = "复用 execute 全链路（只读校验+敏感度闸门+写历史）；文件名 = 数据源_表_时间戳，RFC5987 中文名")

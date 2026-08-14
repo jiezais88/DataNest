@@ -13,6 +13,7 @@ import {
 // 页面级 code-split（Phase 7-N）：除登录/布局外全部懒加载
 const HomePage = lazyPage(() => import('@/pages/home'));
 const UsersPage = lazyPage(() => import('@/pages/system/users'));
+const AuditLogsPage = lazyPage(() => import('@/pages/system/audit-logs'));
 const DataSourcesPage = lazyPage(() => import('@/pages/engineering/datasources'));
 const CollectTasksPage = lazyPage(() => import('@/pages/governance/collect-tasks'));
 const CollectHistoryGlobalPage = lazyPage(() => import('@/pages/governance/collect-tasks/history-global'));
@@ -89,6 +90,7 @@ export const router = createBrowserRouter([
         children: [
             {index: true, element: <HomePage/>},
             {path: 'system/users', element: <UsersPage/>},
+            {path: 'system/audit-logs', element: <AuditLogsPage/>},
             {path: 'engineering/datasources', element: <DataSourcesPage/>},
             {path: 'engineering/cdc-pipelines', element: <CdcPipelinesPage/>},
             {path: 'engineering/cdc-pipelines/new', element: <CdcPipelineWizardPage/>},

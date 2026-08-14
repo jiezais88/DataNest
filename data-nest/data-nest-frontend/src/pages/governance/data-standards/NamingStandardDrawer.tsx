@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
+import DsSelect from '@/components/DsSelect';
 import type {AppliesTo, FieldTypeStandard, NamingStandard, RuleType} from '@/types/dataStandard';
 
 interface NamingStandardFormData {
@@ -228,11 +229,10 @@ export default function NamingStandardDrawer({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             关联字段类型标准 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={form.targetStandardId}
-                            onChange={(e) => updateField('targetStandardId', e.target.value)}
+                            onChange={(v) => updateField('targetStandardId', v)}
                             disabled={readOnly}
-                            className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             <option value="">请选择</option>
                             {standards.map((s) => (
@@ -240,7 +240,7 @@ export default function NamingStandardDrawer({
                                     {s.name}（允许：{s.allowedTypes.join('、')}）
                                 </option>
                             ))}
-                        </select>
+                        </DsSelect>
                         {errors.targetStandardId &&
                             <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetStandardId}</p>}
                     </div>

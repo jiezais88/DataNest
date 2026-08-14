@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import {Select} from 'antd';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
+import DsSelect from '@/components/DsSelect';
 import {queryQualityRules} from '@/api/quality';
 import CronPicker from '@/components/CronPicker';
 import type {QualityAlertLevel, QualityJob, QualityJobCreateRequest, AutoTriggerObjectType, QualityRule, QualityRuleType} from '@/types/quality';
@@ -164,7 +165,6 @@ export default function QualityJobDrawer({
     const drawerTitle = isEdit ? '编辑质量任务' : isView ? '质量任务详情' : '新增质量任务';
 
     const inputClass = 'w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
-    const selectClass = 'w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed';
 
     return (
         <Drawer
@@ -288,16 +288,16 @@ export default function QualityJobDrawer({
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         告警触发等级 <span className="text-ds-danger">*</span>
                     </label>
-                    <select
+                    <DsSelect
                         value={form.alertLevel}
-                        onChange={(e) => updateField('alertLevel', e.target.value as QualityAlertLevel)}
+                        onChange={(v) => updateField('alertLevel', v as QualityAlertLevel)}
                         disabled={readOnly}
-                        className={selectClass}
+                        className="text-ds-small"
                     >
                         {ALERT_LEVEL_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
-                    </select>
+                    </DsSelect>
                 </div>
 
                 <div>
@@ -314,7 +314,7 @@ export default function QualityJobDrawer({
                             updateField('timeoutMinutes', v === '' ? null : Math.max(1, Number(v) || 1));
                         }}
                         disabled={readOnly}
-                        className={selectClass}
+                        className={inputClass}
                     />
                     <p className="mt-ds-1 text-ds-nano text-ds-text-muted">批次执行超过该分钟数仍 RUNNING 时触发 TIMEOUT 告警；不填则不检测</p>
                 </div>

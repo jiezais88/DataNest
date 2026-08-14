@@ -18,6 +18,7 @@ export type BreadcrumbSegment = { label: string; path: string };
 export const breadcrumbMap: Record<string, BreadcrumbEntry> = {
     '/': {label: '首页'},
     '/system/users': {group: '系统管理', label: '用户管理', leaf: true},
+    '/system/audit-logs': {group: '系统管理', label: '审计日志', leaf: true},
     '/system/alert-center': {group: '系统管理', label: '告警中心', leaf: true},
     '/engineering/datasources': {group: '数据工程', label: '数据源管理', leaf: true},
     '/engineering/sync-jobs': {group: '数据工程', label: '批量数据同步任务', leaf: true},

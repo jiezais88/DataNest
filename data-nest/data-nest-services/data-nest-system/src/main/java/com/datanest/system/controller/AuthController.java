@@ -45,6 +45,8 @@ public class AuthController {
             StpUtil.login(user.userId());
         }
         StpUtil.getSession().set("roles", user.roles());
+        // 审计切面从 session 读取操作人用户名（避免各服务回查 system 库）
+        StpUtil.getSession().set("username", user.username());
 
         Map<String, Object> result = new HashMap<>();
         result.put("token", StpUtil.getTokenValue());

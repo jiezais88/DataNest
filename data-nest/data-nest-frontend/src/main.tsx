@@ -79,6 +79,21 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     colorBorder: DS_BORDER,
                     colorBorderSecondary: DS_BORDER_SECONDARY,
                 },
+                components: {
+                    // Select 下拉对齐 ds 体系（accent-light 选中浅底 / bg-hover 悬停 / accent 选中文字）
+                    Select: {
+                        optionSelectedBg: '#eef2ff',
+                        optionSelectedColor: DS_ACCENT_HEX,
+                        optionActiveBg: '#ebeff6',
+                        optionSelectedFontWeight: 500,
+                        colorBorder: DS_BORDER,
+                        colorBorderSecondary: DS_BORDER_SECONDARY,
+                    },
+                    Dropdown: {
+                        borderRadiusLG: 8,
+                        colorBorder: DS_BORDER_SECONDARY,
+                    },
+                },
             }}
         >
             <AntdApp>

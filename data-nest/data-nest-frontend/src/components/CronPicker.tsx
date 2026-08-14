@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {describeCron, nextRunTimes} from '@/utils/cron';
 import {formatDateTime} from '@/utils/format';
+import DsSelect from '@/components/DsSelect';
 
 interface CronPickerProps {
     value: string;
@@ -106,7 +107,6 @@ export default function CronPicker({value, onChange, disabled}: CronPickerProps)
         onChange(buildCron(newMinute, newHour, newDay, newMonth, newWeek));
     };
 
-    const selectClass = "px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent cursor-pointer min-w-[80px] disabled:opacity-60 disabled:cursor-not-allowed";
     const numberInputClass = "px-ds-2 py-ds-1 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent w-[72px] disabled:opacity-60 disabled:cursor-not-allowed";
 
     return (
@@ -142,16 +142,16 @@ export default function CronPicker({value, onChange, disabled}: CronPickerProps)
                 </label>
                 <div className="flex items-center gap-ds-2 flex-wrap">
                     <div className="flex items-center gap-ds-1">
-                        <select
+                        <DsSelect
                             value={minuteMode}
-                            onChange={(e) => updateMinute(e.target.value as MinuteMode, minuteNumber)}
+                            onChange={(v) => updateMinute(v as MinuteMode, minuteNumber)}
                             disabled={disabled}
-                            className={selectClass}
+                            className="px-ds-2 py-ds-1 text-ds-small min-w-[80px]"
                         >
                             <option value="every">每分钟</option>
                             <option value="interval">每隔</option>
                             <option value="at">第</option>
-                        </select>
+                        </DsSelect>
                         {minuteMode !== 'every' && (
                             <>
                                 <input
@@ -167,64 +167,56 @@ export default function CronPicker({value, onChange, disabled}: CronPickerProps)
                             </>
                         )}
                     </div>
-                    <select
+                    <DsSelect
                         value={hour}
-                        onChange={(e) => {
-                            if (disabled) return;
-                            const v = e.target.value;
+                        onChange={(v) => {
                             setHour(v);
                             handleFieldChange(minute, v, day, month, week);
                         }}
                         disabled={disabled}
-                        className={selectClass}
+                        className="px-ds-2 py-ds-1 text-ds-small min-w-[80px]"
                     >
                         <option value="*">每小时</option>
                         {Array.from({length: 24}, (_, i) => (
                             <option key={i} value={String(i)}>{i} 点</option>
                         ))}
-                    </select>
-                    <select
+                    </DsSelect>
+                    <DsSelect
                         value={day}
-                        onChange={(e) => {
-                            if (disabled) return;
-                            const v = e.target.value;
+                        onChange={(v) => {
                             setDay(v);
                             handleFieldChange(minute, hour, v, month, week);
                         }}
                         disabled={disabled}
-                        className={selectClass}
+                        className="px-ds-2 py-ds-1 text-ds-small min-w-[80px]"
                     >
                         <option value="*">每天</option>
                         {Array.from({length: 31}, (_, i) => (
                             <option key={i + 1} value={String(i + 1)}>{i + 1} 日</option>
                         ))}
-                    </select>
-                    <select
+                    </DsSelect>
+                    <DsSelect
                         value={month}
-                        onChange={(e) => {
-                            if (disabled) return;
-                            const v = e.target.value;
+                        onChange={(v) => {
                             setMonth(v);
                             handleFieldChange(minute, hour, day, v, week);
                         }}
                         disabled={disabled}
-                        className={selectClass}
+                        className="px-ds-2 py-ds-1 text-ds-small min-w-[80px]"
                     >
                         <option value="*">每月</option>
                         {Array.from({length: 12}, (_, i) => (
                             <option key={i + 1} value={String(i + 1)}>{i + 1} 月</option>
                         ))}
-                    </select>
-                    <select
+                    </DsSelect>
+                    <DsSelect
                         value={week}
-                        onChange={(e) => {
-                            if (disabled) return;
-                            const v = e.target.value;
+                        onChange={(v) => {
                             setWeek(v);
                             handleFieldChange(minute, hour, day, month, v);
                         }}
                         disabled={disabled}
-                        className={selectClass}
+                        className="px-ds-2 py-ds-1 text-ds-small min-w-[80px]"
                     >
                         <option value="?">不限星期</option>
                         <option value="MON">周一</option>
@@ -234,7 +226,7 @@ export default function CronPicker({value, onChange, disabled}: CronPickerProps)
                         <option value="FRI">周五</option>
                         <option value="SAT">周六</option>
                         <option value="SUN">周日</option>
-                    </select>
+                    </DsSelect>
                 </div>
             </div>
 

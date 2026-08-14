@@ -2,6 +2,9 @@ package com.datanest.engineering.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.*;
@@ -25,6 +28,8 @@ public class SyncJobController {
 
     @Operation(summary = "创建同步任务")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.CREATE,
+            resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
     public Result<SyncJobDTO> create(@Valid @RequestBody SyncJobCreateRequest request) {
         return Result.ok(syncJobService.create(request));
@@ -32,6 +37,8 @@ public class SyncJobController {
 
     @Operation(summary = "修改同步任务")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.UPDATE,
+            resourceId = "#id", resourceName = "#request.name")
     @PutMapping("/{id}")
     public Result<SyncJobDTO> update(@Parameter(description = "任务 ID") @PathVariable Long id, @Valid @RequestBody SyncJobUpdateRequest request) {
         return Result.ok(syncJobService.update(id, request));
@@ -39,6 +46,7 @@ public class SyncJobController {
 
     @Operation(summary = "删除同步任务")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "任务 ID") @PathVariable Long id) {
         syncJobService.delete(id);
@@ -68,6 +76,7 @@ public class SyncJobController {
 
     @Operation(summary = "手动执行同步任务")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.EXECUTE, resourceId = "#id")
     @PostMapping("/{id}/execute")
     public Result<Void> execute(@Parameter(description = "任务 ID") @PathVariable Long id) {
         syncJobService.execute(id);
@@ -100,6 +109,7 @@ public class SyncJobController {
 
     @Operation(summary = "停止执行中的历史记录")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.STOP, resourceId = "#historyId")
     @PostMapping("/history/{historyId}/stop")
     public Result<Void> stopHistory(@Parameter(description = "历史记录 ID") @PathVariable Long historyId) {
         syncJobService.stopHistory(historyId);

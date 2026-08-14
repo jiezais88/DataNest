@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import DsButton from '@/components/DsButton';
 import DsModal from '@/components/DsModal';
+import DsSelect from '@/components/DsSelect';
 import {
     listMetadataDatabases,
     listMetadataSchemas,
@@ -199,11 +200,11 @@ export default function TableSelectModal({
                     <label className="text-ds-small font-semibold text-ds-text-secondary whitespace-nowrap">
                         数据源
                     </label>
-                    <select
+                    <DsSelect
                         value={datasourceId}
-                        onChange={(e) => setDatasourceId(e.target.value)}
+                        onChange={setDatasourceId}
                         disabled={lockDatasource}
-                        className="flex-1 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="flex-1 text-ds-small"
                     >
                         <option value="">请选择数据源</option>
                         {datasources.map((d) => (
@@ -211,7 +212,7 @@ export default function TableSelectModal({
                                 {d.name || `数据源 ${d.id}`}
                             </option>
                         ))}
-                    </select>
+                    </DsSelect>
                 </div>
 
                 {datasourceId ? (

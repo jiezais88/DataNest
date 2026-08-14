@@ -4,6 +4,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.audit.AuditLogEvent;
+import com.datanest.common.audit.AuditLogRecorder;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
@@ -59,17 +63,20 @@ public class SensitivityService {
     private final SystemUserApi systemUserApi;
     private final EngineeringDatasourceApi datasourceApi;
     private final DataServiceOpsApi dataServiceOpsApi;
+    private final AuditLogRecorder auditLogRecorder;
 
     public SensitivityService(MetadataTableMapper metadataTableMapper,
                               SensitivityChangeLogMapper auditLogMapper,
                               SystemUserApi systemUserApi,
                               EngineeringDatasourceApi datasourceApi,
-                              DataServiceOpsApi dataServiceOpsApi) {
+                              DataServiceOpsApi dataServiceOpsApi,
+                              AuditLogRecorder auditLogRecorder) {
         this.metadataTableMapper = metadataTableMapper;
         this.auditLogMapper = auditLogMapper;
         this.systemUserApi = systemUserApi;
         this.datasourceApi = datasourceApi;
         this.dataServiceOpsApi = dataServiceOpsApi;
+        this.auditLogRecorder = auditLogRecorder;
     }
 
     /** 单表改级（任意级别直接互转；降级确认由前端负责）。返回联动下线的 API 数 */
@@ -81,6 +88,7 @@ public class SensitivityService {
         if (Objects.equals(oldLevel, level)) return 0;
         applyLevel(table, level);
         writeAudit(table, oldLevel, level, ACTION_CHANGE_LEVEL, null);
+        writeGeneralAudit(table, oldLevel, level);
         return disableApisIfConfidential(level, List.of(table.getId()));
     }
 
@@ -96,6 +104,7 @@ public class SensitivityService {
             if (Objects.equals(oldLevel, level)) continue;
             applyLevel(table, level);
             writeAudit(table, oldLevel, level, ACTION_CHANGE_LEVEL, null);
+            writeGeneralAudit(table, oldLevel, level);
             if (CONFIDENTIAL.equals(level)) confidentialTableIds.add(table.getId());
         }
         return disableApisIfConfidential(level, confidentialTableIds);
@@ -197,6 +206,34 @@ public class SensitivityService {
         log.setOperatorId(currentUserId());
         log.setCreatedAt(LocalDateTime.now());
         auditLogMapper.insert(log);
+    }
+
+    /** 分级变更同时写通用审计（PRD D12：超管全量审计视角，与 sensitivity_change_log 并存），fail-open */
+    private void writeGeneralAudit(MetadataTable table, String oldLevel, String newLevel) {
+        try {
+            auditLogRecorder.record(new AuditLogEvent(
+                    currentUserId(), null,
+                    AuditOpType.CHANGE_LEVEL.name(), AuditResourceType.SENSITIVITY.name(),
+                    String.valueOf(table.getId()), buildTableQualifiedName(table),
+                    oldLevel + "→" + newLevel,
+                    AuditLogEvent.RESULT_SUCCESS, null, null));
+        } catch (Exception e) {
+            // fail-open：通用审计失败不影响改级主链路
+        }
+    }
+
+    /** 库名.表名（无库名时回退 schema/表名） */
+    private String buildTableQualifiedName(MetadataTable table) {
+        String db = table.getDatabaseName();
+        String schema = table.getSchemaName();
+        String t = table.getTableName();
+        if (db != null && !db.isBlank()) {
+            return db + "." + (t == null ? "" : t);
+        }
+        if (schema != null && !schema.isBlank()) {
+            return schema + "." + (t == null ? "" : t);
+        }
+        return t;
     }
 
     private Long currentUserId() {

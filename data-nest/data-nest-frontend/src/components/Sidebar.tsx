@@ -29,6 +29,7 @@ import {
     HiOutlineKey,
     HiOutlineTableCells,
     HiOutlineUsers,
+    HiOutlineDocumentText,
 } from 'react-icons/hi2';
 
 interface MenuItem {
@@ -235,6 +236,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         group: '系统管理',
         items: [
             {label: '用户管理', path: '/system/users', icon: <HiOutlineUsers size={18}/>, roles: [ROLE.SUPER_ADMIN]},
+            {label: '审计日志', path: '/system/audit-logs', icon: <HiOutlineDocumentText size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {
                 label: '告警中心',
                 path: '/system/alert-center',

@@ -2,6 +2,9 @@ package com.datanest.dataservice.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.dto.ApiStatsDTO;
@@ -47,6 +50,8 @@ public class DataApiController {
 
     @Operation(summary = "创建 API", description = "校验表敏感度（机密禁止 / 内部需超管特批开放，fail-closed）；路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.CREATE,
+            resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
     public Result<DataApiDetailDTO> create(@Valid @RequestBody DataApiCreateRequest request) {
         return Result.ok(dataApiService.create(request));
@@ -77,6 +82,8 @@ public class DataApiController {
 
     @Operation(summary = "编辑 API", description = "名称/路径/参数/字段/排序/分页可改；数据源/库/表绑定不可改；编辑前重新过敏感度闸门")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.UPDATE,
+            resourceId = "#id", resourceName = "#request.name")
     @PutMapping("/{id}")
     public Result<DataApiDetailDTO> update(@PathVariable("id") Long id,
                                            @Valid @RequestBody DataApiUpdateRequest request) {
@@ -85,6 +92,7 @@ public class DataApiController {
 
     @Operation(summary = "发布", description = "CREATED/DISABLED → PUBLISHED（已发布幂等）；发布前重新过敏感度闸门")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.PUBLISH, resourceId = "#id")
     @PostMapping("/{id}/publish")
     public Result<Void> publish(@PathVariable("id") Long id) {
         dataApiService.publish(id);
@@ -93,6 +101,7 @@ public class DataApiController {
 
     @Operation(summary = "下线", description = "PUBLISHED → DISABLED（已下线幂等）；下线后对外调用返回 404")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.OFFLINE, resourceId = "#id")
     @PostMapping("/{id}/disable")
     public Result<Void> disable(@PathVariable("id") Long id) {
         dataApiService.disable(id);
@@ -101,6 +110,7 @@ public class DataApiController {
 
     @Operation(summary = "删除（软删）", description = "软删保留调用统计（api_call_log），释放路径占用，并清理 Key 绑定关系")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable("id") Long id) {
         dataApiService.delete(id);

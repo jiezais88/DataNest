@@ -2,6 +2,9 @@ package com.datanest.engineering.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DataSourceCreateRequest;
@@ -47,6 +50,8 @@ public class DataSourceController {
 
     @Operation(summary = "新增数据源（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.CREATE,
+            resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
     public Result<DataSourceDTO> create(@Valid @RequestBody DataSourceCreateRequest request) {
         DataSourceDTO dto = dataSourceService.create(request);
@@ -58,6 +63,8 @@ public class DataSourceController {
 
     @Operation(summary = "修改数据源（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.UPDATE,
+            resourceId = "#id", resourceName = "#result.data.name")
     @PutMapping("/{id}")
     public Result<DataSourceDTO> update(@Parameter(description = "数据源 ID") @PathVariable Long id, @Valid @RequestBody DataSourceUpdateRequest request) {
         return Result.ok(dataSourceService.update(id, request));
@@ -65,6 +72,7 @@ public class DataSourceController {
 
     @Operation(summary = "删除数据源（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         dataSourceService.delete(id);
@@ -80,6 +88,7 @@ public class DataSourceController {
 
     @Operation(summary = "测试已保存的数据源并更新状态（超管、工程师）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.TEST, resourceId = "#id")
     @PostMapping("/{id}/test")
     public Result<TestConnectionResult> testAndUpdateStatus(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.testAndUpdateStatus(id));

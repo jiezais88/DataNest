@@ -1,3 +1,4 @@
+com.datanest.common.audit.AuditAutoConfiguration
 com.datanest.common.config.CommonExceptionAutoConfiguration
 com.datanest.common.config.DocsAutoConfiguration
 com.datanest.common.config.FlywayAutoConfiguration

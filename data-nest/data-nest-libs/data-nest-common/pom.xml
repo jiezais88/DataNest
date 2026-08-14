@@ -31,6 +31,14 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Spring Boot AspectJ（provided，仅编译 AuditLogAspect 切面；Boot 4 起 spring-boot-starter-aop 更名 spring-boot-starter-aspectj，
+             消费方经 webmvc 的 sa-token-spring-aop 传递获得运行时 AOP） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Sa-Token WebMVC (provided by consumers) -->
         <dependency>
             <groupId>cn.dev33</groupId>

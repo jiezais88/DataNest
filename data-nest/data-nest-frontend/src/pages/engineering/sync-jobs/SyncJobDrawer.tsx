@@ -27,6 +27,7 @@ import Drawer from '@/components/Drawer';
 import CronPicker from '@/components/CronPicker';
 import DsButton from '@/components/DsButton';
 import DsIconButton from '@/components/DsIconButton';
+import DsSelect from '@/components/DsSelect';
 import {HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
 
 interface FormData {
@@ -641,12 +642,11 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 源数据源 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 data-testid="sync-job-source-datasource"
                                 value={form.sourceDatasourceId}
-                                onChange={(e) => handleSourceDatasourceChange(e.target.value)}
+                                onChange={handleSourceDatasourceChange}
                                 disabled={isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">请选择</option>
                                 {sourceDataSources.map((ds) => (
@@ -655,7 +655,7 @@ export default function SyncJobDrawer({
                                         {datasourceLabel(ds)}
                                     </option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             {errors.sourceDatasourceId && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.sourceDatasourceId}</p>
                             )}
@@ -665,12 +665,11 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 选择{schemaLabel} <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 data-testid="sync-job-schema"
                                 value={form.selectedSchema}
-                                onChange={(e) => handleSchemaChange(e.target.value)}
+                                onChange={handleSchemaChange}
                                 disabled={!form.sourceDatasourceId || schemasLoading || isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">{schemasLoading ? '加载中...' : '请选择'}</option>
                                 {schemas.map((schema) => (
@@ -679,7 +678,7 @@ export default function SyncJobDrawer({
                                         {selectedSource ? buildSchemaLabel(selectedSource, schema) : schema}
                                     </option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             {errors.selectedSchema && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.selectedSchema}</p>
                             )}
@@ -730,12 +729,11 @@ export default function SyncJobDrawer({
                                 </>
                             ) : (
                                 // 单表锁定模式（Sprint 3 单表任务编辑，PRD §6.9.5：不可切换为多表）
-                                <select
+                                <DsSelect
                                     data-testid="sync-job-source-table"
                                     value={selectedTables[0] || ''}
-                                    onChange={(e) => handleSingleSourceTableChange(e.target.value)}
+                                    onChange={handleSingleSourceTableChange}
                                     disabled={!form.selectedSchema || tablesLoading || isView}
-                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <option value="">{tablesLoading ? '加载中...' : '请选择'}</option>
                                     {selectedTables[0] && !tables.includes(selectedTables[0]) && (
@@ -745,7 +743,7 @@ export default function SyncJobDrawer({
                                         <option key={t} value={t}
                                                 data-testid={`sync-job-source-table-option-${t}`}>{t}</option>
                                     ))}
-                                </select>
+                                </DsSelect>
                             )}
                             {errors.sourceTable && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.sourceTable}</p>
@@ -762,12 +760,11 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 目标 Doris 库 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 data-testid="sync-job-target-database"
                                 value={form.targetDatabase}
-                                onChange={(e) => handleTargetDatabaseChange(e.target.value)}
+                                onChange={handleTargetDatabaseChange}
                                 disabled={targetDbsLoading || isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <option value="">{targetDbsLoading ? '加载中...' : '请选择'}</option>
                                 {form.targetDatabase && !targetDatabases.includes(form.targetDatabase) && (
@@ -777,7 +774,7 @@ export default function SyncJobDrawer({
                                     <option key={db} value={db}
                                             data-testid={`sync-job-target-database-option-${db}`}>{db}</option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             {errors.targetDatabase && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.targetDatabase}</p>
                             )}
@@ -788,12 +785,11 @@ export default function SyncJobDrawer({
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     目标表名 <span className="text-ds-danger">*</span>
                                 </label>
-                                <select
+                                <DsSelect
                                     data-testid="sync-job-target-table"
                                     value={tableMappings[selectedTables[0]] || ''}
-                                    onChange={(e) => selectedTables[0] && updateTableMapping(selectedTables[0], e.target.value)}
+                                    onChange={(v) => selectedTables[0] && updateTableMapping(selectedTables[0], v)}
                                     disabled={!form.targetDatabase || targetTablesLoading || isView || !selectedTables[0]}
-                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <option value="">{targetTablesLoading ? '加载中...' : '请选择'}</option>
                                     {selectedTables[0] && tableMappings[selectedTables[0]] && !targetTables.includes(tableMappings[selectedTables[0]]) && (
@@ -805,7 +801,7 @@ export default function SyncJobDrawer({
                                         <option key={t} value={t}
                                                 data-testid={`sync-job-target-table-option-${t}`}>{t}</option>
                                     ))}
-                                </select>
+                                </DsSelect>
                             </div>
                         ) : (
                             // 多表批量映射：源表 → 目标表名，默认同名可逐个修改（PRD §6.9.2）
@@ -857,17 +853,17 @@ export default function SyncJobDrawer({
                     <h3 className="text-ds-small font-semibold text-ds-text-secondary mb-ds-2">字段映射</h3>
                     {isMultiTable && (
                         // 多表模式：按源表逐个配置（技术文档 §12.2），切换器选择当前配置的源表
-                        <select
+                        <DsSelect
                             data-testid="sync-job-mapping-table-switcher"
                             value={activeMappingTable}
-                            onChange={(e) => setActiveMappingTable(e.target.value)}
+                            onChange={setActiveMappingTable}
                             disabled={isView}
-                            className="w-full mb-ds-2 px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="w-full mb-ds-2 text-ds-small"
                         >
                             {selectedTables.map(t => (
                                 <option key={t} value={t}>配置源表：{t}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                     )}
                     <div className="border border-ds-border-subtle rounded-ds-sm p-ds-3 bg-ds-bg-hover space-y-ds-2">
                         {!boundMappingTable ? (
@@ -967,12 +963,11 @@ export default function SyncJobDrawer({
                                 <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                     增量字段 <span className="text-ds-danger">*</span>
                                 </label>
-                                <select
+                                <DsSelect
                                     data-testid="sync-job-incremental-field"
                                     value={form.incrementalField}
-                                    onChange={(e) => updateField('incrementalField', e.target.value)}
+                                    onChange={(v) => updateField('incrementalField', v)}
                                     disabled={firstTableColumns.length === 0 || columnsLoading || isView}
-                                    className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     <option value="">请选择</option>
                                     {firstTableColumns.map((col) => {
@@ -984,7 +979,7 @@ export default function SyncJobDrawer({
                                             </option>
                                         );
                                     })}
-                                </select>
+                                </DsSelect>
                                 <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
                                     建议选择数值型（int / bigint / decimal 等）或时间型（date / datetime / timestamp）字段
                                 </p>
@@ -1051,17 +1046,16 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 失败重试次数 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 data-testid="sync-job-retry-times"
-                                value={form.retryTimes}
-                                onChange={(e) => updateField('retryTimes', Number(e.target.value))}
+                                value={String(form.retryTimes)}
+                                onChange={(v) => updateField('retryTimes', Number(v))}
                                 disabled={isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 {[0, 1, 2, 3].map((n) => (
                                     <option key={n} value={n}>{n} 次</option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             {errors.retryTimes && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.retryTimes}</p>
                             )}
@@ -1070,17 +1064,16 @@ export default function SyncJobDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 重试间隔 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 data-testid="sync-job-retry-interval"
-                                value={form.retryInterval}
-                                onChange={(e) => updateField('retryInterval', Number(e.target.value))}
+                                value={String(form.retryInterval)}
+                                onChange={(v) => updateField('retryInterval', Number(v))}
                                 disabled={isView}
-                                className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 {Array.from({length: 30}, (_, i) => i + 1).map((n) => (
                                     <option key={n} value={n}>{n} 分钟</option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             {errors.retryInterval && (
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.retryInterval}</p>
                             )}

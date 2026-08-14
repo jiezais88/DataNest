@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
+import DsSelect from '@/components/DsSelect';
 import {
     listMetadataColumns,
     listMetadataDatabases,
@@ -383,7 +384,6 @@ export default function QualityRuleDrawer({
     const drawerTitle = isEdit ? '编辑质量规则' : isView ? '质量规则详情' : '新增质量规则';
 
     const inputClass = 'w-full px-ds-3 py-ds-2 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
-    const selectClass = 'w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-primary focus:outline-none focus-visible:border-ds-accent disabled:opacity-60 disabled:cursor-not-allowed';
 
     return (
         <>
@@ -425,19 +425,19 @@ export default function QualityRuleDrawer({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             规则类型 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={form.type}
-                            onChange={(e) => {
-                                updateField('type', e.target.value as QualityRuleType);
+                            onChange={(v) => {
+                                updateField('type', v as QualityRuleType);
                                 updateField('sqlExpression', '');
                             }}
                             disabled={readOnly}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             {QUALITY_TYPE_OPTIONS.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                     </div>
 
                     {!isCustomSql && !isPython && (
@@ -445,11 +445,11 @@ export default function QualityRuleDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 规则模板 <span className="text-ds-danger">*</span>
                             </label>
-                            <select
+                            <DsSelect
                                 value={form.templateId}
-                                onChange={(e) => updateField('templateId', e.target.value)}
+                                onChange={(v) => updateField('templateId', v)}
                                 disabled={readOnly || templatesLoading}
-                                className={selectClass}
+                                className="text-ds-small"
                             >
                                 <option value="">
                                     {templatesLoading ? '加载模板中...' : '请选择规则模板'}
@@ -459,7 +459,7 @@ export default function QualityRuleDrawer({
                                         {t.name}（{t.resultMetric || t.type}）
                                     </option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
                                 完整性/唯一性/值域规则需关联模板以生成校验 SQL
                             </p>
@@ -472,11 +472,11 @@ export default function QualityRuleDrawer({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             数据源 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={form.datasourceId}
-                            onChange={(e) => handleDatasourceChange(e.target.value)}
+                            onChange={handleDatasourceChange}
                             disabled={readOnly}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             <option value="">请选择数据源</option>
                             {datasourceOptions.map((d) => (
@@ -484,7 +484,7 @@ export default function QualityRuleDrawer({
                                     {d.name || `数据源 ${d.id}`}
                                 </option>
                             ))}
-                        </select>
+                        </DsSelect>
                         <p className="mt-ds-1 text-ds-nano text-ds-text-muted">
                             仅展示已采集元数据的数据源，未采集请先到「元数据管理」执行采集
                         </p>
@@ -495,17 +495,17 @@ export default function QualityRuleDrawer({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             数据库
                         </label>
-                        <select
+                        <DsSelect
                             value={selectedDatabase}
-                            onChange={(e) => setSelectedDatabase(e.target.value)}
+                            onChange={setSelectedDatabase}
                             disabled={readOnly || !form.datasourceId}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             <option value="">{databaseLoading ? '加载中...' : '请选择数据库'}</option>
                             {databases.map((db) => (
                                 <option key={db} value={db}>{db}</option>
                             ))}
-                        </select>
+                        </DsSelect>
                     </div>
 
                     {selectedDatabase && !noSchema && (
@@ -513,17 +513,17 @@ export default function QualityRuleDrawer({
                             <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                                 Schema
                             </label>
-                            <select
+                            <DsSelect
                                 value={selectedSchema}
-                                onChange={(e) => setSelectedSchema(e.target.value)}
+                                onChange={setSelectedSchema}
                                 disabled={readOnly}
-                                className={selectClass}
+                                className="text-ds-small"
                             >
                                 <option value="">{schemaLoading ? '加载中...' : '请选择 Schema'}</option>
                                 {schemas.map((s) => (
                                     <option key={s} value={s}>{s}</option>
                                 ))}
-                            </select>
+                            </DsSelect>
                         </div>
                     )}
 
@@ -531,11 +531,11 @@ export default function QualityRuleDrawer({
                         <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                             目标表 <span className="text-ds-danger">*</span>
                         </label>
-                        <select
+                        <DsSelect
                             value={form.tableId}
-                            onChange={(e) => handleTableChange(e.target.value)}
+                            onChange={handleTableChange}
                             disabled={readOnly || !form.datasourceId || !selectedDatabase || (!noSchema && !selectedSchema)}
-                            className={selectClass}
+                            className="text-ds-small"
                         >
                             <option value="">
                                 {tableLoading ? '加载中...' : (form.datasourceId && selectedDatabase ? '请选择目标表' : '请先选择数据源 / 数据库')}
@@ -545,7 +545,7 @@ export default function QualityRuleDrawer({
                                     {t.schemaName ? `${t.schemaName}.${t.tableName}` : t.tableName}
                                 </option>
                             ))}
-                        </select>
+                        </DsSelect>
                         {errors.tableId && <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.tableId}</p>}
                     </div>
 
@@ -588,11 +588,11 @@ export default function QualityRuleDrawer({
                                 </div>
                             )}
                             {needsColumn || isPython ? (
-                                <select
+                                <DsSelect
                                     value={form.columnName}
-                                    onChange={(e) => updateField('columnName', e.target.value)}
+                                    onChange={(v) => updateField('columnName', v)}
                                     disabled={readOnly || !form.tableId}
-                                    className={selectClass}
+                                    className="text-ds-small"
                                 >
                                     <option value="">
                                         {columnsLoading ? '加载字段中...' : isPython ? '（可选）请选择检查字段' : '请选择检查字段'}
@@ -600,7 +600,7 @@ export default function QualityRuleDrawer({
                                     {columns.map((c) => (
                                         <option key={c.id} value={c.columnName}>{c.columnName}</option>
                                     ))}
-                                </select>
+                                </DsSelect>
                             ) : null}
                             {needsColumn && errors.columnName &&
                                 <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.columnName}</p>}

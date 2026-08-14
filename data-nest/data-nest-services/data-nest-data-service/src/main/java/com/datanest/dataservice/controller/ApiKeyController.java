@@ -2,6 +2,9 @@ package com.datanest.dataservice.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.dto.ApiKeyCreateRequest;
@@ -42,6 +45,8 @@ public class ApiKeyController {
 
     @Operation(summary = "创建 Key", description = "生成一次性明文（K- 前缀，仅本次返回，后端只存 SHA-256 哈希）；可同时绑定 API")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.API_KEY, opType = AuditOpType.CREATE,
+            resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
     public Result<ApiKeyCreateResult> create(@Valid @RequestBody ApiKeyCreateRequest request) {
         return Result.ok(apiKeyService.create(request));
@@ -65,6 +70,8 @@ public class ApiKeyController {
 
     @Operation(summary = "编辑 Key", description = "改名 / 限流 QPS / 全量重绑 API")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.API_KEY, opType = AuditOpType.UPDATE,
+            resourceId = "#id", resourceName = "#request.name")
     @PutMapping("/{id}")
     public Result<Void> update(@PathVariable("id") Long id,
                                @Valid @RequestBody ApiKeyUpdateRequest request) {
@@ -74,6 +81,7 @@ public class ApiKeyController {
 
     @Operation(summary = "快捷启用", description = "操作列一步恢复（已启用幂等）")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.API_KEY, opType = AuditOpType.ENABLE, resourceId = "#id")
     @PostMapping("/{id}/enable")
     public Result<Void> enable(@PathVariable("id") Long id) {
         apiKeyService.enable(id);
@@ -82,6 +90,7 @@ public class ApiKeyController {
 
     @Operation(summary = "快捷禁用", description = "泄露 1 步处置（已禁用幂等）；禁用后对外调用立即 401")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.API_KEY, opType = AuditOpType.DISABLE, resourceId = "#id")
     @PostMapping("/{id}/disable")
     public Result<Void> disable(@PathVariable("id") Long id) {
         apiKeyService.disable(id);
@@ -90,6 +99,7 @@ public class ApiKeyController {
 
     @Operation(summary = "删除 Key", description = "同时清理 API 绑定与管道订阅授权")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.API_KEY, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable("id") Long id) {
         apiKeyService.delete(id);

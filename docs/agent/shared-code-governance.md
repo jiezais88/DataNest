@@ -55,6 +55,7 @@
 - SQL 分类 3 处 → `SqlStatementSplitter.classify`（2026-08-12）
 - PowerJob 装配 2 份 → `PowerJobWorkerSupport.buildWorker`（2026-08-12）
 - data-service JDBC 层副本 → `JdbcUrlBuilder`/`JdbcPreviewHelper`/`DorisSqlExecutor.openConnection`（2026-08-12）
+- 前端裸 `<select>` 13 处（含 4 处局部 `selectClass` 常量 + 9 处内联 className）→ `DsSelect`（2026-08-14，Sprint 11 下拉收编补漏）
 
 ---
 

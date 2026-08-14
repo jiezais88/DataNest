@@ -3,6 +3,9 @@ package com.datanest.system.controller;
 import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.stp.StpUtil;
+import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.system.dto.*;
@@ -38,6 +41,8 @@ public class UserController {
 
     @Operation(summary = "创建用户（仅超管）")
     @SaCheckRole("SUPER_ADMIN")
+    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.CREATE,
+            resourceId = "#result.data.id", resourceName = "#req.username")
     @PostMapping
     public Result<UserVO> create(@Valid @RequestBody UserCreateRequest req) {
         return Result.ok(userService.createUser(req));
@@ -53,6 +58,7 @@ public class UserController {
 
     @Operation(summary = "切换启用/禁用（仅超管）")
     @SaCheckRole("SUPER_ADMIN")
+    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.UPDATE, resourceId = "#userId")
     @PutMapping("/{userId}/toggle")
     public Result<Void> toggleStatus(@Parameter(description = "用户 ID") @PathVariable Long userId) {
         userService.toggleStatus(userId);
@@ -70,6 +76,7 @@ public class UserController {
 
     @Operation(summary = "管理员重置密码（仅超管）")
     @SaCheckRole("SUPER_ADMIN")
+    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.RESET_PASSWORD, resourceId = "#userId")
     @PutMapping("/{userId}/reset-password")
     public Result<Void> resetPassword(@Parameter(description = "用户 ID") @PathVariable Long userId,
                                       @Valid @RequestBody ResetPasswordRequest req) {

@@ -7,6 +7,7 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Modal, Spin} from 'antd';
 import DsButton from '@/components/DsButton';
 import DsModal from '@/components/DsModal';
+import DsSelect from '@/components/DsSelect';
 import {compareDagVersions, listDagVersions, rollbackDagVersion} from '@/pages/engineering/dags/api';
 import type {DagNode, DagVersion, DagVersionDiff} from '@/pages/engineering/dags/types';
 import {formatDateTime} from '@/utils/format';
@@ -291,10 +292,10 @@ export default function DagVersionModal({
                         <div className="flex items-center justify-between mb-ds-3">
                             <div className="flex items-center gap-ds-3 flex-wrap">
                                 <span className="text-ds-small font-semibold text-ds-text-secondary">版本对比</span>
-                                <select
-                                    value={leftVersion ?? ''}
-                                    onChange={e => setLeftVersion(e.target.value ? Number(e.target.value) : null)}
-                                    className="px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent"
+                                <DsSelect
+                                    value={String(leftVersion ?? '')}
+                                    onChange={v => setLeftVersion(v ? Number(v) : null)}
+                                    className="px-ds-2 py-ds-1.5 text-ds-small"
                                 >
                                     <option value="" disabled hidden>基准版本</option>
                                     {versionOptions.map(o => (
@@ -302,12 +303,12 @@ export default function DagVersionModal({
                                             {o.label}
                                         </option>
                                     ))}
-                                </select>
+                                </DsSelect>
                                 <span className="text-ds-small text-ds-text-muted">vs</span>
-                                <select
-                                    value={rightVersion ?? ''}
-                                    onChange={e => setRightVersion(e.target.value ? Number(e.target.value) : null)}
-                                    className="px-ds-2 py-ds-1.5 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus-visible:border-ds-accent"
+                                <DsSelect
+                                    value={String(rightVersion ?? '')}
+                                    onChange={v => setRightVersion(v ? Number(v) : null)}
+                                    className="px-ds-2 py-ds-1.5 text-ds-small"
                                 >
                                     <option value="" disabled hidden>对比版本</option>
                                     {versionOptions.map(o => (
@@ -315,7 +316,7 @@ export default function DagVersionModal({
                                             {o.label}
                                         </option>
                                     ))}
-                                </select>
+                                </DsSelect>
                                 {leftVersion != null && rightVersion != null && (
                                     <span className="text-ds-caption text-ds-text-muted">
                                         v{leftVersion} → v{rightVersion} 的变化

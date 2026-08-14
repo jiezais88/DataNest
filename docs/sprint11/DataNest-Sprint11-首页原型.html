@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataNest — 首页仪表盘原型</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   DataNest 首页仪表盘 高保真原型（Sprint 11 重设计）
+   设计基线：一屏展示、零滚动；两档适配 1440×900 / 1920×1080
+   所有 token 对齐 src/styles/tokens.css（唯一权威来源）
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  --bg-root: 238 240 247;
+  --bg-surface: 255 255 255;
+  --bg-hover: 235 239 246;
+  --border-subtle: 216 222 232;
+  --border-strong: 198 206 218;
+  --text-primary: 15 23 42;
+  --text-secondary: 71 85 105;
+  --text-muted: 100 116 139;
+  --accent: 79 70 229;
+  --accent-hover: 67 56 202;
+  --accent-light: 238 242 255;
+  --danger: 220 38 38;
+  --danger-light: 254 242 242;
+  --success: 22 163 74;
+  --success-light: 240 253 244;
+  --warning: 217 119 6;
+  --warning-light: 255 251 235;
+  --sidebar-bg: 51 65 85;
+  --sidebar-border: 71 85 105;
+  --sidebar-text: 203 213 225;
+  --sidebar-hover: 71 85 105;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: rgb(var(--bg-root));
+  color: rgb(var(--text-primary));
+  background-image: radial-gradient(ellipse 75% 45% at 18% -6%, rgb(79 70 229 / 0.08), transparent 62%);
+  background-attachment: fixed;
+  font-size: 14px;
+}
+
+/* ────────── 侧边栏 ────────── */
+.sb {
+  position: fixed; left: 0; top: 0; height: 100%; width: 248px;
+  background: rgb(var(--sidebar-bg)); border-right: 1px solid rgb(var(--sidebar-border));
+  display: flex; flex-direction: column; overflow: hidden; z-index: 100;
+}
+.sb-brand {
+  height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+  padding: 0 16px; border-bottom: 1px solid rgb(var(--sidebar-border));
+}
+.sb-brand span { color: #fff; font-weight: 700; font-size: 14px; letter-spacing: -0.2px; }
+.sb-nav { flex: 1; overflow-y: auto; padding: 12px 8px; }
+.sb-group {
+  font-size: 11px; font-weight: 700; color: rgb(var(--sidebar-text));
+  text-transform: uppercase; letter-spacing: 0.8px; padding: 16px 12px 6px;
+}
+.sb-item {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; border-radius: 8px; border: none; background: transparent;
+  font-size: 13px; font-weight: 500; color: rgb(var(--sidebar-text));
+  cursor: pointer; text-align: left; transition: background-color .15s, color .15s;
+}
+.sb-item:hover { background: rgb(var(--sidebar-hover)); color: #fff; }
+.sb-item.active { background: rgb(79 70 229 / 0.25); color: #fff; font-weight: 600; }
+.sb-item svg { flex-shrink: 0; }
+
+/* ────────── 顶栏 ────────── */
+.topbar {
+  position: fixed; left: 248px; right: 0; top: 0; height: 56px; z-index: 100;
+  background: rgb(255 255 255 / 0.8); backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgb(var(--border-subtle));
+  display: flex; align-items: center; justify-content: flex-end; padding: 0 24px;
+}
+.topbar-user {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+  border-radius: 8px; border: none; background: transparent; cursor: pointer;
+}
+.topbar-user:hover { background: rgb(var(--bg-hover)); }
+.topbar-avatar {
+  width: 28px; height: 28px; border-radius: 50%; background: rgb(var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; font-weight: 700;
+}
+.topbar-user .name { font-size: 13px; color: rgb(var(--text-secondary)); }
+
+/* ────────── 内容区 ────────── */
+.main {
+  margin-left: 248px; padding-top: 56px; height: 100vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.content {
+  flex: 1; min-height: 0; padding: 24px;
+  display: flex; flex-direction: column; gap: 16px; overflow: hidden;
+}
+
+/* ────────── 问候行 ────────── */
+.greet { flex-shrink: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.greet h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.35; }
+.greet .sub { font-size: 14px; color: rgb(var(--text-secondary)); margin-top: 4px; }
+.greet-right { display: flex; align-items: center; gap: 12px; font-size: 12px; color: rgb(var(--text-muted)); }
+.refresh-pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  color: rgb(var(--text-secondary)); background: rgb(var(--bg-surface));
+  border: 1px solid rgb(var(--border-subtle)); border-radius: 8px; padding: 5px 10px;
+}
+.dot-live { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--success)); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ────────── KPI 条 ────────── */
+.kpi-row {
+  flex-shrink: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;
+}
+.kpi-card {
+  background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-subtle));
+  border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06); cursor: pointer;
+  transition: box-shadow .15s, border-color .15s, transform .15s;
+}
+.kpi-card:hover { box-shadow: 0 4px 6px rgba(0,0,0,.06); border-color: rgb(var(--border-strong)); }
+.kpi-card.alert { border-color: rgb(220 38 38 / 0.35); }
+.kpi-card.warn { border-color: rgb(217 119 6 / 0.3); }
+.kpi-head { display: flex; align-items: center; justify-content: space-between; }
+.kpi-label { font-size: 13px; font-weight: 500; color: rgb(var(--text-secondary)); }
+.kpi-dot { width: 6px; height: 6px; border-radius: 50%; }
+.kpi-value-row { display: flex; align-items: baseline; gap: 8px; }
+.kpi-value { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; line-height: 1; color: rgb(var(--text-primary)); }
+.kpi-value.danger { color: rgb(var(--danger)); }
+.kpi-value.warn { color: rgb(var(--warning)); }
+.kpi-delta { font-size: 12px; font-weight: 600; }
+.kpi-delta.up { color: rgb(var(--success)); }
+.kpi-delta.down { color: rgb(var(--danger)); }
+.kpi-sub { font-size: 12px; color: rgb(var(--text-muted)); }
+.kpi-spark { width: 100%; height: 22px; margin-top: 2px; }
+
+/* ────────── 主区（左图 + 右栏）────────── */
+.mid-grid {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: 1fr 300px; grid-template-rows: 1fr auto; gap: 16px;
+}
+.card {
+  background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-subtle));
+  border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.card-head {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid rgb(var(--border-subtle));
+}
+.card-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+.card-title .count {
+  background: rgb(var(--danger-light)); color: rgb(var(--danger));
+  border-radius: 8px; padding: 0 6px; font-size: 12px; font-weight: 600;
+}
+.card-link { font-size: 13px; font-weight: 500; color: rgb(var(--accent)); cursor: pointer; border: none; background: none; }
+.card-link:hover { text-decoration: underline; }
+.card-body { flex: 1; min-height: 0; padding: 16px; display: flex; flex-direction: column; }
+
+/* 趋势图 */
+.chart-legend { display: flex; gap: 14px; font-size: 12px; color: rgb(var(--text-muted)); margin-bottom: 8px; }
+.chart-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend .sw { width: 8px; height: 8px; border-radius: 2px; background: rgb(var(--accent)); }
+.chart-legend .sw-dot { width: 7px; height: 7px; border-radius: 50%; background: #fbbf24; }
+.chart-wrap { flex: 1; min-height: 0; position: relative; }
+.chart-wrap svg { width: 100%; height: 100%; }
+.chart-x { display: flex; justify-content: space-between; font-size: 11px; color: rgb(var(--text-muted)); padding-top: 4px; }
+
+/* 系统健康 */
+.health-list { display: flex; flex-direction: column; gap: 2px; }
+.health-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 4px; border-radius: 8px; font-size: 13px; color: rgb(var(--text-secondary));
+}
+.health-row:hover { background: rgb(var(--bg-hover)); }
+.health-row .l { display: flex; align-items: center; gap: 8px; }
+.health-row .l svg { color: rgb(var(--text-muted)); }
+.health-row .v { font-weight: 600; color: rgb(var(--text-primary)); }
+.health-row .v.warn { color: rgb(var(--warning)); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* 快捷操作 */
+.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 12px; }
+.quick-btn {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid rgb(var(--border-subtle));
+  background: rgb(var(--bg-surface)); cursor: pointer; font-size: 13px; font-weight: 500;
+  color: rgb(var(--text-secondary)); transition: border-color .15s, box-shadow .15s;
+}
+.quick-btn:hover { border-color: rgb(var(--accent)); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.quick-btn .ic { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: rgb(var(--accent-light)); color: rgb(var(--accent)); }
+.quick-btn .ic.secondary { background: rgb(var(--bg-hover)); color: rgb(var(--text-secondary)); }
+
+/* 待处理异常 */
+.exception-table { display: flex; flex-direction: column; }
+.ex-row {
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 16px;
+  padding: 9px 4px; border-bottom: 1px solid rgb(var(--border-subtle)); font-size: 13px;
+}
+.ex-row:last-child { border-bottom: none; }
+.ex-name { display: flex; align-items: center; gap: 8px; color: rgb(var(--text-primary)); font-weight: 600; overflow: hidden; }
+.ex-name .type-badge {
+  flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+}
+.ex-name .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-time { color: rgb(var(--text-muted)); font-size: 12px; }
+.ex-action {
+  border: none; background: rgb(var(--accent-light)); color: rgb(var(--accent));
+  font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+  transition: background-color .15s;
+}
+.ex-action:hover { background: rgb(79 70 229 / 0.16); }
+
+/* 严重度徽标 */
+.sev-critical { background: rgb(var(--danger-light)); color: rgb(var(--danger)); }
+.sev-warning { background: rgb(var(--warning-light)); color: rgb(var(--warning)); }
+
+/* 空态兜底提示 */
+.hint { font-size: 11px; color: rgb(var(--text-muted)); margin-top: 4px; text-align: right; }
+
+/* ────────── 两档适配 ────────── */
+/* 1920×1080：内容更舒展，KPI 数字更大、右栏更宽 */
+@media (min-width: 1680px) {
+  .content { padding: 28px 32px; gap: 20px; }
+  .mid-grid { grid-template-columns: 1fr 340px; }
+  .kpi-card { padding: 18px 20px; }
+  .kpi-value { font-size: 30px; }
+  .kpi-spark { height: 28px; }
+}
+/* <1440 收窄（最低保障 1280 宽，仍一屏） */
+@media (max-width: 1440px) {
+  .mid-grid { grid-template-columns: 1fr 260px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ 侧边栏（复刻 Sidebar.tsx 结构）═══════════ -->
+<aside class="sb">
+  <div class="sb-brand">
+    <svg width="28" height="28" viewBox="0 0 32 32" role="img" aria-label="DataNest">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/>
+      </linearGradient></defs>
+      <polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/>
+      <polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/>
+      <polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#lg)"/>
+    </svg>
+    <span>DataNest</span>
+  </div>
+  <nav class="sb-nav">
+    <p class="sb-group">数据平台</p>
+    <button class="sb-item active">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>
+      <span>首页</span>
+    </button>
+
+    <p class="sb-group">数据工程</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"/></svg><span>数据源管理</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg><span>CDC 管道</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg><span>批量数据同步任务</span></button>
+
+    <p class="sb-group">数据开发</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.39 0 .765.128 1.081.357l-2.454 7.364A2.25 2.25 0 0116.37 19H5.25a2.25 2.25 0 01-2.25-2.25V9.75m.75 0V6.75c0-.621.504-1.125 1.125-1.125h3.879c.298 0 .585.118.797.328l1.734 1.546a1.125 1.125 0 00.797.328h5.878c.621 0 1.125.504 1.125 1.125V9.75m-.75 0H3.75"/></svg><span>项目管理</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612 0 .414-.336.75-.75.75H9a.75.75 0 01-.75-.75c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg><span>任务模板库</span></button>
+
+    <p class="sb-group">数据服务</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></svg><span>SQL 查询终端</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg><span>API 管理</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941"/></svg><span>API 运行统计</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993m1.989 3.559A11.209 11.209 0 008.25 10.5a3.75 3.75 0 117.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 01-3.6 9.75m6.633-4.596a18.666 18.666 0 01-2.485 5.33"/></svg><span>API Key 管理</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg><span>数据分级分类</span></button>
+
+    <p class="sb-group">数据资产</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg><span>数据资产</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg><span>我的收藏</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg><span>我的关注</span></button>
+
+    <p class="sb-group">数据治理</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>元数据采集任务</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5m13.5 0h1.5m-1.5 0a1.125 1.125 0 001.125-1.125m0 0V3.375M3.375 3.375h17.25m0 0v15m-6 0v-15m-6 15V3.375m-3.75 3.75h9m-9 4.5h9"/></svg><span>元数据管理</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m-3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L18.75 4.971zm-16.5.52c.99-.203 1.99-.377 3-.52m0 0l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.989 5.989 0 01-2.031.352 5.989 5.989 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L5.25 4.971z"/></svg><span>数据标准</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg><span>标准合规</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612 0 .414-.336.75-.75.75H9a.75.75 0 01-.75-.75c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg><span>规则模板库</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z"/></svg><span>质量任务</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>质量评分</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg><span>质量报告</span></button>
+
+    <p class="sb-group">执行历史</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612 0 .414-.336.75-.75.75H9a.75.75 0 01-.75-.75c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg><span>同步执行历史</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg><span>DAG 执行历史</span></button>
+
+    <p class="sb-group">系统管理</p>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg><span>用户管理</span></button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0M3.124 7.5A8.969 8.969 0 015.292 3m13.416 0a8.969 8.969 0 012.168 4.5"/></svg><span>告警中心</span></button>
+  </nav>
+</aside>
+
+<!-- ═══════════ 顶栏（复刻 Layout.tsx header）═══════════ -->
+<header class="topbar">
+  <button class="topbar-user">
+    <div class="topbar-avatar">杰</div>
+    <span class="name">杰仔</span>
+  </button>
+</header>
+
+<!-- ═══════════ 主内容区 ═══════════ -->
+<div class="main">
+  <div class="content">
+
+    <!-- 问候行 -->
+    <div class="greet">
+      <div>
+        <h1>下午好，杰仔 👋</h1>
+        <div class="sub">今日运行整体平稳，有 3 个异常待处理。</div>
+      </div>
+      <div class="greet-right">
+        <span class="refresh-pill"><span class="dot-live"></span>自动刷新</span>
+        <span>数据更新于 17:38</span>
+      </div>
+    </div>
+
+    <!-- KPI 条：5 张症状卡 -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span class="kpi-label">今日任务运行</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">128</span>
+          <span class="kpi-delta up">▲ 12%</span>
+        </div>
+        <div class="kpi-sub">较昨日 +14</div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <polyline points="0,30 25,26 50,28 75,20 100,23 125,14 150,17 175,10 200,6" fill="none" stroke="rgb(79 70 229)" stroke-width="2"/>
+        </svg>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span class="kpi-label">任务成功率</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">98.4%</span>
+          <span class="kpi-delta up">▲ 0.6%</span>
+        </div>
+        <div class="kpi-sub">近 7 日均值</div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <polyline points="0,22 25,20 50,24 75,18 100,20 125,14 150,15 175,10 200,8" fill="none" stroke="rgb(79 70 229)" stroke-width="2"/>
+        </svg>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span class="kpi-label">运行中</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">6</span>
+          <span class="kpi-delta" style="color:rgb(var(--text-muted));">2 个 DAG</span>
+        </div>
+        <div class="kpi-sub">含 3 个 CDC 管道</div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <polyline points="0,28 25,22 50,25 75,20 100,16 125,19 150,15 175,18 200,14" fill="none" stroke="rgb(79 70 229)" stroke-width="2"/>
+        </svg>
+      </div>
+
+      <div class="kpi-card alert">
+        <div class="kpi-head">
+          <span class="kpi-label">失败待处理</span>
+          <span class="kpi-dot" style="background:rgb(var(--danger));"></span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-value danger">3</span>
+          <span class="kpi-delta down">▼ 2</span>
+        </div>
+        <div class="kpi-sub">1 小时前新增 1</div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <polyline points="0,12 25,16 50,10 75,20 100,18 125,28 150,26 175,32 200,36" fill="none" stroke="rgb(220 38 38 / 0.5)" stroke-width="2"/>
+        </svg>
+      </div>
+
+      <div class="kpi-card warn">
+        <div class="kpi-head">
+          <span class="kpi-label">告警中</span>
+          <span class="kpi-dot" style="background:rgb(var(--warning));"></span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-value warn">5</span>
+          <span class="kpi-delta" style="color:rgb(var(--text-muted));">2 严重</span>
+        </div>
+        <div class="kpi-sub">Doris 延迟 · CPU 超阈</div>
+        <svg class="kpi-spark" viewBox="0 0 200 40" preserveAspectRatio="none">
+          <polyline points="0,20 25,18 50,22 75,16 100,18 125,14 150,17 175,12 200,10" fill="none" stroke="rgb(217 119 6 / 0.55)" stroke-width="2"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 主区：左（趋势图 + 异常表） / 右（健康 + 快捷） -->
+    <div class="mid-grid">
+
+      <!-- 左上：近 7 日任务运行趋势（indigo 单色面积图，异常日琥珀点标记） -->
+      <div class="card" style="grid-column:1;grid-row:1;">
+        <div class="card-head">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgb(79 70 229)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+            近 7 日任务运行趋势
+          </div>
+          <button class="card-link">查看全部 ›</button>
+        </div>
+        <div class="card-body">
+          <div class="chart-legend">
+            <span class="lg"><span class="sw"></span>运行量</span>
+            <span class="lg"><span class="sw-dot"></span>异常日（悬停看明细）</span>
+          </div>
+          <div class="chart-wrap">
+            <svg viewBox="0 0 600 220" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"/>
+                  <stop offset="100%" stop-color="#4f46e5" stop-opacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <!-- 网格线 -->
+              <line x1="0" y1="175" x2="600" y2="175" stroke="#eef0f7" stroke-width="1"/>
+              <line x1="0" y1="115" x2="600" y2="115" stroke="#eef0f7" stroke-width="1"/>
+              <line x1="0" y1="55" x2="600" y2="55" stroke="#eef0f7" stroke-width="1"/>
+              <!-- 面积 -->
+              <path d="M0,150 C50,130 75,140 120,120 C170,100 200,125 250,95 C300,75 325,105 375,80 C430,65 455,90 520,55 C555,45 580,75 600,40 L600,220 L0,220 Z" fill="url(#area)"/>
+              <!-- 线 -->
+              <path d="M0,150 C50,130 75,140 120,120 C170,100 200,125 250,95 C300,75 325,105 375,80 C430,65 455,90 520,55 C555,45 580,75 600,40" fill="none" stroke="#4f46e5" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- 异常日琥珀点标记 -->
+              <circle cx="250" cy="95" r="5" fill="#fff" stroke="#fbbf24" stroke-width="2.5"/>
+              <circle cx="520" cy="55" r="5" fill="#fff" stroke="#fbbf24" stroke-width="2.5"/>
+            </svg>
+          </div>
+          <div class="chart-x">
+            <span>08-08</span><span>08-09</span><span>08-10</span><span>08-11</span><span>08-12</span><span>08-13</span><span>今天</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右栏：系统健康 + 快捷操作（贯通两行） -->
+      <div style="grid-column:2;grid-row:1/3;display:flex;flex-direction:column;gap:16px;min-height:0;">
+
+        <div class="card" style="flex:1;">
+          <div class="card-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgb(79 70 229)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+              系统健康
+            </div>
+          </div>
+          <div class="card-body" style="padding:12px 16px;">
+            <div class="health-list">
+              <div class="health-row">
+                <span class="l"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"/></svg>数据源</span>
+                <span class="v">24 / 26</span>
+              </div>
+              <div class="health-row">
+                <span class="l"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>集成任务</span>
+                <span class="v">45 活跃</span>
+              </div>
+              <div class="health-row">
+                <span class="l"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>Flink CDC</span>
+                <span class="v">3 运行</span>
+              </div>
+              <div class="health-row">
+                <span class="l"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>Doris</span>
+                <span class="v warn">延迟 2.1s</span>
+              </div>
+              <div class="health-row">
+                <span class="l"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>平台服务</span>
+                <span class="v">正常</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-head">
+            <div class="card-title">快捷操作</div>
+          </div>
+          <div class="card-body" style="padding:12px 16px;">
+            <div class="quick-grid">
+              <button class="quick-btn"><span class="ic">＋</span>同步任务</button>
+              <button class="quick-btn"><span class="ic">＋</span>新建 DAG</button>
+              <button class="quick-btn"><span class="ic secondary">SQL</span>SQL 查询</button>
+              <button class="quick-btn"><span class="ic secondary">源</span>数据源</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 左下：待处理异常 -->
+      <div class="card" style="grid-column:1;grid-row:2;">
+        <div class="card-head">
+          <div class="card-title">待处理异常 <span class="count">3</span></div>
+          <button class="card-link">全部 ›</button>
+        </div>
+        <div class="card-body" style="padding:8px 16px;">
+          <div class="exception-table">
+            <div class="ex-row">
+              <span class="ex-name"><span class="type-badge sev-critical">同步失败</span><span class="txt">订单同步 · job-1042</span></span>
+              <span class="ex-time">12 分钟前</span>
+              <button class="ex-action">重跑</button>
+            </div>
+            <div class="ex-row">
+              <span class="ex-name"><span class="type-badge sev-critical">质量规则</span><span class="txt">dq_usr_081 · 非空校验失败</span></span>
+              <span class="ex-time">1 小时前</span>
+              <button class="ex-action">去处理</button>
+            </div>
+            <div class="ex-row">
+              <span class="ex-name"><span class="type-badge sev-warning">告警</span><span class="txt">CPU 使用率超阈值（92%）</span></span>
+              <span class="ex-time">3 小时前</span>
+              <button class="ex-action">去处理</button>
+            </div>
+          </div>
+          <div class="hint">超 4 小时未处理的异常会加深底色提醒</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

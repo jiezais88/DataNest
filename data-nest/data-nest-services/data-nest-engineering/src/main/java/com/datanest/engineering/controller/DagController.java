@@ -2,6 +2,9 @@ package com.datanest.engineering.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionDTO;
 import com.datanest.engineering.dto.DagPayload;
@@ -54,6 +57,8 @@ public class DagController {
 
     @Operation(summary = "创建 DAG")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.CREATE,
+            resourceId = "#result.data.id", resourceName = "#payload.name")
     @PostMapping
     public Result<DagPayload> create(@RequestBody DagPayload payload) {
         return Result.ok(dagService.create(payload));
@@ -61,6 +66,8 @@ public class DagController {
 
     @Operation(summary = "更新 DAG")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.UPDATE,
+            resourceId = "#id", resourceName = "#payload.name")
     @PutMapping("/{id}")
     public Result<DagPayload> update(@Parameter(description = "DAG ID") @PathVariable Long id, @RequestBody DagPayload payload) {
         return Result.ok(dagService.update(id, payload));
@@ -68,6 +75,7 @@ public class DagController {
 
     @Operation(summary = "删除 DAG")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "DAG ID") @PathVariable Long id) {
         dagService.delete(id);
@@ -76,6 +84,7 @@ public class DagController {
 
     @Operation(summary = "手动触发 DAG 执行")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.TRIGGER, resourceId = "#id")
     @PostMapping("/{id}/trigger")
     public Result<DagExecutionDTO> trigger(@Parameter(description = "DAG ID") @PathVariable Long id,
                                            @RequestBody(required = false) Map<String, Object> params) {

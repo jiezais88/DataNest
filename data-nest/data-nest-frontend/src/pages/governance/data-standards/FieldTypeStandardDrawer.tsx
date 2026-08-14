@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
+import DsSelect from '@/components/DsSelect';
 import type {FieldTypeStandard} from '@/types/dataStandard';
 
 interface FieldTypeStandardFormData {
@@ -168,17 +169,16 @@ export default function FieldTypeStandardDrawer({
 
                 <div>
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">分类</label>
-                    <select
+                    <DsSelect
                         value={form.category}
-                        onChange={(e) => updateField('category', e.target.value)}
+                        onChange={(v) => updateField('category', v)}
                         disabled={readOnly}
-                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <option value="">请选择分类</option>
                         {CATEGORY_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
-                    </select>
+                    </DsSelect>
                 </div>
 
                 <div>

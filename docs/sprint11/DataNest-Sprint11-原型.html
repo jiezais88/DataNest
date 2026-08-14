@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataNest · Sprint 11 原型（平台安全与调度治理 + 平台体验）</title>
+<link rel="stylesheet" href="DataNest-Sprint11-原型.css">
+</head>
+<body>
+
+<!-- ============ 原型切换条 ============ -->
+<div class="prototype-switch">
+  <span class="switch-badge">Sprint11</span>
+  <button data-view="home" class="active">首页工作台</button>
+  <button data-view="roles">角色管理</button>
+  <button data-view="permission">权限配置</button>
+  <button data-view="audit">审计日志</button>
+  <button data-view="queue">执行队列</button>
+</div>
+
+<!-- ============ 图标库（HeroIcons outline，与 react-icons/hi2 一致） ============ -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></symbol>
+    <symbol id="i-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></symbol>
+    <symbol id="i-bell-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0M3.124 7.5A8.969 8.969 0 015.292 3m13.416 0a8.969 8.969 0 012.168 4.5"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 013 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-check-badge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031.352c-.483-.174-.711-.703-.59-1.202L18.75 4.971zm-16.5.52c.99-.203 1.99-.377 3-.52m2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031.352c-.483-.174-.711-.703-.59-1.202L5.25 4.971z"/></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></symbol>
+    <symbol id="i-magnifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15m7.5-7.5h-15"/></symbol>
+    <symbol id="i-xmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 19.5L8.25 12l7.5-7.5"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.25 4.5l7.5 7.5-7.5 7.5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.281m5.94 2.28l-2.28 5.941"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></symbol>
+    <symbol id="i-datanest-logo" viewBox="0 0 32 32"><defs><linearGradient id="dn-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><polygon points="16,2 28.12,9 28.12,23 16,30 3.88,23 3.88,9" fill="none" stroke="#a5b4fc" stroke-width="1.2" stroke-linejoin="round"/><polygon points="16,6 24.66,11 24.66,21 16,26 7.34,21 7.34,11" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"/><polygon points="16,10 21.20,13 21.20,19 16,22 10.80,19 10.80,13" fill="url(#dn-grad)" stroke="none"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============ 顶部导航（复用模板，各视图引用） ============ -->
+<!-- 注意：每视图独立写导航，保证切换时 active 态正确 -->
+
+<!-- ============================================================
+     View 1：首页数据面板（/）
+     ============================================================ -->
+<div class="view active" data-view="home">
+  <header class="top-nav">
+    <div class="tn-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="tn-brand-text">DataNest</span></div>
+    <nav class="tn-tabs">
+      <a class="tn-tab active"><svg class="hi-sm"><use href="#i-home"/></svg>首页</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bolt"/></svg>数据开发</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-table"/></svg>数据治理</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-terminal"/></svg>数据服务</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bell-alert"/></svg>告警中心</a>
+    </nav>
+    <div class="tn-right">
+      <button class="tn-bell"><svg class="hi"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <div class="tn-user">
+        <span class="tn-avatar">Z</span>
+        <span class="tn-username">zhangw</span>
+        <svg class="hi-sm"><use href="#i-chev-d"/></svg>
+        <div class="user-menu">
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-key"/></svg>修改密码</button>
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-cog"/></svg>系统管理</button>
+          <div class="user-menu-divider"></div>
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-doc"/></svg>退出登录</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout-main full">
+    <div class="page">
+      <div class="home-hero">
+        <div class="home-greet">早上好，zhangw<span class="sub">2026-08-14 星期四 · 欢迎回到 DataNest</span></div>
+        <span class="platform-status"><span class="pdot"></span>平台运行正常</span>
+      </div>
+
+      <!-- ① 核心指标 KPI（症状型 6 卡，置顶第一屏：大数字 + 7 天 sparkline + 环比 delta，整卡可点击） -->
+      <div class="kpi-strip">
+        <div class="kpi-card" title="点击查看执行历史">
+          <div class="kpi-lbl">今日执行成功率</div>
+          <div class="kpi-num">96.4%</div>
+          <div class="spark"><i style="height:52%"></i><i style="height:58%"></i><i style="height:66%"></i><i style="height:60%"></i><i style="height:70%"></i><i style="height:74%"></i><i style="height:84%"></i></div>
+          <span class="kpi-delta good">↑ 较昨日 +1.2%</span>
+        </div>
+        <div class="kpi-card" title="点击查看执行历史（运行中筛选）">
+          <div class="kpi-lbl">运行中任务</div>
+          <div class="kpi-num">12</div>
+          <div class="spark"><i style="height:40%"></i><i style="height:48%"></i><i style="height:44%"></i><i style="height:62%"></i><i style="height:56%"></i><i style="height:66%"></i><i style="height:80%"></i></div>
+          <span class="kpi-delta flat">→ 较昨日 +1</span>
+        </div>
+        <div class="kpi-card" title="点击查看执行历史（失败筛选）">
+          <div class="kpi-lbl">失败待处理</div>
+          <div class="kpi-num">3</div>
+          <div class="spark"><i style="height:30%"></i><i style="height:26%"></i><i style="height:34%"></i><i style="height:22%"></i><i style="height:38%"></i><i style="height:28%"></i><i style="height:40%"></i></div>
+          <span class="kpi-delta good">↓ 较昨日 -2</span>
+        </div>
+        <div class="kpi-card" title="点击查看同步执行历史">
+          <div class="kpi-lbl">同步异常</div>
+          <div class="kpi-num">1</div>
+          <div class="spark"><i style="height:20%"></i><i style="height:20%"></i><i style="height:16%"></i><i style="height:26%"></i><i style="height:16%"></i><i style="height:16%"></i><i style="height:24%"></i></div>
+          <span class="kpi-delta bad">↑ 较昨日 +1</span>
+        </div>
+        <div class="kpi-card" title="点击查看告警中心">
+          <div class="kpi-lbl">告警中</div>
+          <div class="kpi-num">2</div>
+          <div class="spark"><i style="height:36%"></i><i style="height:24%"></i><i style="height:40%"></i><i style="height:20%"></i><i style="height:28%"></i><i style="height:40%"></i><i style="height:30%"></i></div>
+          <span class="kpi-delta flat">→ 较昨日 持平</span>
+        </div>
+        <div class="kpi-card" title="点击查看数据质量">
+          <div class="kpi-lbl">质量严重</div>
+          <div class="kpi-num">1</div>
+          <div class="spark"><i style="height:16%"></i><i style="height:16%"></i><i style="height:12%"></i><i style="height:20%"></i><i style="height:12%"></i><i style="height:16%"></i><i style="height:20%"></i></div>
+          <span class="kpi-delta good">↓ 较昨日 -1</span>
+        </div>
+      </div>
+
+      <!-- ②③④ 首屏行动层：需要你关注（左 2/3，图表区之前） + 右栏（系统健康/快捷入口/最近工作） -->
+      <div class="home-grid-v2">
+        <div class="attention-card has-alert" id="attention-card">
+          <div class="attention-head">
+            <h3><svg class="hi-sm"><use href="#i-bell-alert"/></svg>需要你关注<span class="sub">你的任务与负责的表</span></h3>
+            <div class="attention-head-right">
+              <span class="count" id="attention-count">3</span>
+              <button class="demo-toggle" onclick="toggleAttentionDemo()">演示空态</button>
+            </div>
+          </div>
+          <div class="attention-body" id="attention-has">
+            <div class="attention-item" title="点击查看 DAG 执行历史">
+              <span class="badge danger"><span class="bdot"></span>严重</span>
+              <div class="attention-text">DAG <b>etl_mart_hourly</b> 执行失败</div>
+              <span class="attention-time">3 小时前</span>
+              <div class="attention-actions">
+                <button class="btn-mini"><svg class="hi-sm"><use href="#i-refresh"/></svg>重跑</button>
+                <button class="attention-go">去处理<svg class="hi-sm"><use href="#i-chev-r"/></svg></button>
+              </div>
+            </div>
+            <div class="attention-item escalated" title="超过 4 小时未处理，已超时升级">
+              <span class="badge danger"><span class="bdot"></span>严重</span>
+              <div class="attention-text">同步 <b>job_user_sync</b> 执行失败<span class="esc-tag">超 4 小时未处理</span></div>
+              <span class="attention-time">5 小时前</span>
+              <div class="attention-actions">
+                <button class="btn-mini"><svg class="hi-sm"><use href="#i-refresh"/></svg>重跑</button>
+                <button class="attention-go">去处理<svg class="hi-sm"><use href="#i-chev-r"/></svg></button>
+              </div>
+            </div>
+            <div class="attention-item" title="点击查看质量检查结果">
+              <span class="badge warning"><span class="bdot"></span>警告</span>
+              <div class="attention-text">表 <b>user_core</b> 完整率 82.4% 低于阈值</div>
+              <span class="attention-time">10 分钟前</span>
+              <div class="attention-actions">
+                <button class="attention-go">去处理<svg class="hi-sm"><use href="#i-chev-r"/></svg></button>
+              </div>
+            </div>
+            <button class="attention-more">+1 条更多<svg class="hi-sm"><use href="#i-chev-d"/></svg></button>
+          </div>
+          <div class="attention-empty" id="attention-empty" style="display:none">
+            <svg class="hi"><use href="#i-check-badge"/></svg>
+            <span>一切正常，暂无需要处理的事项。</span>
+          </div>
+        </div>
+
+        <div class="rail-stack">
+          <!-- ③ 系统健康（聚合 widget） -->
+          <div class="home-card">
+            <div class="home-card-head"><h3><svg class="hi-sm"><use href="#i-shield-check"/></svg>系统健康</h3></div>
+            <div class="home-card-body" style="padding-top:8px;padding-bottom:8px">
+              <div class="hl-row"><span class="health-dot ok"></span><span class="hl-name">中间件</span><span class="hl-desc">PG / MySQL</span><span class="hl-state">正常</span></div>
+              <div class="hl-row"><span class="health-dot ok"></span><span class="hl-name">调度</span><span class="hl-desc">PowerJob</span><span class="hl-state">正常</span></div>
+              <div class="hl-row"><span class="health-dot ok"></span><span class="hl-name">实时</span><span class="hl-desc">Flink</span><span class="hl-state">正常</span></div>
+              <div class="hl-row"><span class="health-dot ok"></span><span class="hl-name">应用服务</span><span class="hl-desc">6 个服务</span><span class="hl-state">正常</span></div>
+            </div>
+            <div class="health-foot"><span>影响中事件 <b>0</b></span><button class="attention-go">查看详情<svg class="hi-sm"><use href="#i-chev-r"/></svg></button></div>
+          </div>
+          <!-- ④ 快捷入口（按角色权限） -->
+          <div class="home-card">
+            <div class="home-card-head"><h3><svg class="hi-sm"><use href="#i-bolt"/></svg>快捷入口</h3><span class="cell-muted" style="font-size:12px">按角色</span></div>
+            <div class="home-card-body">
+              <div class="quick-grid">
+                <button class="quick-item"><svg class="hi-sm"><use href="#i-plus"/></svg>新建同步任务</button>
+                <button class="quick-item"><svg class="hi-sm"><use href="#i-terminal"/></svg>SQL 查询终端</button>
+                <button class="quick-item"><svg class="hi-sm"><use href="#i-folder"/></svg>新建 DAG</button>
+                <button class="quick-item"><svg class="hi-sm"><use href="#i-magnifier"/></svg>搜索数据资产</button>
+              </div>
+            </div>
+          </div>
+          <!-- ⑤ 最近工作（复访动线） -->
+          <div class="home-card">
+            <div class="home-card-head"><h3><svg class="hi-sm"><use href="#i-clock"/></svg>最近工作</h3></div>
+            <div class="home-card-body" style="padding-top:6px;padding-bottom:6px">
+              <div class="work-item" title="打开 DAG etl_daily">
+                <span class="work-ic dag"><svg class="hi-sm"><use href="#i-folder"/></svg></span>
+                <div><div class="work-title">etl_daily</div><div class="work-meta">DAG · 今天 08:12</div></div>
+              </div>
+              <div class="work-item" title="打开表 user_core">
+                <span class="work-ic asset"><svg class="hi-sm"><use href="#i-table"/></svg></span>
+                <div><div class="work-title">user_core</div><div class="work-meta">数据表 · 昨天 17:40</div></div>
+              </div>
+              <div class="work-item" title="打开同步任务 job_ods">
+                <span class="work-ic sql"><svg class="hi-sm"><use href="#i-swap"/></svg></span>
+                <div><div class="work-title">job_ods</div><div class="work-meta">同步任务 · 昨天 15:03</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑥ 诊断图表区（拆解层，第二屏） -->
+      <div class="chart-grid">
+        <div class="home-card">
+          <div class="home-card-head">
+            <h3><svg class="hi-sm"><use href="#i-chart"/></svg>近 7 天任务执行趋势</h3>
+            <div class="chart-filters">
+              <button class="cf-btn active">全部</button><button class="cf-btn">同步</button><button class="cf-btn">采集</button><button class="cf-btn">DAG</button>
+            </div>
+          </div>
+          <div class="home-card-body">
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot ok"></span>成功</span>
+              <span class="legend-item"><span class="legend-dot fail"></span>失败</span>
+              <span class="legend-item"><span class="legend-dot term"></span>终止</span>
+            </div>
+            <div class="trend-bars">
+              <div class="tbar" title="点击查看周一执行历史"><div class="tbar-group"><div class="tbar-s" style="height:78%"></div><div class="tbar-f" style="height:8%"></div><div class="tbar-t" style="height:3%"></div></div><span class="tbar-lbl">周一</span></div>
+              <div class="tbar" title="点击查看周二执行历史"><div class="tbar-group"><div class="tbar-s" style="height:88%"></div><div class="tbar-f" style="height:6%"></div><div class="tbar-t" style="height:2%"></div></div><span class="tbar-lbl">周二</span></div>
+              <div class="tbar" title="点击查看周三执行历史"><div class="tbar-group"><div class="tbar-s" style="height:64%"></div><div class="tbar-f" style="height:18%"></div><div class="tbar-t" style="height:5%"></div></div><span class="tbar-lbl">周三</span></div>
+              <div class="tbar" title="点击查看周四执行历史"><div class="tbar-group"><div class="tbar-s" style="height:92%"></div><div class="tbar-f" style="height:4%"></div><div class="tbar-t" style="height:2%"></div></div><span class="tbar-lbl">周四</span></div>
+              <div class="tbar" title="点击查看周五执行历史"><div class="tbar-group"><div class="tbar-s" style="height:82%"></div><div class="tbar-f" style="height:9%"></div><div class="tbar-t" style="height:4%"></div></div><span class="tbar-lbl">周五</span></div>
+              <div class="tbar" title="点击查看周六执行历史"><div class="tbar-group"><div class="tbar-s" style="height:50%"></div><div class="tbar-f" style="height:10%"></div><div class="tbar-t" style="height:4%"></div></div><span class="tbar-lbl">周六</span></div>
+              <div class="tbar" title="点击查看周日执行历史"><div class="tbar-group"><div class="tbar-s" style="height:58%"></div><div class="tbar-f" style="height:14%"></div><div class="tbar-t" style="height:5%"></div></div><span class="tbar-lbl">周日</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="home-card">
+          <div class="home-card-head"><h3><svg class="hi-sm"><use href="#i-server"/></svg>数据源类型分布</h3><span class="cell-muted" style="font-size:12px">数据表总量 <b style="color:rgb(15 23 42)">1,284</b></span></div>
+          <div class="home-card-body">
+            <div class="dist-row"><span class="dist-name">MySQL</span><div class="dist-track"><div class="dist-fill mysql" style="width:42%"></div></div><span class="dist-count">5</span></div>
+            <div class="dist-row"><span class="dist-name">PostgreSQL</span><div class="dist-track"><div class="dist-fill postgresql" style="width:25%"></div></div><span class="dist-count">3</span></div>
+            <div class="dist-row"><span class="dist-name">Doris</span><div class="dist-track"><div class="dist-fill doris" style="width:8%"></div></div><span class="dist-count">1</span></div>
+            <div class="dist-row"><span class="dist-name">其他</span><div class="dist-track"><div class="dist-fill other" style="width:25%"></div></div><span class="dist-count">3</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 2：角色管理（系统管理 → 角色管理）
+     ============================================================ -->
+<div class="view" data-view="roles">
+  <header class="top-nav">
+    <div class="tn-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="tn-brand-text">DataNest</span></div>
+    <nav class="tn-tabs">
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-home"/></svg>首页</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bolt"/></svg>数据开发</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-table"/></svg>数据治理</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-terminal"/></svg>数据服务</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bell-alert"/></svg>告警中心</a>
+    </nav>
+    <div class="tn-right">
+      <button class="tn-bell"><svg class="hi"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <div class="tn-user open">
+        <span class="tn-avatar">Z</span>
+        <span class="tn-username">zhangw</span>
+        <svg class="hi-sm"><use href="#i-chev-d"/></svg>
+        <div class="user-menu">
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-key"/></svg>修改密码</button>
+          <button class="user-menu-item" style="background:rgb(238 242 255);color:rgb(79 70 229)"><svg class="hi-sm"><use href="#i-cog"/></svg>系统管理</button>
+          <div class="user-menu-divider"></div>
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-doc"/></svg>退出登录</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <aside class="side-nav">
+    <div class="sn-title">系统管理</div>
+    <a class="sn-item"><svg class="hi"><use href="#i-users"/></svg>用户管理</a>
+    <a class="sn-item active"><svg class="hi"><use href="#i-shield-check"/></svg>角色管理</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-lock"/></svg>权限配置</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-doc"/></svg>审计日志</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-queue"/></svg>执行队列</a>
+  </aside>
+
+  <div class="layout-main">
+    <div class="page">
+      <div class="page-head">
+        <div><h1>角色管理</h1><div class="head-sub">预置 4 个角色权限固定；自定义角色可创建、编辑、删除，功能权限细化到按钮级</div></div>
+        <div class="head-actions"><button class="btn btn-primary" onclick="openModal('role-modal')"><svg class="hi-sm"><use href="#i-plus"/></svg>创建角色</button></div>
+      </div>
+
+      <div class="table-card">
+        <table class="proto-table">
+          <thead><tr><th>角色名称</th><th>类型</th><th>权限概览</th><th style="width:140px">操作</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-strong">超级管理员</td><td><span class="badge accent">预置</span></td><td class="cell-muted">全部功能</td><td><button class="icon-btn" title="查看详情"><svg class="hi-sm"><use href="#i-eye"/></svg></button></td></tr>
+            <tr><td class="cell-strong">数据工程师</td><td><span class="badge accent">预置</span></td><td class="cell-muted">数据源 / 同步 / DAG / SQL / 数据 API</td><td><button class="icon-btn" title="查看详情"><svg class="hi-sm"><use href="#i-eye"/></svg></button></td></tr>
+            <tr><td class="cell-strong">数据分析师</td><td><span class="badge accent">预置</span></td><td class="cell-muted">SQL 查询 / 资产目录</td><td><button class="icon-btn" title="查看详情"><svg class="hi-sm"><use href="#i-eye"/></svg></button></td></tr>
+            <tr><td class="cell-strong">治理管理员</td><td><span class="badge accent">预置</span></td><td class="cell-muted">元数据 / 标准 / 质量 / 分级分类</td><td><button class="icon-btn" title="查看详情"><svg class="hi-sm"><use href="#i-eye"/></svg></button></td></tr>
+            <tr><td class="cell-strong">只读审计员</td><td><span class="badge pending">自定义</span></td><td class="cell-muted">资产目录查看</td><td><button class="icon-btn" onclick="openModal('role-modal')"><svg class="hi-sm"><use href="#i-pencil"/></svg></button><button class="icon-btn danger"><svg class="hi-sm"><use href="#i-trash"/></svg></button></td></tr>
+            <tr><td class="cell-strong">外部供应商</td><td><span class="badge pending">自定义</span></td><td class="cell-muted">SQL 查询（限定数据源）</td><td><button class="icon-btn" onclick="openModal('role-modal')"><svg class="hi-sm"><use href="#i-pencil"/></svg></button><button class="icon-btn danger"><svg class="hi-sm"><use href="#i-trash"/></svg></button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 3：权限配置（系统管理 → 权限配置）
+     ============================================================ -->
+<div class="view" data-view="permission">
+  <header class="top-nav">
+    <div class="tn-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="tn-brand-text">DataNest</span></div>
+    <nav class="tn-tabs">
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-home"/></svg>首页</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bolt"/></svg>数据开发</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-table"/></svg>数据治理</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-terminal"/></svg>数据服务</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bell-alert"/></svg>告警中心</a>
+    </nav>
+    <div class="tn-right">
+      <button class="tn-bell"><svg class="hi"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <div class="tn-user open">
+        <span class="tn-avatar">Z</span>
+        <span class="tn-username">zhangw</span>
+        <svg class="hi-sm"><use href="#i-chev-d"/></svg>
+        <div class="user-menu">
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-key"/></svg>修改密码</button>
+          <button class="user-menu-item" style="background:rgb(238 242 255);color:rgb(79 70 229)"><svg class="hi-sm"><use href="#i-cog"/></svg>系统管理</button>
+          <div class="user-menu-divider"></div>
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-doc"/></svg>退出登录</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <aside class="side-nav">
+    <div class="sn-title">系统管理</div>
+    <a class="sn-item"><svg class="hi"><use href="#i-users"/></svg>用户管理</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-shield-check"/></svg>角色管理</a>
+    <a class="sn-item active"><svg class="hi"><use href="#i-lock"/></svg>权限配置</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-doc"/></svg>审计日志</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-queue"/></svg>执行队列</a>
+  </aside>
+
+  <div class="layout-main">
+    <div class="page">
+      <div class="page-head">
+        <div><h1>权限配置</h1><div class="head-sub">按角色配置数据源 / 库 / 表三级访问权限；默认全量可见，取消勾选即收缩</div></div>
+      </div>
+
+      <div class="perm-layout">
+        <div class="perm-side">
+          <div class="perm-side-title">选择角色</div>
+          <div class="perm-role"><svg class="hi-sm"><use href="#i-shield-check"/></svg>超级管理员<span class="tag">预置</span></div>
+          <div class="perm-role"><svg class="hi-sm"><use href="#i-shield-check"/></svg>数据工程师<span class="tag">预置</span></div>
+          <div class="perm-role active"><svg class="hi-sm"><use href="#i-shield-check"/></svg>数据分析师<span class="tag">预置</span></div>
+          <div class="perm-role"><svg class="hi-sm"><use href="#i-shield-check"/></svg>治理管理员<span class="tag">预置</span></div>
+          <div class="perm-role"><svg class="hi-sm"><use href="#i-shield-check"/></svg>只读审计员<span class="tag">自定义</span></div>
+          <div class="perm-role"><svg class="hi-sm"><use href="#i-shield-check"/></svg>外部供应商<span class="tag">自定义</span></div>
+        </div>
+
+        <div class="perm-main">
+          <div class="perm-tree-card">
+            <div class="perm-tree-head">
+              <span class="ttl">数据分析师 · 数据源访问权限</span>
+              <div class="head-actions">
+                <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px">全选</button>
+                <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px">全不选</button>
+              </div>
+            </div>
+            <div class="perm-tree-body">
+              <div class="tree-node">
+                <div class="tree-row"><svg class="chev open"><use href="#i-chev-r"/></svg><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📦 doris-production<span class="ds-type">Doris</span></span></div>
+                <div class="tree-children">
+                  <div class="tree-row"><svg class="chev open"><use href="#i-chev-r"/></svg><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📂 ods_db</span></div>
+                  <div class="tree-children" style="margin-left:24px;border-left:none;padding-left:24px">
+                    <div class="tree-row"><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📄 user_core</span></div>
+                    <div class="tree-row"><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📄 order_fact</span></div>
+                  </div>
+                  <div class="tree-row"><svg class="chev"><use href="#i-chev-r"/></svg><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📂 dwd_db</span></div>
+                </div>
+              </div>
+              <div class="tree-node">
+                <div class="tree-row"><svg class="chev open"><use href="#i-chev-r"/></svg><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📦 mysql-biz<span class="ds-type">MySQL</span></span></div>
+                <div class="tree-children">
+                  <div class="tree-row"><svg class="chev open"><use href="#i-chev-r"/></svg><span class="tree-check half"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📂 business_db</span></div>
+                  <div class="tree-children" style="margin-left:24px;border-left:none;padding-left:24px">
+                    <div class="tree-row"><span class="tree-check checked"><svg class="hi-sm"><use href="#i-check"/></svg></span><span class="tree-name">📄 product</span></div>
+                    <div class="tree-row"><span class="tree-check disabled"><svg class="hi-sm"><use href="#i-lock"/></svg></span><span class="tree-name">📄 user_payment</span><span class="tree-lock"><svg class="hi-sm"><use href="#i-lock"/></svg></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="tree-node">
+                <div class="tree-row"><svg class="chev"><use href="#i-chev-r"/></svg><span class="tree-check"><svg class="hi-sm"></svg></span><span class="tree-name" style="color:rgb(var(--color-text-muted))">📦 pg-analytics<span class="ds-type">PostgreSQL</span></span></div>
+              </div>
+            </div>
+            <div class="modal-foot" style="border-top:1px solid rgb(var(--color-border-subtle))">
+              <button class="btn btn-secondary">取消</button>
+              <button class="btn btn-primary">保存权限配置</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 4：审计日志（系统管理 → 审计日志）
+     ============================================================ -->
+<div class="view" data-view="audit">
+  <header class="top-nav">
+    <div class="tn-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="tn-brand-text">DataNest</span></div>
+    <nav class="tn-tabs">
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-home"/></svg>首页</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bolt"/></svg>数据开发</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-table"/></svg>数据治理</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-terminal"/></svg>数据服务</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bell-alert"/></svg>告警中心</a>
+    </nav>
+    <div class="tn-right">
+      <button class="tn-bell"><svg class="hi"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <div class="tn-user open">
+        <span class="tn-avatar">Z</span>
+        <span class="tn-username">zhangw</span>
+        <svg class="hi-sm"><use href="#i-chev-d"/></svg>
+        <div class="user-menu">
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-key"/></svg>修改密码</button>
+          <button class="user-menu-item" style="background:rgb(238 242 255);color:rgb(79 70 229)"><svg class="hi-sm"><use href="#i-cog"/></svg>系统管理</button>
+          <div class="user-menu-divider"></div>
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-doc"/></svg>退出登录</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <aside class="side-nav">
+    <div class="sn-title">系统管理</div>
+    <a class="sn-item"><svg class="hi"><use href="#i-users"/></svg>用户管理</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-shield-check"/></svg>角色管理</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-lock"/></svg>权限配置</a>
+    <a class="sn-item active"><svg class="hi"><use href="#i-doc"/></svg>审计日志</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-queue"/></svg>执行队列</a>
+  </aside>
+
+  <div class="layout-main">
+    <div class="page">
+      <div class="page-head">
+        <div><h1>审计日志</h1><div class="head-sub">关键操作留痕可查，只增不改不删，保留 90 天</div></div>
+      </div>
+
+      <div class="table-card">
+        <div class="card-toolbar">
+          <div class="search-input"><svg class="hi-sm"><use href="#i-magnifier"/></svg><input placeholder="搜索操作人"></div>
+          <div class="filter-select"><select><option>全部操作类型</option><option>SQL 查询</option><option>创建</option><option>删除</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+          <div class="filter-select"><select><option>全部资源类型</option><option>数据源</option><option>同步任务</option><option>DAG</option></select><svg class="chev"><use href="#i-chev-d"/></svg></div>
+          <div class="actions">
+            <button class="btn btn-secondary">重置</button>
+            <button class="btn btn-primary">查询</button>
+          </div>
+        </div>
+        <table class="proto-table">
+          <thead><tr><th>操作时间</th><th>操作人</th><th>操作类型</th><th>资源</th><th>内容摘要</th><th>结果</th><th>IP</th></tr></thead>
+          <tbody>
+            <tr onclick="openDrawer('audit-drawer')" style="cursor:pointer"><td class="cell-muted">08-14 14:32:01</td><td class="cell-strong">admin</td><td class="cell-sec">创建用户</td><td class="cell-muted">用户：liuq</td><td class="cell-muted">角色：数据工程师</td><td><span class="badge success">成功</span></td><td class="cell-muted">10.0.0.1</td></tr>
+            <tr onclick="openDrawer('audit-drawer')" style="cursor:pointer"><td class="cell-muted">08-14 14:30:15</td><td class="cell-strong">zhangw</td><td class="cell-sec">SQL 查询</td><td class="cell-muted">数据源:doris</td><td class="cell-muted">SELECT * FROM user_core...</td><td><span class="badge success">成功</span></td><td class="cell-muted">10.0.0.2</td></tr>
+            <tr class="row-failed" onclick="openDrawer('audit-drawer')" style="cursor:pointer"><td class="cell-muted">08-14 14:28:03</td><td class="cell-strong">zhangw</td><td class="cell-sec">SQL 查询</td><td class="cell-muted">数据源:doris</td><td class="cell-muted">SELECT * FROM user_payment...</td><td><span class="badge danger">失败</span></td><td class="cell-muted">10.0.0.2</td></tr>
+            <tr onclick="openDrawer('audit-drawer')" style="cursor:pointer"><td class="cell-muted">08-14 13:15:40</td><td class="cell-strong">admin</td><td class="cell-sec">改级</td><td class="cell-muted">doris.user_payment</td><td class="cell-muted">内部 → 机密</td><td><span class="badge success">成功</span></td><td class="cell-muted">10.0.0.1</td></tr>
+            <tr onclick="openDrawer('audit-drawer')" style="cursor:pointer"><td class="cell-muted">08-14 11:02:18</td><td class="cell-strong">lisi</td><td class="cell-sec">创建队列</td><td class="cell-muted">队列：critical</td><td class="cell-muted">最大并发 5</td><td><span class="badge success">成功</span></td><td class="cell-muted">10.0.0.3</td></tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <div class="pg-info"><span>共 1,240 条</span><span>每页 20 条</span></div>
+          <div class="pg-pages"><button class="pg-btn" disabled><svg class="hi-sm"><use href="#i-chev-l"/></svg></button><button class="pg-btn active">1</button><button class="pg-btn">2</button><button class="pg-btn">3</button><button class="pg-btn">...</button><button class="pg-btn">62</button><button class="pg-btn"><svg class="hi-sm"><use href="#i-chev-r"/></svg></button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     View 5：执行队列（系统管理 → 执行队列）
+     ============================================================ -->
+<div class="view" data-view="queue">
+  <header class="top-nav">
+    <div class="tn-brand"><svg class="logo-mark"><use href="#i-datanest-logo"/></svg><span class="tn-brand-text">DataNest</span></div>
+    <nav class="tn-tabs">
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-home"/></svg>首页</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bolt"/></svg>数据开发</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-table"/></svg>数据治理</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-circle"/></svg>数据资产</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-terminal"/></svg>数据服务</a>
+      <a class="tn-tab"><svg class="hi-sm"><use href="#i-bell-alert"/></svg>告警中心</a>
+    </nav>
+    <div class="tn-right">
+      <button class="tn-bell"><svg class="hi"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <div class="tn-user open">
+        <span class="tn-avatar">Z</span>
+        <span class="tn-username">zhangw</span>
+        <svg class="hi-sm"><use href="#i-chev-d"/></svg>
+        <div class="user-menu">
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-key"/></svg>修改密码</button>
+          <button class="user-menu-item" style="background:rgb(238 242 255);color:rgb(79 70 229)"><svg class="hi-sm"><use href="#i-cog"/></svg>系统管理</button>
+          <div class="user-menu-divider"></div>
+          <button class="user-menu-item"><svg class="hi-sm"><use href="#i-doc"/></svg>退出登录</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <aside class="side-nav">
+    <div class="sn-title">系统管理</div>
+    <a class="sn-item"><svg class="hi"><use href="#i-users"/></svg>用户管理</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-shield-check"/></svg>角色管理</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-lock"/></svg>权限配置</a>
+    <a class="sn-item"><svg class="hi"><use href="#i-doc"/></svg>审计日志</a>
+    <a class="sn-item active"><svg class="hi"><use href="#i-queue"/></svg>执行队列</a>
+  </aside>
+
+  <div class="layout-main">
+    <div class="page">
+      <div class="page-head">
+        <div><h1>执行队列</h1><div class="head-sub">管理员定义队列与最大并发，DAG 绑定队列后按优先级调度</div></div>
+        <div class="head-actions"><button class="btn btn-primary" onclick="openModal('queue-modal')"><svg class="hi-sm"><use href="#i-plus"/></svg>创建队列</button></div>
+      </div>
+
+      <div class="table-card">
+        <table class="proto-table">
+          <thead><tr><th>队列名称</th><th>最大并发</th><th>当前运行</th><th>等待任务</th><th>绑定 DAG</th><th style="width:140px">操作</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-strong">default<span class="cell-muted" style="font-size:11px;margin-left:6px">系统默认</span></td><td class="cell-sec">10</td><td><span class="badge running"><span class="bdot"></span>3</span></td><td class="cell-sec">0</td><td class="cell-sec">12</td><td><button class="icon-btn" onclick="openModal('queue-modal')"><svg class="hi-sm"><use href="#i-pencil"/></svg></button></td></tr>
+            <tr><td class="cell-strong">critical</td><td class="cell-sec">5</td><td><span class="badge running"><span class="bdot"></span>2</span></td><td class="cell-sec">1</td><td class="cell-sec">3</td><td><button class="icon-btn" onclick="openModal('queue-modal')"><svg class="hi-sm"><use href="#i-pencil"/></svg></button><button class="icon-btn danger"><svg class="hi-sm"><use href="#i-trash"/></svg></button></td></tr>
+            <tr><td class="cell-strong">batch-test</td><td class="cell-sec">3</td><td><span class="badge pending">0</span></td><td class="cell-sec">0</td><td class="cell-sec">5</td><td><button class="icon-btn" onclick="openModal('queue-modal')"><svg class="hi-sm"><use href="#i-pencil"/></svg></button><button class="icon-btn danger"><svg class="hi-sm"><use href="#i-trash"/></svg></button></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="home-card" style="margin-top:16px">
+        <div class="home-card-head"><h3><svg class="hi-sm"><use href="#i-bolt"/></svg>队列调度说明</h3></div>
+        <div class="home-card-body" style="font-size:.8125rem;color:rgb(var(--color-text-secondary));line-height:1.7">
+          · 同一队列内执行顺序：<b>高 &gt; 中 &gt; 低</b>，相同优先级按提交时间先到先执行<br>
+          · 队列达到最大并发时，新提交任务进入等待队列<br>
+          · DAG 在创建/编辑时选择执行队列与优先级
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹窗：创建/编辑角色 ============ -->
+<div class="modal-mask" id="role-modal">
+  <div class="modal" style="width:640px">
+    <div class="modal-head"><h3>创建角色</h3><button class="icon-btn" onclick="closeModal('role-modal')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label class="form-label">角色名称<span class="req">*</span></label>
+        <input class="form-input" placeholder="如：只读审计员">
+      </div>
+      <div class="form-row">
+        <label class="form-label">角色编码（code）<span class="req">*</span></label>
+        <input class="form-input" placeholder="英文可读编码，如 VENDOR_READONLY">
+        <div class="form-hint">全局唯一，创建后不可修改</div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">描述</label>
+        <textarea class="form-textarea" placeholder="不超过 100 字"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">功能权限<span class="req">*</span></label>
+        <div class="perm-quick">
+          <button class="btn btn-secondary">查看档</button>
+          <button class="btn btn-secondary">全部档</button>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check checked" style="width:16px;height:16px"><svg class="hi-sm"><use href="#i-check"/></svg></span>数据源管理</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看</span><span class="perm-chip on">新建</span><span class="perm-chip on">编辑</span><span class="perm-chip on">删除</span><span class="perm-chip">测试连接</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check checked" style="width:16px;height:16px"><svg class="hi-sm"><use href="#i-check"/></svg></span>批量同步任务</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看</span><span class="perm-chip on">新建</span><span class="perm-chip on">编辑</span><span class="perm-chip">删除</span><span class="perm-chip">启动·停止执行</span><span class="perm-chip">查看执行历史</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check" style="width:16px;height:16px"></span>CDC 管道</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看</span><span class="perm-chip">新建</span><span class="perm-chip">编辑</span><span class="perm-chip">删除</span><span class="perm-chip">启动·停止</span><span class="perm-chip">查看监控</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check" style="width:16px;height:16px"></span>DAG 编排</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看</span><span class="perm-chip">新建</span><span class="perm-chip">编辑</span><span class="perm-chip">删除</span><span class="perm-chip">手动触发</span><span class="perm-chip">查看执行历史</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check checked" style="width:16px;height:16px"><svg class="hi-sm"><use href="#i-check"/></svg></span>SQL 查询终端</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">执行查询</span><span class="perm-chip on">导出结果</span><span class="perm-chip">查看查询历史</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check" style="width:16px;height:16px"></span>元数据</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看</span><span class="perm-chip">编辑注释</span><span class="perm-chip">查看血缘</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check" style="width:16px;height:16px"></span>资产目录</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看</span><span class="perm-chip">收藏·关注</span><span class="perm-chip">评论</span></div></div>
+        </div>
+        <div class="perm-group">
+          <div class="perm-group-head"><span class="tree-check" style="width:16px;height:16px"></span>告警中心</div>
+          <div class="perm-group-body"><div class="perm-actions"><span class="perm-chip on">查看告警</span><span class="perm-chip">新建·编辑规则</span><span class="perm-chip">停用·启用规则</span></div></div>
+        </div>
+        <div class="form-hint">用户管理、角色管理、权限配置、审计日志、执行队列等平台管理能力仅超级管理员可用，不开放给自定义角色</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('role-modal')">取消</button>
+      <button class="btn btn-primary" onclick="closeModal('role-modal')">创建角色</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹窗：创建队列 ============ -->
+<div class="modal-mask" id="queue-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-head"><h3>创建队列</h3><button class="icon-btn" onclick="closeModal('queue-modal')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label class="form-label">队列名称<span class="req">*</span></label>
+        <input class="form-input" placeholder="仅字母数字中横线，不超过 32 字符">
+      </div>
+      <div class="form-row">
+        <label class="form-label">最大并发数<span class="req">*</span></label>
+        <input class="form-input" type="number" value="5" min="1" max="50">
+        <div class="form-hint">1~50；超出并发的任务进入等待队列</div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">描述</label>
+        <textarea class="form-textarea" placeholder="可选，不超过 100 字"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('queue-modal')">取消</button>
+      <button class="btn btn-primary" onclick="closeModal('queue-modal')">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 审计详情抽屉 ============ -->
+<div class="drawer-mask" id="audit-drawer" onclick="closeDrawer('audit-drawer')"></div>
+<div class="drawer" id="audit-drawer-panel">
+  <div class="drawer-head"><h3>审计详情</h3><button class="icon-btn" onclick="closeDrawer('audit-drawer')"><svg class="hi"><use href="#i-xmark"/></svg></button></div>
+  <div class="drawer-body">
+    <div class="detail-row"><span class="lbl">操作时间</span><span class="val">2026-08-14 14:28:03.412</span></div>
+    <div class="detail-row"><span class="lbl">操作人</span><span class="val">zhangw</span></div>
+    <div class="detail-row"><span class="lbl">操作类型</span><span class="val">SQL 查询</span></div>
+    <div class="detail-row"><span class="lbl">资源类型</span><span class="val">数据源</span></div>
+    <div class="detail-row"><span class="lbl">资源名称</span><span class="val">doris-production</span></div>
+    <div class="detail-row" style="display:block"><span class="lbl">执行 SQL</span>
+      <div class="sql-block">SELECT customer_id, phone, id_card FROM user_payment
+WHERE created_at &gt; '2026-01-01' LIMIT 10000</div>
+    </div>
+    <div class="detail-row"><span class="lbl">执行结果</span><span class="val" style="color:rgb(var(--color-danger))">失败</span></div>
+    <div class="detail-row"><span class="lbl">失败原因</span><span class="val">表 user_payment 为「机密」级别，当前用户暂无访问权限</span></div>
+    <div class="detail-row"><span class="lbl">客户端 IP</span><span class="val">10.0.0.2</span></div>
+  </div>
+</div>
+
+<script src="DataNest-Sprint11-原型.js"></script>
+</body>
+</html>

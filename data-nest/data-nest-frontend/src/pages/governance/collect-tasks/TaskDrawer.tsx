@@ -7,6 +7,7 @@ import {getDataSourceSchemas} from '@/api/engineering';
 import Drawer from '@/components/Drawer';
 import CronPicker from '@/components/CronPicker';
 import DsButton from '@/components/DsButton';
+import DsSelect from '@/components/DsSelect';
 
 interface TaskFormData {
     name: string;
@@ -207,12 +208,11 @@ export default function TaskDrawer({open, mode = 'create', editItem, dataSources
                     <label className="block text-ds-small font-semibold text-ds-text-secondary mb-ds-1.5">
                         数据源 <span className="text-ds-danger">*</span>
                     </label>
-                    <select
+                    <DsSelect
                         data-testid="collect-task-datasource"
                         value={form.datasourceId}
-                        onChange={(e) => handleDatasourceChange(e.target.value)}
+                        onChange={handleDatasourceChange}
                         disabled={readOnly}
-                        className="w-full px-ds-3 py-ds-2 bg-white border border-ds-border-subtle rounded-ds-sm text-ds-body text-ds-text-primary focus:outline-none focus-visible:border-ds-accent focus-visible:ring-1 focus-visible:ring-ds-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         <option value="">请选择</option>
                         {dataSources.map((ds) => (
@@ -220,7 +220,7 @@ export default function TaskDrawer({open, mode = 'create', editItem, dataSources
                                 {ds.name} ({ds.host}:{ds.port}/{ds.databaseName})
                             </option>
                         ))}
-                    </select>
+                    </DsSelect>
                     {errors.datasourceId &&
                         <p className="mt-ds-1 text-ds-nano text-ds-danger">{errors.datasourceId}</p>}
                 </div>

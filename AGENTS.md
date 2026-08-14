@@ -105,6 +105,8 @@ DataNest 是一个数据平台。架构详情、模块/容器清单、服务间�
 - **Doris 是外部主机**（不在 compose 里）；Addax 排查第一现场是 worker 容器内 `/opt/addax/log/sync_{id}.log` 与 `/opt/addax/job/job_sync_{id}.json`。
 - **docker exec 传 heredoc/管道 SQL 必须加 `-i`**，否则 stdin 关闭、SQL 一条不执行且返回成功。
 - **无库服务（worker/job）必须排除 DataSource 系自动配置**，否则启动报 `Failed to configure a DataSource`。
+- **Git Bash 下跑 Maven 用 classworlds 包装启动**（Bash 禁调 `cmd.exe`，裸 `mvn` sh 脚本会把 MAVEN_HOME 解析成 `/d/...` 导致找不到 classworlds）：`java -classpath "D:/apache-maven-3.9.16/boot/plexus-classworlds-2.11.0.jar" -Dmaven.home="D:/apache-maven-3.9.16" -Dmaven.multiModuleProjectDirectory="D:/Desktop/Data Platform/data-nest" -Dclassworlds.conf="D:/apache-maven-3.9.16/bin/m2.conf" org.codehaus.plexus.classworlds.launcher.Launcher <mvn args>`（Java 25 在 PATH，路径含空格需整体引号；示例：`... Launcher install -DskipTests -pl data-nest-libs/data-nest-common,data-nest-apis/data-nest-system-api,data-nest-services/data-nest-system -am`）。
+- **Spring Boot 4 的 AOP starter 已更名 `spring-boot-starter-aspectj`**（原 `spring-boot-starter-aop` 在 4.x BOM 已移除，声明旧名报 version missing）；切面类装配用 `@ConditionalOnClass(name={"org.aspectj.lang.annotation.Aspect","cn.dev33.satoken.stp.StpUtil"})` 避免无 AOP/无 sa-token 服务（gateway/worker/job）误加载。
 
 ### 告警
 

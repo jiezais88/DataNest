@@ -8,6 +8,7 @@ import {queryCollectTasks} from '@/api/collect';
 import {querySyncJobs} from '@/api/sync';
 import Drawer from '@/components/Drawer';
 import DsButton from '@/components/DsButton';
+import DsSelect from '@/components/DsSelect';
 import {notify} from '@/utils/notify';
 import type {TaskTemplate, TaskTemplateType} from '@/types/taskTemplate';
 import {TASK_TEMPLATE_TYPE_LABEL} from '@/types/taskTemplate';
@@ -133,17 +134,17 @@ export default function TemplateFormDrawer({open, mode, template, onClose, onSav
                 </div>
                 <div className="space-y-ds-2">
                     <span className="text-ds-small text-ds-text-primary font-medium block">任务类型</span>
-                    <select
+                    <DsSelect
                         value={type}
-                        onChange={(e) => setType(e.target.value as TaskTemplateType)}
+                        onChange={(v) => setType(v as TaskTemplateType)}
                         disabled={isEdit}
                         aria-label="任务类型"
-                        className={`${inputClass} disabled:bg-ds-bg-hover disabled:text-ds-text-muted`}
+                        className="py-[9px] text-sm"
                     >
                         {(Object.keys(TASK_TEMPLATE_TYPE_LABEL) as TaskTemplateType[]).map(t => (
                             <option key={t} value={t}>{TASK_TEMPLATE_TYPE_LABEL[t]}（{t}）</option>
                         ))}
-                    </select>
+                    </DsSelect>
                     {isEdit && <p className="text-ds-tiny text-ds-text-muted">类型创建后不可修改。</p>}
                 </div>
                 <div className="space-y-ds-2">
@@ -159,17 +160,17 @@ export default function TemplateFormDrawer({open, mode, template, onClose, onSav
                     <>
                         <div className="space-y-ds-2">
                             <span className="text-ds-small text-ds-text-primary font-medium block">从已配置任务另存</span>
-                            <select
+                            <DsSelect
                                 value={sourceTaskId}
-                                onChange={(e) => setSourceTaskId(e.target.value)}
+                                onChange={setSourceTaskId}
                                 aria-label="从已配置任务另存"
-                                className={inputClass}
+                                className="py-[9px] text-sm"
                             >
                                 <option value={MANUAL}>— 手动配置模板内容 —</option>
                                 {taskOptions.map(o => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
                                 ))}
-                            </select>
+                            </DsSelect>
                             <p className="text-ds-tiny text-ds-text-muted">
                                 选择任务后将读取其配置生成模板（单表同步的源表/Cron 会自动占位化）。
                             </p>
