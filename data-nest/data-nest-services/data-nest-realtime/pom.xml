@@ -47,6 +47,12 @@
             <artifactId>data-nest-alert-api</artifactId>
         </dependency>
 
+        <!-- 跨域 Feign 契约：管道删除时解绑 Key 授权（Sprint 10 F4 补全，data-service 不可达降级 fail-open） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-data-service-api</artifactId>
+        </dependency>
+
         <!-- MinIO Java Client：savepoint 文件物理清理（Sprint 9 F2，配置复用 shared-minio.yaml） -->
         <dependency>
             <groupId>io.minio</groupId>

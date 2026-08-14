@@ -33,6 +33,14 @@ public class DataServiceOpsApiFallbackFactory implements FallbackFactory<DataSer
             public Result<Integer> disableApisByMetadataTableIds(DisableApisByTableRequest request) {
                 return Result.ok(0);
             }
+            @Override
+            public Result<Integer> cleanupApiCallLog(CleanupRequest request) {
+                return null;
+            }
+            @Override
+            public Result<Integer> unbindKeysByPipeline(Long pipelineId) {
+                return Result.ok(0);
+            }
         };
     }
 }

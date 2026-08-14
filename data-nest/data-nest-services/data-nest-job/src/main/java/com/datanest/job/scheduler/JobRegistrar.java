@@ -77,6 +77,8 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("qualityAutoTriggerReconcileHandler", qualityAutoTriggerReconcileCron);
         // Sprint 10 F1：SQL 查询历史清理（默认每天凌晨 3 点 50 分，保留 30 天，data-service 经 Feign 清理）
         platformJobs.put("sqlHistoryCleanupHandler", "0 50 3 * * ?");
+        // Sprint 10 F3 补全：API 调用明细清理（默认每天凌晨 4 点 50 分，保留 30 天，data-service 经 Feign 清理）
+        platformJobs.put("apiCallLogCleanupHandler", "0 50 4 * * ?");
 
         logger.info("Ensuring platform jobs registered in PowerJob, count={}", platformJobs.size());
 
@@ -110,6 +112,7 @@ public class JobRegistrar implements ApplicationRunner {
             case "dorisCatalogAutoRefreshHandler" -> "Doris 湖仓 catalog 自动刷新";
             case "qualityAutoTriggerReconcileHandler" -> "质量自动触发对账补发";
             case "sqlHistoryCleanupHandler" -> "SQL 查询历史清理";
+            case "apiCallLogCleanupHandler" -> "API 调用明细清理";
             default -> handlerName;
         };
     }

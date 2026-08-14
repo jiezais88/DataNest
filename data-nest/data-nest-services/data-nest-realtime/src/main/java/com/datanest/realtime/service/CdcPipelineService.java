@@ -34,6 +34,7 @@ import com.datanest.realtime.mapper.CdcPipelineMapper;
 import com.datanest.realtime.mapper.CdcPipelineTableMapper;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
 import com.datanest.realtime.api.dto.CdcPipelineSubscribeDTO;
+import com.datanest.dataservice.api.DataServiceOpsApi;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,6 +85,7 @@ public class CdcPipelineService {
     private final EngineeringDatasourceApi engineeringDatasourceApi;
     private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
+    private final DataServiceOpsApi dataServiceOpsApi;
 
     public CdcPipelineService(CdcPipelineMapper pipelineMapper,
                               CdcPipelineTableMapper tableMapper,
@@ -96,7 +98,8 @@ public class CdcPipelineService {
                               SavepointFileCleaner savepointFileCleaner,
                               EngineeringDatasourceApi engineeringDatasourceApi,
                               SystemUserApi systemUserApi,
-                              AlertApi alertApi) {
+                              AlertApi alertApi,
+                              DataServiceOpsApi dataServiceOpsApi) {
         this.pipelineMapper = pipelineMapper;
         this.tableMapper = tableMapper;
         this.logMapper = logMapper;
@@ -109,6 +112,7 @@ public class CdcPipelineService {
         this.engineeringDatasourceApi = engineeringDatasourceApi;
         this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
+        this.dataServiceOpsApi = dataServiceOpsApi;
     }
 
     /** 创建管道（初始 STOPPED） */
@@ -192,6 +196,13 @@ public class CdcPipelineService {
             alertApi.deleteRuleByObject(AlertConstants.OBJECT_TYPE_CDC_PIPELINE, id);
         } catch (Exception e) {
             logger.warn("删除管道时解绑告警规则对象失败（不阻断删除）: pipelineId={}, error={}", id, e.getMessage());
+        }
+        // 级联解绑 Key 管道授权（fail-open：data-service 不可达不阻断删除；残留 api_key_pipeline 行
+        // 在 WsSubscriptionService 订阅时仍会被 9016 拦截，但 Key 详情会有脏数据，故尽力清理）
+        try {
+            dataServiceOpsApi.unbindKeysByPipeline(id);
+        } catch (Exception e) {
+            logger.warn("删除管道时解绑 Key 授权失败（不阻断删除）: pipelineId={}, error={}", id, e.getMessage());
         }
         // 级联清理 PG 复制槽（fail-open：PG wal_sender 连接数有限，槽残留耗尽后新作业全部起不来，
         // 2026-08-11 E2E 实测 max_wal_senders 被打满；槽名 datanest_cdc_<pipelineId>）
