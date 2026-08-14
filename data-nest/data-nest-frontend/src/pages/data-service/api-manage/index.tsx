@@ -263,7 +263,7 @@ export default function ApiManagePage() {
             fixed: 'right' as const,
             width: COL.OPERATION_4,
             render: (_, item) => (
-                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                <div className="flex items-center justify-center gap-1 whitespace-nowrap group">
                     <Tooltip title="查看详情">
                         <DsIconButton tone="accent" onClick={() => navigate(`/data-service/api-manage/${item.id}`)}
                                       aria-label="查看详情">
@@ -294,11 +294,13 @@ export default function ApiManagePage() {
                                     </DsIconButton>
                                 </Tooltip>
                             )}
-                            <Tooltip title="删除">
-                                <DsIconButton tone="danger" onClick={() => setDeleteTarget(item)} aria-label="删除">
-                                    <HiOutlineTrash size={14}/>
-                                </DsIconButton>
-                            </Tooltip>
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Tooltip title="删除">
+                                    <DsIconButton tone="danger" onClick={() => setDeleteTarget(item)} aria-label="删除">
+                                        <HiOutlineTrash size={14}/>
+                                    </DsIconButton>
+                                </Tooltip>
+                            </div>
                         </>
                     )}
                 </div>
@@ -352,7 +354,8 @@ export default function ApiManagePage() {
                     {
                         label: '已下线', value: summary ? formatNumber(summary.disabledCount) : '—',
                         icon: <HiOutlineExclamationTriangle size={20}/>,
-                        iconClass: 'bg-ds-danger-light text-ds-danger', valueClass: 'text-ds-danger',
+                        iconClass: summary?.disabledCount ? 'bg-ds-danger-light text-ds-danger' : 'bg-ds-bg-hover text-ds-text-muted',
+                        valueClass: summary?.disabledCount ? 'text-ds-danger' : undefined,
                         tip: '点击筛选列表', active: query.status === 'DISABLED',
                         onClick: () => drillStatus('DISABLED'),
                     },

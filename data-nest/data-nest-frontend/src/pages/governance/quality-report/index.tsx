@@ -217,7 +217,7 @@ export default function QualityReportPage() {
     const [issuesOpen, setIssuesOpen] = useState(false);
 
     useEffect(() => {
-        getQualityIssues({...appliedRequest, page: 1, pageSize: 6})
+        getQualityIssues({...appliedRequest, page: 1, pageSize: 8})
             .then(r => setTopIssues({list: r?.records ?? [], total: Number(r?.total ?? 0)}))
             .catch(() => setTopIssues({list: [], total: 0}));
     }, [appliedRequest]);
@@ -298,16 +298,16 @@ export default function QualityReportPage() {
 
             {/* KPI × 5 */}
             <div className="grid grid-cols-5 gap-ds-4 mb-ds-4 flex-shrink-0">
-                <KpiCard label="检查批次" value={summary?.batchCount ?? '—'} unit="批次" sub="范围内执行完成"/>
-                <KpiCard label="规则明细" value={summary?.detailCount ?? '—'} unit="条" sub="全部规则检查明细"/>
-                <KpiCard label="平均评分" value={summary?.avgScore != null ? String(summary.avgScore) : '—'}
-                         sub="表最近评分均值"/>
-                <KpiCard label="通过率" value={summary?.passRate != null ? String(summary.passRate) : '—'} unit="%"
-                         sub="通过 / 有效明细"/>
                 <KpiCard label="待处理问题"
                          value={summary ? String(Number(summary.severeCount ?? 0) + Number(summary.warningCount ?? 0)) : '—'}
                          sub={`严重 ${summary?.severeCount ?? 0} / 警告 ${summary?.warningCount ?? 0}`}
                          danger={Number(summary?.severeCount ?? 0) > 0}/>
+                <KpiCard label="通过率" value={summary?.passRate != null ? String(summary.passRate) : '—'} unit="%"
+                         sub="通过 / 有效明细"/>
+                <KpiCard label="平均评分" value={summary?.avgScore != null ? String(summary.avgScore) : '—'}
+                         sub="表最近评分均值"/>
+                <KpiCard label="检查批次" value={summary?.batchCount ?? '—'} unit="批次" sub="范围内执行完成"/>
+                <KpiCard label="规则明细" value={summary?.detailCount ?? '—'} unit="条" sub="全部规则检查明细"/>
             </div>
 
             {/* 趋势区：四档分布趋势 + 平均评分趋势（均为聚合口径） */}
@@ -346,7 +346,7 @@ export default function QualityReportPage() {
                             {topIssues.list.map(issue => (
                                 <button key={issue.detailId} type="button"
                                         onClick={() => navigate(`/asset-catalog/${issue.tableId}?tab=quality`, {state: {from: location.pathname}})}
-                                        className="w-full flex-1 min-h-[36px] flex items-center gap-ds-3 py-[6px] border-b border-ds-border-subtle last:border-b-0 text-left hover:bg-ds-bg-hover transition-colors">
+                                        className="w-full flex items-center gap-ds-3 py-[4px] border-b border-ds-border-subtle last:border-b-0 text-left hover:bg-ds-bg-hover transition-colors">
                                     <Tooltip title={issue.tableName}>
                                         <span className="font-mono text-ds-small text-ds-accent w-36 truncate">
                                             {issue.tableName}

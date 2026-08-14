@@ -124,7 +124,7 @@ export function LegendDot({color, label}: { color: string; label: string }) {
 export function SplitBar({segments}: { segments: { color: string; ratio: number; label?: string }[] }) {
     const total = segments.reduce((s, x) => s + x.ratio, 0) || 1;
     return (
-        <div className="flex h-2.5 rounded-full overflow-hidden bg-ds-bg-hover w-full">
+        <div className="flex h-3.5 rounded-full overflow-hidden bg-ds-bg-hover w-full">
             {segments.filter(s => s.ratio > 0).map((s, i) => (
                 <Tooltip key={i} title={s.label ? `${s.label} · ${((s.ratio / total) * 100).toFixed(0)}%` : undefined} placement="top">
                     <div style={{width: `${(s.ratio / total) * 100}%`, background: s.color}}/>

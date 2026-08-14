@@ -228,7 +228,7 @@ export function ScoreDonut({data, avgScore}: { data: QualityScoreDistribution; a
             </svg>
             <div className="flex flex-col gap-ds-1 min-w-0">
                 {Number(data.noScoreCount ?? 0) / total > 0.6 && (
-                    <div className="text-ds-tiny text-ds-text-muted mb-ds-1 leading-snug">
+                    <div className="bg-ds-bg-hover border-l-2 border-ds-warning rounded-ds-sm px-ds-2 py-ds-1 mb-ds-2 text-ds-tiny text-ds-text-muted leading-snug">
                         大部分表暂无评分，建议配置质量规则并执行检查
                     </div>
                 )}
@@ -250,8 +250,8 @@ export function ScoreDonut({data, avgScore}: { data: QualityScoreDistribution; a
 
 /** 数据源质量对比（横向条） */
 export function ComparisonBars({data}: { data: DatasourceScoreComparison[] }) {
-    if (data.length === 0) {
-        return <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无评分数据</div>;
+    if (data.length <= 1) {
+        return <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">暂无多源对比数据</div>;
     }
     const barColor = (score?: number) => score == null ? 'rgb(148 163 184)' : score >= 80 ? 'rgb(var(--color-success))' : score >= 60 ? 'rgb(217 119 6)' : 'rgb(var(--color-danger))';
     return (
@@ -286,6 +286,14 @@ export function ScoreTrendChart({data}: { data: QualityScoreTrendPoint[] }) {
     const pointValue = (p: QualityScoreTrendPoint) => Number(p.avgScore ?? p.score ?? 0);
     const pointDay = (p: QualityScoreTrendPoint) => p.day ?? (p.checkedAt || '').slice(0, 10);
     const values = data.map(pointValue);
+    if (Math.max(...values) === 0) {
+        return (
+            <div className="h-full flex flex-col items-center justify-center gap-1 text-ds-small text-ds-text-muted">
+                <span className="text-2xl opacity-30">—</span>
+                范围内评分均为 0，建议执行质量检查后重试
+            </div>
+        );
+    }
     const scale = computeScale(data.length, 100);
     const line = toPath(values, scale);
     const area = `${line} L${scale.x(data.length - 1).toFixed(1)},${scale.y(0)} L${scale.x(0).toFixed(1)},${scale.y(0)} Z`;
