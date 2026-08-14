@@ -553,8 +553,11 @@ export default function SqlConsolePage() {
                             pageSize={historyPageSize}
                             total={historyTotal}
                             onChange={(p, ps) => {
-                                setHistoryPage(p);
-                                setHistoryPageSize(ps);
+                                if (ps !== historyPageSize) {
+                                    setHistoryPageSize(ps); // 内部已 setPage(1)
+                                } else {
+                                    setHistoryPage(p);
+                                }
                             }}
                         />
                     </div>

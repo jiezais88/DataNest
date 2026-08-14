@@ -84,7 +84,7 @@ function BasicInfoTab({table}: { table: MetadataTable }) {
                     <SensitivityBadge level={table.sensitivityLevel}/>
                     {table.sensitivityLevel === 'INTERNAL' && (
                         <span className="text-ds-tiny text-ds-text-muted">
-                            {table.apiExempted === 1 ? '已开白' : '未开白'}
+                            {table.apiExempted === 1 ? '已特批开放' : '未特批'}
                         </span>
                     )}
                 </span>

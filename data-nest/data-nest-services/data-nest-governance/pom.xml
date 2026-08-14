@@ -52,6 +52,12 @@
             <artifactId>data-nest-system-api</artifactId>
         </dependency>
 
+        <!-- DataNest Data Service API（机密改级联动下线 API） -->
+        <dependency>
+            <groupId>com.datanest</groupId>
+            <artifactId>data-nest-data-service-api</artifactId>
+        </dependency>
+
         <!-- Fastjson2（task-core 中为 provided，需在本服务显式声明，否则 AlertRuleService 等报 ClassNotFoundException） -->
         <dependency>
             <groupId>com.alibaba.fastjson2</groupId>

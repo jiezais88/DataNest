@@ -120,7 +120,7 @@ export default function ApiDetailPage() {
     const fields = detail.definition?.fields ?? [];
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col pr-ds-4">
             {/* 页头 */}
             <div className="flex items-start justify-between mb-ds-5 flex-shrink-0">
                 <div>

@@ -20,6 +20,8 @@ import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.mapper.SensitivityChangeLogMapper;
 import com.datanest.system.api.SystemUserApi;
 import com.datanest.task.core.support.SystemUserResolver;
+import com.datanest.dataservice.api.DataServiceOpsApi;
+import com.datanest.dataservice.api.dto.DisableApisByTableRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,9 +37,9 @@ import java.util.Set;
  * 核心规则（技术文档 §4.4 + PRD §6.7/T5/T6）：
  * <ul>
  *   <li>三级：PUBLIC 公开 / INTERNAL 内部 / CONFIDENTIAL 机密，默认 PUBLIC。</li>
- *   <li>机密降级两步（Blocker 4）：CONFIDENTIAL → PUBLIC 直达禁止，必经 INTERNAL（CONFIDENTIAL → INTERNAL → PUBLIC）。</li>
- *   <li>开白（T6）：仅 INTERNAL 表可开白（api_exempted 0↔1），机密表恒为 0 不可开白；权限超管（Controller 层）。</li>
- *   <li>审计：改级（CHANGE_LEVEL）与开白（API_EXEMPT）均写 sensitivity_change_log。</li>
+ *   <li>任意级别直接互转（2026-08-14 产品决策，替代原机密降级两步）；降级由前端弹确认框，后端不限制路径。</li>
+ *   <li>特批开放（T6）：仅 INTERNAL 表可特批（api_exempted 0↔1），机密表恒为 0 不可特批；权限超管（Controller 层）。</li>
+ *   <li>审计：改级（CHANGE_LEVEL）与特批开放（API_EXEMPT）均写 sensitivity_change_log。</li>
  * </ul>
  */
 @Service
@@ -56,68 +58,65 @@ public class SensitivityService {
     private final SensitivityChangeLogMapper auditLogMapper;
     private final SystemUserApi systemUserApi;
     private final EngineeringDatasourceApi datasourceApi;
+    private final DataServiceOpsApi dataServiceOpsApi;
 
     public SensitivityService(MetadataTableMapper metadataTableMapper,
                               SensitivityChangeLogMapper auditLogMapper,
                               SystemUserApi systemUserApi,
-                              EngineeringDatasourceApi datasourceApi) {
+                              EngineeringDatasourceApi datasourceApi,
+                              DataServiceOpsApi dataServiceOpsApi) {
         this.metadataTableMapper = metadataTableMapper;
         this.auditLogMapper = auditLogMapper;
         this.systemUserApi = systemUserApi;
         this.datasourceApi = datasourceApi;
+        this.dataServiceOpsApi = dataServiceOpsApi;
     }
 
-    /** 单表改级 */
+    /** 单表改级（任意级别直接互转；降级确认由前端负责）。返回联动下线的 API 数 */
     @Transactional(rollbackFor = Exception.class)
-    public void updateSensitivity(Long tableId, String newLevel) {
+    public int updateSensitivity(Long tableId, String newLevel) {
         String level = normalizeLevel(newLevel);
         MetadataTable table = getTable(tableId);
         String oldLevel = table.getSensitivityLevel();
-        validateDowngrade(oldLevel, level);
-        if (Objects.equals(oldLevel, level)) {
-            return; // 幂等：级别未变
-        }
+        if (Objects.equals(oldLevel, level)) return 0;
         applyLevel(table, level);
         writeAudit(table, oldLevel, level, ACTION_CHANGE_LEVEL, null);
+        return disableApisIfConfidential(level, List.of(table.getId()));
     }
 
-    /** 批量改级（全有或全无：任一表违反降级规则则整体拒绝，避免部分成功） */
+    /** 批量改级（全有或全无：任一表不存在则整体拒绝，避免部分成功）。返回联动下线的 API 数 */
     @Transactional(rollbackFor = Exception.class)
-    public void batchUpdateSensitivity(List<Long> tableIds, String newLevel) {
+    public int batchUpdateSensitivity(List<Long> tableIds, String newLevel) {
         String level = normalizeLevel(newLevel);
         List<Long> distinctIds = tableIds.stream().filter(Objects::nonNull).distinct().toList();
-        // 先校验全部表（表存在 + 降级规则），任一失败抛异常回滚
         List<MetadataTable> tables = distinctIds.stream().map(this::getTable).toList();
-        for (MetadataTable table : tables) {
-            validateDowngrade(table.getSensitivityLevel(), level);
-        }
-        // 校验通过后统一更新 + 审计
+        List<Long> confidentialTableIds = new java.util.ArrayList<>();
         for (MetadataTable table : tables) {
             String oldLevel = table.getSensitivityLevel();
-            if (Objects.equals(oldLevel, level)) {
-                continue;
-            }
+            if (Objects.equals(oldLevel, level)) continue;
             applyLevel(table, level);
             writeAudit(table, oldLevel, level, ACTION_CHANGE_LEVEL, null);
+            if (CONFIDENTIAL.equals(level)) confidentialTableIds.add(table.getId());
         }
+        return disableApisIfConfidential(level, confidentialTableIds);
     }
 
-    /** 内部表 API 开白/取消开白（仅 INTERNAL；机密表恒为 0 不可开白） */
+    /** 内部表 API 特批开放/取消特批（仅 INTERNAL；机密表恒为 0 不可特批） */
     @Transactional(rollbackFor = Exception.class)
     public void updateApiExempt(Long tableId, Integer apiExempted) {
         if (apiExempted == null || (apiExempted != 0 && apiExempted != 1)) {
-            throw new BusinessException(ErrorCode.API_EXEMPT_NOT_ALLOWED, "开白标记非法（仅 0/1）");
+            throw new BusinessException(ErrorCode.API_EXEMPT_NOT_ALLOWED, "特批标记非法（仅 0/1）");
         }
         MetadataTable table = getTable(tableId);
         if (!INTERNAL.equals(table.getSensitivityLevel())) {
-            throw new BusinessException(ErrorCode.API_EXEMPT_NOT_ALLOWED, "仅内部表可开白");
+            throw new BusinessException(ErrorCode.API_EXEMPT_NOT_ALLOWED, "仅内部表可特批开放");
         }
         table.setApiExempted(apiExempted);
         table.setUpdatedBy(currentUserId());
         table.setUpdatedAt(LocalDateTime.now());
         metadataTableMapper.updateById(table);
-        String remark = apiExempted == 1 ? "开白" : "取消开白";
-        // 开白不改级别，old/new 均记当前级别，靠 action/remark 区分
+        String remark = apiExempted == 1 ? "特批开放" : "取消特批";
+        // 特批不改级别，old/new 均记当前级别，靠 action/remark 区分
         writeAudit(table, INTERNAL, INTERNAL, ACTION_API_EXEMPT, remark);
     }
 
@@ -170,13 +169,6 @@ public class SensitivityService {
             throw new BusinessException(ErrorCode.SENSITIVITY_LEVEL_INVALID);
         }
         return level;
-    }
-
-    /** 机密降级两步：CONFIDENTIAL → PUBLIC 直达禁止（必经 INTERNAL） */
-    private void validateDowngrade(String oldLevel, String newLevel) {
-        if (CONFIDENTIAL.equals(oldLevel) && PUBLIC.equals(newLevel)) {
-            throw new BusinessException(ErrorCode.CONFIDENTIAL_DOWNGRADE_FORBIDDEN);
-        }
     }
 
     private MetadataTable getTable(Long tableId) {
@@ -282,6 +274,22 @@ public class SensitivityService {
             if (ds != null) {
                 item.setDatasourceName(ds.getName());
             }
+        }
+    }
+
+    /** 改级到 CONFIDENTIAL 时联动下线该表所有已发布 API（fail-open：失败记日志不阻断改级） */
+    private int disableApisIfConfidential(String newLevel, List<Long> tableIds) {
+        if (!CONFIDENTIAL.equals(newLevel) || tableIds.isEmpty()) return 0;
+        try {
+            DisableApisByTableRequest req = new DisableApisByTableRequest();
+            req.setMetadataTableIds(tableIds);
+            com.datanest.common.model.Result<Integer> r = dataServiceOpsApi.disableApisByMetadataTableIds(req);
+            return r != null && r.data() != null ? r.data() : 0;
+        } catch (Exception e) {
+            // fail-open：data-service 不可达不阻断改级
+            org.slf4j.LoggerFactory.getLogger(SensitivityService.class)
+                    .warn("联动下线 API 失败（data-service 不可达），改级继续: {}", e.getMessage());
+            return 0;
         }
     }
 }

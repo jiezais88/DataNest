@@ -77,6 +77,9 @@ spring:
                 - Path=/api/data-service/**
               filters:
                 - StripPrefix=1
+              metadata:
+                response-timeout: 75000   # 75s：后端 SQL 超时 60s + 15s 缓冲，避免 SELECT SLEEP(60) 被网关先截成 504
+                connect-timeout: 3000
 
 # ============================================
 # 接口文档聚合页（springdoc swagger-ui）

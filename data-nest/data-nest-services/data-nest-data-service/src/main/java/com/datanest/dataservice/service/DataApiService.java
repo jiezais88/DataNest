@@ -198,6 +198,29 @@ public class DataApiService {
     }
 
     /**
+     * 按 metadata_table_id 批量下线已发布 API（机密改级联动，内部调用，无 Sa-Token 上下文）。
+     * 仅对 PUBLISHED + deleted=0 的行操作；不设 updatedBy（系统操作）。
+     * @return 实际下线数
+     */
+    public int disableByMetadataTableIds(List<Long> metadataTableIds) {
+        if (metadataTableIds == null || metadataTableIds.isEmpty()) return 0;
+        List<DataApi> apis = dataApiMapper.selectList(
+                new QueryWrapper<DataApi>()
+                        .in("metadata_table_id", metadataTableIds)
+                        .eq("status", DataApi.STATUS_PUBLISHED)
+                        .eq("deleted", 0));
+        if (apis.isEmpty()) return 0;
+        LocalDateTime now = LocalDateTime.now();
+        for (DataApi api : apis) {
+            api.setStatus(DataApi.STATUS_DISABLED);
+            api.setUpdatedAt(now);
+            dataApiMapper.updateById(api);
+        }
+        logger.info("机密改级联动下线 API: tables={}, disabled={}", metadataTableIds, apis.size());
+        return apis.size();
+    }
+
+    /**
      * 删除（软删，PRD：删除保留调用统计）：deleted=1 释放 path 占用（部分唯一索引），并清理 Key 绑定关系。
      */
     @Transactional(rollbackFor = Exception.class)
@@ -509,7 +532,7 @@ public class DataApiService {
                 && (dto.getApiExempted() == null || dto.getApiExempted() != 1));
         if (internalBlocked) {
             throw new BusinessException(ErrorCode.TABLE_SENSITIVE,
-                    "表敏感度为内部，需超管开白后才可生成对外 API: " + table);
+                    "表敏感度为内部，需超级管理员特批开放后才可生成对外 API: " + table);
         }
     }
 

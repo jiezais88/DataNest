@@ -45,7 +45,7 @@ public class DataApiController {
         this.statsQueryService = statsQueryService;
     }
 
-    @Operation(summary = "创建 API", description = "校验表敏感度（机密禁止 / 内部需超管开白，fail-closed）；路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
+    @Operation(summary = "创建 API", description = "校验表敏感度（机密禁止 / 内部需超管特批开放，fail-closed）；路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
     @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
     @PostMapping
     public Result<DataApiDetailDTO> create(@Valid @RequestBody DataApiCreateRequest request) {

@@ -1,7 +1,18 @@
 # Sprint 10 Handoff：数据服务（SQL 查询终端 + 数据 API + API 网关 + 实时推送 + 数据分级分类）
 
-> 更新：2026-08-13（F5 端到端 E2E 会话）
-> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.3）· `../DataNest-Sprint10-技术文档.md`（v1.11）· `../DataNest-Sprint10-原型.html/css`
+> 更新：2026-08-14（术语治理 + 降级链路简化会话）
+> 对应文档：`../DataNest-Sprint10-PRD.md`（v1.4）· `../DataNest-Sprint10-技术文档.md`（v1.16）· `../DataNest-Sprint10-原型.html/css`
+
+---
+
+## 0. 2026-08-14 产品决策变更（最新，优先级高于下文历史记录）
+
+用户拍板两项变更，代码与文档已同步落地：
+
+1. **术语治理**：用户可见文案弃用内部术语——「开白」→「特批开放」、「命中拦截」→「查询拒绝」。改动面：前端分级分类页/资产详情/API 向导全部文案、后端报错消息（9011 默认消息、9004 内部表提示「需超级管理员特批开放后才可生成对外 API」）、审计 remark（新写入为「特批开放/取消特批」，历史记录仍为旧文案，属正常留痕）。PRD B7 口径：今后任何用户可见文案禁用「开白/白名单/命中拦截」。
+2. **降级链路简化**：机密降级两步（CONFIDENTIAL→INTERNAL→PUBLIC，错误码 4012）废弃，改为**任意级别直接互转 + 前端降级确认框**（`Modal.confirm` 说明后果，升级不弹）。后端 `SensitivityService.validateDowngrade` 与 common `CONFIDENTIAL_DOWNGRADE_FORBIDDEN`(4012) 已删除。
+
+**待办（用户自测）**：E2E `classification.spec.ts` CL-4/CL-13（断言 4012 两步拦截）与 CL-6/CL-7（按钮/列名「开白」）、`api-manage.spec.ts` AM-19（断言「需超管在「数据分级分类」中开白」文案）已与新行为/新文案不符，需按新口径更新后重跑。
 
 ---
 
@@ -609,6 +620,28 @@
 - 测试数据自清理：敏感度复位 PUBLIC + 开白清零 + 审计 0 残留 + 测试用户 0 残留；test-results/pw-out 产物已清。
 
 ---
+## 29. Sprint 10 人工验收清单（2026-08-14，本会话）
+
+> Sprint 10 全量功能（F1~F5）E2E 自动化已全通过，本会话出人工验收清单供产品/业务侧傻瓜式操作确认。
+
+### 29.1 产出
+- 新增 `docs/sprint10/测试用例清单.md`（25 个用例，5 个功能块，开箱即验）。
+- 种子数据：MySQL testdb 新增 `e2e_s10_accept_orders`（3 行）供 F4 WebSocket 端到端验收；确认 `target_products`/`e2e_s5_lin_target` 已复位 PUBLIC。
+
+### 29.2 验收范围
+| 功能块 | 用例数 | 核心确认点 |
+|--------|--------|-----------|
+| F1 SQL 查询终端 | 6 | 多数据源执行/只读拦截 9001/超时 9003/CSV+Excel 导出/历史回填/资产页直达 |
+| F2 数据 API 生成 | 5 | 三步向导/发布/参数化调用/机密表 API 置灰/下线 404 |
+| F3 API 网关 + 统计 | 5 | Key 认证 401/限流 429+Retry-After/熔断统计端点/全局统计页/单 API 统计区块 |
+| F4 WebSocket 推送 | 4 | 订阅文档页签/Key 绑管道/端到端 10s 内收事件/无 Key 拒连 1002 |
+| F5 数据分级分类 | 5 | 改级/机密降级两步 4012/SQL 终端 9004 拦截+树锁/批量打标/资产详情敏感度联动 |
+
+### 29.3 使用说明
+- 验收前执行 §0 环境确认 + 取 Token。
+- F4 需先在「数据工程 → CDC 管道」创建并启动指向 `testdb.e2e_s10_accept_orders` 的管道（清单 F4.0 有步骤）。
+- F5 验完后务必将 `target_products` 复位为「公开」（清单末有 API 命令）。
+
 
 > **版本记录**
 > - v1.0 (2026-08-12)：初始 handoff。记录「原型产品逻辑修正」会话（4 项决策 + 新增 API 运行统计页），列出 PRD/技术文档待同步项、Blocker（D4）与 Next Action。
@@ -640,3 +673,4 @@
 > - v1.25 (2026-08-13)：**F5 数据分级分类前端 + 联调完成**——2 问 2 答拍板（SQL 树机密表锁标记而非隐藏 / 分级页补后端 DTO 对齐原型）；后端补 `SensitivityTableItemDTO` 加 taskSourceType/createdBy/createdByName/createdAt；前端数据分级分类页（筛选/批量打标/改级下拉/开白/审计弹窗）+ 资产详情敏感度标签与去查询/生成 API 入口（机密禁用）+ SQL 终端/API 向导 URL 参数跳转预填 + SQL 树机密锁标记（点击拦截）；踩坑 3 处：DsButton 无 size、wizard handleSelectTable 声明前使用、生成 API 跳转路径 /wizard 应为 /new（handoff §27）；`npx tsc --noEmit` 无效需 `pnpm build` 校验；联调全通过。
 > - v1.26 (2026-08-13)：**F3 运行统计页一屏紧凑布局**（用户反馈「太丑、需一页显示不滚动、去掉返回按钮」）——根容器 `h-full` + 页头去返回按钮/描述行精简 + 图表网格 `grid-cols-6 grid-rows-3 flex-1 min-h-0`（趋势/Top5 宽列 col-span-4，其余窄列 col-span-2，3 行等高填充剩余空间）+ KpiCard/ChartCard 紧凑 padding（p-ds-4→px-3 py-2.5）+ 内容多的区块（健康分布/错误码列表）区块内 overflow-y-auto；实测整页 scrollHeight==clientHeight 无溢出、底部区块 bottom<视口高未裁剪、返回按钮已去掉。
 > - v1.27 (2026-08-13)：**F5 数据分级分类完整 E2E 会话**——3 问 3 答拍板（完整闭环 / 复用现有元数据表测后复位 / 浏览器 E2E 为主+API 辅助）；新增 `f5-seed.ts` + `classification.spec.ts`（**14 用例全通过**：分级管理核心 CL-1~7 改级/降级两步/批量/开白/审计弹窗 + 三端闸门联动 CL-8~11 SQL 拦截/树锁/资产详情禁用/向导禁选 + 权限与后端规则 CL-12~14）；**发现并修复真实缺陷**：`SqlTree.tsx` 无 schema 分支（Doris/MySQL 单库）表节点漏映射 `sensitivityLevel` 导致机密锁不生效（补字段 + `pnpm build` 重建部署）；踩坑：查询按钮子串匹配 sidebar / 改级下拉选项冲突 / 权限 envelope code=1005 非 403 / Monaco keyboard.type 丢字符改 window.monaco setValue（handoff §28）。
+> - v1.28 (2026-08-14)：**Sprint 10 人工验收清单会话**——出 `docs/sprint10/测试用例清单.md`（25 用例 / 5 功能块，开箱即验，傻瓜式操作说明）；种子数据：MySQL testdb 新增 `e2e_s10_accept_orders`（3 行）供 F4 WebSocket 端到端验收；确认 `target_products`/`e2e_s5_lin_target` 已复位 PUBLIC（handoff §29）。

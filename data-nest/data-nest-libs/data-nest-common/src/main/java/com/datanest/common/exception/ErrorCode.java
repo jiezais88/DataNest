@@ -40,7 +40,7 @@ public enum ErrorCode {
     CLASSIFICATION_IN_USE(4009, "分类仍被元数据表引用，请先解除分配"),
     CLASSIFICATION_PARENT_INVALID(4010, "父分类非法（主题必须挂在数据域下）"),
     SENSITIVITY_LEVEL_INVALID(4011, "敏感度级别非法（仅 PUBLIC/INTERNAL/CONFIDENTIAL）"),
-    CONFIDENTIAL_DOWNGRADE_FORBIDDEN(4012, "机密表不可直接降级为公开，需先降为内部"),
+    // 注：4012（原机密降级两步拦截码）已于 2026-08-14 产品决策「任意级别直接互转」后废弃删除，勿复用该码段
 
     // Asset collaboration errors — Sprint 8 资产目录深化（DC-06~09）
     // 注：4021 为技术文档 §9.1 规划码，当前删标签绑定按幂等设计不抛错，预留待单标签查询类端点使用
@@ -164,7 +164,7 @@ public enum ErrorCode {
     API_NOT_FOUND(9008, "API 不存在"),
     API_KEY_NAME_EXISTS(9009, "Key 名称已存在"),
     API_PATH_EXISTS(9010, "API 路径已存在"),
-    API_EXEMPT_NOT_ALLOWED(9011, "机密表不可开白 / 非超管不可开白"),
+    API_EXEMPT_NOT_ALLOWED(9011, "机密表不可特批开放 / 非超管不可特批开放"),
     SENSITIVITY_SERVICE_UNAVAILABLE(9012, "分级服务暂不可用，请稍后重试"),
     API_DEFINITION_INVALID(9013, "API 定义参数非法"),
     API_KEY_NOT_FOUND(9014, "API Key 不存在"),

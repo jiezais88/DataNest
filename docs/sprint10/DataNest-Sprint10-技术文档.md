@@ -49,7 +49,7 @@
 - **Key 存储**：`SHA-256(key)` 存哈希（`api_key.key_hash`），创建时一次性返回明文（`K-` 前缀，仅展示一次）；禁用/删除即失效。
 - **API 定义**：`data_api` 表存路径/方法/参数（参数化筛选字段、范围字段、分页开关、返回字段白名单、关联表元数据 id）；发布后对外路径 `/api/data-service/open-api/v1/{自定义path}`（Blocker 5 已定：自定义路径，path 列存完整 `/open-api/v1/{段}` 唯一），认证 `X-API-Key` 头（见 §4.3）。
 - **鉴权过滤器**：数据服务 `OpenApiKeyFilter`（OncePerRequestFilter）拦截 `/open-api/**` 与 `/ws/**`：校验 Key 哈希命中 + 启用 + 绑定关系；失败 401；限流超限 429（带 `Retry-After`）。
-- **分级闸门**：生成 API 前经 governance-api 校验表敏感度——机密表禁止（任何角色）；内部表默认禁止、超管可开白（governance 侧 `api_exempted` 字段，T6）。
+- **分级闸门**：生成 API 前经 governance-api 校验表敏感度——机密表禁止（任何角色）；内部表默认禁止、超管可特批开放（governance 侧 `api_exempted` 字段，T6）。
 
 ### D-D4：限流 = Redis 滑动窗口（Key × API 取小）+ 熔断 = Resilience4j 计数
 
@@ -79,12 +79,12 @@
 
 ### D-D7：数据分级分类 = governance 打标 + 数据服务三端闸门
 
-- **分级字段**：governance `metadata_table` 加 `sensitivity_level`（`PUBLIC/INTERNAL/CONFIDENTIAL`，默认 PUBLIC）+ `api_exempted boolean`（内部表超管开白，T6）。`asset_classification`（数据域/主题业务分类）不动。
+- **分级字段**：governance `metadata_table` 加 `sensitivity_level`（`PUBLIC/INTERNAL/CONFIDENTIAL`，默认 PUBLIC）+ `api_exempted boolean`（内部表超管特批开放，T6）。`asset_classification`（数据域/主题业务分类）不动。
 - **打标入口**：governance 新增分级端点（改级/批量/审计查询），权限治理员/超管；前端分级页在数据服务菜单下但调 governance API。
 - **审计**：新建 `sensitivity_change_log`（table_id/old_level/new_level/operator_id/created_at）；项目无通用审计体系（规格 Sprint 12 才做），本期独立轻量表。
 - **数据服务闸门**：
-  - **SQL 终端**：执行前 JSqlParser 提取 SQL 引用的表集合 → 经 governance-api 批量查敏感度（按 datasource/database/schema/table 匹配）→ 命中机密表即拦截（T5：默认隐藏 + 命中拦截）；表选择器/元数据树经 governance-api 读表清单时**过滤机密表**。
-  - **API 生成**：创建/编辑前校验表敏感度（机密禁止；内部需开白）。
+  - **SQL 终端**：执行前 JSqlParser 提取 SQL 引用的表集合 → 经 governance-api 批量查敏感度（按 datasource/database/schema/table 匹配）→ 命中机密表即拒绝（T5：默认隐藏 + 查询拒绝）；表选择器/元数据树经 governance-api 读表清单时**过滤机密表**。
+  - **API 生成**：创建/编辑前校验表敏感度（机密禁止；内部需特批开放）。
   - **WebSocket 订阅**：Key 绑定管道时校验管道目标表敏感度（机密管道不可订阅，T5）。
 
 ### D-D8：调用统计 = 异步写入 + 聚合查询
@@ -251,13 +251,13 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 
 ```
 改级（governance PUT /metadata/tables/{id}/sensitivity，治理员/超管）
-  ├─ 校验：CONFIDENTIAL 不可降级到 PUBLIC 直达，必经 INTERNAL 两步（用户已确认）
+  ├─ 校验：任意级别直接互转（2026-08-14 产品决策替代原两步降级）；降级由前端弹确认框说明后果
   ├─ 更新 metadata_table.sensitivity_level
   └─ 写 sensitivity_change_log
 
 数据服务消费（经 governance-api internal 端点批量读敏感度）
-  ├─ SQL 执行前表集合校验 → 机密拦截
-  ├─ API 创建校验 → 机密禁止 / 内部需开白
+  ├─ SQL 执行前表集合校验 → 机密拒绝
+  ├─ API 创建校验 → 机密禁止 / 内部需特批开放
   └─ Key 绑定管道校验 → 机密管道不可订阅
   └─ ⚠️ governance 不可达时 fail-closed：无法确认敏感度则 SQL 执行与 API 创建默认拒绝（用户已确认）
 ```
@@ -314,7 +314,7 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 | GET | `/governance/internal/metadata/tables?datasourceId=&database=&schema=` | 表清单（含敏感度，SQL 终端表选择器；数据服务侧过滤机密） | internal |
 | PUT | `/governance/metadata/tables/{id}/sensitivity` | 改级（分级管理页） | 治理员/超管 |
 | POST | `/governance/metadata/tables/sensitivity/batch` | 批量改级 | 治理员/超管 |
-| PUT | `/governance/metadata/tables/{id}/api-exempt` | 内部表 API 开白（超管） | 超管 |
+| PUT | `/governance/metadata/tables/{id}/api-exempt` | 内部表 API 特批开放（超管） | 超管 |
 | GET | `/governance/metadata/sensitivity/audit?page=&pageSize=` | 分级变更审计查询 | 治理员/超管 |
 
 > governance-api 新增 `GovernanceMetadataApi` 契约（internal 表清单+敏感度批量，fallback 降级——数据服务读路径 fail-open 但**敏感度校验 fail-closed**：governance 不可达时 SQL 执行默认放行还是拦截需定，见 §8）。
@@ -339,12 +339,12 @@ realtime：每可订阅管道的事件作业（CdcEventYamlBuilder，latest-offs
 | API 查看（列表/详情/统计/文档） | ✅ | ✅ | ✅ | ✅ |
 | API 创建/发布/下线/删除 | ✅ | ✅ | ❌ | ❌ |
 | API Key 管理 / 限流配置 | ✅ | ✅ | ❌ | ❌ |
-| 内部表 API 开白（超管） | ✅ | ❌ | ❌ | ❌ |
+| 内部表 API 特批开放（超管） | ✅ | ❌ | ❌ | ❌ |
 | 分级打标/改级/审计查询 | ✅ | ❌ | ❌ | ✅ |
 | 订阅文档查看 | ✅ | ✅ | ✅ | ✅ |
 | WebSocket 实际订阅（持 Key） | ✅ | ✅ | 依 Key 授权 | 依 Key 授权 |
 
-> 对齐 PRD §8：SQL 终端四角色；API 写=超管/工程师、查看=+分析师；分级写=治理员/超管、查看全角色；开白仅超管（T6）。
+> 对齐 PRD §8：SQL 终端四角色；API 写=超管/工程师、查看=+分析师；分级写=治理员/超管、查看全角色；特批开放仅超管（T6）。
 
 ---
 
@@ -408,7 +408,7 @@ kafka:
 | 1 | **Flink CDC 3.6 YAML 多 sink 双写**（iceberg + kafka） | **M0 已定（2026-08-12）**：3.6.0-2.2 `PipelineDef.sink` 单 `SinkDef`，**不支持多 sink**；改**方案 B 事件管道分离**（每可订阅管道独立 Kafka 单 sink 事件作业） | ✅ M0 定稿（q-0） |
 | 2 | **Kafka 版本与部署形态** | **M0 已定（2026-08-12）**：官方 `apache/kafka:4.0.x` 纯 KRaft 单节点；Kafka 客户端向后兼容 ≥0.10 broker，无兼容风险；仅需 lib 增补 `flink-cdc-pipeline-connector-kafka:3.6.0-2.2`（shade 含 flink-connector-kafka，无需单独引） | ✅ M0 定稿（q-2） |
 | 3 | **governance 不可达时敏感度校验策略** | **fail-closed 已确认（2026-08-12）**：数据服务无法确认表敏感度时，SQL 执行与 API 创建默认拒绝并提示「分级服务暂不可用」——保护敏感数据不因治理服务故障而泄漏 | ✅ 已确认 |
-| 4 | **机密表改级降级是否需两步** | **两步已确认（2026-08-12）**：CONFIDENTIAL→PUBLIC 必经 INTERNAL，防一步误操作机密裸奔 | ✅ 已确认 |
+| 4 | **机密表改级降级是否需两步** | **已变更（2026-08-14 用户拍板，替代 2026-08-12 两步结论）**：任意级别直接互转，降级由前端弹确认框说明后果（原 CONFIDENTIAL→PUBLIC 必经 INTERNAL 两步的伪摩擦设计废弃，后端 4012 校验同步移除） | ✅ 已变更 |
 | 5 | **API 对外路径形态** | **已定（2026-08-12，F2 实现时用户拍板）**：**自定义路径**（原型=实现基准），`data_api.path` 存完整路径 `/open-api/v1/{自定义段}`，未删除行部分唯一索引；段规则 `^[a-z0-9][a-z0-9-_]{0,99}$`，输入三种形态（`orders`/`/orders`/完整路径）统一归一 | ✅ 已定 |
 | 6 | **Kafka 消费端 offset 语义** | **已定（2026-08-12，q-3）**：`latest`（仅增量推送，订阅时刻后事件；无历史重放，PRD NG9） | ✅ 已定 |
 | 7 | **查询历史/调用统计清理** | **已定（2026-08-12，用户拍板）**：**业务服务本地禁止 `@Scheduled`**，定时清理全部放 **app-job**（PowerJob cron）——清理逻辑下沉 data-service `/internal/**` 端点（经 data-service-api Feign 触发），job 新增 `sqlHistoryCleanupHandler`；规范已写入 `docs/agent/conventions-backend.md` §7「定时任务规范」 | ✅ 已定并实现 |
@@ -468,7 +468,7 @@ kafka:
 | 9008 | API_NOT_FOUND | API 不存在 |
 | 9009 | API_KEY_NAME_EXISTS | Key 名称已存在 |
 | 9010 | API_PATH_EXISTS | API 路径已存在 |
-| 9011 | API_EXEMPT_NOT_ALLOWED | 机密表不可开白 / 非超管不可开白 |
+| 9011 | API_EXEMPT_NOT_ALLOWED | 机密表不可特批开放 / 非超管不可特批开放 |
 | 9012 | SENSITIVITY_SERVICE_UNAVAILABLE | 分级服务暂不可用（fail-closed） |
 | 9013 | API_DEFINITION_INVALID | API 定义参数非法（路径/筛选/字段/排序白名单校验失败） |
 | 9014 | API_KEY_NOT_FOUND | API Key 不存在 |
@@ -495,8 +495,8 @@ kafka:
 | AC-8 熔断 | 数据源不可用连续失败 503，恢复后闭合 |
 | AC-9 调用统计 | 统计聚合与调用行为一致（api_call_log 抽样比对） |
 | AC-10 WebSocket | 订阅运行管道 10s 内收到变更；无 Key/未绑定拒连 |
-| AC-11 分级拦截 | 机密表 SQL 拦截/API 置灰/管道不可订阅；内部表可查、API 需开白 |
-| AC-12 分级审计 | 改级（含开白）写 sensitivity_change_log |
+| AC-11 分级拦截 | 机密表 SQL 拒绝/API 置灰/管道不可订阅；内部表可查、API 需特批开放 |
+| AC-12 分级审计 | 改级（含特批开放）写 sensitivity_change_log |
 | AC-13 资产联动 | 详情页敏感度标签 + 去查询/生成 API 带表跳转 |
 | NAC-3 回归 | sprint8/9 关键 E2E 保持通过（CDC 23 用例 + 资产 + 质量报告） |
 
@@ -520,3 +520,4 @@ kafka:
 > - v1.13 (2026-08-13)：**F4 WebSocket 实时订阅前端 + 连接监控**——① 后端补连接监控：`SubscriptionMetrics`（内存埋点：今日事件/延迟 P95/推送失败/按 Key 接收统计，跨天重置）+ `KafkaEventConsumer` 埋点 + `GET /subscriptions/{pipelineId}/stats`（`WsSubscriptionController`/`WsSubscriptionQueryService`：registry + 埋点 + api_key_pipeline join api_key 批量 + 用户名回填）；② 前端：CDC 管道详情「实时订阅」页签（`SubscribeTab.tsx`：订阅文档 + 连接监控 4 KPI + 订阅方 Key 表格）+ Key 表单「绑定管道」多选（`pipelineIds`）+ `KpiCard` 提取 shared + nginx WebSocket 升级头；③ 验证：端点 200 + Key 绑定管道 + WebSocket 握手链路（nginx 101 + 无 Key 拒连 1002）；踩坑：`Number(detail.id)` 19 位 Long 精度丢失（订阅消息 pipelineId 错误）→ 字符串持有 + 直接拼 JSON 数字。
 > - v1.14 (2026-08-13)：**F5 数据分级分类后端完成并部署**——governance `SensitivityController`（改级/批量/开白/审计 + 分级列表分页）+ `SensitivityService`（机密降级两步 4012 / 开白仅 INTERNAL 9011 / 审计 action 区分 CHANGE_LEVEL/API_EXEMPT）+ `SensitivityChangeLog` 实体 + Flyway V1.7.0（action/remark）+ common 4011/4012；3 问 3 答（补分级列表 / 批量全有或全无 / 审计加 action）；自测全通过（改级 6 场景 + 开白 + 批量回滚 + 审计 + 分级列表）+ 测试数据清理（handoff §26）；§9 勾选 governance、§9.1 补错误码。
 > - v1.15 (2026-08-13)：**F5 数据分级分类前端 + 联调**——① 后端补列 `SensitivityTableItemDTO`（taskSourceType/createdBy/createdByName/createdAt）；② 前端：数据分级分类页（`/data-service/classification`，敏感度/数据源筛选 + 批量打标 + 单表改级下拉 + 内部表开白 + 审计弹窗）+ 资产详情敏感度标签 + 去查询/生成 API 入口（机密禁用）+ SQL 终端/API 向导 URL 参数跳转预填 + SQL 树机密锁标记（CONFIDENTIAL 锁图标 + 点击拦截）；③ 验证：端点 200 + 改级/审计/机密降级两步（4012）+ 浏览器联调（分级页/资产详情/锁标记/去查询预填/生成 API 预选全通过）；踩坑：生成 API 跳转路径 `/wizard` 应为 `/new`（wizard 被 `:id` 路由拦截）。
+> - v1.16 (2026-08-14)：**两项产品决策变更落地（用户拍板）**——① 术语治理：用户可见文案「开白」→「特批开放」、「命中拦截」→「查询拒绝」，前后端文案/报错消息（9011/9004 内部表提示）同步替换；② 降级链路简化：`SensitivityService.validateDowngrade`（CONFIDENTIAL→PUBLIC 两步拦截）删除、common 错误码 4012 删除，任意级别直接互转，前端改级入口加 `Modal.confirm` 降级确认框（说明后果，升级不弹）；§4.4/§5.4/§8 Blocker 4/§9.1 同步更新。

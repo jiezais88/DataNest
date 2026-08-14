@@ -24,11 +24,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 数据分级分类（Sprint 10 F5）：改级 / 批量改级 / API 开白 / 分级审计 / 分级列表。
+ * 数据分级分类（Sprint 10 F5）：改级 / 批量改级 / API 特批开放 / 分级审计 / 分级列表。
  * <p>
- * 权限：改级/批量/审计/列表 = 治理员/超管；开白 = 仅超管（T6）。
+ * 权限：改级/批量/审计/列表 = 治理员/超管；特批开放 = 仅超管（T6）。
  */
-@Tag(name = "数据分级分类", description = "改级 / 批量改级 / API 开白 / 分级审计（Sprint 10 F5）")
+@Tag(name = "数据分级分类", description = "改级 / 批量改级 / API 特批开放 / 分级审计（Sprint 10 F5）")
 @RestController
 @RequestMapping("/metadata")
 public class SensitivityController {
@@ -39,24 +39,22 @@ public class SensitivityController {
         this.sensitivityService = sensitivityService;
     }
 
-    @Operation(summary = "单表改级", description = "三级：PUBLIC/INTERNAL/CONFIDENTIAL；机密降级必经 INTERNAL 两步")
+    @Operation(summary = "单表改级", description = "三级：PUBLIC/INTERNAL/CONFIDENTIAL，任意级别直接互转；降级确认由前端负责")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PutMapping("/tables/{tableId}/sensitivity")
-    public Result<Void> updateSensitivity(@Parameter(description = "元数据表 ID") @PathVariable Long tableId,
-                                          @Valid @RequestBody SensitivityUpdateRequest request) {
-        sensitivityService.updateSensitivity(tableId, request.getNewLevel());
-        return Result.ok(null);
+    public Result<Integer> updateSensitivity(@Parameter(description = "元数据表 ID") @PathVariable Long tableId,
+                                             @Valid @RequestBody SensitivityUpdateRequest request) {
+        return Result.ok(sensitivityService.updateSensitivity(tableId, request.getNewLevel()));
     }
 
     @Operation(summary = "批量改级", description = "多表统一设为某级；全有或全无（任一表违反机密降级两步则整体拒绝）")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @PostMapping("/tables/sensitivity/batch")
-    public Result<Void> batchUpdateSensitivity(@Valid @RequestBody SensitivityBatchUpdateRequest request) {
-        sensitivityService.batchUpdateSensitivity(request.getTableIds(), request.getNewLevel());
-        return Result.ok(null);
+    public Result<Integer> batchUpdateSensitivity(@Valid @RequestBody SensitivityBatchUpdateRequest request) {
+        return Result.ok(sensitivityService.batchUpdateSensitivity(request.getTableIds(), request.getNewLevel()));
     }
 
-    @Operation(summary = "内部表 API 开白", description = "仅超管；仅 INTERNAL 表可开白（机密表恒为 0 不可开白）")
+    @Operation(summary = "内部表 API 特批开放", description = "仅超管；仅 INTERNAL 表可特批开放（机密表恒为 0 不可特批）")
     @SaCheckRole("SUPER_ADMIN")
     @PutMapping("/tables/{tableId}/api-exempt")
     public Result<Void> updateApiExempt(@Parameter(description = "元数据表 ID") @PathVariable Long tableId,
@@ -65,7 +63,7 @@ public class SensitivityController {
         return Result.ok(null);
     }
 
-    @Operation(summary = "分级变更审计", description = "改级 + 开白操作留痕，回填操作人用户名")
+    @Operation(summary = "分级变更审计", description = "改级 + 特批开放操作留痕，回填操作人用户名")
     @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
     @GetMapping("/sensitivity/audit")
     public Result<PageResult<SensitivityAuditItemDTO>> pageAudit(

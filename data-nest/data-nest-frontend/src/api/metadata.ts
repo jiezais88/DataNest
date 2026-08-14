@@ -97,20 +97,20 @@ export function pageSensitivityTables(params: {
 
 /** 单表改级（机密降级必经 INTERNAL 两步，后端兜底） */
 export function updateTableSensitivity(tableId: string, newLevel: string) {
-    return request.put<Result<null>>(`/governance/metadata/tables/${tableId}/sensitivity`, {newLevel});
+    return request.put<Result<number>>(`/governance/metadata/tables/${tableId}/sensitivity`, {newLevel});
 }
 
 /** 批量改级（全有或全无） */
 export function batchUpdateTableSensitivity(tableIds: string[], newLevel: string) {
-    return request.post<Result<null>>('/governance/metadata/tables/sensitivity/batch', {tableIds, newLevel});
+    return request.post<Result<number>>('/governance/metadata/tables/sensitivity/batch', {tableIds, newLevel});
 }
 
-/** 内部表 API 开白（仅超管；apiExempted 0/1） */
+/** 内部表 API 特批开放（仅超管；apiExempted 0/1） */
 export function updateTableApiExempt(tableId: string, apiExempted: number) {
     return request.put<Result<null>>(`/governance/metadata/tables/${tableId}/api-exempt`, {apiExempted});
 }
 
-/** 分级变更审计（改级 + 开白留痕） */
+/** 分级变更审计（改级 + 特批开放留痕） */
 export function pageSensitivityAudit(page: number, pageSize: number) {
     return request.get<Result<PageResult<SensitivityAuditItem>>>(`/governance/metadata/sensitivity/audit?page=${page}&pageSize=${pageSize}`);
 }

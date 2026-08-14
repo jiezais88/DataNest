@@ -2,6 +2,7 @@ package com.datanest.dataservice.api;
 
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.api.dto.CleanupRequest;
+import com.datanest.dataservice.api.dto.DisableApisByTableRequest;
 import com.datanest.dataservice.api.fallback.DataServiceOpsApiFallbackFactory;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,4 +22,8 @@ public interface DataServiceOpsApi {
     /** 清理超过保留天数的 SQL 查询历史（sql_query_history），返回删除条数 */
     @PostMapping("/sql-history/cleanup")
     Result<Integer> cleanupSqlQueryHistory(@RequestBody CleanupRequest request);
+
+    /** 将指定元数据表的所有已发布 API 强制下线；机密改级联动；返回下线 API 数 */
+    @PostMapping("/api-disable-by-tables")
+    Result<Integer> disableApisByMetadataTableIds(@RequestBody DisableApisByTableRequest request);
 }

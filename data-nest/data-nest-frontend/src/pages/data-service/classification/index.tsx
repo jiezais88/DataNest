@@ -1,8 +1,8 @@
 // Sprint 10 F5：数据分级分类页（/data-service/classification）。
-// 数据表敏感度分级（公开/内部/机密）：敏感度+数据源筛选 + 关键词搜索 + 批量打标 + 单表改级 + 内部表 API 开白（超管）+ 审计记录。
-// 数据来源：governance /metadata/sensitivity/**（改级/批量/开白/审计/列表），四角色里仅治理员/超管可写。
+// 数据表敏感度分级（公开/内部/机密）：敏感度+数据源筛选 + 关键词搜索 + 批量打标 + 单表改级 + 内部表 API 特批开放（超管）+ 审计记录。
+// 数据来源：governance /metadata/sensitivity/**（改级/批量/特批/审计/列表），四角色里仅治理员/超管可写。
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {Select, Table} from 'antd';
+import {Modal, Select, Table} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {HiOutlineDocumentText, HiOutlineLockClosed, HiOutlineShieldCheck} from 'react-icons/hi2';
 import usePagedList from '@/hooks/usePagedList';
@@ -47,15 +47,15 @@ const TASK_SOURCE_LABEL: Record<string, string> = {
 
 const sourceLabel = (t?: string) => (t ? (TASK_SOURCE_LABEL[t] ?? t) : '手工录入');
 
-/** API 开白列展示 */
+/** API 特批列展示 */
 function ExemptCell({item}: { item: SensitivityTableItem }) {
     if (item.sensitivityLevel === 'CONFIDENTIAL') {
         return <span className="text-ds-text-muted">禁止</span>;
     }
     if (item.sensitivityLevel === 'INTERNAL') {
         return item.apiExempted === 1
-            ? <span className="text-ds-success font-medium">已开白</span>
-            : <span className="text-ds-text-muted">未开白</span>;
+            ? <span className="text-ds-success font-medium">已特批</span>
+            : <span className="text-ds-text-muted">未特批</span>;
     }
     return <span className="text-ds-text-muted">—</span>;
 }
@@ -110,9 +110,11 @@ export default function ClassificationPage() {
         if (selectedIds.length === 0) return;
         setBatchLoading(true);
         try {
-            await batchUpdateTableSensitivity(selectedIds, newLevel);
+            const res = await batchUpdateTableSensitivity(selectedIds, newLevel);
             const label = LEVEL_OPTIONS.find(o => o.value === newLevel)?.label ?? newLevel;
-            notify.success(`已将 ${selectedIds.length} 张表设为「${label}」`);
+            const disabled = res.data ?? 0;
+            const extra = disabled > 0 ? `，已自动下线 ${disabled} 个 API` : '';
+            notify.success(`已将 ${selectedIds.length} 张表设为「${label}」${extra}`);
             setSelectedIds([]);
             reload();
         } catch (err) {
@@ -122,15 +124,17 @@ export default function ClassificationPage() {
         }
     };
 
-    // ============ 单表改级 + 开白 ============
+    // ============ 单表改级 + 特批开放 ============
     const [actionId, setActionId] = useState<string | null>(null);
 
-    const changeLevel = async (item: SensitivityTableItem, newLevel: string) => {
+    const doChangeLevel = async (item: SensitivityTableItem, newLevel: string) => {
         setActionId(item.tableId);
         try {
-            await updateTableSensitivity(item.tableId, newLevel);
+            const res = await updateTableSensitivity(item.tableId, newLevel);
             const label = LEVEL_OPTIONS.find(o => o.value === newLevel)?.label ?? newLevel;
-            notify.success(`「${item.tableName}」已设为「${label}」`);
+            const disabled = res.data ?? 0;
+            const extra = disabled > 0 ? `，已自动下线 ${disabled} 个 API` : '';
+            notify.success(`「${item.tableName}」已设为「${label}」${extra}`);
             reload();
         } catch (err) {
             notify.error(getErrorMessage(err));
@@ -139,12 +143,37 @@ export default function ClassificationPage() {
         }
     };
 
+    /** 改级入口：降级（机密→内部/公开、内部→公开）先弹确认框说明后果，升级直接执行 */
+    const changeLevel = (item: SensitivityTableItem, newLevel: string) => {
+        const rank: Record<string, number> = {PUBLIC: 1, INTERNAL: 2, CONFIDENTIAL: 3};
+        const oldRank = rank[item.sensitivityLevel ?? 'PUBLIC'] ?? 1;
+        const newRank = rank[newLevel] ?? 1;
+        if (newRank >= oldRank) {
+            void doChangeLevel(item, newLevel);
+            return;
+        }
+        const oldLabel = LEVEL_OPTIONS.find(o => o.value === item.sensitivityLevel)?.label ?? item.sensitivityLevel;
+        const newLabel = LEVEL_OPTIONS.find(o => o.value === newLevel)?.label ?? newLevel;
+        const consequence = newLevel === 'PUBLIC'
+            ? '降级后所有用户均可在 SQL 终端查询此表，且可生成对外 API。'
+            : '降级后有查询权限的用户可在 SQL 终端查询此表。';
+        Modal.confirm({
+            centered: true,
+            wrapClassName: 'prototype-modal',
+            title: '确认降级',
+            content: `「${item.tableName}」将从「${oldLabel}」降为「${newLabel}」。${consequence}`,
+            okText: '确认降级',
+            cancelText: '取消',
+            onOk: () => doChangeLevel(item, newLevel),
+        });
+    };
+
     const toggleExempt = async (item: SensitivityTableItem) => {
         const next = item.apiExempted === 1 ? 0 : 1;
         setActionId(item.tableId);
         try {
             await updateTableApiExempt(item.tableId, next);
-            notify.success(next === 1 ? `「${item.tableName}」已开白` : `「${item.tableName}」已取消开白`);
+            notify.success(next === 1 ? `「${item.tableName}」已特批开放` : `「${item.tableName}」已取消特批`);
             reload();
         } catch (err) {
             notify.error(getErrorMessage(err));
@@ -218,7 +247,7 @@ export default function ClassificationPage() {
             render: (v?: string) => <span className="text-ds-text-muted">{sourceLabel(v)}</span>,
         },
         {
-            title: 'API 开白',
+            title: 'API 特批',
             dataIndex: 'apiExempted',
             width: 90,
             render: (_, item) => <ExemptCell item={item}/>,
@@ -275,7 +304,7 @@ export default function ClassificationPage() {
                             loading={actionId === item.tableId}
                             onClick={() => toggleExempt(item)}
                         >
-                            {item.apiExempted === 1 ? '取消开白' : '开白'}
+                            {item.apiExempted === 1 ? '取消特批' : '特批开放'}
                         </DsButton>
                     )}
                 </div>
@@ -292,7 +321,7 @@ export default function ClassificationPage() {
             render: (_, item) => (
                 <span className="text-ds-small text-ds-text-secondary">
                     {item.action === 'API_EXEMPT'
-                        ? (item.remark ?? '开白')
+                        ? (item.remark ?? '特批开放')
                         : `${item.oldLevel ? LEVEL_OPTIONS.find(o => o.value === item.oldLevel)?.label ?? item.oldLevel : '—'} → ${LEVEL_OPTIONS.find(o => o.value === item.newLevel)?.label ?? item.newLevel}`}
                 </span>
             ),
@@ -315,7 +344,7 @@ export default function ClassificationPage() {
                         数据分级分类
                     </h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        数据表敏感度分级：公开 / 内部 / 机密。机密表 SQL 终端默认隐藏、不可生成对外 API；内部表默认禁止 API（超管可开白）。分级变更留审计。
+                        数据表敏感度分级：公开 / 内部 / 机密。机密表 SQL 终端默认隐藏、不可生成对外 API；内部表默认禁止生成 API（超级管理员可特批开放）。分级变更留审计。
                     </p>
                 </div>
                 <div className="flex items-center gap-ds-2">
@@ -431,9 +460,9 @@ export default function ClassificationPage() {
             <div className="mt-ds-4 flex-shrink-0 bg-ds-bg-hover border border-ds-border-subtle rounded-ds-sm px-ds-4 py-ds-3 text-ds-tiny text-ds-text-muted leading-relaxed">
                 <span className="font-semibold text-ds-text-secondary">分级策略：</span>
                 <b className="text-ds-success">公开</b>＝SQL 终端可查、可生成对外 API；
-                <b className="text-ds-warning">内部</b>＝SQL 终端可查、API 需超管开白（本页「开白」标记）；
-                <b className="text-ds-danger">机密</b>＝SQL 终端默认隐藏 + 命中拦截、禁止生成对外 API、禁止 WebSocket 订阅。
-                机密降级必经「内部」两步（防一步误操作）。改级操作写入审计日志（谁/何时/从哪级到哪级）。
+                <b className="text-ds-warning">内部</b>＝SQL 终端可查、生成 API 需超级管理员特批开放（本页「API 特批」列）；
+                <b className="text-ds-danger">机密</b>＝SQL 终端默认隐藏、查询会被拒绝，禁止生成对外 API、禁止 WebSocket 订阅。
+                降级操作需确认。改级操作写入审计日志（谁/何时/从哪级到哪级）。
             </div>
 
             {/* 审计弹窗 */}

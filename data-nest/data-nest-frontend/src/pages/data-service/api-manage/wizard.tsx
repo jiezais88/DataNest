@@ -1,5 +1,5 @@
 // API 创建向导（Sprint 10 F2）：3 步 —— 选择数据表 → 配置接口 → 绑定 API Key。
-// 选表即生成接口雏形（右侧 API 预览：路径 + 暴露字段勾选）；机密表禁选、内部表提示需超管开白。
+// 选表即生成接口雏形（右侧 API 预览：路径 + 暴露字段勾选）；机密表禁选、内部表提示需超级管理员特批开放。
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Tooltip} from 'antd';
@@ -475,7 +475,7 @@ export default function ApiCreateWizardPage() {
                                 </div>
                                 {selectedTable?.sensitivityLevel === 'INTERNAL' && (
                                     <p className="text-ds-caption text-ds-warning">
-                                        该表为内部级数据，需超管在「数据分级分类」中开白后才能生成 API。
+                                        该表为内部级数据，需超级管理员在「数据分级分类」中特批开放后才能生成 API。
                                     </p>
                                 )}
                             </div>

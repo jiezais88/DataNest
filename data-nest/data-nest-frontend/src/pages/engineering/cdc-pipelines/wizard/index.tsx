@@ -156,8 +156,10 @@ export default function CdcPipelineWizardPage() {
     const [databaseOptions, setDatabaseOptions] = useState<{ value: string; label: string }[]>([]);
     const [sourceTables, setSourceTables] = useState<CdcSourceTable[]>([]);
     const [tablesLoading, setTablesLoading] = useState(false);
-    /** 现有湖仓库名（目标库 AutoComplete 选项，允许自由输入新库名） */
+    /** 现有湖仓库名（目标库下拉候选；允许自由输入新库名） */
     const [targetDbOptions, setTargetDbOptions] = useState<{ value: string; label: string }[]>([]);
+    /** 目标库下拉搜索词（用于实时添加新库名选项） */
+    const [targetDbSearch, setTargetDbSearch] = useState('');
     /** 源数据源名称缓存（确认页展示） */
     const [datasourceName, setDatasourceName] = useState('');
 
@@ -528,7 +530,7 @@ export default function CdcPipelineWizardPage() {
                                 <div
                                     className="flex items-center gap-ds-2 px-ds-4 py-ds-3 border-b border-ds-border-subtle bg-ds-bg-root">
                                     <HiOutlineServer size={16} className="text-ds-accent"/>
-                                    <span className="text-ds-small font-semibold text-ds-text-primary">源 SOURCE</span>
+                                    <span className="text-ds-small font-semibold text-ds-text-primary">源</span>
                                     <span className="text-ds-tiny text-ds-text-muted ml-auto">MySQL / PostgreSQL</span>
                                 </div>
                                 <div className="p-ds-4 flex-1 flex flex-col">
@@ -648,25 +650,36 @@ export default function CdcPipelineWizardPage() {
                                 <div
                                     className="flex items-center gap-ds-2 px-ds-4 py-ds-3 border-b border-ds-border-subtle bg-ds-bg-root">
                                     <HiOutlineCircleStack size={16} className="text-ds-accent"/>
-                                    <span className="text-ds-small font-semibold text-ds-text-primary">
-                                        目标 TARGET
-                                    </span>
+                                    <span className="text-ds-small font-semibold text-ds-text-primary">目标</span>
                                     <span className="text-ds-tiny text-ds-text-muted ml-auto">Iceberg 湖仓（内置 MinIO）</span>
                                 </div>
                                 <div className="p-ds-4 flex-1 flex flex-col">
-                                    <FormItem label="目标库（Iceberg 库名）" required
+                                    <FormItem label="目标库" required
                                               hint={(
                                                   <>可自由输入新库名（namespace 自动创建）；Doris 查询：<span
                                                       className="font-mono">datalake_catalog.{targetDatabase || '<目标库>'}.{'<表名>'}</span></>
                                               )}>
-                                        <AutoComplete
+                                        <Select
                                             className="w-full"
-                                            value={targetDatabase}
-                                            options={targetDbOptions}
-                                            maxLength={100}
+                                            showSearch
+                                            value={targetDatabase || undefined}
                                             placeholder="选择现有湖仓库，或输入新库名，例如：dwd"
                                             aria-label="目标库"
-                                            onChange={(v) => setTargetDatabase(v)}
+                                            filterOption={false}
+                                            notFoundContent={targetDbSearch ? null : '暂无已有湖仓库'}
+                                            options={[
+                                                ...targetDbOptions,
+                                                ...(targetDbSearch && !targetDbOptions.some(o => o.value === targetDbSearch)
+                                                    ? [{value: targetDbSearch, label: `新建：${targetDbSearch}`}]
+                                                    : []),
+                                            ]}
+                                            onSearch={(v) => setTargetDbSearch(v)}
+                                            onChange={(v) => {
+                                                setTargetDatabase(v);
+                                                setTargetDbSearch('');
+                                            }}
+                                            allowClear
+                                            onClear={() => setTargetDatabase('')}
                                         />
                                     </FormItem>
                                     <div className="text-ds-small font-semibold text-ds-text-primary mb-ds-2">
