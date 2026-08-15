@@ -32,6 +32,7 @@ import com.datanest.engineering.mapper.DagNodeMapper;
 import com.datanest.engineering.mapper.NodeExecutionLogMapper;
 import com.datanest.engineering.mapper.NodeExecutionMapper;
 import com.datanest.engineering.service.DagParameterService;
+import com.datanest.engineering.service.ExecutionQueueService;
 import com.datanest.engineering.service.SubDagParamMappingResolver;
 import com.datanest.task.core.service.DagEdgeSnapshot;
 import org.slf4j.Logger;
@@ -154,6 +155,9 @@ public class InternalDagExecutionService {
             execution.setStatus("RUNNING");
             execution.setStartTime(now);
             execution.setCreatedAt(now);
+            // Sprint 11 F3：定时实例执行记录带队列名与优先级（与手动 trigger 口径一致）
+            execution.setQueueName(dag.getQueueName() == null ? ExecutionQueueService.DEFAULT_QUEUE : dag.getQueueName());
+            execution.setPriority(dag.getPriority() == null ? 2 : dag.getPriority());
             // Sprint 7 NG5：嵌套工作流（同步子 DAG）主→子参数下发——按父节点 paramMappings
             // 把父执行上下文参数映射为子 DAG 覆盖集，解析后落 resolvedParams（节点执行时优先级最高）。
             // 无映射/父执行缺失时保持 null（原语义，节点执行按默认值+系统变量现算）
@@ -529,6 +533,8 @@ public class InternalDagExecutionService {
         info.setPowerjobWfInstanceId(entity.getPowerjobWfInstanceId());
         info.setTriggerType(entity.getTriggerType());
         info.setStatus(entity.getStatus());
+        info.setQueueName(entity.getQueueName());
+        info.setPriority(entity.getPriority());
         info.setStartTime(entity.getStartTime());
         info.setEndTime(entity.getEndTime());
         info.setDurationMs(entity.getDurationMs());

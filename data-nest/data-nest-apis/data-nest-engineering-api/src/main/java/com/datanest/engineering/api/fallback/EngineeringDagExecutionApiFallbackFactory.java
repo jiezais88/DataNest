@@ -100,6 +100,16 @@ public class EngineeringDagExecutionApiFallbackFactory implements FallbackFactor
             public Result<Void> appendNodeLogs(Long id, NodeLogAppendRequest request) {
                 return Result.ok(null);
             }
+
+            @Override
+            public Result<Integer> dispatchOnce() {
+                return Result.ok(0);
+            }
+
+            @Override
+            public Result<Integer> reapStuckWaiting(Integer waitTimeoutMinutes) {
+                return Result.ok(0);
+            }
         };
     }
 }

@@ -37,6 +37,9 @@ public class JobRegistrar implements ApplicationRunner {
     @Value("${datanest.job.doris-catalog-auto-refresh.cron:0/30 * * * * ?}")
     private String dorisCatalogAutoRefreshCron;
 
+    @Value("${datanest.queue.dispatch-interval-seconds:5}")
+    private int queueDispatchIntervalSeconds;
+
     private final SchedulerClient schedulerClient;
 
     public JobRegistrar(SchedulerClient schedulerClient) {
@@ -79,6 +82,8 @@ public class JobRegistrar implements ApplicationRunner {
         platformJobs.put("sqlHistoryCleanupHandler", "0 50 3 * * ?");
         // Sprint 10 F3 补全：API 调用明细清理（默认每天凌晨 4 点 50 分，保留 30 天，data-service 经 Feign 清理）
         platformJobs.put("apiCallLogCleanupHandler", "0 50 4 * * ?");
+        // Sprint 11 F3：执行队列调度（每 5s，engineering 侧调度 + 对账，配置键 datanest.queue.dispatch-interval-seconds）
+        platformJobs.put("queueDispatcherHandler", queueDispatchCron());
 
         logger.info("Ensuring platform jobs registered in PowerJob, count={}", platformJobs.size());
 
@@ -113,7 +118,14 @@ public class JobRegistrar implements ApplicationRunner {
             case "qualityAutoTriggerReconcileHandler" -> "质量自动触发对账补发";
             case "sqlHistoryCleanupHandler" -> "SQL 查询历史清理";
             case "apiCallLogCleanupHandler" -> "API 调用明细清理";
+            case "queueDispatcherHandler" -> "执行队列调度";
             default -> handlerName;
         };
+    }
+
+    /** 按配置的调度间隔（秒）生成 cron 表达式（0/5 表示每 5 秒） */
+    private String queueDispatchCron() {
+        int interval = Math.max(1, Math.min(60, queueDispatchIntervalSeconds));
+        return "0/" + interval + " * * * * ?";
     }
 }

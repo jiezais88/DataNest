@@ -20,8 +20,10 @@ import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.engineering.entity.*;
 import com.datanest.engineering.mapper.*;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.system.api.SystemUserApi;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.support.CronExpression;
@@ -68,6 +70,8 @@ public class DagService {
     private final AlertApi alertApi;
     private final GovernanceDatasourceApi governanceDatasourceApi;
     private final DagParameterMapper dagParameterMapper;
+    private final ExecutionQueueService executionQueueService;
+    private final DagProjectMapper dagProjectMapper;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
@@ -76,7 +80,9 @@ public class DagService {
                       DagVersionService dagVersionService, SystemUserApi systemUserApi,
                       AlertApi alertApi,
                       GovernanceDatasourceApi governanceDatasourceApi,
-                      DagParameterMapper dagParameterMapper) {
+                      DagParameterMapper dagParameterMapper,
+                      ExecutionQueueService executionQueueService,
+                      DagProjectMapper dagProjectMapper) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -91,6 +97,8 @@ public class DagService {
         this.alertApi = alertApi;
         this.governanceDatasourceApi = governanceDatasourceApi;
         this.dagParameterMapper = dagParameterMapper;
+        this.executionQueueService = executionQueueService;
+        this.dagProjectMapper = dagProjectMapper;
     }
 
     @Transactional
@@ -293,9 +301,79 @@ public class DagService {
         return dto;
     }
 
-    public List<DagPayload> list(Long projectId) {
+    /**
+     * 队列绑定 DAG 分页查询（Sprint 11 F3 队列详情抽屉）：
+     * 按 queueName 精确过滤 + 多条件筛选（DAG 名/项目名模糊、状态、优先级、触发方式），
+     * 批量回填项目名/用户名/最近执行/7 天执行次数（全部一次查询，避免 N+1）。
+     */
+    public PageResult<DagPayload> pageByQueue(String queueName, String keyword, String status,
+                                              Integer priority, String triggerType,
+                                              long page, long pageSize) {
+        QueryWrapper<Dag> wrapper = new QueryWrapper<>();
+        wrapper.eq("queue_name", queueName);
+        if (StringUtils.hasText(keyword)) {
+            String kw = keyword.trim();
+            // 同时匹配 DAG 名与所属项目名：先查项目名命中的 projectId，再拼 OR 条件
+            List<Long> matchedProjectIds = dagProjectMapper.selectList(
+                            new QueryWrapper<DagProject>().like("name", kw))
+                    .stream().map(DagProject::getId).toList();
+            wrapper.and(w -> {
+                w.like("name", kw);
+                if (!matchedProjectIds.isEmpty()) w.or().in("project_id", matchedProjectIds);
+            });
+        }
+        if (StringUtils.hasText(status)) wrapper.eq("status", status);
+        if (priority != null) wrapper.eq("priority", priority);
+        if (StringUtils.hasText(triggerType)) wrapper.eq("trigger_type", triggerType);
+        wrapper.orderByDesc("created_at");
+
+        Page<Dag> mpPage = dagMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        List<Dag> dags = mpPage.getRecords();
+        if (dags.isEmpty()) {
+            return PageResult.of(List.of(), mpPage.getTotal(), page, pageSize);
+        }
+
+        // 批量：nodes / latest execution / 项目名 / 7 天执行次数（一次查询，避免 N+1）
+        List<Long> dagIds = dags.stream().map(Dag::getId).toList();
+        Map<Long, List<DagNode>> nodesByDag = dagNodeMapper.selectList(
+                        new QueryWrapper<DagNode>().in("dag_id", dagIds))
+                .stream().collect(Collectors.groupingBy(DagNode::getDagId));
+        Map<Long, DagExecution> latestByDag = dagExecutionMapper.selectLatestByDagIds(dagIds).stream()
+                .collect(Collectors.toMap(DagExecution::getDagId, e -> e));
+        LocalDateTime since7d = LocalDateTime.now().minusDays(7);
+        Map<Long, Long> count7dByDag = dagExecutionMapper.countByDagIdsSince(dagIds, since7d).stream()
+                .collect(Collectors.toMap(m -> ((Number) m.get("dag_id")).longValue(),
+                        m -> ((Number) m.get("cnt")).longValue()));
+
+        List<Long> projectIds = dags.stream().map(Dag::getProjectId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> projectNameById = projectIds.isEmpty() ? Map.of()
+                : dagProjectMapper.selectBatchIds(projectIds).stream()
+                .collect(Collectors.toMap(DagProject::getId, DagProject::getName));
+
+        List<DagPayload> records = dags.stream().map(d -> {
+            DagPayload dto = toPayload(d, false);
+            dto.setProjectName(projectNameById.get(d.getProjectId()));
+            List<DagNode> nodes = nodesByDag.getOrDefault(d.getId(), List.of());
+            dto.setNodeSummary(buildNodeSummary(nodes));
+            DagExecution last = latestByDag.get(d.getId());
+            if (last != null) {
+                DagPayload.LatestExecution le = new DagPayload.LatestExecution();
+                le.setStatus(last.getStatus());
+                le.setStartTime(last.getStartTime());
+                le.setEndTime(last.getEndTime());
+                dto.setLatestExecution(le);
+            }
+            dto.setExecutionCount7d(count7dByDag.getOrDefault(d.getId(), 0L));
+            return dto;
+        }).toList();
+        fillUsernameNames(records);
+        return PageResult.of(records, mpPage.getTotal(), page, pageSize);
+    }
+
+    public List<DagPayload> list(Long projectId, String queueName) {
         QueryWrapper<Dag> wrapper = new QueryWrapper<>();
         if (projectId != null) wrapper.eq("project_id", projectId);
+        if (StringUtils.hasText(queueName)) wrapper.eq("queue_name", queueName);
         wrapper.orderByDesc("created_at");
         List<Dag> dags = dagMapper.selectList(wrapper);
         if (dags.isEmpty()) return List.of();
@@ -787,6 +865,16 @@ public class DagService {
         dag.setTriggerType(payload.getTriggerType() == null ? "MANUAL" : payload.getTriggerType());
         dag.setCronExpression(payload.getCronExpression());
         dag.setStatus(payload.getStatus() == null ? "ENABLED" : payload.getStatus());
+        // Sprint 11 F3：执行队列 + 优先级（默认 default/2）；队列存在性强校验（QU-2 双保险）
+        String queueName = payload.getQueueName() == null || payload.getQueueName().isBlank()
+                ? ExecutionQueueService.DEFAULT_QUEUE : payload.getQueueName().trim();
+        executionQueueService.getQueueByName(queueName); // 不存在抛 EXECUTION_QUEUE_NOT_FOUND
+        dag.setQueueName(queueName);
+        int priority = payload.getPriority() == null ? 2 : payload.getPriority();
+        if (priority < 1 || priority > 3) {
+            throw new BusinessException(ErrorCode.EXECUTION_QUEUE_NAME_INVALID, "优先级仅支持 1=低/2=中/3=高");
+        }
+        dag.setPriority(priority);
     }
 
     private List<DagNode> toNodeEntities(List<DagNodePayload> payloads, Long dagId) {

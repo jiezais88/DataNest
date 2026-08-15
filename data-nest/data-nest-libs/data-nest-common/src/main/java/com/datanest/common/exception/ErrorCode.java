@@ -100,6 +100,13 @@ public enum ErrorCode {
     DAG_NAME_REQUIRED(7019, "DAG 名称不能为空"),
     DAG_VERSION_NOT_FOUND(7020, "DAG 版本不存在"),
 
+    // Execution queue errors — Sprint 11 F3 任务资源队列
+    EXECUTION_QUEUE_NOT_FOUND(7401, "执行队列不存在"),
+    EXECUTION_QUEUE_NAME_EXISTS(7402, "执行队列名称已存在"),
+    EXECUTION_QUEUE_BUILTIN_READONLY(7403, "系统内置队列不可修改名称或删除"),
+    EXECUTION_QUEUE_REFERENCED(7404, "执行队列已被 DAG 绑定，无法删除"),
+    EXECUTION_QUEUE_NAME_INVALID(7405, "执行队列名称仅限字母/数字/下划线，2~32 位"),
+
     // DAG / Data development errors — Sprint 5 控制流增强
     SUB_DAG_CYCLE_DETECTED(7101, "子 DAG 存在循环引用，无法保存"),
     SUB_DAG_NOT_FOUND(7102, "引用的子 DAG 不存在"),

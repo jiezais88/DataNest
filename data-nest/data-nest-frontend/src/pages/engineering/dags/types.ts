@@ -83,11 +83,19 @@ export interface Dag {
     // Snowflake id 是 19 位数字，超 JS Number.MAX_SAFE_INTEGER，全程当 string 用
     id?: string | number;
     projectId: string | number;
+    /** Sprint 11 F3：所属项目名称（队列详情抽屉批量回填，展示「项目名-DAG名」） */
+    projectName?: string;
+    /** Sprint 11 F3：最近 7 天执行次数（队列详情抽屉） */
+    executionCount7d?: number;
     name: string;
     triggerType: 'MANUAL' | 'CRON';
     cronExpression?: string;
     scheduleEnabled: boolean;
     maxParallelism: number;
+    /** Sprint 11 F3：执行队列名（默认 default） */
+    queueName?: string;
+    /** Sprint 11 F3：队列优先级（1=低 2=中 3=高，默认 2） */
+    priority?: number;
     status: 'ENABLED' | 'DISABLED';
     releaseState?: string;
     createdAt?: string;
@@ -123,6 +131,10 @@ export interface DagExecution {
     dagName?: string;
     triggerType?: string;
     status: string;
+    /** Sprint 11 F3：执行队列名 */
+    queueName?: string;
+    /** Sprint 11 F3：队列优先级（1=低 2=中 3=高） */
+    priority?: number;
     startTime?: string;
     endTime?: string;
     durationMs?: number;

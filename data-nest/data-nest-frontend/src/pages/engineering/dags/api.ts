@@ -41,8 +41,20 @@ export const deleteDagProject = (id: string | number) =>
 // 所有 id 入参用 string | number：19 位 Snowflake id 超过 JS Number.MAX_SAFE_INTEGER
 // 必须保持 string 避免精度丢失（axios URL 拼接时如果前端先 Number() 会被截断）
 
-export const listDags = (projectId?: string | number) =>
-    request.get<Result<Dag[]>>('/engineering/dev/dags', {params: {projectId}}).then(r => r.data);
+export const listDags = (projectId?: string | number, queueName?: string) =>
+    request.get<Result<Dag[]>>('/engineering/dev/dags', {params: {projectId, queueName}}).then(r => r.data);
+
+/** Sprint 11 F3：队列绑定 DAG 分页（按 queueName 过滤 + 关键字/状态/优先级/触发方式筛选，含 projectName/executionCount7d 回填） */
+export const pageQueueDags = (params: {
+    queueName: string;
+    keyword?: string;
+    status?: string;
+    priority?: number;
+    triggerType?: string;
+    page?: number;
+    pageSize?: number;
+}) =>
+    request.get<Result<PageResult<Dag>>>('/engineering/dev/dags/page-by-queue', {params});
 export const getDag = (id: string | number) =>
     request.get<Result<Dag>>(`/engineering/dev/dags/${id}`).then(r => r.data);
 export const createDag = (data: Dag) =>
@@ -83,6 +95,39 @@ export const rerunFailed = (dagId: string | number, executionId: string | number
 // 因此直接复用 SyncJobLog 类型与 HistoryLogModal 组件
 export const getNodeExecutionLogs = (nodeExecutionId: string | number) =>
     request.get<Result<SyncJobLog[]>>(`/engineering/dev/dags/node-executions/${nodeExecutionId}/logs`);
+
+// =================== 执行队列（Sprint 11 F3） ===================
+
+export interface ExecutionQueue {
+    id: string;
+    queueName: string;
+    maxConcurrency: number;
+    description?: string;
+    isSystem: boolean;
+    runningCount?: number;
+    waitingCount?: number;
+    dagCount?: number;
+    createdAt?: string;
+    updatedAt?: string;
+    createdBy?: string;
+    updatedBy?: string;
+    createdByName?: string;
+    updatedByName?: string;
+}
+
+/** 执行队列分页查询（与 sync-jobs 风格一致：POST + keyword + page + pageSize；返回 Result 信封，调用方读 .data.records） */
+export const queryExecutionQueues = (params: {keyword?: string; page?: number; pageSize?: number}) =>
+    request.post<Result<PageResult<ExecutionQueue>>>('/engineering/execution-queues/page', params);
+
+/** 全量列表（运维/调试 + DAG 表单下拉数据源；拆信封返回数组，方便 setState） */
+export const listExecutionQueues = () =>
+    request.get<Result<ExecutionQueue[]>>('/engineering/execution-queues').then(r => r.data);
+export const createExecutionQueue = (data: {queueName: string; maxConcurrency: number; description?: string}) =>
+    request.post<Result<ExecutionQueue>>('/engineering/execution-queues', data).then(r => r.data);
+export const updateExecutionQueue = (id: string, data: {queueName?: string; maxConcurrency: number; description?: string}) =>
+    request.put<Result<ExecutionQueue>>(`/engineering/execution-queues/${id}`, data).then(r => r.data);
+export const deleteExecutionQueue = (id: string) =>
+    request.delete<Result<null>>(`/engineering/execution-queues/${id}`).then(r => r.data);
 
 // =================== SQL Preview ===================
 // Sprint 3: "Run Test" button in the SQL editor modal.

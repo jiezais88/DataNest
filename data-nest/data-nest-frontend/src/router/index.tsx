@@ -16,6 +16,7 @@ const UsersPage = lazyPage(() => import('@/pages/system/users'));
 const AuditLogsPage = lazyPage(() => import('@/pages/system/audit-logs'));
 const RolesPage = lazyPage(() => import('@/pages/system/roles'));
 const DataPermissionPage = lazyPage(() => import('@/pages/system/data-permission'));
+const ExecutionQueuesPage = lazyPage(() => import('@/pages/system/execution-queues'));
 const DataSourcesPage = lazyPage(() => import('@/pages/engineering/datasources'));
 const CollectTasksPage = lazyPage(() => import('@/pages/governance/collect-tasks'));
 const CollectHistoryGlobalPage = lazyPage(() => import('@/pages/governance/collect-tasks/history-global'));
@@ -95,6 +96,7 @@ export const router = createBrowserRouter([
             {path: 'system/audit-logs', element: <AuditLogsPage/>},
             {path: 'system/roles', element: <RolesPage/>},
             {path: 'system/data-permission', element: <DataPermissionPage/>},
+            {path: 'system/execution-queues', element: <ExecutionQueuesPage/>},
             {path: 'engineering/datasources', element: <DataSourcesPage/>},
             {path: 'engineering/cdc-pipelines', element: <CdcPipelinesPage/>},
             {path: 'engineering/cdc-pipelines/new', element: <CdcPipelineWizardPage/>},

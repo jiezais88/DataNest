@@ -21,6 +21,12 @@ public class DagExecutionInfo {
 
     private String status;
 
+    /** 执行队列名（Sprint 11 F3，快照自 DAG） */
+    private String queueName;
+
+    /** 队列优先级（1=低 2=中 3=高，Sprint 11 F3，快照自 DAG） */
+    private Integer priority;
+
     private LocalDateTime startTime;
 
     private LocalDateTime endTime;

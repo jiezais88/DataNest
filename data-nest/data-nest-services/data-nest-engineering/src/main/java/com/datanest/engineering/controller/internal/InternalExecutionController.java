@@ -11,6 +11,7 @@ import com.datanest.engineering.api.dto.NodeExecutionInfo;
 import com.datanest.engineering.api.dto.NodeExecutionMarkRequest;
 import com.datanest.engineering.api.dto.NodeLogAppendRequest;
 import com.datanest.engineering.api.dto.ReapStuckRequest;
+import com.datanest.engineering.service.QueueDispatchService;
 import com.datanest.engineering.service.internal.InternalDagExecutionService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,9 +38,26 @@ import io.swagger.v3.oas.annotations.Hidden;
 public class InternalExecutionController {
 
     private final InternalDagExecutionService executionService;
+    private final QueueDispatchService queueDispatchService;
 
-    public InternalExecutionController(InternalDagExecutionService executionService) {
+    public InternalExecutionController(InternalDagExecutionService executionService,
+                                       QueueDispatchService queueDispatchService) {
         this.executionService = executionService;
+        this.queueDispatchService = queueDispatchService;
+    }
+
+    // ==================== 队列调度（Sprint 11 F3，job 每 5s 调） ====================
+
+    /** 调度一轮等待池（返回本轮触发数） */
+    @PostMapping("/queue/dispatch")
+    public Result<Integer> dispatchOnce() {
+        return Result.ok(queueDispatchService.dispatchOnce());
+    }
+
+    /** 队列对账：超时 WAITING 强制收尾（返回收尾数） */
+    @PostMapping("/queue/reap-stuck-waiting")
+    public Result<Integer> reapStuckWaiting(@RequestParam(defaultValue = "60") Integer waitTimeoutMinutes) {
+        return Result.ok(queueDispatchService.reapStuckWaiting(waitTimeoutMinutes));
     }
 
     // ==================== 执行实例 ====================

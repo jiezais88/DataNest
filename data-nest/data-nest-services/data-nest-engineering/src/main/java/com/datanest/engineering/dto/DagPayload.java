@@ -19,6 +19,9 @@ public class DagPayload {
     private Long id;
     @Schema(description = "所属项目 ID", example = "1234567890123456789")
     private Long projectId;
+    /** Sprint 11 F3：所属项目名称（列表/队列抽屉展示「项目名-DAG名」，批量回填） */
+    @Schema(description = "所属项目名称")
+    private String projectName;
     @Schema(description = "DAG 名称")
     private String name;
     @Schema(description = "触发方式（MANUAL/CRON）")
@@ -29,6 +32,10 @@ public class DagPayload {
     private Boolean scheduleEnabled;     // null=false
     @Schema(description = "最大并行度（默认 3）")
     private Integer maxParallelism;      // 默认 3
+    @Schema(description = "执行队列名（默认 default）")
+    private String queueName;            // 默认 default（Sprint 11 F3）
+    @Schema(description = "队列优先级（1=低 2=中 3=高，默认 2）")
+    private Integer priority;            // 1=低 2=中 3=高（Sprint 11 F3）
     @Schema(description = "状态（ENABLED/DISABLED）")
     private String status;               // ENABLED / DISABLED
 
@@ -60,6 +67,10 @@ public class DagPayload {
     /** Sprint 3 性能优化：最近一次执行状态/时间，避免前端 N+1 拉 executions */
     @Schema(description = "最近一次执行摘要（状态/时间）")
     private LatestExecution latestExecution;
+
+    /** Sprint 11 F3：最近 7 天执行次数（队列详情抽屉，批量 GROUP BY 聚合） */
+    @Schema(description = "最近 7 天执行次数")
+    private Long executionCount7d;
 
     @Schema(description = "最近一次执行摘要")
     @Data

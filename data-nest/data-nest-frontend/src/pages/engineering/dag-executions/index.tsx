@@ -412,6 +412,27 @@ export default function DagExecutionsGlobalPage() {
             ),
         },
         {
+            title: '队列',
+            dataIndex: 'queueName',
+            width: 110,
+            render: (v?: string) => (
+                <span className="text-ds-small font-mono text-ds-text-secondary">
+                    {v || '-'}
+                </span>
+            ),
+        },
+        {
+            title: '优先级',
+            dataIndex: 'priority',
+            width: 90,
+            render: (v?: number) => {
+                if (v == null) return <span className="text-ds-small text-ds-text-muted">-</span>;
+                const label = v === 1 ? '低' : v === 3 ? '高' : '中';
+                const cls = v === 1 ? 'text-ds-text-muted' : v === 3 ? 'text-ds-warning font-medium' : 'text-ds-text-secondary';
+                return <span className={`text-ds-small ${cls}`}>{v} {label}</span>;
+            },
+        },
+        {
             title: '状态',
             dataIndex: 'status',
             width: 130,

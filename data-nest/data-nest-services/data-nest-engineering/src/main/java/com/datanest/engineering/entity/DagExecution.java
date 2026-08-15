@@ -25,7 +25,13 @@ public class DagExecution {
 
     private String triggerType;          // MANUAL / CRON
 
-    private String status;               // RUNNING / SUCCESS / FAILED / TERMINATED
+    private String status;               // WAITING / RUNNING / SUCCESS / FAILED / TERMINATED
+
+    /** 执行队列名（Sprint 11 F3，快照自 DAG，队列改名后历史仍显示原队列） */
+    private String queueName;
+
+    /** 队列优先级（1=低 2=中 3=高，Sprint 11 F3，快照自 DAG） */
+    private Integer priority;
 
     private LocalDateTime startTime;
 

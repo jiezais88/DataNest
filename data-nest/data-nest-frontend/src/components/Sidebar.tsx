@@ -240,6 +240,7 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
             {label: '用户管理', path: '/system/users', icon: <HiOutlineUsers size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {label: '角色管理', path: '/system/roles', icon: <HiOutlineUserGroup size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {label: '权限配置', path: '/system/data-permission', icon: <HiOutlineLockClosed size={18}/>, roles: [ROLE.SUPER_ADMIN]},
+            {label: '执行队列', path: '/system/execution-queues', icon: <HiOutlineQueueList size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {label: '审计日志', path: '/system/audit-logs', icon: <HiOutlineDocumentText size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {
                 label: '告警中心',

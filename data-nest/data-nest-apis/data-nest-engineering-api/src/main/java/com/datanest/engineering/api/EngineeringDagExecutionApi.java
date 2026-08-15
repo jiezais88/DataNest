@@ -94,4 +94,14 @@ public interface EngineeringDagExecutionApi {
     /** 追加节点日志（服务端按 executionId + nodeId 续号，同事务批量插入） */
     @PostMapping("/node-executions/{id}/logs:append")
     Result<Void> appendNodeLogs(@PathVariable("id") Long id, @RequestBody NodeLogAppendRequest request);
+
+    // ==================== 队列调度（Sprint 11 F3，job QueueDispatcherHandler 调） ====================
+
+    /** 调度一轮等待池，返回本轮触发数 */
+    @PostMapping("/queue/dispatch")
+    Result<Integer> dispatchOnce();
+
+    /** 队列对账：超时 WAITING 强制收尾，返回收尾数 */
+    @PostMapping("/queue/reap-stuck-waiting")
+    Result<Integer> reapStuckWaiting(@RequestParam("waitTimeoutMinutes") Integer waitTimeoutMinutes);
 }

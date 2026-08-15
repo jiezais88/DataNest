@@ -598,7 +598,7 @@ export default function AlertCenterPage() {
     ], []);
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col h-full">
             <div className="flex items-center justify-between mb-ds-5 flex-shrink-0">
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">告警中心</h1>
@@ -687,7 +687,7 @@ export default function AlertCenterPage() {
 
             {/* ==================== 告警历史 ==================== */}
             {activeTab === 'history' && (
-                <>
+                <div className="flex flex-col flex-1 min-h-0">
                     {/* 告警构成统计卡（后端聚合端点，点击卡片下钻列表筛选） */}
                     {/* 告警类型构成统计卡（方案 A：与「告警类型」筛选一一对应，点击下钻） */}
                     <StatsCards
@@ -723,7 +723,7 @@ export default function AlertCenterPage() {
                     
 
                     <div
-                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col">
+                        className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle overflow-hidden flex flex-col flex-1 min-h-0">
                     <div className="p-ds-3 border-b border-ds-border-subtle flex-shrink-0">
                         <DsToolbar
                             extra={
@@ -772,7 +772,7 @@ export default function AlertCenterPage() {
                         </DsToolbar>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <div className="flex-1 min-h-0 overflow-auto">
                         <Table<AlertHistory>
                             dataSource={history}
                             rowKey="id"
@@ -789,7 +789,7 @@ export default function AlertCenterPage() {
                     <Pagination page={historyPage} pageSize={historyPageSize} total={historyTotal}
                                 onChange={handleHistoryPageChange}/>
                     </div>
-                </>
+                </div>
             )}
 
             {/* 规则新增/编辑弹窗 */}

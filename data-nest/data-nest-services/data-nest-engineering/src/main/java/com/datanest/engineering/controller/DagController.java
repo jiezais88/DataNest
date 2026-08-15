@@ -6,6 +6,7 @@ import com.datanest.common.audit.AuditLog;
 import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
+import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionDTO;
 import com.datanest.engineering.dto.DagPayload;
@@ -42,11 +43,27 @@ public class DagController {
         this.dagParameterService = dagParameterService;
     }
 
-    @Operation(summary = "DAG 列表（可按项目过滤）")
+    @Operation(summary = "DAG 列表（可按项目/执行队列过滤）", description = "queueName 用于执行队列详情抽屉（Sprint 11 F3）")
     @SaCheckLogin
     @GetMapping
-    public Result<List<DagPayload>> list(@Parameter(description = "项目 ID（可选，过滤所属项目）") @RequestParam(required = false) Long projectId) {
-        return Result.ok(dagService.list(projectId));
+    public Result<List<DagPayload>> list(@Parameter(description = "项目 ID（可选，过滤所属项目）") @RequestParam(required = false) Long projectId,
+                                         @Parameter(description = "执行队列名（可选，过滤绑定队列）") @RequestParam(required = false) String queueName) {
+        return Result.ok(dagService.list(projectId, queueName));
+    }
+
+    /** Sprint 11 F3：队列详情抽屉的 DAG 分页（按队列精确 + 多条件筛选 + 项目名/7 天执行次数回填） */
+    @Operation(summary = "队列绑定 DAG 分页", description = "按 queueName 过滤，支持 DAG 名/项目名关键字、状态、优先级、触发方式筛选，返回含 projectName/executionCount7d 的分页")
+    @SaCheckLogin
+    @GetMapping("/page-by-queue")
+    public Result<PageResult<DagPayload>> pageByQueue(
+            @Parameter(description = "执行队列名（必填）") @RequestParam String queueName,
+            @Parameter(description = "DAG 名/项目名关键字（可选）") @RequestParam(required = false) String keyword,
+            @Parameter(description = "DAG 状态（ENABLED/DISABLED，可选）") @RequestParam(required = false) String status,
+            @Parameter(description = "优先级（1/2/3，可选）") @RequestParam(required = false) Integer priority,
+            @Parameter(description = "触发方式（MANUAL/CRON，可选）") @RequestParam(required = false) String triggerType,
+            @Parameter(description = "页码（从 1 开始）") @RequestParam(defaultValue = "1") long page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") long pageSize) {
+        return Result.ok(dagService.pageByQueue(queueName, keyword, status, priority, triggerType, page, pageSize));
     }
 
     @Operation(summary = "DAG 详情（含节点与边）")

@@ -28,6 +28,12 @@ public class Dag {
 
     private Integer maxParallelism;      // 默认 3
 
+    /** 执行队列名（Sprint 11 F3，默认 default） */
+    private String queueName;
+
+    /** 队列优先级（1=低 2=中 3=高，Sprint 11 F3，默认 2） */
+    private Integer priority;
+
     private String status;               // ENABLED / DISABLED
 
     /** PowerJob 工作流 ID（P4 起唯一调度标识，旧 ds_* 列已随 V1.3.0 删除） */

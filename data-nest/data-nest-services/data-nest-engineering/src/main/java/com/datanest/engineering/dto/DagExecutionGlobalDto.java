@@ -27,8 +27,14 @@ public class DagExecutionGlobalDto {
     @Schema(description = "触发方式（MANUAL/SCHEDULED）")
     private String triggerType;          // MANUAL / SCHEDULED
 
-    @Schema(description = "执行状态（RUNNING/SUCCESS/FAILED/TERMINATED）")
-    private String status;               // RUNNING / SUCCESS / FAILED / TERMINATED
+    @Schema(description = "执行状态（WAITING/RUNNING/SUCCESS/FAILED/TERMINATED）")
+    private String status;               // WAITING / RUNNING / SUCCESS / FAILED / TERMINATED
+
+    @Schema(description = "执行队列名（Sprint 11 F3）")
+    private String queueName;
+
+    @Schema(description = "队列优先级（1=低 2=中 3=高）")
+    private Integer priority;
 
     @Schema(description = "开始时间（ISO 8601）")
     private LocalDateTime startTime;

@@ -41,6 +41,7 @@ import {
     getNodeExecutionLogs,
     listDagParameters,
     listDags,
+    listExecutionQueues,
     putDagAlertRule,
     triggerDag,
     updateDag
@@ -908,10 +909,14 @@ function DagEditorInner() {
         cronExpression: '',
         scheduleEnabled: false,
         maxParallelism: 3,
+        queueName: 'default',
+        priority: 2,
         status: 'ENABLED',
         nodes: [],
         edges: [],
     });
+    // Sprint 11 F3：执行队列列表（表单「执行队列/优先级」下拉数据源）
+    const [executionQueues, setExecutionQueues] = useState<{queueName: string}[]>([]);
     const [execution, setExecution] = useState<DagExecution | null>(null);
     // 重跑实例运行视图：仅显示本次执行的节点，隐藏复用上轮结果的节点
     const [showOnlyRerun, setShowOnlyRerun] = useState(false);
@@ -1120,6 +1125,11 @@ function DagEditorInner() {
     useEffect(() => {
         listSyncJobs().then(setSyncJobs).catch(() => {
         });
+    }, []);
+
+    // Sprint 11 F3：加载执行队列列表（表单「执行队列」下拉数据源）
+    useEffect(() => {
+        listExecutionQueues().then(setExecutionQueues).catch(() => setExecutionQueues([]));
     }, []);
 
     // 把 onNodesChange 包一层：原样透传给 ReactFlow 应用变更（含 select/dimensions 等 UI 态变更）。
@@ -1792,6 +1802,38 @@ function DagEditorInner() {
                                 </Popover>
                             </div>
                         )}
+                        {/* Sprint 11 F3：执行队列 + 优先级 */}
+                        <div className="flex items-center gap-ds-2">
+                            <span className="text-ds-small text-ds-text-secondary">执行队列</span>
+                            <Select
+                                value={dag.queueName || 'default'}
+                                disabled={!canEdit}
+                                onChange={v => {
+                                    setDag({...dag, queueName: v});
+                                    setIsDirty(true);
+                                }}
+                                options={(executionQueues.length ? executionQueues : [{queueName: 'default'}])
+                                    .map(q => ({value: q.queueName, label: q.queueName}))}
+                                className="w-[130px]"
+                            />
+                        </div>
+                        <div className="flex items-center gap-ds-2">
+                            <span className="text-ds-small text-ds-text-secondary">优先级</span>
+                            <Select
+                                value={dag.priority ?? 2}
+                                disabled={!canEdit}
+                                onChange={v => {
+                                    setDag({...dag, priority: v});
+                                    setIsDirty(true);
+                                }}
+                                options={[
+                                    {value: 1, label: '1 低'},
+                                    {value: 2, label: '2 中'},
+                                    {value: 3, label: '3 高'},
+                                ]}
+                                className="w-[90px]"
+                            />
+                        </div>
                     </>
                 )}
                 <div className="flex-1"/>

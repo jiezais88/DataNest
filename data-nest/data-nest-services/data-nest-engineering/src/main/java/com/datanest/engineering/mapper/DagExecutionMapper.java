@@ -24,6 +24,19 @@ public interface DagExecutionMapper extends BaseMapper<DagExecution> {
     List<DagExecution> selectRunning();
 
     /**
+     * 队列等待池待调度实例（Sprint 11 F3）：按队列 + 优先级 DESC + 创建时间 ASC 排序（QU-6 高优先先执行）。
+     * 仅返回该队列尚未被调度（powerjob_wf_instance_id IS NULL）的 WAITING，避免对账期间重复触发。
+     */
+    @Select("SELECT * FROM dag_execution WHERE status = 'WAITING' AND queue_name = #{queueName} "
+            + "AND powerjob_wf_instance_id IS NULL "
+            + "ORDER BY priority DESC, created_at ASC LIMIT #{limit}")
+    List<DagExecution> selectWaitingToDispatch(@Param("queueName") String queueName, @Param("limit") int limit);
+
+    /** 全部 WAITING 实例（对账兜底用，不区分是否有 wfInstanceId） */
+    @Select("SELECT * FROM dag_execution WHERE status = 'WAITING' ORDER BY priority DESC, created_at ASC")
+    List<DagExecution> selectAllWaiting();
+
+    /**
      * 每个 DAG 只取最新一条执行记录（PostgreSQL DISTINCT ON）。
      * 供 DAG 列表页展示 latestExecution 用，避免把项目下全部执行历史载入内存。
      * 排序与原 Java 侧逻辑一致：start_time 为空视为最旧（NULLS LAST），id DESC 兜底。
@@ -40,6 +53,19 @@ public interface DagExecutionMapper extends BaseMapper<DagExecution> {
      */
     @Select("SELECT * FROM dag_execution WHERE status IN ('SUCCESS', 'FAILED', 'TERMINATED') AND start_time < #{beforeTime} ORDER BY id LIMIT #{limit}")
     List<DagExecution> selectTerminalsBefore(@Param("beforeTime") LocalDateTime beforeTime, @Param("limit") int limit);
+
+    /**
+     * Sprint 11 F3：指定 DAG 集合、自 since 起的执行次数（按 dag_id 分组聚合，供队列抽屉「7 天执行次数」列）。
+     * 一次批量查询避免 N+1。
+     */
+    @Select("<script>"
+            + "SELECT dag_id, COUNT(*) AS cnt FROM dag_execution"
+            + " WHERE dag_id IN <foreach collection='dagIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>"
+            + " AND start_time &gt;= #{since}"
+            + " GROUP BY dag_id"
+            + "</script>")
+    List<java.util.Map<String, Object>> countByDagIdsSince(@Param("dagIds") List<Long> dagIds,
+                                                           @Param("since") LocalDateTime since);
 
     /**
      * 执行状态统计（列表页顶部统计卡，按时间范围聚合），避免前端拉全量列表计数。

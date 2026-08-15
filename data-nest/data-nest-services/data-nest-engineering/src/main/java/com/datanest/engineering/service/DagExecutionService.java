@@ -64,6 +64,7 @@ public class DagExecutionService {
     private final DagService dagService;
     private final DagParameterService dagParameterService;
     private final SubDagParamMappingResolver subDagParamMappingResolver;
+    private final ExecutionQueueService executionQueueService;
 
     public DagExecutionService(DagMapper dagMapper, DagNodeMapper dagNodeMapper,
                                DagEdgeMapper dagEdgeMapper,
@@ -73,7 +74,8 @@ public class DagExecutionService {
                                SyncJobService syncJobService,
                                DagService dagService,
                                DagParameterService dagParameterService,
-                               SubDagParamMappingResolver subDagParamMappingResolver) {
+                               SubDagParamMappingResolver subDagParamMappingResolver,
+                               ExecutionQueueService executionQueueService) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -85,6 +87,7 @@ public class DagExecutionService {
         this.dagService = dagService;
         this.dagParameterService = dagParameterService;
         this.subDagParamMappingResolver = subDagParamMappingResolver;
+        this.executionQueueService = executionQueueService;
     }
 
     /**
@@ -157,14 +160,31 @@ public class DagExecutionService {
             throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR, "DAG 未同步到 PowerJob");
         }
 
-        // 1. 先入库 dag_execution RUNNING 占位行（P1-3：靠 DB 唯一索引 uk_dag_execution_running 保证并发安全）
+        // 0. 排队前置检查（Sprint 11 F3）：同 DAG 已有 WAITING（排队中）不可再次触发
+        //    uk_dag_execution_running 仅约束 RUNNING，WAITING 需显式检查（避免一个 DAG 排队多个实例）
+        Long waitingExisting = dagExecutionMapper.selectCount(new QueryWrapper<DagExecution>()
+                .eq("dag_id", dagId).eq("status", "WAITING"));
+        if (waitingExisting != null && waitingExisting > 0) {
+            throw new BusinessException(ErrorCode.DAG_ALREADY_RUNNING, "DAG 正在队列中等待执行，请勿重复触发");
+        }
+
+        // 1. 先入库 dag_execution 占位行（P1-3：靠 DB 唯一索引 uk_dag_execution_running 保证并发安全）
         //    powerjobWfInstanceId 暂为 null，事务提交后调 PowerJob 成功再回写
+        //    Sprint 11 F3：根据队列容量决定直接执行（RUNNING）还是入等待池（WAITING）
+        String queueName = dag.getQueueName() == null ? ExecutionQueueService.DEFAULT_QUEUE : dag.getQueueName();
+        int priority = dag.getPriority() == null ? 2 : dag.getPriority();
+        boolean queueFull = executionQueueService.runningCount(queueName)
+                >= executionQueueService.getQueueByName(queueName).getMaxConcurrency();
         DagExecution execution = new DagExecution();
         execution.setDagId(dagId);
         // 手动触发时固定记录为 MANUAL，避免执行历史里显示成定时触发
         execution.setTriggerType("MANUAL");
-        execution.setStatus("RUNNING");
-        execution.setStartTime(LocalDateTime.now());
+        execution.setStatus(queueFull ? "WAITING" : "RUNNING");
+        execution.setQueueName(queueName);
+        execution.setPriority(priority);
+        if (!queueFull) {
+            execution.setStartTime(LocalDateTime.now());
+        }
         execution.setCreatedBy(currentUserId());
         execution.setCreatedAt(LocalDateTime.now());
         // 解析并保存本次执行的参数（手动覆盖 > 默认值 > 系统变量）
@@ -177,8 +197,22 @@ public class DagExecutionService {
         try {
             dagExecutionMapper.insert(execution);
         } catch (DuplicateKeyException e) {
-            // uk_dag_execution_running 部分唯一索引触发：同 DAG 已有 RUNNING
+            // 部分唯一索引冲突（并发兜底，前置 selectCount 只是快速提示）：
+            //  - uk_dag_execution_waiting：同 DAG 已有一条 WAITING（排队中，V1.7.1 新增）
+            //  - uk_dag_execution_running：同 DAG 已有 RUNNING
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            if (msg.contains("uk_dag_execution_waiting")) {
+                throw new BusinessException(ErrorCode.DAG_ALREADY_RUNNING, "DAG 正在队列中等待执行，请勿重复触发");
+            }
             throw new BusinessException(ErrorCode.DAG_ALREADY_RUNNING);
+        }
+
+        // 排队中（WAITING）：不预建 node_execution、不调 PowerJob，待 job 调度器有空位时补触发；
+        // 返回 executionId 供前端展示「排队中」状态
+        if ("WAITING".equalsIgnoreCase(execution.getStatus())) {
+            logger.info("DAG 触发进入等待池: dagId={}, executionId={}, queue={}, priority={}",
+                    dagId, execution.getId(), queueName, priority);
+            return getDetail(execution.getId());
         }
 
         // 2. 预创建 node_execution（status=WAITING）— 性能2：批量插入
@@ -593,6 +627,8 @@ public class DagExecutionService {
             dto.setDagName(dag == null ? null : dag.getName());
             dto.setTriggerType(ex.getTriggerType());
             dto.setStatus(ex.getStatus());
+            dto.setQueueName(ex.getQueueName());
+            dto.setPriority(ex.getPriority());
             dto.setStartTime(ex.getStartTime());
             dto.setEndTime(ex.getEndTime());
             // 实时算 durationMs：已结束用 DB 字段；运行中按 now-startTime 算
