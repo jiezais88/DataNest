@@ -52,6 +52,35 @@ public interface UserMapper extends BaseMapper<User> {
     void insertUserRole(@Param("id") Long id, @Param("userId") Long userId, @Param("roleId") Long roleId);
 
     /**
+     * 查询用户绑定的角色 ID 列表（Sprint 11 F2，数据权限/权限点聚合用）。
+     */
+    @Select("SELECT role_id FROM sys_user_role WHERE user_id = #{userId}")
+    List<Long> selectRoleIdsByUserId(@Param("userId") Long userId);
+
+    /**
+     * 查询绑定某角色的用户数（Sprint 11 F2，删除自定义角色前置校验）。
+     */
+    @Select("SELECT COUNT(*) FROM sys_user_role WHERE role_id = #{roleId}")
+    Long selectUserCountByRoleId(@Param("roleId") Long roleId);
+
+    /**
+     * 查询绑定某角色的用户列表（Sprint 11 F2，权限配置页成员 Tab）。
+     */
+    @Select("""
+                SELECT u.* FROM sys_user u
+                INNER JOIN sys_user_role ur ON u.id = ur.user_id
+                WHERE ur.role_id = #{roleId}
+                ORDER BY u.username ASC
+            """)
+    List<User> selectUsersByRoleId(@Param("roleId") Long roleId);
+
+    /**
+     * 删除某角色的全部用户关联（Sprint 11 F2，成员 Tab 全量替换）。
+     */
+    @Delete("DELETE FROM sys_user_role WHERE role_id = #{roleId}")
+    void deleteUserRolesByRoleId(@Param("roleId") Long roleId);
+
+    /**
      * Sprint 5：查询已填写邮箱的用户（告警接收人选择器）。
      * 支持按用户名/邮箱模糊搜索。
      */

@@ -34,10 +34,10 @@ import DsToolbar from '@/components/DsToolbar';
 import StatsCards from '@/components/StatsCards';
 import Pagination from '@/components/Pagination';
 import SearchInput from '@/components/SearchInput';
-import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
+import {ENGINEERING_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
+import {useCan} from '@/hooks/useCan';
 import {formatDateTime, formatRunningDuration} from '@/utils/format';
 import {getErrorCode} from '@/utils/error';
 import {notify} from '@/utils/notify';
@@ -57,7 +57,7 @@ const STATUS_TABS: { value: CdcPipelineStatus | ''; label: string }[] = [
 
 export default function CdcPipelinesPage() {
     const navigate = useNavigate();
-    const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
+    const canWrite = useCan(...ENGINEERING_WRITE_PERMS);
 
     const [keywordInput, setKeywordInput] = useState('');
     const [status, setStatus] = useState<CdcPipelineStatus | ''>('');

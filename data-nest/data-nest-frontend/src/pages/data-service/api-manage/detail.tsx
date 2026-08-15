@@ -14,8 +14,8 @@ import {
 import {notify} from '@/utils/notify';
 import {getErrorMessage} from '@/utils/error';
 import {formatDateTime, formatNumber} from '@/utils/format';
-import {useHasRole} from '@/hooks/useHasRole';
-import {DATA_SERVICE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {DATA_SERVICE_WRITE_PERMS} from '@/constants/permissions';
 import {
     deleteDataApi,
     disableDataApi,
@@ -32,7 +32,7 @@ import ApiStatsSection from './ApiStatsSection';
 export default function ApiDetailPage() {
     const {id} = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const canWrite = useHasRole(...DATA_SERVICE_WRITE_ROLES);
+    const canWrite = useCan(...DATA_SERVICE_WRITE_PERMS);
 
     const [detail, setDetail] = useState<DataApiDetail | null>(null);
     const [loading, setLoading] = useState(true);

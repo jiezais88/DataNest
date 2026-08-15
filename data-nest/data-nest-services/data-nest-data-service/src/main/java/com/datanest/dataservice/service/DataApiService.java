@@ -5,12 +5,14 @@ import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.auth.DataPermissionMatcher;
 import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
+import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.dataservice.dto.ApiKeyBriefDTO;
 import com.datanest.dataservice.dto.ApiParamDef;
 import com.datanest.dataservice.dto.DataApiCreateRequest;
@@ -32,6 +34,7 @@ import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.governance.api.GovernanceMetadataApi;
 import com.datanest.governance.api.dto.MetadataTableSensitivityDTO;
+import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
 import com.datanest.task.core.support.SystemUserResolver;
 import org.slf4j.Logger;
@@ -85,6 +88,7 @@ public class DataApiService {
     private final GovernanceMetadataApi governanceMetadataApi;
     private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
+    private final SystemPermissionApi systemPermissionApi;
 
     public DataApiService(DataApiMapper dataApiMapper,
                           ApiKeyMapper apiKeyMapper,
@@ -92,7 +96,8 @@ public class DataApiService {
                           ApiCallLogMapper callLogMapper,
                           GovernanceMetadataApi governanceMetadataApi,
                           EngineeringDatasourceApi datasourceApi,
-                          SystemUserApi systemUserApi) {
+                          SystemUserApi systemUserApi,
+                          SystemPermissionApi systemPermissionApi) {
         this.dataApiMapper = dataApiMapper;
         this.apiKeyMapper = apiKeyMapper;
         this.bindingMapper = bindingMapper;
@@ -100,6 +105,7 @@ public class DataApiService {
         this.governanceMetadataApi = governanceMetadataApi;
         this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
+        this.systemPermissionApi = systemPermissionApi;
     }
 
     /**
@@ -110,6 +116,7 @@ public class DataApiService {
         DataApiDefinition definition = buildDefinition(request.getFilters(), request.getFields());
         String orderBy = normalizeOrderBy(request.getOrderBy());
         validateDatasource(request.getDatasourceId());
+        checkDataPermission(request.getDatasourceId(), request.getDatabaseName(), request.getTableName());
         checkSensitivityGate(request.getDatasourceId(), request.getDatabaseName(),
                 request.getSchemaName(), request.getTableName());
         assertPathAvailable(path, null);
@@ -146,6 +153,7 @@ public class DataApiService {
         String path = normalizePath(request.getPath());
         DataApiDefinition definition = buildDefinition(request.getFilters(), request.getFields());
         String orderBy = normalizeOrderBy(request.getOrderBy());
+        checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
         checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
         assertPathAvailable(path, id);
 
@@ -174,6 +182,7 @@ public class DataApiService {
         if (DataApi.STATUS_PUBLISHED.equals(api.getStatus())) {
             return;
         }
+        checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
         checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
         api.setStatus(DataApi.STATUS_PUBLISHED);
         api.setUpdatedBy(currentUserId());
@@ -493,6 +502,34 @@ public class DataApiService {
             throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "pageSize 上限需在 1~1000 之间");
         }
         return pageSizeMax;
+    }
+
+    /**
+     * 数据权限白名单校验（fail-closed，Sprint 11 F2）。
+     * <p>
+     * 内置 Doris（-1）全量放行；外部数据源按白名单最细粒度匹配；
+     * 权限服务不可用拒绝（安全默认，防止绕过前端直接提交 API 定义）。
+     */
+    private void checkDataPermission(Long datasourceId, String database, String table) {
+        if (datasourceId != null && datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
+            return;
+        }
+        Long userId;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return; // 内部场景无登录态不校验
+        }
+        if (userId == null) {
+            return;
+        }
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
+        }
+        if (!DataPermissionMatcher.canAccessTable(resp.data(), datasourceId, database, table)) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_DENIED, "无权限访问数据资源: " + table);
+        }
     }
 
     /** 数据源存在性校验（内置 Doris=-1 直接放行；外部经 engineering 查，查无抛 3001） */

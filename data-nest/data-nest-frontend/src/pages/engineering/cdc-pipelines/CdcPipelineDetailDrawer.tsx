@@ -6,8 +6,8 @@ import {Spin} from 'antd';
 import {HiOutlineExclamation} from 'react-icons/hi';
 import {getCdcPipeline} from '@/api/cdc';
 import Drawer from '@/components/Drawer';
-import {useHasRole} from '@/hooks/useHasRole';
-import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {ENGINEERING_WRITE_PERMS} from '@/constants/permissions';
 import {formatDateTime, formatRunningDuration} from '@/utils/format';
 import type {CdcPipeline} from '@/types/cdc';
 import {CdcStatusBadge, LagValue} from './shared';
@@ -166,7 +166,7 @@ export default function CdcPipelineDetailDrawer({pipelineId, onClose}: CdcPipeli
     const [detail, setDetail] = useState<CdcPipeline | null>(null);
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<(typeof TABS)[number]['key']>('basic');
-    const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
+    const canWrite = useCan(...ENGINEERING_WRITE_PERMS);
 
     useEffect(() => {
         if (!pipelineId) {

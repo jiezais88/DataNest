@@ -2,8 +2,8 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Table, Tabs, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '@/hooks/useHasRole';
-import {ALL_ROLES, GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS, METADATA_VIEW_PERMS} from '@/constants/permissions';
 import {
     getMetadataTable,
     listMetadataColumns,
@@ -59,7 +59,7 @@ export default function MetadataPage() {
     const columnIdParam = searchParams.get('columnId');
     const fromCompliance = searchParams.get('from') === 'compliance';
     const tabParam = searchParams.get('tab');
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
 
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [selectedNode, setSelectedNode] = useState<MetadataTreeNode | null>(null);
@@ -93,7 +93,7 @@ export default function MetadataPage() {
     const [qualityLoading, setQualityLoading] = useState(false);
     const [qualityExecuting, setQualityExecuting] = useState(false);
 
-    const canPreview = useHasRole(...ALL_ROLES);
+    const canPreview = useCan(...METADATA_VIEW_PERMS);
 
     const resetDetail = useCallback(() => {
         setSelectedTable(null);

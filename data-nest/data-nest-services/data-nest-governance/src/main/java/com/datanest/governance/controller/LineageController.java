@@ -1,7 +1,7 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.LineageGraphDTO;
 import com.datanest.governance.service.LineageService;
@@ -19,7 +19,7 @@ import java.util.List;
  * Sprint 5：新增表级血缘图谱、字段级血缘、影响/溯源分析。
  */
 @Tag(name = "数据血缘", description = "表级血缘图谱 / 字段级血缘 / 影响与溯源分析")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckPermission(PermissionCode.METADATA_LINEAGE)
 @RestController
 @RequestMapping("/lineage")
 public class LineageController {

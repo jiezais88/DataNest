@@ -35,8 +35,8 @@ import {previewDataSource, type PreviewResult} from '@/api/preview';
 import PreviewModal from '@/components/PreviewModal';
 import DatasourcePreviewSelector from './DatasourcePreviewSelector';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
-import {ENGINEERING_WRITE_ROLES, ROLE} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {ENGINEERING_WRITE_PERMS, PERM} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {NODE_STATUS_COLOR} from '@/constants/statusColors';
 import DsFilterSelect from '@/components/DsFilterSelect';
@@ -77,7 +77,7 @@ interface DataSourceQuery {
 const INITIAL_QUERY: DataSourceQuery = {keyword: '', type: '', status: ''};
 
 export default function DataSourcesPage() {
-    const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
+    const canWrite = useCan(...ENGINEERING_WRITE_PERMS);
 
     const {
         list, total, page, pageSize, loading, query,
@@ -169,7 +169,7 @@ export default function DataSourcesPage() {
     const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
     const [previewTitle, setPreviewTitle] = useState('');
 
-    const canPreview = useHasRole(ROLE.SUPER_ADMIN, ROLE.GOVERNANCE_ADMIN, ROLE.DATA_ENGINEER);
+    const canPreview = useCan(PERM.DATASOURCE_VIEW);
 
     const handleSearch = () => {
         applyQuery({...query, keyword: draftKeyword});

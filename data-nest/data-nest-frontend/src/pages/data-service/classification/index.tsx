@@ -7,7 +7,9 @@ import type {ColumnsType} from 'antd/es/table';
 import {HiOutlineDocumentText, HiOutlineLockClosed, HiOutlineShieldCheck} from 'react-icons/hi2';
 import usePagedList from '@/hooks/usePagedList';
 import {useHasRole} from '@/hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES, ROLE} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
+import {ROLE} from '@/constants/roles';
 import {COL} from '@/constants/table';
 import {formatDateTime} from '@/utils/format';
 import {notify} from '@/utils/notify';
@@ -69,7 +71,7 @@ interface ClassificationQuery {
 const INITIAL_QUERY: ClassificationQuery = {sensitivityLevel: '', keyword: '', datasourceId: ''};
 
 export default function ClassificationPage() {
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
     const isSuperAdmin = useHasRole(ROLE.SUPER_ADMIN);
 
     // ============ 列表（分页 + 筛选） ============

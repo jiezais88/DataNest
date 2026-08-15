@@ -1,7 +1,7 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.CollectExecutionLogDTO;
@@ -28,7 +28,7 @@ public class CollectHistoryController {
     }
 
     @Operation(summary = "采集历史分页列表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_HISTORY)
     @PostMapping("/page")
     public Result<PageResult<CollectHistoryDTO>> list(@Parameter(description = "采集任务 ID") @PathVariable Long taskId,
                                                       @RequestBody @Valid CollectHistoryQueryRequest request) {
@@ -37,7 +37,7 @@ public class CollectHistoryController {
     }
 
     @Operation(summary = "采集历史详情")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_HISTORY)
     @GetMapping("/{historyId}")
     public Result<CollectHistoryDTO> getById(@Parameter(description = "采集任务 ID") @PathVariable Long taskId,
                                              @Parameter(description = "历史 ID") @PathVariable Long historyId) {
@@ -45,7 +45,7 @@ public class CollectHistoryController {
     }
 
     @Operation(summary = "采集执行日志")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_HISTORY)
     @GetMapping("/{historyId}/logs")
     public Result<List<CollectExecutionLogDTO>> getLogs(@Parameter(description = "采集任务 ID") @PathVariable Long taskId,
                                                         @Parameter(description = "历史 ID") @PathVariable Long historyId) {

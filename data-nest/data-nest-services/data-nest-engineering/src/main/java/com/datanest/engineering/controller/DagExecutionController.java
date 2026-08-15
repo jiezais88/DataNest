@@ -1,7 +1,6 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagExecutionGlobalDto;
@@ -59,6 +58,7 @@ public class DagExecutionController {
      * - pageSize：默认 20
      */
     @Operation(summary = "全局 DAG 执行历史分页")
+    @SaCheckLogin
     @GetMapping
     public Result<PageResult<DagExecutionGlobalDto>> listAll(
             @Parameter(description = "DAG 名称（模糊匹配）") @RequestParam(required = false) String dagName,
@@ -84,6 +84,7 @@ public class DagExecutionController {
     }
 
     @Operation(summary = "执行状态统计（顶部统计卡，按时间范围聚合）")
+    @SaCheckLogin
     @GetMapping("/stats")
     public Result<DagExecutionStatsDTO> stats(
             @Parameter(description = "执行时间下界（ISO 8601）") @RequestParam(required = false) String startTimeFrom,
@@ -92,7 +93,7 @@ public class DagExecutionController {
     }
 
     @Operation(summary = "节点执行日志查询（node_execution_log）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/{executionId}/nodes/{nodeId}/logs")
     public Result<List<NodeExecutionLogDTO>> nodeLogs(@Parameter(description = "执行实例 ID") @PathVariable Long executionId,
                                                       @Parameter(description = "节点 ID") @PathVariable String nodeId) {

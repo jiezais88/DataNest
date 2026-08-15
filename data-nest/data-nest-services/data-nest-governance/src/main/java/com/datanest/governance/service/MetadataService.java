@@ -2,6 +2,7 @@ package com.datanest.governance.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.auth.DataPermissionMatcher;
 import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
@@ -13,13 +14,17 @@ import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.governance.dto.MetadataDatasourceDTO;
 import com.datanest.governance.dto.MetadataTreeNodeDTO;
+import com.datanest.governance.dto.PermissionTreeDatabaseDTO;
+import com.datanest.governance.dto.PermissionTreeDatasourceDTO;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.task.core.support.SystemUserResolver;
+import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +52,7 @@ public class MetadataService {
     private final MetadataColumnMapper metadataColumnMapper;
     private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
+    private final SystemPermissionApi systemPermissionApi;
 
     private final String builtInDorisHost;
     private final int builtInDorisQueryPort;
@@ -56,6 +62,7 @@ public class MetadataService {
     public MetadataService(MetadataTableMapper metadataTableMapper, MetadataColumnMapper metadataColumnMapper,
                            EngineeringDatasourceApi datasourceApi,
                            SystemUserApi systemUserApi,
+                           SystemPermissionApi systemPermissionApi,
                            @Value("${datanest.doris.fe-host:localhost}") String builtInDorisHost,
                            @Value("${datanest.doris.fe-query-port:9030}") int builtInDorisQueryPort,
                            @Value("${datanest.doris.user:root}") String builtInDorisUser,
@@ -64,10 +71,34 @@ public class MetadataService {
         this.metadataColumnMapper = metadataColumnMapper;
         this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
+        this.systemPermissionApi = systemPermissionApi;
         this.builtInDorisHost = builtInDorisHost;
         this.builtInDorisQueryPort = builtInDorisQueryPort;
         this.builtInDorisUser = builtInDorisUser;
         this.builtInDorisPassword = builtInDorisPassword;
+    }
+
+    /**
+     * 查询当前用户数据权限范围（fail-open：权限服务不可用/无登录态时返回全量）。
+     * <p>
+     * 用于元数据树/库表浏览的「展示层过滤」——只减少暴露，不作为安全边界；
+     * 真正的取数/写操作由 SQL 执行、API 创建、同步创建等 fail-closed 校验兜底。
+     */
+    private UserDataPermissionDTO resolveDataPermissionFailOpen() {
+        Long userId;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        if (userId == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        return resp.data();
     }
 
     @Transactional(readOnly = true)
@@ -98,7 +129,18 @@ public class MetadataService {
                                 : replacement
                 ));
 
-        return ids.stream().map(id -> {
+        // 数据权限过滤（Sprint 11 F2）：内置 Doris 放行，外部数据源按白名单过滤（fail-open 展示层）
+        UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+
+        return ids.stream()
+                .filter(id -> {
+                    String st = sourceTypeMap.get(id);
+                    if (SourceType.BUILTIN_DORIS.getCode().equals(st)) {
+                        return true;
+                    }
+                    return DataPermissionMatcher.canAccessDatasource(perm, id);
+                })
+                .map(id -> {
             MetadataDatasourceDTO dto = new MetadataDatasourceDTO();
             dto.setId(id);
             DataSourceInfo conn = connectionMap.get(id);
@@ -121,12 +163,66 @@ public class MetadataService {
         }).toList();
     }
 
+    /**
+     * 权限配置树（Sprint 11 F2）：一次性返回全部可配置的外部数据源 → 库 → 表 三级结构。
+     * <p>
+     * 内置 Doris（datasource_id=-1）不返回（目标数仓全量放行，无白名单配置意义）；
+     * 表名跨 schema 去重（数据权限粒度不含 schema）。供权限配置页全量渲染，避免前端 N+1 循环调用。
+     */
+    @Transactional(readOnly = true)
+    public List<PermissionTreeDatasourceDTO> getPermissionTree() {
+        QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
+        wrapper.eq("source_status", MetadataSourceStatus.ONLINE.getCode())
+                .ne("datasource_id", -1L)
+                .select("datasource_id", "database_name", "table_name")
+                .orderByAsc("datasource_id").orderByAsc("database_name").orderByAsc("table_name");
+        List<MetadataTable> rows = metadataTableMapper.selectList(wrapper);
+
+        List<Long> ids = rows.stream().map(MetadataTable::getDatasourceId).distinct().toList();
+        Map<Long, DataSourceInfo> connectionMap = batchGetDatasources(ids);
+
+        // 三级聚合：datasourceId → databaseName → (去重) tableName
+        Map<Long, Map<String, LinkedHashSet<String>>> grouped = new LinkedHashMap<>();
+        for (MetadataTable t : rows) {
+            grouped.computeIfAbsent(t.getDatasourceId(), k -> new LinkedHashMap<>())
+                    .computeIfAbsent(t.getDatabaseName(), k -> new LinkedHashSet<>())
+                    .add(t.getTableName());
+        }
+
+        List<PermissionTreeDatasourceDTO> result = new ArrayList<>();
+        for (Map.Entry<Long, Map<String, LinkedHashSet<String>>> dsEntry : grouped.entrySet()) {
+            PermissionTreeDatasourceDTO dsDto = new PermissionTreeDatasourceDTO();
+            dsDto.setDatasourceId(dsEntry.getKey());
+            DataSourceInfo conn = connectionMap.get(dsEntry.getKey());
+            if (conn != null) {
+                dsDto.setDatasourceName(conn.getName());
+                dsDto.setDatasourceType(conn.getType());
+            }
+            for (Map.Entry<String, LinkedHashSet<String>> dbEntry : dsEntry.getValue().entrySet()) {
+                PermissionTreeDatabaseDTO dbDto = new PermissionTreeDatabaseDTO();
+                dbDto.setDatabaseName(dbEntry.getKey());
+                dbDto.setTables(new ArrayList<>(dbEntry.getValue()));
+                dsDto.getDatabases().add(dbDto);
+            }
+            result.add(dsDto);
+        }
+        return result;
+    }
+
     @Transactional(readOnly = true)
     public List<String> listDatabases(Long datasourceId) {
         if (datasourceId == null) {
             return List.of();
         }
-        return metadataTableMapper.selectDatabasesByDatasourceId(datasourceId);
+        List<String> databases = metadataTableMapper.selectDatabasesByDatasourceId(datasourceId);
+        // 数据权限过滤（Sprint 11 F2）：内置 Doris（-1）放行
+        if (datasourceId == -1L) {
+            return databases;
+        }
+        UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+        return databases.stream()
+                .filter(db -> DataPermissionMatcher.canAccessDatabase(perm, datasourceId, db))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -142,12 +238,26 @@ public class MetadataService {
 
     @Transactional(readOnly = true)
     public List<String> listSchemas(Long datasourceId, String databaseName) {
+        // 数据权限过滤（Sprint 11 F2）：仅数据源级/库级放行时返回 schema；表级授权在 schema 型数据源上保守返回空
+        if (datasourceId != null && datasourceId != -1L) {
+            UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+            if (!DataPermissionMatcher.canAccessDatabase(perm, datasourceId, databaseName)) {
+                return List.of();
+            }
+        }
         return metadataTableMapper.selectSchemasByDatasourceIdAndDatabase(datasourceId, databaseName);
     }
 
     @Transactional(readOnly = true)
     public List<MetadataTable> listTables(Long datasourceId, String databaseName, String schemaName) {
         List<MetadataTable> tables = metadataTableMapper.selectTablesByDatasourceDatabaseSchema(datasourceId, databaseName, schemaName);
+        // 数据权限过滤（Sprint 11 F2）：内置 Doris（-1）放行，外部数据源按白名单过滤
+        if (datasourceId != null && datasourceId != -1L) {
+            UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+            tables = tables.stream()
+                    .filter(t -> DataPermissionMatcher.canAccessTable(perm, t.getDatasourceId(), t.getDatabaseName(), t.getTableName()))
+                    .toList();
+        }
         applyDatasourceNames(tables);
         applyUsernameNames(tables);
         return tables;
@@ -181,6 +291,17 @@ public class MetadataService {
         }
 
         List<MetadataTable> rows = metadataTableMapper.searchTablesByKeyword(trimmed);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        // 数据权限过滤（Sprint 11 F2）：搜索树按白名单过滤表（内置 Doris 放行）
+        {
+            UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+            rows = rows.stream()
+                    .filter(t -> t.getDatasourceId() != null && t.getDatasourceId() == -1L
+                            || DataPermissionMatcher.canAccessTable(perm, t.getDatasourceId(), t.getDatabaseName(), t.getTableName()))
+                    .toList();
+        }
         if (rows.isEmpty()) {
             return List.of();
         }
@@ -308,6 +429,12 @@ public class MetadataService {
     public MetadataTable getTable(Long tableId) {
         MetadataTable table = metadataTableMapper.selectTableDetailById(tableId);
         if (table == null) {
+            throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
+        }
+        // 数据权限校验（Sprint 11 F2）：内置 Doris 放行，外部表无权限拒绝（详情/取数路径 fail-open 已由调用方兜底，此处只过滤）
+        if (table.getDatasourceId() != null && table.getDatasourceId() != -1L
+                && !DataPermissionMatcher.canAccessTable(resolveDataPermissionFailOpen(),
+                table.getDatasourceId(), table.getDatabaseName(), table.getTableName())) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
         applyDatasourceNames(List.of(table));

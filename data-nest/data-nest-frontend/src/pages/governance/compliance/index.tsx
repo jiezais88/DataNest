@@ -18,8 +18,8 @@ import {formatDateTime} from '@/utils/format';
 import {downloadExportBlob} from '@/utils/download';
 import {COL} from '@/constants/table';
 import {notify} from '@/utils/notify';
-import {useHasRole} from '@/hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {listMetadataDatasourceIds} from '@/api/metadata';
 import {
     exportComplianceCheck,
@@ -82,7 +82,7 @@ const IGNORED_OPTIONS = [
 export default function StandardCompliancePage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
 
     // ============ 分页 + 筛选 ============
     const [items, setItems] = useState<ComplianceCheckResult[]>([]);

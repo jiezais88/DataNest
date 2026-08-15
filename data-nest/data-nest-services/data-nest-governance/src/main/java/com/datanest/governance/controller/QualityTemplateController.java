@@ -1,7 +1,7 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.task.core.dto.QualityRuleTemplateCreateRequest;
@@ -25,7 +25,7 @@ import java.util.List;
 @Tag(name = "质量规则模板", description = "规则模板库维护（内置 + 自定义）")
 @RestController
 @RequestMapping("/quality/templates")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckPermission(PermissionCode.QUALITY_RULE_VIEW)
 public class QualityTemplateController {
 
     private final QualityRuleTemplateService templateService;
@@ -48,14 +48,14 @@ public class QualityTemplateController {
 
     @Operation(summary = "新增自定义模板")
     @PostMapping
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_CREATE)
     public Result<QualityRuleTemplateDTO> create(@Valid @RequestBody QualityRuleTemplateCreateRequest request) {
         return Result.ok(templateService.create(request));
     }
 
     @Operation(summary = "编辑模板", description = "内置/自定义均可编辑")
     @PutMapping("/{id}")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_UPDATE)
     public Result<QualityRuleTemplateDTO> update(@Parameter(description = "模板 ID") @PathVariable Long id,
                                                  @Valid @RequestBody QualityRuleTemplateUpdateRequest request) {
         return Result.ok(templateService.update(id, request));
@@ -63,7 +63,7 @@ public class QualityTemplateController {
 
     @Operation(summary = "删除自定义模板", description = "内置模板不可删除")
     @DeleteMapping("/{id}")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_DELETE)
     public Result<Void> delete(@Parameter(description = "模板 ID") @PathVariable Long id) {
         templateService.delete(id);
         return Result.ok(null);
@@ -71,7 +71,7 @@ public class QualityTemplateController {
 
     @Operation(summary = "启停模板")
     @PostMapping("/{id}/toggle")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_UPDATE)
     public Result<QualityRuleTemplateDTO> toggle(@Parameter(description = "模板 ID") @PathVariable Long id,
                                                  @Parameter(description = "目标启用状态（不传则取反）") @RequestParam(required = false) Boolean enabled) {
         return Result.ok(templateService.toggle(id, enabled));

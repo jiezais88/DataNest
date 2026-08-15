@@ -17,8 +17,8 @@ import {
     HiOutlineTrash,
 } from 'react-icons/hi2';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
-import {DATA_SERVICE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {DATA_SERVICE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {formatDateTime, formatNumber} from '@/utils/format';
 import {notify} from '@/utils/notify';
@@ -59,7 +59,7 @@ const INITIAL_QUERY: ApiListQuery = {keyword: '', status: '', scope: ''};
 
 export default function ApiManagePage() {
     const navigate = useNavigate();
-    const canWrite = useHasRole(...DATA_SERVICE_WRITE_ROLES);
+    const canWrite = useCan(...DATA_SERVICE_WRITE_PERMS);
 
     // ============ 列表（分页 + 筛选） ============
     const [draft, setDraft] = useState<ApiListQuery>(INITIAL_QUERY);

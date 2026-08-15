@@ -1,7 +1,8 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagParameterPayload;
 import com.datanest.engineering.service.DagParameterService;
@@ -24,21 +25,21 @@ public class DagParameterController {
     }
 
     @Operation(summary = "DAG 参数列表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping
     public Result<List<DagParameterPayload>> list(@Parameter(description = "DAG ID") @PathVariable Long dagId) {
         return Result.ok(dagParameterService.listByDagId(dagId));
     }
 
     @Operation(summary = "新增 DAG 参数")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_UPDATE)
     @PostMapping
     public Result<DagParameterPayload> create(@Parameter(description = "DAG ID") @PathVariable Long dagId, @RequestBody DagParameterPayload payload) {
         return Result.ok(dagParameterService.create(dagId, payload));
     }
 
     @Operation(summary = "修改 DAG 参数")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_UPDATE)
     @PutMapping("/{id}")
     public Result<DagParameterPayload> update(@Parameter(description = "DAG ID") @PathVariable Long dagId,
                                               @Parameter(description = "参数 ID") @PathVariable Long id,
@@ -47,7 +48,7 @@ public class DagParameterController {
     }
 
     @Operation(summary = "删除 DAG 参数")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_UPDATE)
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "DAG ID") @PathVariable Long dagId,
                                @Parameter(description = "参数 ID") @PathVariable Long id) {

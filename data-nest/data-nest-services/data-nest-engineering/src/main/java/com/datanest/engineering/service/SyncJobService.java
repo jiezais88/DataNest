@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.auth.DataPermissionMatcher;
 import com.datanest.common.constant.*;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.alert.api.AlertApi;
 import com.datanest.engineering.dto.*;
 import com.datanest.common.constant.AlertConstants;
@@ -20,6 +22,7 @@ import com.datanest.engineering.mapper.*;
 import com.datanest.task.core.service.SyncNodeMutexService;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +59,7 @@ public class SyncJobService {
     private final SyncJobTriggerService syncJobTriggerService;
     private final SyncNodeMutexService syncNodeMutexService;
     private final SystemUserApi systemUserApi;
+    private final SystemPermissionApi systemPermissionApi;
     private final AlertApi alertApi;
 
     public SyncJobService(SyncJobMapper syncJobMapper, SyncJobHistoryMapper syncJobHistoryMapper,
@@ -64,6 +68,7 @@ public class SyncJobService {
                           SchedulerServiceForEngineering schedulerService,
                           SyncJobTriggerService syncJobTriggerService,
                           SyncNodeMutexService syncNodeMutexService, SystemUserApi systemUserApi,
+                          SystemPermissionApi systemPermissionApi,
                           AlertApi alertApi) {
         this.syncJobMapper = syncJobMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
@@ -76,7 +81,40 @@ public class SyncJobService {
         this.syncJobTriggerService = syncJobTriggerService;
         this.syncNodeMutexService = syncNodeMutexService;
         this.systemUserApi = systemUserApi;
+        this.systemPermissionApi = systemPermissionApi;
         this.alertApi = alertApi;
+    }
+
+    /**
+     * 源表数据权限校验（fail-closed，Sprint 11 F2）。
+     * <p>
+     * 同步任务创建时校验源表白名单：内置 Doris 源（-1）放行；外部数据源按白名单最细粒度匹配；
+     * 权限服务不可用拒绝，防止绕过前端直接提交同步任务。
+     */
+    private void checkSourceDataPermission(SyncJobCreateRequest request) {
+        Long dsId = request.getSourceDatasourceId();
+        if (dsId != null && dsId == -1L) {
+            return;
+        }
+        Long userId;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return;
+        }
+        if (userId == null) {
+            return;
+        }
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
+        }
+        UserDataPermissionDTO perm = resp.data();
+        for (String table : request.getSourceTables()) {
+            if (!DataPermissionMatcher.canAccessTable(perm, dsId, request.getSourceDatabase(), table)) {
+                throw new BusinessException(ErrorCode.DATA_PERMISSION_DENIED, "无权限访问源数据资源: " + table);
+            }
+        }
     }
 
     @Transactional
@@ -86,6 +124,7 @@ public class SyncJobService {
             throw new BusinessException(ErrorCode.SYNC_JOB_NAME_EXISTS);
         }
         checkDataSource(request.getSourceDatasourceId());
+        checkSourceDataPermission(request);
 
         SyncJob entity = new SyncJob();
         copyFromRequest(entity, request);

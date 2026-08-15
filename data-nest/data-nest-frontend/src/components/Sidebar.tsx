@@ -30,6 +30,8 @@ import {
     HiOutlineTableCells,
     HiOutlineUsers,
     HiOutlineDocumentText,
+    HiOutlineUserGroup,
+    HiOutlineLockClosed,
 } from 'react-icons/hi2';
 
 interface MenuItem {
@@ -236,6 +238,8 @@ const allMenus: { group: string; items: MenuItem[] }[] = [
         group: '系统管理',
         items: [
             {label: '用户管理', path: '/system/users', icon: <HiOutlineUsers size={18}/>, roles: [ROLE.SUPER_ADMIN]},
+            {label: '角色管理', path: '/system/roles', icon: <HiOutlineUserGroup size={18}/>, roles: [ROLE.SUPER_ADMIN]},
+            {label: '权限配置', path: '/system/data-permission', icon: <HiOutlineLockClosed size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {label: '审计日志', path: '/system/audit-logs', icon: <HiOutlineDocumentText size={18}/>, roles: [ROLE.SUPER_ADMIN]},
             {
                 label: '告警中心',

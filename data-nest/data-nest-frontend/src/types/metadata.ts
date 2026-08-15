@@ -62,6 +62,20 @@ export interface MetadataDatasource {
     exists: boolean;
 }
 
+/** 权限配置树-数据源节点（Sprint 11 F2，调 governance /metadata/permission-tree） */
+export interface PermissionTreeDatasource {
+    datasourceId: string;
+    datasourceName?: string;
+    datasourceType?: string;
+    databases: PermissionTreeDatabase[];
+}
+
+/** 权限配置树-库节点 */
+export interface PermissionTreeDatabase {
+    databaseName: string;
+    tables: string[];
+}
+
 export interface MetadataTreeNode {
     id: string;
     type: 'datasource' | 'database' | 'schema' | 'table';

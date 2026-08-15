@@ -1,8 +1,8 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.datanest.common.audit.AuditLog;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
@@ -35,21 +35,21 @@ public class DataSourceController {
     }
 
     @Operation(summary = "数据源分页查询（超管、工程师、治理员）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
     @PostMapping("/page")
     public Result<PageResult<DataSourceDTO>> list(@RequestBody DataSourceQueryRequest request) {
         return Result.ok(dataSourceService.list(request));
     }
 
     @Operation(summary = "数据源连接状态统计（顶部统计卡）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
     @GetMapping("/stats")
     public Result<DataSourceStatsDTO> stats() {
         return Result.ok(dataSourceService.listStats());
     }
 
     @Operation(summary = "新增数据源（超管、工程师）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_CREATE)
     @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.CREATE,
             resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
@@ -62,7 +62,7 @@ public class DataSourceController {
     }
 
     @Operation(summary = "修改数据源（超管、工程师）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_UPDATE)
     @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.UPDATE,
             resourceId = "#id", resourceName = "#result.data.name")
     @PutMapping("/{id}")
@@ -71,7 +71,7 @@ public class DataSourceController {
     }
 
     @Operation(summary = "删除数据源（超管、工程师）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_DELETE)
     @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "数据源 ID") @PathVariable Long id) {
@@ -80,14 +80,14 @@ public class DataSourceController {
     }
 
     @Operation(summary = "测试任意连接参数（超管、工程师）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_TEST)
     @PostMapping("/test")
     public Result<TestConnectionResult> testConnection(@Valid @RequestBody TestConnectionRequest request) {
         return Result.ok(dataSourceService.testConnection(request));
     }
 
     @Operation(summary = "测试已保存的数据源并更新状态（超管、工程师）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_TEST)
     @AuditLog(resourceType = AuditResourceType.DATASOURCE, opType = AuditOpType.TEST, resourceId = "#id")
     @PostMapping("/{id}/test")
     public Result<TestConnectionResult> testAndUpdateStatus(@Parameter(description = "数据源 ID") @PathVariable Long id) {
@@ -95,28 +95,28 @@ public class DataSourceController {
     }
 
     @Operation(summary = "查询单个数据源详情（超管、工程师、治理员）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
     @GetMapping("/{id}")
     public Result<DataSourceDTO> getById(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.getById(id));
     }
 
     @Operation(summary = "拉取数据源下所有库/Schema（超管、工程师、治理员）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
     @GetMapping("/{id}/schemas")
     public Result<List<String>> getSchemas(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.getSchemas(id));
     }
 
     @Operation(summary = "拉取数据源下所有库/Database（超管、工程师、治理员）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
     @GetMapping("/{id}/databases")
     public Result<List<String>> getDatabases(@Parameter(description = "数据源 ID") @PathVariable Long id) {
         return Result.ok(dataSourceService.getDatabases(id));
     }
 
     @Operation(summary = "拉取指定库/Schema 下的所有表（超管、工程师、治理员）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
     @GetMapping("/{id}/tables")
     public Result<List<String>> getTables(@Parameter(description = "数据源 ID") @PathVariable Long id,
                                           @Parameter(description = "数据库名") @RequestParam(required = false) String database,

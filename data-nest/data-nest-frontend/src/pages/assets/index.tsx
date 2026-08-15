@@ -27,10 +27,10 @@ import DsToolbar from '@/components/DsToolbar';
 import Pagination from '@/components/Pagination';
 import QualityScoreBadge from '@/components/QualityScoreBadge';
 import SearchInput from '@/components/SearchInput';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
+import {useCan} from '@/hooks/useCan';
 import {notify} from '@/utils/notify';
 import {QUALITY_HEALTH_OPTIONS} from '@/types/quality';
 import type {AssetBrowseQuery, AssetClassification, AssetClassificationTree, AssetSearchItem, AssetTag} from '@/types/asset';
@@ -60,7 +60,7 @@ const TREE_WIDTH_KEY = 'asset-catalog.treeWidth';
 
 export default function AssetsPage() {
     const navigate = useNavigate();
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
     const openDetail = useCallback((tableId: string) => navigate(`/asset-catalog/${tableId}`), [navigate]);
 
     // ============ 分类树宽度（可拖拽调宽，持久化） ============

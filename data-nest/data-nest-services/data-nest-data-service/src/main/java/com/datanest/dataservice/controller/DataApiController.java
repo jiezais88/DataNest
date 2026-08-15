@@ -1,8 +1,9 @@
 package com.datanest.dataservice.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.datanest.common.audit.AuditLog;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
@@ -35,7 +36,6 @@ import org.springframework.web.bind.annotation.RestController;
  * 类级四角色 + 方法级写角色同时生效（与语义 = 写操作需超管/工程师）。
  */
 @Tag(name = "数据 API 管理", description = "表级参数化 API 定义 / 生命周期 / 自动文档（Sprint 10 F2）")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
 @RestController
 @RequestMapping("/apis")
 public class DataApiController {
@@ -49,7 +49,7 @@ public class DataApiController {
     }
 
     @Operation(summary = "创建 API", description = "校验表敏感度（机密禁止 / 内部需超管特批开放，fail-closed）；路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.API_CREATE)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.CREATE,
             resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
@@ -58,6 +58,7 @@ public class DataApiController {
     }
 
     @Operation(summary = "API 列表（分页）", description = "scope=mine 仅看我创建的（默认全量）；keyword 匹配名称/路径；status 精确过滤；含绑定 Key 数与近 7 天调用")
+    @SaCheckLogin
     @GetMapping("/page")
     public Result<PageResult<DataApiPageItem>> page(
             @RequestParam(value = "page", defaultValue = "1") long page,
@@ -69,19 +70,21 @@ public class DataApiController {
     }
 
     @Operation(summary = "API 汇总（列表页统计卡）", description = "已发布/待发布/已下线计数 + 近 7 天总调用")
+    @SaCheckLogin
     @GetMapping("/summary")
     public Result<DataApiSummaryDTO> summary() {
         return Result.ok(dataApiService.summary());
     }
 
     @Operation(summary = "API 详情", description = "定义（filters/fields）+ 自动文档（参数说明 + curl 示例）+ 绑定 Key + 近 7 天调用")
+    @SaCheckLogin
     @GetMapping("/{id}")
     public Result<DataApiDetailDTO> detail(@PathVariable("id") Long id) {
         return Result.ok(dataApiService.detail(id));
     }
 
     @Operation(summary = "编辑 API", description = "名称/路径/参数/字段/排序/分页可改；数据源/库/表绑定不可改；编辑前重新过敏感度闸门")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.API_UPDATE)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.UPDATE,
             resourceId = "#id", resourceName = "#request.name")
     @PutMapping("/{id}")
@@ -91,7 +94,7 @@ public class DataApiController {
     }
 
     @Operation(summary = "发布", description = "CREATED/DISABLED → PUBLISHED（已发布幂等）；发布前重新过敏感度闸门")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.API_PUBLISH)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.PUBLISH, resourceId = "#id")
     @PostMapping("/{id}/publish")
     public Result<Void> publish(@PathVariable("id") Long id) {
@@ -100,7 +103,7 @@ public class DataApiController {
     }
 
     @Operation(summary = "下线", description = "PUBLISHED → DISABLED（已下线幂等）；下线后对外调用返回 404")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.API_PUBLISH)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.OFFLINE, resourceId = "#id")
     @PostMapping("/{id}/disable")
     public Result<Void> disable(@PathVariable("id") Long id) {
@@ -109,7 +112,7 @@ public class DataApiController {
     }
 
     @Operation(summary = "删除（软删）", description = "软删保留调用统计（api_call_log），释放路径占用，并清理 Key 绑定关系")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.API_DELETE)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable("id") Long id) {
@@ -118,6 +121,7 @@ public class DataApiController {
     }
 
     @Operation(summary = "单 API 调用统计", description = "调用量/成功率/平均/P95/今日 + 趋势 + 最近调用明细（Sprint 10 F3）")
+    @SaCheckLogin
     @GetMapping("/{id}/stats")
     public Result<ApiStatsDTO> stats(@PathVariable("id") Long id,
                                      @RequestParam(value = "range", defaultValue = "24h") String range) {

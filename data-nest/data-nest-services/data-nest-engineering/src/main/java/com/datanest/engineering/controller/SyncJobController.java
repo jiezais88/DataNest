@@ -1,8 +1,8 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.datanest.common.audit.AuditLog;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
@@ -27,7 +27,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "创建同步任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_CREATE)
     @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.CREATE,
             resourceId = "#result.data.id", resourceName = "#request.name")
     @PostMapping
@@ -36,7 +36,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "修改同步任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_UPDATE)
     @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.UPDATE,
             resourceId = "#id", resourceName = "#request.name")
     @PutMapping("/{id}")
@@ -45,7 +45,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "删除同步任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_DELETE)
     @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "任务 ID") @PathVariable Long id) {
@@ -54,28 +54,28 @@ public class SyncJobController {
     }
 
     @Operation(summary = "同步任务详情")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_VIEW)
     @GetMapping("/{id}")
     public Result<SyncJobDTO> getById(@Parameter(description = "任务 ID") @PathVariable Long id) {
         return Result.ok(syncJobService.getById(id));
     }
 
     @Operation(summary = "同步任务分页查询")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_VIEW)
     @PostMapping("/page")
     public Result<PageResult<SyncJobDTO>> list(@RequestBody SyncJobQueryRequest request) {
         return Result.ok(syncJobService.list(request));
     }
 
     @Operation(summary = "同步任务状态统计（顶部统计卡）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_VIEW)
     @GetMapping("/stats")
     public Result<SyncJobStatsDTO> stats() {
         return Result.ok(syncJobService.listStats());
     }
 
     @Operation(summary = "手动执行同步任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_EXECUTE)
     @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.EXECUTE, resourceId = "#id")
     @PostMapping("/{id}/execute")
     public Result<Void> execute(@Parameter(description = "任务 ID") @PathVariable Long id) {
@@ -84,7 +84,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "开启同步任务定时调度")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_EXECUTE)
     @PostMapping("/{id}/schedule/start")
     public Result<Void> startSchedule(@Parameter(description = "任务 ID") @PathVariable Long id) {
         syncJobService.startSchedule(id);
@@ -92,7 +92,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "停止同步任务定时调度")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_EXECUTE)
     @PostMapping("/{id}/schedule/stop")
     public Result<Void> stopSchedule(@Parameter(description = "任务 ID") @PathVariable Long id) {
         syncJobService.stopSchedule(id);
@@ -100,7 +100,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "单任务执行历史分页")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_HISTORY)
     @PostMapping("/{id}/history/page")
     public Result<PageResult<SyncJobHistoryDTO>> historyPage(@Parameter(description = "任务 ID") @PathVariable Long id,
                                                              @Valid @RequestBody SyncJobHistoryQueryRequest request) {
@@ -108,7 +108,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "停止执行中的历史记录")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_EXECUTE)
     @AuditLog(resourceType = AuditResourceType.SYNC_JOB, opType = AuditOpType.STOP, resourceId = "#historyId")
     @PostMapping("/history/{historyId}/stop")
     public Result<Void> stopHistory(@Parameter(description = "历史记录 ID") @PathVariable Long historyId) {
@@ -117,7 +117,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "全局执行历史分页")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_HISTORY)
     @PostMapping("/history/page")
     public Result<PageResult<SyncJobHistoryDTO>> allHistoryPage(@Valid @RequestBody SyncJobHistoryQueryRequest request) {
         // 全局历史接口也支持按 syncJobId 精确过滤（从任务列表「历史」跳入时 URL 带 ?syncJobId=xxx）
@@ -125,7 +125,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "执行历史状态统计（顶部统计卡，按时间范围聚合）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_HISTORY)
     @GetMapping("/history/stats")
     public Result<SyncJobHistoryStatsDTO> historyStats(@Parameter(description = "执行时间下界（ISO 8601）") @RequestParam(required = false) String startTimeFrom,
                                                        @Parameter(description = "执行时间上界（ISO 8601）") @RequestParam(required = false) String startTimeTo) {
@@ -133,7 +133,7 @@ public class SyncJobController {
     }
 
     @Operation(summary = "执行历史日志分页")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SYNC_HISTORY)
     @GetMapping("/{id}/history/{historyId}/logs")
     public Result<PageResult<SyncJobLogDTO>> logs(@Parameter(description = "任务 ID") @PathVariable Long id,
                                                   @Parameter(description = "历史记录 ID") @PathVariable Long historyId,

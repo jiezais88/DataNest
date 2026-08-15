@@ -18,6 +18,18 @@ public enum ErrorCode {
     INVALID_ROLE(2002, "无效的角色"),
     CANNOT_DISABLE_SELF(2003, "不能禁用自己的账号"),
 
+    // RBAC 角色/权限/数据权限 errors (Sprint 11 F2，20xx)
+    ROLE_NOT_FOUND(2004, "角色不存在"),
+    ROLE_CODE_EXISTS(2005, "角色编码已存在"),
+    ROLE_NAME_EXISTS(2006, "角色名称已存在"),
+    BUILTIN_ROLE_READONLY(2007, "预置角色不可修改或删除"),
+    ROLE_IN_USE(2008, "角色仍被用户使用，无法删除"),
+    ROLE_PERMISSION_EMPTY(2009, "角色至少需勾选一项功能权限"),
+    PERMISSION_CODE_INVALID(2010, "权限点编码非法"),
+    DATA_PERMISSION_INVALID(2011, "数据权限参数非法"),
+    DATA_PERMISSION_DENIED(2012, "无权限访问该数据资源"),
+    DATA_PERMISSION_SERVICE_UNAVAILABLE(2013, "权限服务暂不可用，已阻止本次访问，请稍后重试"),
+
     // Data source errors (3xxx)
     DATASOURCE_NOT_FOUND(3001, "数据源不存在"),
     DATASOURCE_NAME_EXISTS(3002, "数据源名称已存在"),

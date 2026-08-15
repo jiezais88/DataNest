@@ -25,8 +25,8 @@ import DsButton from '@/components/DsButton';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import QualityScoreBadge from '@/components/QualityScoreBadge';
 import StatsCards from '@/components/StatsCards';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
-import {useHasRole} from '@/hooks/useHasRole';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
+import {useCan} from '@/hooks/useCan';
 import {formatDateTime} from '@/utils/format';
 import type {AssetClassification, AssetCollaboration} from '@/types/asset';
 import type {MetadataTable} from '@/types/metadata';
@@ -114,7 +114,7 @@ export default function AssetDetailPage() {
     /** 来源页（质量报告等经 state.from 进入）：「返回」优先回来源，否则回资产目录 */
     const fromPath = (location.state as { from?: string } | null)?.from;
     const [searchParams, setSearchParams] = useSearchParams();
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
 
     const [table, setTable] = useState<MetadataTable | null>(null);
     const [score, setScore] = useState<QualityScore | null>(null);

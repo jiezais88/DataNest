@@ -1,9 +1,10 @@
 package com.datanest.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
-import cn.dev33.satoken.annotation.SaCheckRole;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.datanest.common.audit.AuditLog;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.PageResult;
@@ -28,7 +29,7 @@ public class UserController {
     }
 
     @Operation(summary = "用户分页列表（仅超管）")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.USER_VIEW)
     @GetMapping
     public Result<PageResult<UserVO>> list(
             @Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
@@ -40,7 +41,7 @@ public class UserController {
     }
 
     @Operation(summary = "创建用户（仅超管）")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.USER_CREATE)
     @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.CREATE,
             resourceId = "#result.data.id", resourceName = "#req.username")
     @PostMapping
@@ -49,7 +50,7 @@ public class UserController {
     }
 
     @Operation(summary = "编辑用户（仅超管）")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.USER_UPDATE)
     @PutMapping("/{userId}")
     public Result<UserVO> update(@Parameter(description = "用户 ID") @PathVariable Long userId,
                                  @Valid @RequestBody UserUpdateRequest req) {
@@ -57,7 +58,7 @@ public class UserController {
     }
 
     @Operation(summary = "切换启用/禁用（仅超管）")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.USER_TOGGLE)
     @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.UPDATE, resourceId = "#userId")
     @PutMapping("/{userId}/toggle")
     public Result<Void> toggleStatus(@Parameter(description = "用户 ID") @PathVariable Long userId) {
@@ -75,7 +76,7 @@ public class UserController {
     }
 
     @Operation(summary = "管理员重置密码（仅超管）")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.USER_RESET_PWD)
     @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.RESET_PASSWORD, resourceId = "#userId")
     @PutMapping("/{userId}/reset-password")
     public Result<Void> resetPassword(@Parameter(description = "用户 ID") @PathVariable Long userId,

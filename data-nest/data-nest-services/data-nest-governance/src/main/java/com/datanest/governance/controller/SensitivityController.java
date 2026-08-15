@@ -1,7 +1,8 @@
 package com.datanest.governance.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.SensitivityAuditItemDTO;
@@ -40,7 +41,7 @@ public class SensitivityController {
     }
 
     @Operation(summary = "单表改级", description = "三级：PUBLIC/INTERNAL/CONFIDENTIAL，任意级别直接互转；降级确认由前端负责")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SENSITIVITY_CHANGE)
     @PutMapping("/tables/{tableId}/sensitivity")
     public Result<Integer> updateSensitivity(@Parameter(description = "元数据表 ID") @PathVariable Long tableId,
                                              @Valid @RequestBody SensitivityUpdateRequest request) {
@@ -48,7 +49,7 @@ public class SensitivityController {
     }
 
     @Operation(summary = "批量改级", description = "多表统一设为某级；全有或全无（任一表违反机密降级两步则整体拒绝）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SENSITIVITY_BATCH_CHANGE)
     @PostMapping("/tables/sensitivity/batch")
     public Result<Integer> batchUpdateSensitivity(@Valid @RequestBody SensitivityBatchUpdateRequest request) {
         return Result.ok(sensitivityService.batchUpdateSensitivity(request.getTableIds(), request.getNewLevel()));
@@ -64,7 +65,7 @@ public class SensitivityController {
     }
 
     @Operation(summary = "分级变更审计", description = "改级 + 特批开放操作留痕，回填操作人用户名")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SENSITIVITY_CHANGE)
     @GetMapping("/sensitivity/audit")
     public Result<PageResult<SensitivityAuditItemDTO>> pageAudit(
             @RequestParam(value = "page", defaultValue = "1") long page,
@@ -73,7 +74,7 @@ public class SensitivityController {
     }
 
     @Operation(summary = "分级表列表（分页）", description = "敏感度筛选 + 数据源筛选 + 库/模式/表关键词；仅 ONLINE 表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.SENSITIVITY_VIEW)
     @GetMapping("/sensitivity/tables")
     public Result<PageResult<SensitivityTableItemDTO>> pageTables(
             @RequestParam(value = "page", defaultValue = "1") long page,

@@ -14,8 +14,8 @@ import {
     HiOutlineTrash,
 } from 'react-icons/hi2';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
-import {DATA_SERVICE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {DATA_SERVICE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {formatDateTime, formatNumber} from '@/utils/format';
 import {notify} from '@/utils/notify';
@@ -47,7 +47,7 @@ interface KeyListQuery {
 const INITIAL_QUERY: KeyListQuery = {keyword: '', status: ''};
 
 export default function ApiKeysPage() {
-    const canWrite = useHasRole(...DATA_SERVICE_WRITE_ROLES);
+    const canWrite = useCan(...DATA_SERVICE_WRITE_PERMS);
 
     // ============ 列表（分页 + 筛选） ============
     const [draft, setDraft] = useState<KeyListQuery>(INITIAL_QUERY);

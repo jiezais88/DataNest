@@ -25,8 +25,8 @@ import type {
 import {formatDateTime, formatRelativeTime} from '@/utils/format';
 import {executionStatusVariant} from '@/utils/status';
 import {notify} from '@/utils/notify';
-import {useHasRole} from '@/hooks/useHasRole';
-import {ENGINEERING_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {ENGINEERING_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {NODE_STATUS_COLOR} from '@/constants/statusColors';
 import usePagedList from '@/hooks/usePagedList';
@@ -111,7 +111,7 @@ function formatNextExecutionTime(item: SyncJob) {
 
 export default function SyncJobsPage() {
     const navigate = useNavigate();
-    const canWrite = useHasRole(...ENGINEERING_WRITE_ROLES);
+    const canWrite = useCan(...ENGINEERING_WRITE_PERMS);
 
     const [draftKeyword, setDraftKeyword] = useState('');
 

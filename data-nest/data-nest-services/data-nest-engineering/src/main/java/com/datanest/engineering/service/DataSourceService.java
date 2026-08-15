@@ -5,12 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.auth.DataPermissionMatcher;
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.*;
 import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.engineering.api.EngineeringSyncJobApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.SyncJobInfo;
@@ -32,6 +34,7 @@ import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.task.core.dto.TestConnectionResult;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +56,7 @@ public class DataSourceService {
     private final EncryptionConfig encryptionConfig;
     private final ConnectionTester connectionTester;
     private final SystemUserApi systemUserApi;
+    private final SystemPermissionApi systemPermissionApi;
     private final EngineeringSyncJobApi engineeringSyncJobApi;
     private final GovernanceDatasourceApi governanceDatasourceApi;
     private final CdcPipelineApi cdcPipelineApi;
@@ -60,6 +64,7 @@ public class DataSourceService {
     public DataSourceService(DataSourceConnectionMapper dataSourceMapper, EncryptionConfig encryptionConfig,
                              ConnectionTester connectionTester,
                              SystemUserApi systemUserApi,
+                             SystemPermissionApi systemPermissionApi,
                              EngineeringSyncJobApi engineeringSyncJobApi,
                              GovernanceDatasourceApi governanceDatasourceApi,
                              CdcPipelineApi cdcPipelineApi) {
@@ -67,9 +72,28 @@ public class DataSourceService {
         this.encryptionConfig = encryptionConfig;
         this.connectionTester = connectionTester;
         this.systemUserApi = systemUserApi;
+        this.systemPermissionApi = systemPermissionApi;
         this.engineeringSyncJobApi = engineeringSyncJobApi;
         this.governanceDatasourceApi = governanceDatasourceApi;
         this.cdcPipelineApi = cdcPipelineApi;
+    }
+
+    /** 查询当前用户数据权限范围（fail-open：权限服务不可用/无登录态返回全量，仅用于库表浏览展示层过滤） */
+    private UserDataPermissionDTO resolveDataPermissionFailOpen() {
+        Long userId;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        if (userId == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        return resp.data();
     }
 
     @Transactional
@@ -287,6 +311,10 @@ public class DataSourceService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
+        // 数据权限过滤（Sprint 11 F2）：该数据源无任何授权则返回空（schema 粒度不在白名单，表级由 getTables 兜底）
+        if (!DataPermissionMatcher.canAccessDatasource(resolveDataPermissionFailOpen(), id)) {
+            return List.of();
+        }
         String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
         return connectionTester.extractSchemas(toDataSourceInfo(entity), password);
     }
@@ -297,7 +325,12 @@ public class DataSourceService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
-        return connectionTester.extractDatabases(toDataSourceInfo(entity), password);
+        List<String> databases = connectionTester.extractDatabases(toDataSourceInfo(entity), password);
+        // 数据权限过滤（Sprint 11 F2）
+        UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+        return databases.stream()
+                .filter(db -> DataPermissionMatcher.canAccessDatabase(perm, id, db))
+                .toList();
     }
 
     public List<String> getTables(Long id, String database, String schema) {
@@ -306,7 +339,12 @@ public class DataSourceService {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
         String password = encryptionConfig.decrypt(entity.getEncryptedPassword());
-        return connectionTester.extractTables(toDataSourceInfo(entity), password, database, schema);
+        List<String> tables = connectionTester.extractTables(toDataSourceInfo(entity), password, database, schema);
+        // 数据权限过滤（Sprint 11 F2）
+        UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
+        return tables.stream()
+                .filter(t -> DataPermissionMatcher.canAccessTable(perm, id, database, t))
+                .toList();
     }
 
     /** 本地实体 → 连接参数 DTO（ConnectionTester 签名收 DataSourceInfo，只取连接所需字段） */

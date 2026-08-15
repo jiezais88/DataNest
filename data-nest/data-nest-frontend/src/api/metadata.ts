@@ -5,6 +5,7 @@ import type {
     MetadataDatasource,
     MetadataTable,
     MetadataTreeNode,
+    PermissionTreeDatasource,
     SensitivityAuditItem,
     SensitivityTableItem,
 } from '@/types/metadata';
@@ -16,6 +17,11 @@ interface MetadataRemarkRequest {
 
 export function listMetadataDatasourceIds() {
     return request.get<Result<MetadataDatasource[]>>('/governance/metadata/datasources');
+}
+
+/** 权限配置树（Sprint 11 F2）：一次性返回可配置的外部数据源→库→表三级结构 */
+export function getPermissionTree() {
+    return request.get<Result<PermissionTreeDatasource[]>>('/governance/metadata/permission-tree');
 }
 
 export function searchMetadataTree(keyword: string) {

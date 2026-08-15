@@ -1,7 +1,8 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.QualityIssueItemDTO;
@@ -40,7 +41,7 @@ import java.util.List;
 @Tag(name = "质量报告", description = "多维质量报告：KPI / 四档趋势 / 评分趋势 / 问题清单 / CSV 导出 / 评分历史补算")
 @RestController
 @RequestMapping("/quality/report")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckLogin
 public class QualityReportController {
 
     private final QualityReportService qualityReportService;
@@ -91,7 +92,7 @@ public class QualityReportController {
 
     @Operation(summary = "导出 Excel", description = "汇总 KPI + 当前筛选问题清单全量（xlsx 列宽自适应，超 5000 行截断）；直写响应流")
     @PostMapping("/export")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_JOB_EXECUTE)
     public void export(@RequestBody(required = false) QualityReportRequest request,
                        HttpServletResponse response) throws IOException {
         // 产品化文件名：DataNest-质量报告-日期.xlsx；ASCII 兜底 + RFC5987 中文编码（导出统一规范：void + 响应流）
@@ -107,7 +108,7 @@ public class QualityReportController {
 
     @Operation(summary = "存量评分历史补算", description = "为有当前评分但无历史快照的表补写首次快照（幂等），返回补写条数")
     @PostMapping("/backfill-score-history")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_JOB_EXECUTE)
     public Result<Integer> backfillScoreHistory() {
         return Result.ok(qualityReportService.backfillScoreHistory());
     }

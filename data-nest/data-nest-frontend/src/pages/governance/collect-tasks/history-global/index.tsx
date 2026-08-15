@@ -19,8 +19,8 @@ import DsFilterSelect from '@/components/DsFilterSelect';
 import DsToolbar from '@/components/DsToolbar';
 import {formatDateTime, formatDuration, formatExecutionDuration, getDefaultTimeRange} from '@/utils/format';
 import {executionStatusVariant} from '@/utils/status';
-import {useHasRole} from '@/hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {notify} from '@/utils/notify';
 import {
@@ -57,7 +57,7 @@ function triggerBadge(triggerType: string) {
 
 export default function CollectHistoryGlobalPage() {
     const navigate = useNavigate();
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
     const [searchParams, setSearchParams] = useSearchParams();
 
     const defaultRange = getDefaultTimeRange();

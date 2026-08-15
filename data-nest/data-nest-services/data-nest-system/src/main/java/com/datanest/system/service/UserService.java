@@ -14,6 +14,7 @@ import com.datanest.system.dto.UserUpdateRequest;
 import com.datanest.system.dto.UserVO;
 import com.datanest.system.entity.Role;
 import com.datanest.system.entity.User;
+import com.datanest.system.mapper.PermissionMapper;
 import com.datanest.system.mapper.RoleMapper;
 import com.datanest.system.mapper.UserMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -31,15 +32,17 @@ public class UserService {
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
+    private final PermissionMapper permissionMapper;
     private final PasswordEncoder passwordEncoder;
     private final IdentifierGenerator idGenerator;
     private final SysUserService sysUserService;
 
-    public UserService(UserMapper userMapper, RoleMapper roleMapper,
+    public UserService(UserMapper userMapper, RoleMapper roleMapper, PermissionMapper permissionMapper,
                        PasswordEncoder passwordEncoder, IdentifierGenerator idGenerator,
                        SysUserService sysUserService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
+        this.permissionMapper = permissionMapper;
         this.passwordEncoder = passwordEncoder;
         this.idGenerator = idGenerator;
         this.sysUserService = sysUserService;
@@ -58,8 +61,9 @@ public class UserService {
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED);
         }
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
+        List<String> permissions = permissionMapper.selectCodesByUserId(user.getId());
         return new UserLoginDTO(user.getId(), user.getUsername(),
-                user.getPassword(), user.getEnabled(), roles, List.of());
+                user.getPassword(), user.getEnabled(), roles, permissions);
     }
 
     public PageResult<UserVO> listUsers(int page, int pageSize, String keyword, String roleCode, String status) {

@@ -2,8 +2,8 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Table, Tooltip} from 'antd';
 import {notify} from '@/utils/notify';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '@/hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {
     batchCreateQualityRules,
     createQualityTemplate,
@@ -49,7 +49,7 @@ function ownerName(name?: string): string {
 }
 
 export default function QualityTemplatesPage() {
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
 
     const [items, setItems] = useState<QualityRuleTemplate[]>([]);
     const [total, setTotal] = useState(0);

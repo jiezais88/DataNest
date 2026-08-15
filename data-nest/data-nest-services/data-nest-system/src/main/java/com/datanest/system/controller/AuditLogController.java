@@ -1,6 +1,7 @@
 package com.datanest.system.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.system.entity.AuditLog;
@@ -31,7 +32,7 @@ public class AuditLogController {
     }
 
     @Operation(summary = "审计日志分页查询（仅超管）", description = "操作人/操作类型/资源类型/时间范围/关键词组合筛选，默认按时间倒序")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.AUDIT_VIEW)
     @GetMapping
     public Result<PageResult<AuditLog>> list(
             @Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
@@ -47,7 +48,7 @@ public class AuditLogController {
     }
 
     @Operation(summary = "审计日志详情（仅超管）")
-    @SaCheckRole("SUPER_ADMIN")
+    @SaCheckPermission(PermissionCode.AUDIT_VIEW)
     @GetMapping("/{id}")
     public Result<AuditLog> detail(@Parameter(description = "审计记录 ID") @PathVariable Long id) {
         return Result.ok(auditLogService.detail(id));

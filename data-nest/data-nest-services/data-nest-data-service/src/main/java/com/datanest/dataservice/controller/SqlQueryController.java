@@ -1,9 +1,9 @@
 package com.datanest.dataservice.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.auth.PermissionCode;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.audit.AuditContent;
 import com.datanest.common.audit.AuditLogEvent;
@@ -48,7 +48,6 @@ import java.util.List;
  * SQL 查询终端（Sprint 10 F1，四角色 OR）。
  */
 @Tag(name = "SQL 查询终端", description = "只读 SQL 执行 / 查询历史 / 数据源下拉")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
 @RestController
 @RequestMapping("/sql-console")
 public class SqlQueryController {
@@ -65,6 +64,7 @@ public class SqlQueryController {
     }
 
     @Operation(summary = "执行只读 SQL", description = "JSqlParser 语法级只读校验（SELECT/WITH/SHOW/DESC/EXPLAIN），命中机密表拦截；请求带 queryId 时支持「停止」取消")
+    @SaCheckPermission(PermissionCode.SQL_EXECUTE)
     @PostMapping("/execute")
     public Result<SqlExecuteResult> execute(@Valid @RequestBody SqlExecuteRequest request) {
         long start = System.currentTimeMillis();
@@ -114,6 +114,7 @@ public class SqlQueryController {
     }
 
     @Operation(summary = "导出查询结果（XLSX/CSV，后端生成）", description = "复用 execute 全链路（只读校验+敏感度闸门+写历史）；文件名 = 数据源_表_时间戳，RFC5987 中文名")
+    @SaCheckPermission(PermissionCode.SQL_EXPORT)
     @PostMapping("/export")
     public void export(@Valid @RequestBody SqlExportRequest request, HttpServletResponse response) throws IOException {
         SqlExecuteResult result = sqlQueryService.export(request);
@@ -171,18 +172,21 @@ public class SqlQueryController {
     }
 
     @Operation(summary = "停止查询", description = "按执行时下发的 queryId 取消本次查询（中断线程 + 关闭连接）；查无此 id 幂等返回")
+    @SaCheckPermission(PermissionCode.SQL_EXECUTE)
     @PostMapping("/cancel")
     public Result<Boolean> cancel(@Valid @RequestBody SqlCancelRequest request) {
         return Result.ok(sqlQueryService.cancel(request.getQueryId()));
     }
 
     @Operation(summary = "数据源下拉", description = "内置 Doris + 状态 NORMAL 的平台数据源")
+    @SaCheckPermission(PermissionCode.SQL_EXECUTE)
     @GetMapping("/datasources")
     public Result<List<SqlDatasourceDTO>> listDatasources() {
         return Result.ok(sqlQueryService.listQueryableDatasources());
     }
 
     @Operation(summary = "我的查询历史（分页）")
+    @SaCheckPermission(PermissionCode.SQL_HISTORY)
     @GetMapping("/history")
     public Result<PageResult<SqlQueryHistory>> history(
             @RequestParam(value = "page", defaultValue = "1") long page,
@@ -197,6 +201,7 @@ public class SqlQueryController {
     }
 
     @Operation(summary = "清空我的查询历史")
+    @SaCheckPermission(PermissionCode.SQL_HISTORY)
     @DeleteMapping("/history")
     public Result<Void> clearHistory() {
         long userId = StpUtil.getLoginIdAsLong();

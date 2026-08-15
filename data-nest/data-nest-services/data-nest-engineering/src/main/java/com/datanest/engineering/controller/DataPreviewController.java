@@ -1,7 +1,7 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.service.DataPreviewService;
 import com.datanest.task.core.dto.DataPreviewResult;
@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+@SaCheckPermission(PermissionCode.DATASOURCE_VIEW)
 @Tag(name = "数据预览", description = "数据源表数据预览")
 @RestController
 @RequestMapping("/datasources/{datasourceId}/preview")

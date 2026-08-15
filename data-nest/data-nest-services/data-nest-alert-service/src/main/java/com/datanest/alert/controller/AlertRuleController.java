@@ -1,7 +1,7 @@
 package com.datanest.alert.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.alert.dto.AlertObjectOptionDTO;
@@ -30,7 +30,7 @@ public class AlertRuleController {
     }
 
     @Operation(summary = "告警规则分页列表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping
     public Result<PageResult<AlertRuleDTO>> list(@Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
                                                  @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
@@ -40,28 +40,28 @@ public class AlertRuleController {
     }
 
     @Operation(summary = "告警规则详情")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping("/{id}")
     public Result<AlertRuleDTO> get(@Parameter(description = "规则 ID") @PathVariable Long id) {
         return Result.ok(alertRuleService.getRule(id));
     }
 
     @Operation(summary = "创建告警规则")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_RULE_MANAGE)
     @PostMapping
     public Result<AlertRuleDTO> create(@RequestBody AlertRuleDTO dto) {
         return Result.ok(alertRuleService.createRule(dto));
     }
 
     @Operation(summary = "编辑告警规则")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_RULE_MANAGE)
     @PutMapping("/{id}")
     public Result<AlertRuleDTO> update(@Parameter(description = "规则 ID") @PathVariable Long id, @RequestBody AlertRuleDTO dto) {
         return Result.ok(alertRuleService.updateRule(id, dto));
     }
 
     @Operation(summary = "删除告警规则")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_RULE_MANAGE)
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "规则 ID") @PathVariable Long id) {
         alertRuleService.deleteRule(id);
@@ -69,7 +69,7 @@ public class AlertRuleController {
     }
 
     @Operation(summary = "切换启用/停用")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_RULE_MANAGE)
     @PutMapping("/{id}/toggle")
     public Result<Void> toggle(@Parameter(description = "规则 ID") @PathVariable Long id,
                                @Parameter(description = "是否启用") @RequestParam Boolean enabled) {
@@ -78,14 +78,14 @@ public class AlertRuleController {
     }
 
     @Operation(summary = "查询规则接收人")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping("/{id}/users")
     public Result<List<Long>> getUsers(@Parameter(description = "规则 ID") @PathVariable Long id) {
         return Result.ok(alertRuleService.getRuleUsers(id));
     }
 
     @Operation(summary = "设置规则接收人")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_RULE_MANAGE)
     @PutMapping("/{id}/users")
     public Result<Void> setUsers(@Parameter(description = "规则 ID") @PathVariable Long id, @RequestBody List<Long> userIds) {
         alertRuleService.setRuleUsers(id, userIds);
@@ -93,7 +93,7 @@ public class AlertRuleController {
     }
 
     @Operation(summary = "可选告警对象下拉", description = "按对象类型返回 id + name 选项，新增规则时使用")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping("/object-options")
     public Result<List<AlertObjectOptionDTO>> objectOptions(@Parameter(description = "告警对象类型（DAG/SYNC_JOB/COLLECT_TASK/QUALITY）") @RequestParam String objectType) {
         return Result.ok(alertRuleService.listObjectOptions(objectType));

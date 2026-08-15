@@ -1,8 +1,9 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.datanest.common.audit.AuditLog;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.model.Result;
@@ -42,21 +43,21 @@ public class DagController {
     }
 
     @Operation(summary = "DAG 列表（可按项目过滤）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping
     public Result<List<DagPayload>> list(@Parameter(description = "项目 ID（可选，过滤所属项目）") @RequestParam(required = false) Long projectId) {
         return Result.ok(dagService.list(projectId));
     }
 
     @Operation(summary = "DAG 详情（含节点与边）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/{id}")
     public Result<DagPayload> get(@Parameter(description = "DAG ID") @PathVariable Long id) {
         return Result.ok(dagService.getDetail(id));
     }
 
     @Operation(summary = "创建 DAG")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_CREATE)
     @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.CREATE,
             resourceId = "#result.data.id", resourceName = "#payload.name")
     @PostMapping
@@ -65,7 +66,7 @@ public class DagController {
     }
 
     @Operation(summary = "更新 DAG")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_UPDATE)
     @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.UPDATE,
             resourceId = "#id", resourceName = "#payload.name")
     @PutMapping("/{id}")
@@ -74,7 +75,7 @@ public class DagController {
     }
 
     @Operation(summary = "删除 DAG")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_DELETE)
     @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.DELETE, resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "DAG ID") @PathVariable Long id) {
@@ -83,7 +84,7 @@ public class DagController {
     }
 
     @Operation(summary = "手动触发 DAG 执行")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @AuditLog(resourceType = AuditResourceType.DAG, opType = AuditOpType.TRIGGER, resourceId = "#id")
     @PostMapping("/{id}/trigger")
     public Result<DagExecutionDTO> trigger(@Parameter(description = "DAG ID") @PathVariable Long id,
@@ -92,7 +93,7 @@ public class DagController {
     }
 
     @Operation(summary = "PYTHON 节点脚本测试", description = "执行脚本并返回结果，不注册元数据、不写 node_execution")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @PostMapping("/{id}/nodes/{nodeId}/python/test")
     public Result<PythonExecuteResult> testPythonNode(@Parameter(description = "DAG ID") @PathVariable Long id,
                                                       @Parameter(description = "节点 ID") @PathVariable String nodeId,
@@ -109,7 +110,7 @@ public class DagController {
     }
 
     @Operation(summary = "开启 DAG 定时调度")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @PostMapping("/{id}/schedule/start")
     public Result<Void> startSchedule(@Parameter(description = "DAG ID") @PathVariable Long id) {
         dagService.startSchedule(id);
@@ -117,7 +118,7 @@ public class DagController {
     }
 
     @Operation(summary = "停止 DAG 定时调度")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @PostMapping("/{id}/schedule/stop")
     public Result<Void> stopSchedule(@Parameter(description = "DAG ID") @PathVariable Long id) {
         dagService.stopSchedule(id);
@@ -125,7 +126,7 @@ public class DagController {
     }
 
     @Operation(summary = "停止执行实例")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @PostMapping("/{id}/executions/{executionId}/stop")
     public Result<Void> stop(@Parameter(description = "DAG ID") @PathVariable Long id,
                              @Parameter(description = "执行实例 ID") @PathVariable Long executionId) {
@@ -147,7 +148,7 @@ public class DagController {
      * @return 新执行实例 DTO（含新 executionId 在 .id 字段）
      */
     @Operation(summary = "重跑失败节点")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @PostMapping("/{id}/executions/{executionId}/rerun-failed")
     public Result<DagExecutionDTO> rerunFailed(@Parameter(description = "DAG ID") @PathVariable Long id,
                                                @Parameter(description = "要重跑的旧执行实例 ID") @PathVariable Long executionId) {
@@ -155,7 +156,7 @@ public class DagController {
     }
 
     @Operation(summary = "单 DAG 执行历史")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/{id}/executions")
     public Result<List<DagExecutionDTO>> executions(@Parameter(description = "DAG ID") @PathVariable Long id) {
         return Result.ok(dagExecutionService.listByDag(id));
@@ -166,7 +167,7 @@ public class DagController {
      * 返回结构与 /dev/sync-jobs/{id}/history/{historyId}/logs 一致，前端复用同一日志 UI。
      */
     @Operation(summary = "SYNC 节点执行日志")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/node-executions/{nodeExecutionId}/logs")
     public Result<List<SyncJobLogDTO>> nodeExecutionLogs(@Parameter(description = "节点执行 ID") @PathVariable Long nodeExecutionId) {
         return Result.ok(dagExecutionService.getNodeExecutionLogs(nodeExecutionId));

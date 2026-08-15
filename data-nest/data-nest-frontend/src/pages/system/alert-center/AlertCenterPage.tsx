@@ -5,8 +5,8 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import type {IconType} from 'react-icons';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
-import {useHasRole} from '@/hooks/useHasRole';
-import {ALERT_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {ALERT_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {deleteAlertRule, getAlertHistory, getAlertHistoryStats, getAlertRules, getUsersWithEmail, toggleAlertRule,} from '@/api/alert';
 import type {AlertHistoryStats} from '@/api/alert';
@@ -185,7 +185,7 @@ const INITIAL_HISTORY_QUERY: HistoryListQuery = {
 };
 
 export default function AlertCenterPage() {
-    const canWrite = useHasRole(...ALERT_WRITE_ROLES);
+    const canWrite = useCan(...ALERT_WRITE_PERMS);
 
     // ==================== Tab ====================
     const [activeTab, setActiveTab] = useState<'rules' | 'history'>('rules');

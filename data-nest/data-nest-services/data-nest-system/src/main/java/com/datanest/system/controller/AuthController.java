@@ -45,6 +45,8 @@ public class AuthController {
             StpUtil.login(user.userId());
         }
         StpUtil.getSession().set("roles", user.roles());
+        // Sprint 11 F2：权限点集合写入 Session，供 @SaCheckPermission 跨服务校验
+        StpUtil.getSession().set("permissions", user.permissions());
         // 审计切面从 session 读取操作人用户名（避免各服务回查 system 库）
         StpUtil.getSession().set("username", user.username());
 
@@ -53,7 +55,8 @@ public class AuthController {
         result.put("userInfo", Map.of(
                 "userId", user.userId(),
                 "username", user.username(),
-                "roles", user.roles()
+                "roles", user.roles(),
+                "permissions", user.permissions()
         ));
         return Result.ok(result);
     }

@@ -1,7 +1,6 @@
 package com.datanest.dataservice.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.dto.StatsErrorCodeDTO;
 import com.datanest.dataservice.dto.StatsHealthDistributionDTO;
@@ -25,7 +24,7 @@ import java.util.List;
  * 四角色可查（对齐 PRD §8 权限矩阵「API 查看（统计）」）。
  */
 @Tag(name = "API 运行统计", description = "全局调用量/成功率/健康分布/排行/错误码/限流趋势（Sprint 10 F3）")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckLogin
 @RestController
 @RequestMapping("/stats")
 public class StatsController {

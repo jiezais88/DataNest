@@ -1,7 +1,7 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.task.core.dto.QualityRuleBatchCreateRequest;
@@ -30,7 +30,7 @@ import java.util.List;
 @Tag(name = "质量规则", description = "质量规则 CRUD / 模板批量应用 / SQL 预览与脚本试跑")
 @RestController
 @RequestMapping("/quality/rules")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckPermission(PermissionCode.QUALITY_RULE_VIEW)
 public class QualityRuleController {
 
     private final QualityRuleService ruleService;
@@ -59,21 +59,21 @@ public class QualityRuleController {
 
     @Operation(summary = "任务下新增规则")
     @PostMapping
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_CREATE)
     public Result<QualityRuleDTO> create(@Valid @RequestBody QualityRuleCreateRequest request) {
         return Result.ok(ruleService.create(request));
     }
 
     @Operation(summary = "模板批量应用", description = "选「1 个模板 + 多张表」，逐表生成规则实例（逐表可微调）")
     @PostMapping("/batch")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_CREATE)
     public Result<List<QualityRuleDTO>> batch(@Valid @RequestBody QualityRuleBatchCreateRequest request) {
         return Result.ok(ruleService.batchCreate(request));
     }
 
     @Operation(summary = "编辑规则")
     @PutMapping("/{id}")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_UPDATE)
     public Result<QualityRuleDTO> update(@Parameter(description = "规则 ID") @PathVariable Long id,
                                          @Valid @RequestBody QualityRuleUpdateRequest request) {
         return Result.ok(ruleService.update(id, request));
@@ -81,7 +81,7 @@ public class QualityRuleController {
 
     @Operation(summary = "删除规则")
     @DeleteMapping("/{id}")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_DELETE)
     public Result<Void> delete(@Parameter(description = "规则 ID") @PathVariable Long id) {
         ruleService.delete(id);
         return Result.ok(null);
@@ -89,7 +89,7 @@ public class QualityRuleController {
 
     @Operation(summary = "启停规则")
     @PostMapping("/{id}/toggle")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_UPDATE)
     public Result<QualityRuleDTO> toggle(@Parameter(description = "规则 ID") @PathVariable Long id,
                                          @Parameter(description = "目标启用状态（不传则取反）") @RequestParam(required = false) Boolean enabled) {
         return Result.ok(ruleService.toggle(id, enabled));
@@ -97,7 +97,7 @@ public class QualityRuleController {
 
     @Operation(summary = "单条规则执行")
     @PostMapping("/{id}/execute")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_UPDATE)
     public Result<Void> execute(@Parameter(description = "规则 ID") @PathVariable Long id) {
         ruleService.executeRule(id);
         return Result.ok(null);
@@ -111,14 +111,14 @@ public class QualityRuleController {
 
     @Operation(summary = "试跑 PYTHON 规则脚本", description = "保存前验证脚本并查看返回 dict（Sprint 7 DG-10）")
     @PostMapping("/test-script")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_CREATE)
     public Result<QualityPythonScriptTestResponse> testScript(@Valid @RequestBody QualityPythonScriptTestRequest request) {
         return Result.ok(ruleService.testPythonScript(request));
     }
 
     @Operation(summary = "CUSTOM_SQL 规则执行预览", description = "真实执行返回列清单 + 样例行，供多指标选择 resultMetric（Sprint 7 DG-10）")
     @PostMapping("/preview-execute")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_CREATE)
     public Result<QualitySqlPreviewExecuteResponse> previewExecute(@Valid @RequestBody QualitySqlPreviewExecuteRequest request) {
         return Result.ok(ruleService.previewExecuteSql(request));
     }

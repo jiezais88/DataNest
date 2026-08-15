@@ -1,7 +1,6 @@
 package com.datanest.system.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.datanest.common.model.Result;
 import com.datanest.system.dto.UserOptionDTO;
 import com.datanest.system.mapper.UserMapper;
@@ -31,7 +30,7 @@ public class UserSelectorController {
     }
 
     @Operation(summary = "已填写邮箱的用户选项", description = "告警中心接收人选择用，只返回有邮箱的用户")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/with-email")
     public Result<List<UserOptionDTO>> listUsersWithEmail(
             @Parameter(description = "用户名关键字") @RequestParam(required = false) String keyword) {
@@ -42,7 +41,7 @@ public class UserSelectorController {
     }
 
     @Operation(summary = "全部启用用户选项", description = "资产负责人选择器用，不要求填写邮箱")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/options")
     public Result<List<UserOptionDTO>> listUserOptions(
             @Parameter(description = "用户名关键字") @RequestParam(required = false) String keyword) {

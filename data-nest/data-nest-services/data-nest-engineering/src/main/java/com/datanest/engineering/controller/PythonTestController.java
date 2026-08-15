@@ -1,7 +1,7 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.PythonTestRequest;
 import com.datanest.task.core.dto.PythonExecuteResult;
@@ -34,7 +34,7 @@ public class PythonTestController {
     }
 
     @Operation(summary = "独立执行 Python 脚本测试", description = "执行脚本并返回结果，不注册元数据、不写 node_execution；params 仅作上下文参数，不做 DAG 级参数解析/占位符替换")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_EXECUTE)
     @PostMapping("/python/test")
     public Result<PythonExecuteResult> testPythonScript(@RequestBody PythonTestRequest request) {
         if (request == null || !org.springframework.util.StringUtils.hasText(request.getPythonScript())) {

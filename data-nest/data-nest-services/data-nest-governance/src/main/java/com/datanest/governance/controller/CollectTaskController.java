@@ -1,7 +1,7 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.dto.DataSourceReferenceDTO;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
@@ -31,14 +31,14 @@ public class CollectTaskController {
     }
 
     @Operation(summary = "创建采集任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_CREATE)
     @PostMapping
     public Result<CollectTaskDTO> create(@Valid @RequestBody CollectTaskCreateRequest request) {
         return Result.ok(collectTaskService.create(request));
     }
 
     @Operation(summary = "编辑采集任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_UPDATE)
     @PutMapping("/{id}")
     public Result<CollectTaskDTO> update(@Parameter(description = "采集任务 ID") @PathVariable Long id,
                                          @Valid @RequestBody CollectTaskUpdateRequest request) {
@@ -46,7 +46,7 @@ public class CollectTaskController {
     }
 
     @Operation(summary = "删除采集任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_DELETE)
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "采集任务 ID") @PathVariable Long id) {
         collectTaskService.delete(id);
@@ -54,28 +54,28 @@ public class CollectTaskController {
     }
 
     @Operation(summary = "采集任务详情")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_VIEW)
     @GetMapping("/{id}")
     public Result<CollectTaskDTO> getById(@Parameter(description = "采集任务 ID") @PathVariable Long id) {
         return Result.ok(collectTaskService.getById(id));
     }
 
     @Operation(summary = "采集任务分页列表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_VIEW)
     @PostMapping("/page")
     public Result<PageResult<CollectTaskDTO>> list(@RequestBody CollectTaskQueryRequest request) {
         return Result.ok(collectTaskService.list(request));
     }
 
     @Operation(summary = "采集任务状态统计（顶部统计卡）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_VIEW)
     @GetMapping("/stats")
     public Result<CollectTaskStatsDTO> stats() {
         return Result.ok(collectTaskService.listStats());
     }
 
     @Operation(summary = "手动执行采集任务")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_EXECUTE)
     @PostMapping("/{id}/execute")
     public Result<Void> execute(@Parameter(description = "采集任务 ID") @PathVariable Long id) {
         collectTaskService.execute(id);
@@ -83,7 +83,7 @@ public class CollectTaskController {
     }
 
     @Operation(summary = "开启采集调度")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_EXECUTE)
     @PostMapping("/{id}/schedule/start")
     public Result<Void> startSchedule(@Parameter(description = "采集任务 ID") @PathVariable Long id) {
         collectTaskService.startSchedule(id);
@@ -91,7 +91,7 @@ public class CollectTaskController {
     }
 
     @Operation(summary = "关闭采集调度")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_EXECUTE)
     @PostMapping("/{id}/schedule/stop")
     public Result<Void> stopSchedule(@Parameter(description = "采集任务 ID") @PathVariable Long id) {
         collectTaskService.stopSchedule(id);
@@ -99,7 +99,7 @@ public class CollectTaskController {
     }
 
     @Operation(summary = "数据源被采集任务引用情况")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.COLLECT_VIEW)
     @GetMapping("/datasources/{datasourceId}/references")
     public Result<List<DataSourceReferenceDTO>> getReferencesByDataSource(@Parameter(description = "数据源 ID") @PathVariable Long datasourceId) {
         return Result.ok(collectTaskService.getReferencesByDataSource(datasourceId));

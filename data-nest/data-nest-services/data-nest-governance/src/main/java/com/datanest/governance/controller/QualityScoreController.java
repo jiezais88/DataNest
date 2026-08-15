@@ -1,7 +1,8 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.task.core.dto.QualityScoreConfigDTO;
@@ -26,7 +27,7 @@ import java.util.List;
 @Tag(name = "质量评分", description = "表级质量评分查询与全局扣分配置")
 @RestController
 @RequestMapping("/quality/scores")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckLogin
 public class QualityScoreController {
 
     private final QualityScoreService scoreService;
@@ -61,7 +62,7 @@ public class QualityScoreController {
 
     @Operation(summary = "按表执行全部启用规则", description = "异步投递 worker，逐条触发")
     @PostMapping("/table/{tableId}/execute")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_JOB_EXECUTE)
     public Result<Void> executeTable(@Parameter(description = "表 ID") @PathVariable Long tableId) {
         scoreService.executeTableRules(tableId);
         return Result.ok(null);
@@ -75,7 +76,7 @@ public class QualityScoreController {
 
     @Operation(summary = "更新全局扣分配置", description = "保存后 ScoreCalculator 动态生效，无需重启")
     @PutMapping("/config")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.QUALITY_RULE_UPDATE)
     public Result<Void> updateConfig(@RequestBody QualityScoreConfigDTO dto) {
         scoreService.updateConfig(dto);
         return Result.ok(null);

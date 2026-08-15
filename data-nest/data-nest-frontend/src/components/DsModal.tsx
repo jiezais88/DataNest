@@ -50,7 +50,7 @@ export default function DsModal({
     return (
         <div className="fixed inset-0 z-ds-dialog flex items-center justify-center">
             <div
-                className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/30"
                 onClick={maskClosable ? onClose : undefined}
             />
             <div

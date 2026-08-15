@@ -5,8 +5,8 @@ import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {nextRunTime} from '@/utils/cron';
 import {notify} from '@/utils/notify';
-import {useHasRole} from '@/hooks/useHasRole';
-import {ALERT_WRITE_ROLES, GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {ALERT_WRITE_PERMS, GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {NODE_STATUS_COLOR} from '@/constants/statusColors';
 import StatusSpine from '@/components/StatusSpine';
@@ -81,9 +81,9 @@ const INITIAL_QUERY: TaskListQuery = {keyword: '', status: ''};
 
 export default function CollectTasksPage() {
     const navigate = useNavigate();
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
     // 采集任务快捷告警：查看 = 超管/工程师/治理员，编辑 = 超管/工程师（PRD §8）
-    const canWriteAlert = useHasRole(...ALERT_WRITE_ROLES);
+    const canWriteAlert = useCan(...ALERT_WRITE_PERMS);
 
     const {list, total, page, pageSize, loading, query, setPage, setPageSize, applyQuery, reload} =
         usePagedList<TaskListQuery, CollectTask>({

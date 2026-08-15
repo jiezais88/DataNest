@@ -1,7 +1,7 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.QualityCheckStatsDTO;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.*;
 @Tag(name = "质量检查结果", description = "质量检查批次分页查询与批次详情（含规则明细）")
 @RestController
 @RequestMapping("/quality/checks")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckPermission(PermissionCode.QUALITY_JOB_HISTORY)
 public class QualityCheckController {
 
     private final QualityCheckQueryService checkQueryService;

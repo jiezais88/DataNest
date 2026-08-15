@@ -5,8 +5,8 @@ import type {ColumnsType} from 'antd/es/table';
 import {notify} from '@/utils/notify';
 import {formatDateTime} from '@/utils/format';
 import {nextRunTime} from '@/utils/cron';
-import {useHasRole} from '@/hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {
     createQualityJob,
@@ -63,7 +63,7 @@ const AUTO_TRIGGER_TYPE_LABEL: Record<AutoTriggerObjectType, string> = {
 
 export default function DataQualityPage() {
     const [searchParams, setSearchParams] = useSearchParams();
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
 
     // ============ 质量任务 ============
     const [jobs, setJobs] = useState<QualityJob[]>([]);

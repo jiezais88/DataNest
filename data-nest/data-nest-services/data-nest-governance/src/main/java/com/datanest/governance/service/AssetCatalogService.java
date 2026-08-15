@@ -5,11 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.auth.DataPermissionMatcher;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.constant.SourceType;
+import com.datanest.common.model.DataPermissionGrant;
 import com.datanest.common.model.PageResult;
+import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.governance.dto.AssetClassificationDTO;
 import com.datanest.governance.dto.AssetClassificationTreeDTO;
 import com.datanest.governance.dto.AssetSearchItemDTO;
@@ -35,6 +38,7 @@ import com.datanest.governance.service.QualityScoreService;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.task.core.support.SystemUserResolver;
+import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -89,6 +93,7 @@ public class AssetCatalogService {
     private final AssetViewLogMapper assetViewLogMapper;
     private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
+    private final SystemPermissionApi systemPermissionApi;
     private final QualityScoreService qualityScoreService;
 
     /** 资产搜索结果裁剪上限（对齐 searchTree 的 MAX_SEARCH_RESULTS 保护） */
@@ -103,6 +108,7 @@ public class AssetCatalogService {
                                AssetViewLogMapper assetViewLogMapper,
                                EngineeringDatasourceApi datasourceApi,
                                SystemUserApi systemUserApi,
+                               SystemPermissionApi systemPermissionApi,
                                QualityScoreService qualityScoreService) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
@@ -112,7 +118,63 @@ public class AssetCatalogService {
         this.assetViewLogMapper = assetViewLogMapper;
         this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
+        this.systemPermissionApi = systemPermissionApi;
         this.qualityScoreService = qualityScoreService;
+    }
+
+    /**
+     * 查询当前用户数据权限范围（fail-closed，Sprint 11 F2）。
+     * <p>
+     * 资产目录属数据访问场景（PRD §6.2.3），无权限用户/权限服务不可用时拒绝返回资产数据；
+     * 内部场景（无登录态）全量放行。
+     */
+    private UserDataPermissionDTO resolveDataPermission() {
+        Long userId;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        if (userId == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
+        }
+        return resp.data();
+    }
+
+    /** 数据权限白名单转 SQL 过滤条件（最细粒度优先：数据源级/库级/表级任一命中即放行） */
+    private void applyDataPermissionFilter(QueryWrapper<MetadataTable> wrapper, UserDataPermissionDTO perm) {
+        if (perm == null || perm.unrestricted()) {
+            return;
+        }
+        List<DataPermissionGrant> grants = perm.grants();
+        if (grants.isEmpty()) {
+            wrapper.apply("1 = 0");
+            return;
+        }
+        List<Long> dsIds = grants.stream()
+                .filter(g -> g.databaseName() == null && g.tableName() == null)
+                .map(DataPermissionGrant::datasourceId).distinct().toList();
+        List<DataPermissionGrant> dbGrants = grants.stream()
+                .filter(g -> g.databaseName() != null && g.tableName() == null).toList();
+        List<DataPermissionGrant> tblGrants = grants.stream()
+                .filter(g -> g.tableName() != null).toList();
+
+        wrapper.and(w -> {
+            if (!dsIds.isEmpty()) {
+                w.in("datasource_id", dsIds);
+            }
+            for (DataPermissionGrant g : dbGrants) {
+                w.or(n -> n.eq("datasource_id", g.datasourceId()).eq("database_name", g.databaseName()));
+            }
+            for (DataPermissionGrant g : tblGrants) {
+                w.or(n -> n.eq("datasource_id", g.datasourceId())
+                        .eq("database_name", g.databaseName()).eq("table_name", g.tableName()));
+            }
+        });
     }
 
     // ==================== DC-01 资产搜索 ====================
@@ -146,6 +208,11 @@ public class AssetCatalogService {
         if (rows.size() >= maxSearchResults) {
             log.warn("资产搜索结果达到上限 {}，已截断（keyword={}）", maxSearchResults, trimmed);
         }
+        // 数据权限过滤（Sprint 11 F2）：搜索有结果上限，结果层过滤即可（无权限的表不展示）
+        UserDataPermissionDTO perm = resolveDataPermission();
+        rows = rows.stream()
+                .filter(t -> DataPermissionMatcher.canAccessTable(perm, t.getDatasourceId(), t.getDatabaseName(), t.getTableName()))
+                .toList();
 
         Set<Long> columnHitSet = new HashSet<>(columnHitTableIds);
         Set<Long> ownerHitSet = new HashSet<>(ownerUserIds);
@@ -417,6 +484,8 @@ public class AssetCatalogService {
             }
         }
         QueryWrapper<MetadataTable> wrapper = buildBrowseWrapper(domain, topic, datasourceId, uncategorized);
+        // 数据权限过滤（Sprint 11 F2）：SQL 层过滤保证分页总数准确
+        applyDataPermissionFilter(wrapper, resolveDataPermission());
         if (healthTableIds != null) {
             wrapper.in("id", healthTableIds);
         }

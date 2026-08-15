@@ -1,7 +1,7 @@
 package com.datanest.alert.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.alert.dto.AlertHistoryStatsDTO;
@@ -31,7 +31,7 @@ public class AlertHistoryController {
     }
 
     @Operation(summary = "告警历史分页列表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping
     public Result<PageResult<AlertHistory>> list(@Parameter(description = "页码，从 1 开始") @RequestParam(defaultValue = "1") int page,
                                                  @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
@@ -45,7 +45,7 @@ public class AlertHistoryController {
     }
 
     @Operation(summary = "告警历史统计（顶部统计卡，按时间范围 + 对象维度聚合）")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping("/stats")
     public Result<AlertHistoryStatsDTO> stats(@Parameter(description = "告警对象类型（DAG/SYNC_JOB/COLLECT_TASK/QUALITY/CDC_PIPELINE）") @RequestParam(required = false) String objectType,
                                               @Parameter(description = "告警对象 ID") @RequestParam(required = false) Long objectId,

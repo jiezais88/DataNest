@@ -7,6 +7,8 @@ interface UserInfo {
     userId: string;
     username: string;
     roles: string[];
+    /** Sprint 11 F2：登录返回的按钮级权限点 code 列表（如 datasource:view） */
+    permissions?: string[];
 }
 
 interface AuthState {

@@ -1,7 +1,8 @@
 package com.datanest.governance.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.governance.dto.AddCommentRequest;
@@ -46,7 +47,7 @@ import java.util.List;
 @Tag(name = "数据资产目录", description = "资产多维搜索 / 分类体系维护 / 分类与负责人分配 / 标签 / 收藏 / 关注 / 评论 / 热度")
 @RestController
 @RequestMapping("/assets")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckLogin
 public class AssetCatalogController {
 
     private final AssetCatalogService assetCatalogService;
@@ -74,14 +75,14 @@ public class AssetCatalogController {
 
     @Operation(summary = "新增分类")
     @PostMapping("/classifications")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ASSET_MANAGE)
     public Result<AssetClassificationDTO> createClassification(@RequestBody ClassificationSaveRequest request) {
         return Result.ok(assetCatalogService.createClassification(request));
     }
 
     @Operation(summary = "编辑分类", description = "改名时级联更新 metadata_table 冗余分类名")
     @PutMapping("/classifications/{id}")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ASSET_MANAGE)
     public Result<AssetClassificationDTO> updateClassification(@Parameter(description = "分类 ID") @PathVariable Long id,
                                                                @RequestBody ClassificationSaveRequest request) {
         return Result.ok(assetCatalogService.updateClassification(id, request));
@@ -89,7 +90,7 @@ public class AssetCatalogController {
 
     @Operation(summary = "删除分类", description = "仍被表引用或数据域下仍有主题时拒绝")
     @DeleteMapping("/classifications/{id}")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ASSET_MANAGE)
     public Result<Void> deleteClassification(@Parameter(description = "分类 ID") @PathVariable Long id) {
         assetCatalogService.deleteClassification(id);
         return Result.ok(null);
@@ -112,7 +113,7 @@ public class AssetCatalogController {
 
     @Operation(summary = "为表分配分类", description = "传空清除")
     @PutMapping("/tables/{tableId}/classification")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ASSET_MANAGE)
     public Result<Void> assignClassification(@Parameter(description = "表 ID") @PathVariable Long tableId,
                                              @RequestBody AssignClassificationRequest request) {
         assetCatalogService.assignClassification(tableId, request);
@@ -121,14 +122,14 @@ public class AssetCatalogController {
 
     @Operation(summary = "批量分配分类", description = "传空 = 批量清除；返回实际更新的表数")
     @PutMapping("/tables/classification/batch")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ASSET_MANAGE)
     public Result<Integer> assignClassificationBatch(@RequestBody AssignClassificationBatchRequest request) {
         return Result.ok(assetCatalogService.assignClassificationBatch(request));
     }
 
     @Operation(summary = "为表配置负责人", description = "传 null 清除")
     @PutMapping("/tables/{tableId}/owner")
-    @SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ASSET_MANAGE)
     public Result<Void> assignOwner(@Parameter(description = "表 ID") @PathVariable Long tableId,
                                     @RequestBody AssignOwnerRequest request) {
         assetCatalogService.assignOwner(tableId, request);

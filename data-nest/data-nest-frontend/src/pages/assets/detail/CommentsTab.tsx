@@ -8,9 +8,9 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import DsButton from '@/components/DsButton';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import Pagination from '@/components/Pagination';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
+import {useCan} from '@/hooks/useCan';
 import {useAuthStore} from '@/store/useAuthStore';
 import {formatDateTime} from '@/utils/format';
 import {notify} from '@/utils/notify';
@@ -26,7 +26,7 @@ interface CommentsTabProps {
 
 export default function CommentsTab({tableId, onCountChange}: CommentsTabProps) {
     const {userInfo} = useAuthStore();
-    const canModerate = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canModerate = useCan(...GOVERNANCE_WRITE_PERMS);
 
     const [content, setContent] = useState('');
     const [publishing, setPublishing] = useState(false);

@@ -1,7 +1,8 @@
 package com.datanest.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.dto.DagProjectCreateRequest;
@@ -30,7 +31,7 @@ public class DagProjectController {
     }
 
     @Operation(summary = "DAG 项目分页列表")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping
     public Result<PageResult<DagProjectDTO>> list(
             @Parameter(description = "项目名称（模糊匹配）") @RequestParam(required = false) String name,
@@ -42,28 +43,28 @@ public class DagProjectController {
     }
 
     @Operation(summary = "DAG 项目详情")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN", "DATA_ANALYST"}, mode = SaMode.OR)
+    @SaCheckLogin
     @GetMapping("/{id}")
     public Result<DagProjectDTO> get(@Parameter(description = "项目 ID") @PathVariable Long id) {
         return Result.ok(dagProjectService.getById(id));
     }
 
     @Operation(summary = "创建 DAG 项目")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_CREATE)
     @PostMapping
     public Result<DagProjectDTO> create(@Valid @RequestBody DagProjectCreateRequest request) {
         return Result.ok(dagProjectService.create(request));
     }
 
     @Operation(summary = "修改 DAG 项目")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_UPDATE)
     @PutMapping("/{id}")
     public Result<DagProjectDTO> update(@Parameter(description = "项目 ID") @PathVariable Long id, @Valid @RequestBody DagProjectUpdateRequest request) {
         return Result.ok(dagProjectService.update(id, request));
     }
 
     @Operation(summary = "删除 DAG 项目")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.DAG_DELETE)
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "项目 ID") @PathVariable Long id) {
         dagProjectService.delete(id);

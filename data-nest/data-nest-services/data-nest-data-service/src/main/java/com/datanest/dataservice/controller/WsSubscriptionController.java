@@ -1,7 +1,6 @@
 package com.datanest.dataservice.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.dto.SubscriptionStatsDTO;
 import com.datanest.dataservice.service.WsSubscriptionQueryService;
@@ -18,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 四角色可查（对齐 PRD §8 权限矩阵「订阅文档查看」全角色）。
  */
 @Tag(name = "实时订阅监控", description = "管道在线连接/今日事件/延迟/失败 + 订阅方 Key 列表（Sprint 10 F4）")
-@SaCheckRole(value = {"SUPER_ADMIN", "GOVERNANCE_ADMIN", "DATA_ENGINEER", "DATA_ANALYST"}, mode = SaMode.OR)
+@SaCheckLogin
 @RestController
 @RequestMapping("/subscriptions")
 public class WsSubscriptionController {

@@ -3,8 +3,8 @@ import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import {notify} from '@/utils/notify';
 import {formatDateTime} from '@/utils/format';
-import {useHasRole} from '@/hooks/useHasRole';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {useCan} from '@/hooks/useCan';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import {COL} from '@/constants/table';
 import {
     batchCreateQualityRules,
@@ -48,7 +48,7 @@ import QualityRuleDrawer from '@/pages/governance/data-quality/QualityRuleDrawer
 import BatchApplyModal from '@/pages/governance/data-quality/BatchApplyModal';
 
 export default function QualityRulesPage() {
-    const canWrite = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canWrite = useCan(...GOVERNANCE_WRITE_PERMS);
 
     // ============ 分页 + 筛选 ============
     const [items, setItems] = useState<QualityRule[]>([]);

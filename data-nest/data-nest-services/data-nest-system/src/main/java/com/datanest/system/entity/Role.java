@@ -14,6 +14,8 @@ public class Role {
     private String code;
     private String name;
     private String description;
+    /** 数据权限默认范围：FULL=全部数据可见 / WHITELIST=仅授权数据可见（Sprint 11 F2） */
+    private String dataScope;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -46,6 +48,14 @@ public class Role {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getDataScope() {
+        return dataScope;
+    }
+
+    public void setDataScope(String dataScope) {
+        this.dataScope = dataScope;
     }
 
     public LocalDateTime getCreatedAt() {

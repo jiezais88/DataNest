@@ -1,10 +1,12 @@
 package com.datanest.dataservice.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.datanest.common.auth.DataPermissionMatcher;
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.dataservice.dto.SqlDatasourceDTO;
 import com.datanest.dataservice.dto.SqlExecuteRequest;
 import com.datanest.dataservice.dto.SqlExecuteResult;
@@ -15,6 +17,7 @@ import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.governance.api.GovernanceMetadataApi;
 import com.datanest.governance.api.dto.MetadataTableSensitivityDTO;
+import com.datanest.system.api.SystemPermissionApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,6 +77,7 @@ public class SqlQueryService {
     private final ExternalSqlExecutor externalSqlExecutor;
     private final EngineeringDatasourceApi datasourceApi;
     private final GovernanceMetadataApi governanceMetadataApi;
+    private final SystemPermissionApi systemPermissionApi;
     private final EncryptionConfig encryptionConfig;
     private final SqlQueryHistoryMapper historyMapper;
 
@@ -85,6 +89,7 @@ public class SqlQueryService {
                            ExternalSqlExecutor externalSqlExecutor,
                            EngineeringDatasourceApi datasourceApi,
                            GovernanceMetadataApi governanceMetadataApi,
+                           SystemPermissionApi systemPermissionApi,
                            EncryptionConfig encryptionConfig,
                            SqlQueryHistoryMapper historyMapper) {
         this.readOnlySqlValidator = readOnlySqlValidator;
@@ -92,6 +97,7 @@ public class SqlQueryService {
         this.externalSqlExecutor = externalSqlExecutor;
         this.datasourceApi = datasourceApi;
         this.governanceMetadataApi = governanceMetadataApi;
+        this.systemPermissionApi = systemPermissionApi;
         this.encryptionConfig = encryptionConfig;
         this.historyMapper = historyMapper;
     }
@@ -113,6 +119,9 @@ public class SqlQueryService {
             try {
                 // 1. JSqlParser 语法级只读校验 + 表集合提取（AC-1：INSERT/UPDATE/DDL/注释绕过拦截）
                 List<String> tables = readOnlySqlValidator.validateAndExtractTables(request.getSql());
+
+                // 1.5 数据权限白名单校验（fail-closed，Sprint 11 F2）——无权限访问的表抛 2012
+                checkDataPermission(userId, request.getDatasourceId(), tables);
 
                 // 2. 敏感度闸门（fail-closed，AC-11）——命中机密表抛 9004；否则返回命中数（成功恒 0）
                 int confidentialHits = checkSensitivity(request.getDatasourceId(), tables);
@@ -306,8 +315,11 @@ public class SqlQueryService {
 
         var resp = datasourceApi.listActive();
         if (resp != null && resp.data() != null) {
+            // 数据权限过滤（fail-open：下拉仅展示数据源名不敏感，查询失败时不过滤，由 execute 兜底 fail-closed 校验）
+            UserDataPermissionDTO perm = resolveDataPermissionFailOpen();
             resp.data().stream()
                     .filter(ds -> "NORMAL".equals(ds.getStatus()))
+                    .filter(ds -> DataPermissionMatcher.canAccessDatasource(perm, ds.getId()))
                     .forEach(ds -> {
                         SqlDatasourceDTO dto = new SqlDatasourceDTO();
                         dto.setId(ds.getId());
@@ -319,6 +331,59 @@ public class SqlQueryService {
                     });
         }
         return list;
+    }
+
+    /**
+     * 数据权限白名单校验（fail-closed，Sprint 11 F2）。
+     * <p>
+     * 内置 Doris（目标数仓）不受数据权限约束；外部数据源按三级白名单最细粒度匹配，
+     * 权限服务不可用时拒绝访问（安全默认，与「分析师/治理管理员/自定义角色默认无数据访问」对齐）。
+     */
+    private void checkDataPermission(Long userId, Long datasourceId, List<String> tables) {
+        if (userId == null) {
+            return; // 内部场景无登录态不校验
+        }
+        if (datasourceId != null && datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
+            return; // 内置 Doris 全量放行
+        }
+        UserDataPermissionDTO perm = resolveDataPermissionFailClosed(userId);
+        if (!DataPermissionMatcher.canAccessDatasource(perm, datasourceId)) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_DENIED, "无权限访问该数据源");
+        }
+        for (String table : tables) {
+            String db = null;
+            String tb = table;
+            if (table != null && table.contains(".")) {
+                int idx = table.lastIndexOf('.');
+                db = table.substring(0, idx);
+                tb = table.substring(idx + 1);
+            }
+            if (!DataPermissionMatcher.canAccessTable(perm, datasourceId, db, tb)) {
+                throw new BusinessException(ErrorCode.DATA_PERMISSION_DENIED, "无权限访问数据资源: " + table);
+            }
+        }
+    }
+
+    /** 查询当前用户数据权限范围（fail-closed：权限服务不可用抛 2013） */
+    private UserDataPermissionDTO resolveDataPermissionFailClosed(Long userId) {
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
+        }
+        return resp.data();
+    }
+
+    /** 查询当前用户数据权限范围（fail-open：失败时返回全量，用于下拉展示等非关键路径） */
+    private UserDataPermissionDTO resolveDataPermissionFailOpen() {
+        Long userId = resolveCurrentUserId();
+        if (userId == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        var resp = systemPermissionApi.dataPermission(userId);
+        if (resp == null || resp.code() != 200 || resp.data() == null) {
+            return UserDataPermissionDTO.fullAccess();
+        }
+        return resp.data();
     }
 
     /**

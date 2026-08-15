@@ -36,7 +36,10 @@ export interface UpdateUserParams {
 }
 
 export const login = (params: LoginParams) =>
-    request.post<Result<{ token: string; userInfo: { userId: string; username: string; roles: string[] } }>>(
+    request.post<Result<{
+        token: string;
+        userInfo: { userId: string; username: string; roles: string[]; permissions?: string[] }
+    }>>(
         '/system/auth/login', params, {skipErrorMessage: true});
 
 export const logout = () => request.post('/system/auth/logout');

@@ -27,9 +27,9 @@ import DsRangePicker from '@/components/DsRangePicker';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import Pagination from '@/components/Pagination';
-import {GOVERNANCE_WRITE_ROLES} from '@/constants/roles';
+import {GOVERNANCE_WRITE_PERMS} from '@/constants/permissions';
 import usePagedList from '@/hooks/usePagedList';
-import {useHasRole} from '@/hooks/useHasRole';
+import {useCan} from '@/hooks/useCan';
 import {formatDateTime, formatDateTimeLocalInput} from '@/utils/format';
 import {notify} from '@/utils/notify';
 import {downloadExportBlob} from '@/utils/download';
@@ -103,7 +103,7 @@ function ChartCard({title, sub, action, children, className = ''}: {
 export default function QualityReportPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    const canExport = useHasRole(...GOVERNANCE_WRITE_ROLES);
+    const canExport = useCan(...GOVERNANCE_WRITE_PERMS);
 
     // ============ 筛选（草稿 → 查询时应用） ============
     const [datasourceId, setDatasourceId] = useState('');

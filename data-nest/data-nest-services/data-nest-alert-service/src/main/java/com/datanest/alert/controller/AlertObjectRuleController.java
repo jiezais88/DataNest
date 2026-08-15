@@ -1,8 +1,8 @@
 package com.datanest.alert.controller;
 
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.datanest.alert.dto.AlertRuleDTO;
+import com.datanest.common.auth.PermissionCode;
 import com.datanest.alert.service.AlertRuleService;
 import com.datanest.common.model.Result;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,7 +27,7 @@ public class AlertObjectRuleController {
     }
 
     @Operation(summary = "按对象读取告警规则", description = "无规则时返回 data = null")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER", "GOVERNANCE_ADMIN"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_VIEW)
     @GetMapping
     public Result<AlertRuleDTO> getRuleByObject(@Parameter(description = "告警对象类型（DAG/SYNC_JOB/COLLECT_TASK/QUALITY）") @RequestParam String objectType,
                                                 @Parameter(description = "告警对象 ID") @RequestParam Long objectId) {
@@ -35,7 +35,7 @@ public class AlertObjectRuleController {
     }
 
     @Operation(summary = "按对象新增或更新告警规则")
-    @SaCheckRole(value = {"SUPER_ADMIN", "DATA_ENGINEER"}, mode = SaMode.OR)
+    @SaCheckPermission(PermissionCode.ALERT_RULE_MANAGE)
     @PutMapping
     public Result<AlertRuleDTO> upsertRuleByObject(@Parameter(description = "告警对象类型（DAG/SYNC_JOB/COLLECT_TASK/QUALITY）") @RequestParam String objectType,
                                                    @Parameter(description = "告警对象 ID") @RequestParam Long objectId,
