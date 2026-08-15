@@ -24,6 +24,7 @@ import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
 import com.datanest.common.model.UserDataPermissionDTO;
+import com.datanest.task.core.support.DataPermissionResolver;
 import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
@@ -86,20 +87,7 @@ public class MetadataService {
      * 真正的取数/写操作由 SQL 执行、API 创建、同步创建等 fail-closed 校验兜底。
      */
     private UserDataPermissionDTO resolveDataPermissionFailOpen() {
-        Long userId;
-        try {
-            userId = StpUtil.getLoginIdAsLong();
-        } catch (Exception e) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        if (userId == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        return resp.data();
+        return DataPermissionResolver.resolveFailOpen(systemPermissionApi);
     }
 
     @Transactional(readOnly = true)
@@ -460,7 +448,8 @@ public class MetadataService {
         if (table == null) {
             throw new BusinessException(ErrorCode.METADATA_NOT_FOUND);
         }
-        // 数据权限校验（Sprint 11 F2）：内置 Doris 放行，外部表无权限拒绝（详情/取数路径 fail-open 已由调用方兜底，此处只过滤）
+        // 数据权限校验（Sprint 11 F2）：内置 Doris 放行；外部表无权限时返回 404（信息隐藏，不暴露表存在）。
+        // fail-open 语义：仅展示层过滤，真正的取数安全由 SQL 执行/API 提交等 fail-closed 路径兜底。
         if (table.getDatasourceId() != null && table.getDatasourceId() != -1L
                 && !DataPermissionMatcher.canAccessTable(resolveDataPermissionFailOpen(),
                 table.getDatasourceId(), table.getDatabaseName(), table.getTableName())) {

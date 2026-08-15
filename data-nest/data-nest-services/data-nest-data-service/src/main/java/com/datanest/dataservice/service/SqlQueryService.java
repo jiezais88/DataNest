@@ -18,6 +18,7 @@ import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.governance.api.GovernanceMetadataApi;
 import com.datanest.governance.api.dto.MetadataTableSensitivityDTO;
 import com.datanest.system.api.SystemPermissionApi;
+import com.datanest.task.core.support.DataPermissionResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -364,26 +365,14 @@ public class SqlQueryService {
         }
     }
 
-    /** 查询当前用户数据权限范围（fail-closed：权限服务不可用抛 2013） */
+    /** 查询当前用户数据权限范围（fail-closed：权限服务不可用抛 2013，Sprint 11 F2 review 下沉） */
     private UserDataPermissionDTO resolveDataPermissionFailClosed(Long userId) {
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
-        }
-        return resp.data();
+        return DataPermissionResolver.resolveFailClosed(systemPermissionApi, userId);
     }
 
-    /** 查询当前用户数据权限范围（fail-open：失败时返回全量，用于下拉展示等非关键路径） */
+    /** 查询当前用户数据权限范围（fail-open：失败时返回全量，用于下拉展示等非关键路径，Sprint 11 F2 review 下沉） */
     private UserDataPermissionDTO resolveDataPermissionFailOpen() {
-        Long userId = resolveCurrentUserId();
-        if (userId == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        return resp.data();
+        return DataPermissionResolver.resolveFailOpen(systemPermissionApi);
     }
 
     /**

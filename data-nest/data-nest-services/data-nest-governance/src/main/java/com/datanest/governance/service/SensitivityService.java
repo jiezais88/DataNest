@@ -26,6 +26,7 @@ import com.datanest.system.api.SystemUserApi;
 import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.dataservice.api.DataServiceOpsApi;
 import com.datanest.dataservice.api.dto.DisableApisByTableRequest;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
 /**
  * 数据分级分类（Sprint 10 F5）：改级 / 批量改级 / API 开白 / 审计查询 / 分级列表分页。
@@ -64,19 +66,22 @@ public class SensitivityService {
     private final EngineeringDatasourceApi datasourceApi;
     private final DataServiceOpsApi dataServiceOpsApi;
     private final AuditLogRecorder auditLogRecorder;
+    private final ExecutorService auditLogExecutor;
 
     public SensitivityService(MetadataTableMapper metadataTableMapper,
                               SensitivityChangeLogMapper auditLogMapper,
                               SystemUserApi systemUserApi,
                               EngineeringDatasourceApi datasourceApi,
                               DataServiceOpsApi dataServiceOpsApi,
-                              AuditLogRecorder auditLogRecorder) {
+                              AuditLogRecorder auditLogRecorder,
+                              @Qualifier("auditLogExecutor") ExecutorService auditLogExecutor) {
         this.metadataTableMapper = metadataTableMapper;
         this.auditLogMapper = auditLogMapper;
         this.systemUserApi = systemUserApi;
         this.datasourceApi = datasourceApi;
         this.dataServiceOpsApi = dataServiceOpsApi;
         this.auditLogRecorder = auditLogRecorder;
+        this.auditLogExecutor = auditLogExecutor;
     }
 
     /** 单表改级（任意级别直接互转；降级确认由前端负责）。返回联动下线的 API 数 */
@@ -211,14 +216,23 @@ public class SensitivityService {
     /** 分级变更同时写通用审计（PRD D12：超管全量审计视角，与 sensitivity_change_log 并存），fail-open */
     private void writeGeneralAudit(MetadataTable table, String oldLevel, String newLevel) {
         try {
-            auditLogRecorder.record(new AuditLogEvent(
-                    currentUserId(), null,
-                    AuditOpType.CHANGE_LEVEL.name(), AuditResourceType.SENSITIVITY.name(),
-                    String.valueOf(table.getId()), buildTableQualifiedName(table),
-                    oldLevel + "→" + newLevel,
-                    AuditLogEvent.RESULT_SUCCESS, null, null));
+            // 异步写审计，不阻塞改级主链路（含事务提交），对齐切面异步约定
+            Long userId = currentUserId();
+            String resourceName = buildTableQualifiedName(table);
+            auditLogExecutor.execute(() -> {
+                try {
+                    auditLogRecorder.record(new AuditLogEvent(
+                            userId, null,
+                            AuditOpType.CHANGE_LEVEL.name(), AuditResourceType.SENSITIVITY.name(),
+                            String.valueOf(table.getId()), resourceName,
+                            oldLevel + "→" + newLevel,
+                            AuditLogEvent.RESULT_SUCCESS, null, null));
+                } catch (Exception e) {
+                    // fail-open：通用审计失败不影响改级主链路
+                }
+            });
         } catch (Exception e) {
-            // fail-open：通用审计失败不影响改级主链路
+            // fail-open：异步提交失败（线程池饱和等）也不影响改级主链路
         }
     }
 

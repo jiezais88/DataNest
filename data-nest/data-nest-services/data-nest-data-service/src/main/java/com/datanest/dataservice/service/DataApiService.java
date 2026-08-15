@@ -36,6 +36,7 @@ import com.datanest.governance.api.GovernanceMetadataApi;
 import com.datanest.governance.api.dto.MetadataTableSensitivityDTO;
 import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
+import com.datanest.task.core.support.DataPermissionResolver;
 import com.datanest.task.core.support.SystemUserResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -523,11 +524,8 @@ public class DataApiService {
         if (userId == null) {
             return;
         }
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
-        }
-        if (!DataPermissionMatcher.canAccessTable(resp.data(), datasourceId, database, table)) {
+        UserDataPermissionDTO perm = DataPermissionResolver.resolveFailClosed(systemPermissionApi, userId);
+        if (!DataPermissionMatcher.canAccessTable(perm, datasourceId, database, table)) {
             throw new BusinessException(ErrorCode.DATA_PERMISSION_DENIED, "无权限访问数据资源: " + table);
         }
     }

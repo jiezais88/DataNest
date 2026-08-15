@@ -28,6 +28,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,6 +44,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 /**
  * SQL 查询终端（Sprint 10 F1，四角色 OR）。
@@ -55,12 +57,15 @@ public class SqlQueryController {
     private final SqlQueryService sqlQueryService;
     private final SqlQueryHistoryMapper historyMapper;
     private final AuditLogRecorder auditLogRecorder;
+    private final ExecutorService auditLogExecutor;
 
     public SqlQueryController(SqlQueryService sqlQueryService, SqlQueryHistoryMapper historyMapper,
-                              AuditLogRecorder auditLogRecorder) {
+                              AuditLogRecorder auditLogRecorder,
+                              @Qualifier("auditLogExecutor") ExecutorService auditLogExecutor) {
         this.sqlQueryService = sqlQueryService;
         this.historyMapper = historyMapper;
         this.auditLogRecorder = auditLogRecorder;
+        this.auditLogExecutor = auditLogExecutor;
     }
 
     @Operation(summary = "执行只读 SQL", description = "JSqlParser 语法级只读校验（SELECT/WITH/SHOW/DESC/EXPLAIN），命中机密表拦截；请求带 queryId 时支持「停止」取消")
@@ -78,31 +83,38 @@ public class SqlQueryController {
         }
     }
 
-    /** SQL 查询审计（AL-2/AL-3）：数据源名 + SQL 摘要 + 行数 + 耗时 + 失败原因，fail-open */
+    /** SQL 查询审计（AL-2/AL-3）：数据源名 + SQL 摘要 + 行数 + 耗时 + 失败原因，fail-open 且异步（不阻塞主链路） */
     private void writeSqlAudit(SqlExecuteRequest request, SqlExecuteResult result, RuntimeException error, long start) {
         try {
-            String datasourceName = sqlQueryService.datasourceName(request.getDatasourceId());
+            // 构造阶段（取数据源名/登录态）放线程外执行失败不影响；写入交给审计线程池异步执行
             int durationMs = (int) (System.currentTimeMillis() - start);
             String content = AuditContent.sql(request.getSql(),
                     result == null ? null : result.getRowCount(), durationMs);
-            Long operatorId = null;
-            String operatorName = null;
-            try {
-                operatorId = StpUtil.getLoginIdAsLong();
-                Object name = StpUtil.getSession().get("username");
-                operatorName = name == null ? null : String.valueOf(name);
-            } catch (Exception ex) {
-                // 未登录/无 session，operator 信息留空由 system 回填
-            }
-            auditLogRecorder.record(new AuditLogEvent(
-                    operatorId, operatorName,
-                    AuditOpType.EXECUTE.name(), AuditResourceType.SQL_QUERY.name(),
-                    String.valueOf(request.getDatasourceId()), datasourceName,
-                    content,
-                    error == null ? AuditLogEvent.RESULT_SUCCESS : AuditLogEvent.RESULT_FAILURE,
-                    error == null ? null : truncate(error.getMessage(), 500), null));
+            auditLogExecutor.execute(() -> {
+                try {
+                    String datasourceName = sqlQueryService.datasourceName(request.getDatasourceId());
+                    Long operatorId = null;
+                    String operatorName = null;
+                    try {
+                        operatorId = StpUtil.getLoginIdAsLong();
+                        Object name = StpUtil.getSession().get("username");
+                        operatorName = name == null ? null : String.valueOf(name);
+                    } catch (Exception ex) {
+                        // 未登录/无 session，operator 信息留空由 system 回填
+                    }
+                    auditLogRecorder.record(new AuditLogEvent(
+                            operatorId, operatorName,
+                            AuditOpType.EXECUTE.name(), AuditResourceType.SQL_QUERY.name(),
+                            String.valueOf(request.getDatasourceId()), datasourceName,
+                            content,
+                            error == null ? AuditLogEvent.RESULT_SUCCESS : AuditLogEvent.RESULT_FAILURE,
+                            error == null ? null : truncate(error.getMessage(), 500), null));
+                } catch (Exception e) {
+                    // fail-open：审计失败不影响 SQL 执行
+                }
+            });
         } catch (Exception e) {
-            // fail-open：审计失败不影响 SQL 执行
+            // fail-open：异步提交失败（如线程池饱和）也不影响 SQL 执行
         }
     }
 

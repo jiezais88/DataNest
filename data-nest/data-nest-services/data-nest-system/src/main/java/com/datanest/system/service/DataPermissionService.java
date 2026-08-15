@@ -62,6 +62,10 @@ public class DataPermissionService {
         if (!DataScope.FULL.equals(scope) && !DataScope.WHITELIST.equals(scope)) {
             throw new BusinessException(ErrorCode.DATA_PERMISSION_INVALID, "dataScope 仅支持 FULL / WHITELIST");
         }
+        // 防误配：WHITELIST 必须至少一条授权，否则角色「什么都不可见」是危险死角（前端已拦截，后端同样兜底）
+        if (DataScope.WHITELIST.equals(scope) && (req.grants() == null || req.grants().isEmpty())) {
+            throw new BusinessException(ErrorCode.DATA_PERMISSION_INVALID, "仅授权数据模式至少需一条授权");
+        }
 
         // 显式持久化默认范围
         role.setDataScope(scope);

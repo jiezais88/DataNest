@@ -4,6 +4,8 @@ import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.datanest.common.audit.AuditLog;
+import com.datanest.common.audit.AuditLogEvent;
+import com.datanest.common.audit.AuditLogRecorder;
 import com.datanest.common.auth.PermissionCode;
 import com.datanest.common.audit.AuditOpType;
 import com.datanest.common.audit.AuditResourceType;
@@ -23,9 +25,11 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final AuditLogRecorder auditLogRecorder;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, AuditLogRecorder auditLogRecorder) {
         this.userService = userService;
+        this.auditLogRecorder = auditLogRecorder;
     }
 
     @Operation(summary = "用户分页列表（仅超管）")
@@ -51,6 +55,8 @@ public class UserController {
 
     @Operation(summary = "编辑用户（仅超管）")
     @SaCheckPermission(PermissionCode.USER_UPDATE)
+    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.UPDATE,
+            resourceId = "#userId", resourceName = "#result.data.username")
     @PutMapping("/{userId}")
     public Result<UserVO> update(@Parameter(description = "用户 ID") @PathVariable Long userId,
                                  @Valid @RequestBody UserUpdateRequest req) {
@@ -59,11 +65,26 @@ public class UserController {
 
     @Operation(summary = "切换启用/禁用（仅超管）")
     @SaCheckPermission(PermissionCode.USER_TOGGLE)
-    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.UPDATE, resourceId = "#userId")
     @PutMapping("/{userId}/toggle")
     public Result<Void> toggleStatus(@Parameter(description = "用户 ID") @PathVariable Long userId) {
-        userService.toggleStatus(userId);
+        UserVO vo = userService.toggleStatus(userId);
+        // opType 按结果动态区分 ENABLE/DISABLE（注解 opType 是常量无法动态，故手动埋点）
+        writeToggleAudit(userId, vo);
         return Result.ok(null);
+    }
+
+    /** 启停切换审计：按新状态记 ENABLE/DISABLE（fail-open，对齐 writeRoleAudit 模式） */
+    private void writeToggleAudit(Long userId, UserVO vo) {
+        try {
+            auditLogRecorder.record(new AuditLogEvent(
+                    StpUtil.getLoginIdAsLong(), null,
+                    (Boolean.TRUE.equals(vo.enabled()) ? AuditOpType.ENABLE : AuditOpType.DISABLE).name(),
+                    AuditResourceType.USER.name(),
+                    String.valueOf(userId), vo.username(),
+                    null, AuditLogEvent.RESULT_SUCCESS, null, null));
+        } catch (Exception e) {
+            // fail-open：审计失败不影响启停主链路
+        }
     }
 
     @Operation(summary = "修改密码（用户自主）")

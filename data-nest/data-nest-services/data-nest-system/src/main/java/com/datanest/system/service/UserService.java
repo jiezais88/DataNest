@@ -174,7 +174,8 @@ public class UserService {
         }
     }
 
-    public void toggleStatus(Long userId) {
+    /** 切换启用/禁用，返回切换后的用户信息（enabled 区分启用/禁用审计，username 供审计名） */
+    public UserVO toggleStatus(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
@@ -185,6 +186,8 @@ public class UserService {
         if (!user.getEnabled()) {
             StpUtil.logout(userId);
         }
+        List<String> roles = userMapper.selectRoleCodesByUserId(userId);
+        return toUserVO(user, roles);
     }
 
     public void changePassword(Long userId, String oldPassword, String newPassword) {

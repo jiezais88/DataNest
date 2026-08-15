@@ -37,6 +37,7 @@ import com.datanest.governance.mapper.MetadataTableMapper;
 import com.datanest.governance.service.QualityScoreService;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
+import com.datanest.task.core.support.DataPermissionResolver;
 import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
@@ -129,20 +130,7 @@ public class AssetCatalogService {
      * 内部场景（无登录态）全量放行。
      */
     private UserDataPermissionDTO resolveDataPermission() {
-        Long userId;
-        try {
-            userId = StpUtil.getLoginIdAsLong();
-        } catch (Exception e) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        if (userId == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
-        }
-        return resp.data();
+        return DataPermissionResolver.resolveFailClosed(systemPermissionApi);
     }
 
     /** 数据权限白名单转 SQL 过滤条件（最细粒度优先：数据源级/库级/表级任一命中即放行） */

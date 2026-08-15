@@ -16,6 +16,7 @@ import com.datanest.alert.api.AlertApi;
 import com.datanest.engineering.dto.*;
 import com.datanest.common.constant.AlertConstants;
 import com.datanest.task.core.dto.SourceTableDetail;
+import com.datanest.task.core.support.DataPermissionResolver;
 import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.engineering.entity.*;
 import com.datanest.engineering.mapper.*;
@@ -105,11 +106,7 @@ public class SyncJobService {
         if (userId == null) {
             return;
         }
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            throw new BusinessException(ErrorCode.DATA_PERMISSION_SERVICE_UNAVAILABLE);
-        }
-        UserDataPermissionDTO perm = resp.data();
+        UserDataPermissionDTO perm = DataPermissionResolver.resolveFailClosed(systemPermissionApi, userId);
         for (String table : request.getSourceTables()) {
             if (!DataPermissionMatcher.canAccessTable(perm, dsId, request.getSourceDatabase(), table)) {
                 throw new BusinessException(ErrorCode.DATA_PERMISSION_DENIED, "无权限访问源数据资源: " + table);

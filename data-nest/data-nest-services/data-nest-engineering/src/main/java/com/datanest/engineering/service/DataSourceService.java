@@ -30,6 +30,7 @@ import com.datanest.governance.api.dto.ReferenceItemDTO;
 import com.datanest.realtime.api.CdcPipelineApi;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
 import com.datanest.task.core.dto.TestConnectionRequest;
+import com.datanest.task.core.support.DataPermissionResolver;
 import com.datanest.task.core.support.SystemUserResolver;
 import com.datanest.task.core.dto.TestConnectionResult;
 import com.datanest.common.internal.RemoteCalls;
@@ -80,20 +81,7 @@ public class DataSourceService {
 
     /** 查询当前用户数据权限范围（fail-open：权限服务不可用/无登录态返回全量，仅用于库表浏览展示层过滤） */
     private UserDataPermissionDTO resolveDataPermissionFailOpen() {
-        Long userId;
-        try {
-            userId = StpUtil.getLoginIdAsLong();
-        } catch (Exception e) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        if (userId == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        var resp = systemPermissionApi.dataPermission(userId);
-        if (resp == null || resp.code() != 200 || resp.data() == null) {
-            return UserDataPermissionDTO.fullAccess();
-        }
-        return resp.data();
+        return DataPermissionResolver.resolveFailOpen(systemPermissionApi);
     }
 
     @Transactional
