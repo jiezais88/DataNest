@@ -9,7 +9,7 @@ import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/h
 import {resolveMenuTitle} from '@/utils/breadcrumb';
 
 export default function Layout() {
-    const {userInfo, logout} = useAuthStore();
+    const {userInfo, refreshUserInfo, logout} = useAuthStore();
     const navigate = useNavigate();
     const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
@@ -19,6 +19,12 @@ export default function Layout() {
         const title = resolveMenuTitle(location.pathname);
         document.title = title ? `DataNest — ${title}` : 'DataNest';
     }, [location.pathname]);
+
+    // PM-14：进入应用时向后端拉取最新 roles/permissions 刷新本地快照，
+    // 管理员修改角色权限/成员后，该角色用户下次进入页面即按新权限渲染入口（无需重新登录）
+    useEffect(() => {
+        refreshUserInfo();
+    }, [refreshUserInfo]);
 
     const handleLogout = () => {
         logout();

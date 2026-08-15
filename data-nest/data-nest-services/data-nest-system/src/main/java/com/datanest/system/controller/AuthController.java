@@ -8,6 +8,7 @@ import com.datanest.system.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -66,5 +67,17 @@ public class AuthController {
     public Result<Void> logout() {
         StpUtil.logout();
         return Result.ok(null);
+    }
+
+    @Operation(summary = "当前登录用户最新信息", description = "PM-14：返回最新 roles/permissions，前端进入应用/刷新权限快照用，无需重新登录")
+    @GetMapping("/me")
+    public Result<Map<String, Object>> me() {
+        UserLoginDTO user = userService.getCurrentUserInfo();
+        return Result.ok(Map.of(
+                "userId", user.userId(),
+                "username", user.username(),
+                "roles", user.roles(),
+                "permissions", user.permissions()
+        ));
     }
 }

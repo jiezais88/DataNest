@@ -53,11 +53,12 @@ public class RoleService {
     private final UserMapper userMapper;
     private final IdentifierGenerator idGenerator;
     private final AuditLogRecorder auditLogRecorder;
+    private final SessionPermissionRefresher sessionPermissionRefresher;
 
     public RoleService(RoleMapper roleMapper, RolePermissionMapper rolePermissionMapper,
                        PermissionMapper permissionMapper, DataPermissionMapper dataPermissionMapper,
                        UserMapper userMapper, IdentifierGenerator idGenerator,
-                       AuditLogRecorder auditLogRecorder) {
+                       AuditLogRecorder auditLogRecorder, SessionPermissionRefresher sessionPermissionRefresher) {
         this.roleMapper = roleMapper;
         this.rolePermissionMapper = rolePermissionMapper;
         this.permissionMapper = permissionMapper;
@@ -65,6 +66,7 @@ public class RoleService {
         this.userMapper = userMapper;
         this.idGenerator = idGenerator;
         this.auditLogRecorder = auditLogRecorder;
+        this.sessionPermissionRefresher = sessionPermissionRefresher;
     }
 
     /** 角色列表（预置 + 自定义，含功能权限点） */
@@ -107,6 +109,8 @@ public class RoleService {
         roleMapper.updateById(role);
 
         saveRolePermissions(id, req.permissions());
+        // PM-14：功能权限即时生效——刷新该角色下已登录用户的 Session 权限快照
+        sessionPermissionRefresher.refreshRoleUsers(id);
         return toVO(roleMapper.selectById(id));
     }
 
@@ -212,6 +216,8 @@ public class RoleService {
     @Transactional
     public void setRoleUsers(Long roleId, List<Long> userIds) {
         Role role = getRole(roleId);
+        // 变更前取旧成员，刷新 Session 时新旧成员都要覆盖（被移出的用户权限也即时变化）
+        List<Long> oldUserIds = userMapper.selectUsersByRoleId(roleId).stream().map(User::getId).toList();
         userMapper.deleteUserRolesByRoleId(roleId);
         List<Long> distinct = userIds.stream().distinct().toList();
         if (!distinct.isEmpty()) {
@@ -225,5 +231,12 @@ public class RoleService {
             userMapper.insertUserRole((Long) idGenerator.nextId(null).longValue(), uid, roleId);
         }
         writeRoleAudit(role, AuditOpType.UPDATE);
+        // PM-14：成员变更即时生效——刷新旧成员 + 新成员已登录用户的 Session 权限快照
+        for (Long uid : distinct) {
+            sessionPermissionRefresher.refreshUser(uid);
+        }
+        for (Long uid : oldUserIds) {
+            sessionPermissionRefresher.refreshUser(uid);
+        }
     }
 }

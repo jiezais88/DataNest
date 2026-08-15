@@ -54,7 +54,7 @@ export function getSyncJob(id: string) {
 - 响应拦截器校验 `code !== 200` 时统一弹错误提示并 `reject`；**不拆信封**，返回的是 `{code, message, data}` 本身。
 - API 层通过 `.then(r => r.data)` 拆信封，与 `request.get<Result<T>>` / `request.post<Result<T>>` 的泛型配合。
 - 需要自行处理错误时传 `{skipErrorMessage: true}`（如 SQL 预览行内展示错误、DAG 运行日志轮询）。
-- 19 位 Snowflake ID 全程用 `string` 类型，**不要** `Number(id)`，避免精度丢失。
+- 19 位 Snowflake ID 全程用 `string` 类型，**不要** `Number(id)`，避免精度丢失（`Number('2083088527209295874')` 会舍入到 2083088527209295800，后端精确比对时匹配失败）。**这条在 E2E/API 测试里同样生效**：请求体里带 ID 的字段（datasourceId/roleId/userId 等）必须原样传字符串，禁止 `Number()` 转换后进 JSON；曾踩过（2026-08-15 F2 E2E）：SQL 终端/API/同步任务请求体用 `Number(MYSQL.datasourceId)`，白名单表查询被 2012 拒绝、手动 curl（数字字面量被 Java 精确解析）却成功，表象极具迷惑性。正确姿势：请求体直接传 `MYSQL.datasourceId`（string）。
 - **导出文件下载统一用 `src/utils/download.ts` 的 `downloadExportBlob`**（Sprint 8 起；2026-08-11 起导出格式为 xlsx）：`responseType:'blob'` 时业务异常的 Result JSON 会被包成 Blob、拦截器识别不了，该函数按 content-type 检出错误并弹提示，避免把错误 JSON 存成假导出文件。
 
 ## 4. 错误处理

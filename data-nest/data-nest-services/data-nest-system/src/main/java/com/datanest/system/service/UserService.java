@@ -36,16 +36,37 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final IdentifierGenerator idGenerator;
     private final SysUserService sysUserService;
+    private final SessionPermissionRefresher sessionPermissionRefresher;
 
     public UserService(UserMapper userMapper, RoleMapper roleMapper, PermissionMapper permissionMapper,
                        PasswordEncoder passwordEncoder, IdentifierGenerator idGenerator,
-                       SysUserService sysUserService) {
+                       SysUserService sysUserService, SessionPermissionRefresher sessionPermissionRefresher) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.permissionMapper = permissionMapper;
         this.passwordEncoder = passwordEncoder;
         this.idGenerator = idGenerator;
         this.sysUserService = sysUserService;
+        this.sessionPermissionRefresher = sessionPermissionRefresher;
+    }
+
+    /**
+     * 当前登录用户最新信息（PM-14：进入应用时刷新权限快照，无需重新登录）。
+     * 与 verify 的 roles/permissions 计算一致，供前端 /auth/me 返回最新权限。
+     */
+    public UserLoginDTO getCurrentUserInfo() {
+        Long userId = currentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        List<String> roles = userMapper.selectRoleCodesByUserId(userId);
+        List<String> permissions = permissionMapper.selectCodesByUserId(userId);
+        return new UserLoginDTO(user.getId(), user.getUsername(),
+                user.getPassword(), user.getEnabled(), roles, permissions);
     }
 
     public UserLoginDTO verify(String username, String password) {
@@ -197,5 +218,7 @@ public class UserService {
             }
             userMapper.insertUserRole((Long) idGenerator.nextId(null).longValue(), userId, role.getId());
         }
+        // PM-14：用户角色变更即时生效——刷新该用户已登录 Session 的权限快照
+        sessionPermissionRefresher.refreshUser(userId);
     }
 }

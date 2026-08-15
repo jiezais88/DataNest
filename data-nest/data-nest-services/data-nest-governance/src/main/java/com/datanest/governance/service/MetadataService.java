@@ -16,6 +16,7 @@ import com.datanest.governance.dto.MetadataDatasourceDTO;
 import com.datanest.governance.dto.MetadataTreeNodeDTO;
 import com.datanest.governance.dto.PermissionTreeDatabaseDTO;
 import com.datanest.governance.dto.PermissionTreeDatasourceDTO;
+import com.datanest.governance.dto.PermissionTreeTableDTO;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
 import com.datanest.governance.mapper.MetadataColumnMapper;
@@ -164,33 +165,35 @@ public class MetadataService {
     }
 
     /**
-     * 权限配置树（Sprint 11 F2）：一次性返回全部可配置的外部数据源 → 库 → 表 三级结构。
+     * 权限配置树（Sprint 11 F2 / PM-6）：一次性返回全部可配置的外部数据源 → 库 → 表 三级结构。
      * <p>
      * 内置 Doris（datasource_id=-1）不返回（目标数仓全量放行，无白名单配置意义）；
-     * 表名跨 schema 去重（数据权限粒度不含 schema）。供权限配置页全量渲染，避免前端 N+1 循环调用。
+     * 表名跨 schema 去重（数据权限粒度不含 schema）。每表携带敏感度（同表名多 schema 时取最高级），
+     * 供前端对机密表显示锁定图标并禁用勾选。一次性全量渲染，避免前端 N+1 循环调用。
      */
     @Transactional(readOnly = true)
     public List<PermissionTreeDatasourceDTO> getPermissionTree() {
         QueryWrapper<MetadataTable> wrapper = new QueryWrapper<>();
         wrapper.eq("source_status", MetadataSourceStatus.ONLINE.getCode())
                 .ne("datasource_id", -1L)
-                .select("datasource_id", "database_name", "table_name")
+                .select("datasource_id", "database_name", "table_name", "sensitivity_level")
                 .orderByAsc("datasource_id").orderByAsc("database_name").orderByAsc("table_name");
         List<MetadataTable> rows = metadataTableMapper.selectList(wrapper);
 
         List<Long> ids = rows.stream().map(MetadataTable::getDatasourceId).distinct().toList();
         Map<Long, DataSourceInfo> connectionMap = batchGetDatasources(ids);
 
-        // 三级聚合：datasourceId → databaseName → (去重) tableName
-        Map<Long, Map<String, LinkedHashSet<String>>> grouped = new LinkedHashMap<>();
+        // 三级聚合：datasourceId → databaseName → (去重) tableName → 敏感度（取最高级）
+        Map<Long, Map<String, LinkedHashMap<String, String>>> grouped = new LinkedHashMap<>();
         for (MetadataTable t : rows) {
-            grouped.computeIfAbsent(t.getDatasourceId(), k -> new LinkedHashMap<>())
-                    .computeIfAbsent(t.getDatabaseName(), k -> new LinkedHashSet<>())
-                    .add(t.getTableName());
+            Map<String, String> tables = grouped.computeIfAbsent(t.getDatasourceId(), k -> new LinkedHashMap<>())
+                    .computeIfAbsent(t.getDatabaseName(), k -> new LinkedHashMap<>());
+            tables.merge(t.getTableName(), normalizeSensitivity(t.getSensitivityLevel()),
+                    MetadataService::higherSensitivity);
         }
 
         List<PermissionTreeDatasourceDTO> result = new ArrayList<>();
-        for (Map.Entry<Long, Map<String, LinkedHashSet<String>>> dsEntry : grouped.entrySet()) {
+        for (Map.Entry<Long, Map<String, LinkedHashMap<String, String>>> dsEntry : grouped.entrySet()) {
             PermissionTreeDatasourceDTO dsDto = new PermissionTreeDatasourceDTO();
             dsDto.setDatasourceId(dsEntry.getKey());
             DataSourceInfo conn = connectionMap.get(dsEntry.getKey());
@@ -198,15 +201,41 @@ public class MetadataService {
                 dsDto.setDatasourceName(conn.getName());
                 dsDto.setDatasourceType(conn.getType());
             }
-            for (Map.Entry<String, LinkedHashSet<String>> dbEntry : dsEntry.getValue().entrySet()) {
+            for (Map.Entry<String, LinkedHashMap<String, String>> dbEntry : dsEntry.getValue().entrySet()) {
                 PermissionTreeDatabaseDTO dbDto = new PermissionTreeDatabaseDTO();
                 dbDto.setDatabaseName(dbEntry.getKey());
-                dbDto.setTables(new ArrayList<>(dbEntry.getValue()));
+                dbDto.setTables(dbEntry.getValue().entrySet().stream()
+                        .map(e -> {
+                            PermissionTreeTableDTO t = new PermissionTreeTableDTO();
+                            t.setTableName(e.getKey());
+                            t.setSensitivityLevel(e.getValue());
+                            return t;
+                        }).toList());
                 dsDto.getDatabases().add(dbDto);
             }
             result.add(dsDto);
         }
         return result;
+    }
+
+    /** 敏感度归一化：null 视为 PUBLIC */
+    private static String normalizeSensitivity(String level) {
+        return level == null || level.isBlank() ? "PUBLIC" : level;
+    }
+
+    /** 敏感度取最高级：CONFIDENTIAL > INTERNAL > PUBLIC */
+    private static String higherSensitivity(String a, String b) {
+        int ra = sensitivityRank(a);
+        int rb = sensitivityRank(b);
+        return ra >= rb ? a : b;
+    }
+
+    private static int sensitivityRank(String level) {
+        return switch (level == null ? "PUBLIC" : level) {
+            case "CONFIDENTIAL" -> 3;
+            case "INTERNAL" -> 2;
+            default -> 1;
+        };
     }
 
     @Transactional(readOnly = true)

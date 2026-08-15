@@ -44,6 +44,11 @@ export const login = (params: LoginParams) =>
 
 export const logout = () => request.post('/system/auth/logout');
 
+/** 当前登录用户最新信息（PM-14：进入应用时刷新 roles/permissions 快照，无需重新登录） */
+export const getMe = () =>
+    request.get<Result<{ userId: string; username: string; roles: string[]; permissions?: string[] }>>(
+        '/system/auth/me');
+
 export const getUsers = (params: {
     page: number;
     pageSize: number;

@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
-import {Input, Modal, Radio, Tabs, Transfer, Tree} from 'antd';
+import {Input, Modal, Radio, Tabs, Tooltip, Transfer, Tree} from 'antd';
 import type {DataNode} from 'antd/es/tree';
 import {
     createRole,
@@ -25,6 +25,7 @@ import {
     HiOutlineCloudArrowDown,
     HiOutlineFolder,
     HiOutlineKey,
+    HiOutlineLockClosed,
     HiOutlineMagnifyingGlass,
     HiOutlinePlus,
     HiOutlineServer,
@@ -174,12 +175,24 @@ function GrantSelectModal({open, tree, initialGrants, onClose, onOk}: {
                     <span>{db.databaseName}</span>
                 </span>
             ),
-            children: db.tables.map(t => ({
-                key: tblKey(ds.datasourceId, db.databaseName, t),
-                searchText: t,
-                title: t,
-                isLeaf: true,
-            })),
+            children: db.tables.map(t => {
+                // PM-6：机密表显示锁定图标、禁用勾选、悬停提示先降级
+                const isConfidential = t.sensitivityLevel === 'CONFIDENTIAL';
+                return {
+                    key: tblKey(ds.datasourceId, db.databaseName, t.tableName),
+                    searchText: t.tableName,
+                    title: isConfidential ? (
+                        <Tooltip title="机密表，请先在数据分级分类中降级">
+                            <span className="inline-flex items-center gap-ds-1 text-ds-text-muted">
+                                <HiOutlineLockClosed size={13} className="text-ds-danger shrink-0"/>
+                                <span>{t.tableName}</span>
+                            </span>
+                        </Tooltip>
+                    ) : t.tableName,
+                    isLeaf: true,
+                    disabled: isConfidential,
+                };
+            }),
         })),
     })), [tree]);
 

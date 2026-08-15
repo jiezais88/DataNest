@@ -73,7 +73,13 @@ export interface PermissionTreeDatasource {
 /** 权限配置树-库节点 */
 export interface PermissionTreeDatabase {
     databaseName: string;
-    tables: string[];
+    tables: PermissionTreeTable[];
+}
+
+/** 权限配置树-表节点（PM-6：携带敏感度，机密表锁定不可授权） */
+export interface PermissionTreeTable {
+    tableName: string;
+    sensitivityLevel?: string;
 }
 
 export interface MetadataTreeNode {
