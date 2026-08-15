@@ -52,8 +52,8 @@ export default memo(function PermissionTree({permissions, checkedKeys, onChange,
                 <span className="text-ds-nano text-ds-text-muted">已勾选 {leafCount} 项</span>
                 {!disabled && (
                     <div className="flex items-center gap-ds-1">
-                        <Button size="small" type="link" onClick={selectReadOnly}>查看档</Button>
-                        <Button size="small" type="link" onClick={selectAll}>全部档</Button>
+                        <Button size="small" type="text" className="text-ds-text-muted" onClick={selectReadOnly}>查看档</Button>
+                        <Button size="small" type="text" className="text-ds-text-muted" onClick={selectAll}>全部档</Button>
                     </div>
                 )}
             </div>

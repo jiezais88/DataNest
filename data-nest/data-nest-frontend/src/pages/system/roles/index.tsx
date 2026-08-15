@@ -12,7 +12,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import DsStatusBadge from '@/components/DsStatusBadge';
 import PermissionTree from '@/components/PermissionTree';
-import {HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
+import {HiOutlineEye, HiOutlinePencilSquare, HiOutlinePlus, HiOutlineTrash} from 'react-icons/hi2';
 
 /** 角色管理（Sprint 11 F2）：预置角色只读，自定义角色创建/编辑/删除 + 功能权限点勾选 */
 export default function RolesPage() {
@@ -32,6 +32,8 @@ export default function RolesPage() {
 
     const [deleteTarget, setDeleteTarget] = useState<RoleVO | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    const [detailRole, setDetailRole] = useState<RoleVO | null>(null);
 
     const loadRoles = useCallback(async () => {
         setLoading(true);
@@ -66,6 +68,8 @@ export default function RolesPage() {
         setCheckedKeys(role.permissions);
         setModalOpen(true);
     };
+
+    const openDetail = (role: RoleVO) => setDetailRole(role);
 
     const handleSubmit = async () => {
         if (!name.trim() || name.trim().length < 2 || name.trim().length > 20) {
@@ -155,9 +159,18 @@ export default function RolesPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: 120,
+            width: 160,
             render: (_, role) => (
                 <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                    <Tooltip title="详情">
+                        <DsIconButton
+                            tone="default"
+                            onClick={() => openDetail(role)}
+                            aria-label="详情"
+                        >
+                            <HiOutlineEye size={14}/>
+                        </DsIconButton>
+                    </Tooltip>
                     <Tooltip title={role.builtin ? '预置角色不可编辑' : '编辑'}>
                         <DsIconButton
                             tone="accent"
@@ -276,6 +289,82 @@ export default function RolesPage() {
                         <PermissionTree permissions={permissions} checkedKeys={checkedKeys} onChange={setCheckedKeys}/>
                     </div>
                 </div>
+            </DsModal>
+
+            {/* 角色详情 */}
+            <DsModal
+                open={!!detailRole}
+                onClose={() => setDetailRole(null)}
+                title="角色详情"
+                width="w-[640px]"
+                footer={
+                    <>
+                        <DsButton variant="ghost" onClick={() => setDetailRole(null)}>关闭</DsButton>
+                        {detailRole && !detailRole.builtin && (
+                            <DsButton
+                                onClick={() => {
+                                    const r = detailRole;
+                                    setDetailRole(null);
+                                    openEdit(r);
+                                }}
+                            >
+                                编辑
+                            </DsButton>
+                        )}
+                    </>
+                }
+            >
+                {detailRole && (
+                    <div className="space-y-ds-4">
+                        <div className="grid grid-cols-2 gap-ds-4">
+                            <div>
+                                <label className="block text-ds-small font-medium text-ds-text-primary mb-ds-1.5">
+                                    角色名称
+                                </label>
+                                <Input value={detailRole.name} readOnly/>
+                            </div>
+                            <div>
+                                <label className="block text-ds-small font-medium text-ds-text-primary mb-ds-1.5">
+                                    角色编码
+                                </label>
+                                <Input value={detailRole.code} readOnly/>
+                            </div>
+                            <div>
+                                <label className="block text-ds-small font-medium text-ds-text-primary mb-ds-1.5">
+                                    类型
+                                </label>
+                                <div className="pt-ds-1">
+                                    {detailRole.builtin
+                                        ? <DsStatusBadge variant="pending" label="预置"/>
+                                        : <DsStatusBadge variant="success" label="自定义"/>}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-ds-small font-medium text-ds-text-primary mb-ds-1.5">
+                                    创建时间
+                                </label>
+                                <Input value={formatDateTime(detailRole.createdAt)} readOnly/>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-ds-small font-medium text-ds-text-primary mb-ds-1.5">
+                                描述
+                            </label>
+                            <Input.TextArea value={detailRole.description || '-'} readOnly rows={2}/>
+                        </div>
+                        <div>
+                            <label className="block text-ds-small font-medium text-ds-text-primary mb-ds-1">
+                                功能权限（共 {detailRole.permissions.length} 项）
+                            </label>
+                            <PermissionTree
+                                permissions={permissions}
+                                checkedKeys={detailRole.permissions}
+                                onChange={() => undefined}
+                                disabled
+                            />
+                        </div>
+                    </div>
+                )}
             </DsModal>
 
             {/* 删除确认 */}
