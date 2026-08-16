@@ -39,6 +39,9 @@ public class Dag {
     /** PowerJob 工作流 ID（P4 起唯一调度标识，旧 ds_* 列已随 V1.3.0 删除） */
     private Long powerjobWorkflowId;
 
+    /** Sprint 11 F3 方案 A：job 侧独立 cron job ID（DAG 的 cron 不再挂 workflow，改由该 cron job 到点触发并做队列容量判定） */
+    private Long schedulerJobId;
+
     private String releaseState;         // OFFLINE / ONLINE
 
     private Long createdBy;

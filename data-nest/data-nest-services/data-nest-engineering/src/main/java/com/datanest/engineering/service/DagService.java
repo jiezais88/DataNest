@@ -72,6 +72,7 @@ public class DagService {
     private final DagParameterMapper dagParameterMapper;
     private final ExecutionQueueService executionQueueService;
     private final DagProjectMapper dagProjectMapper;
+    private final SchedulerServiceForEngineering schedulerServiceForEngineering;
 
     public DagService(DagMapper dagMapper, DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                       DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
@@ -82,7 +83,8 @@ public class DagService {
                       GovernanceDatasourceApi governanceDatasourceApi,
                       DagParameterMapper dagParameterMapper,
                       ExecutionQueueService executionQueueService,
-                      DagProjectMapper dagProjectMapper) {
+                      DagProjectMapper dagProjectMapper,
+                      SchedulerServiceForEngineering schedulerServiceForEngineering) {
         this.dagMapper = dagMapper;
         this.dagNodeMapper = dagNodeMapper;
         this.dagEdgeMapper = dagEdgeMapper;
@@ -99,6 +101,7 @@ public class DagService {
         this.dagParameterMapper = dagParameterMapper;
         this.executionQueueService = executionQueueService;
         this.dagProjectMapper = dagProjectMapper;
+        this.schedulerServiceForEngineering = schedulerServiceForEngineering;
     }
 
     @Transactional
@@ -137,6 +140,8 @@ public class DagService {
             public void afterCommit() {
                 try {
                     syncToScheduler(dagId);
+                    // Sprint 11 F3 方案 A：cron 注册 job 侧独立 cron job（workflow 不再挂 cron）
+                    syncDagCronJob(dagId);
                 } catch (Exception e) {
                     logger.error("DAG 创建后同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}", dagId, e);
                 }
@@ -200,6 +205,8 @@ public class DagService {
             public void afterCommit() {
                 try {
                     syncToScheduler(id);
+                    // Sprint 11 F3 方案 A：cron/启停变更同步 job 侧 cron job
+                    syncDagCronJob(id);
                 } catch (Exception e) {
                     logger.error("DAG 更新后同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}", id, e);
                 }
@@ -257,7 +264,10 @@ public class DagService {
         // 原来同事务，现在接受最终一致——远程失败仅记 warn，不阻断主删除流程，残留由人工或后续补偿清理
         cleanupAlertData(id, executionIds);
 
-        // 2. PowerJob 清理：事务提交后删除工作流（cron 随工作流一并删除，无 DS 独立 schedule 概念）
+        // Sprint 11 F3 方案 A：DAG 删除前捕获 job 侧 cron job ID（事务后注销）
+        Long cronJobId = dag.getSchedulerJobId();
+
+        // 2. PowerJob 清理：事务提交后删除工作流（方案 A 后 cron 不再挂 workflow，改注销独立 cron job）
         //    补偿：DB 已提交不能回滚，清理失败时记 error 日志并抛业务异常提示用户人工清理残留
         //    节点共享内置 job，随工作流删除只剩 deleteWorkflow；游离 workflow_node_info 由 server 自动清
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -271,6 +281,14 @@ public class DagService {
                                 id, powerjobWorkflowId, e);
                         throw new BusinessException(ErrorCode.SCHEDULER_API_ERROR,
                                 "DAG 已删除，但 PowerJob 侧残留清理失败，请联系管理员人工清理");
+                    }
+                }
+                if (cronJobId != null) {
+                    try {
+                        schedulerServiceForEngineering.unregisterDagCronJob(cronJobId);
+                    } catch (Exception e) {
+                        logger.error("DAG 删除时注销 cron job 失败（DB 已删除，需人工清理 PowerJob 残留）: dagId={}, cronJobId={}",
+                                id, cronJobId, e);
                     }
                 }
             }
@@ -472,13 +490,11 @@ public class DagService {
             // ③ 装配 PJDag 并保存工作流（带 id 即全量覆盖更新；
             //    server 端 validateAndConvert2String 会物理删除本工作流下游离的工作流节点记录）
             PJDag pjDag = dagPowerJobConverter.buildWorkflowDag(nodes, edges, defs, builtinJobIdByType);
-            boolean isCron = "CRON".equalsIgnoreCase(dag.getTriggerType())
-                    && StringUtils.hasText(dag.getCronExpression());
-            // enable 语义对齐 P2 的 SchedulerClient：CRON 任务注册即带 cron，启停由 enable 控制；
-            // 非 CRON 工作流恒 enable（PowerJob 的 enable 只挡 cron 调度与失败重试，不挡 runWorkflow 手动触发）
-            boolean enable = !isCron || (dag.getScheduleEnabled() != null && dag.getScheduleEnabled() == 1);
+            // Sprint 11 F3 方案 A：workflow 不再挂 cron——cron 由 job 侧独立 cron job（schedulerJobId）驱动，
+            // 到点调 /internal/dag/scheduled-trigger 做队列容量判定后再触发；
+            // workflow 恒 enable（PowerJob 的 enable 只挡 cron 调度，不挡 runWorkflow 手动触发）
             newWorkflowId = powerJobWorkflowClient.saveWorkflow(WORKER_APP_NAME, dag.getPowerjobWorkflowId(),
-                    dag.getName(), isCron ? dag.getCronExpression() : null, enable, pjDag);
+                    dag.getName(), null, true, pjDag);
         } catch (Exception e) {
             // 不抛异常：PowerJob 同步失败不阻塞 DAG 创建/更新；DAG 状态保持 OFFLINE，触发时懒注册重试
             logger.error("PowerJob 工作流同步失败（不阻塞 DAG 保存）: dagId={}, err={}", dagId, e.getMessage(), e);
@@ -493,6 +509,90 @@ public class DagService {
         dag.setReleaseState("ONLINE");
         dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.updateById(dag);
+    }
+
+    /**
+     * Sprint 11 F3 方案 A：存量迁移——把所有启用调度的 CRON DAG 迁移到「job 侧独立 cron job」模式。
+     * <p>
+     * 做法：逐 DAG 调 syncToScheduler（重同步 workflow，去掉 workflow 自带 cron，workflow 恒 enable）
+     * + syncDagCronJob（注册/更新 job 侧 cron job）。已在方案 A 模式下（schedulerJobId 有值）的 DAG 会幂等更新。
+     * <p>
+     * 供管理员在部署方案 A 后调用一次；失败 DAG 记录并继续，返回迁移结果摘要。
+     */
+    public Map<String, Object> migrateCronJobs() {
+        List<Dag> cronDags = dagMapper.selectList(new QueryWrapper<Dag>()
+                .eq("trigger_type", "CRON")
+                .eq("schedule_enabled", 1));
+        int success = 0;
+        int failed = 0;
+        List<String> failedDags = new ArrayList<>();
+        for (Dag dag : cronDags) {
+            try {
+                syncToScheduler(dag.getId());
+                syncDagCronJob(dag.getId());
+                success++;
+            } catch (Exception e) {
+                failed++;
+                failedDags.add(dag.getName() + "(id=" + dag.getId() + ")");
+                logger.error("DAG cron job 迁移失败: dagId={}, name={}, err={}", dag.getId(), dag.getName(), e.getMessage(), e);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", cronDags.size());
+        result.put("success", success);
+        result.put("failed", failed);
+        result.put("failedDags", failedDags);
+        return result;
+    }
+
+    /**
+     * Sprint 11 F3 方案 A：同步 DAG 的 job 侧 cron job（注册/更新/注销）。
+     * <p>
+     * - CRON + scheduleEnabled + cronExpression 非空：注册（无 schedulerJobId）或更新（已有）job 侧 cron job，
+     *   到点由 job 侧 DagScheduledTriggerHandler 调 /internal/dag/scheduled-trigger 做队列容量判定后触发；
+     * - 非 CRON / 停调度 / 无 cron：注销既有 cron job 并清空 schedulerJobId。
+     * <p>
+     * 只在事务提交后（afterCommit）以非事务方式调用；失败仅记日志（cron 会在下次同步时重试注册）。
+     */
+    public void syncDagCronJob(Long dagId) {
+        Dag dag = dagMapper.selectById(dagId);
+        if (dag == null) {
+            return;
+        }
+        boolean cron = "CRON".equalsIgnoreCase(dag.getTriggerType())
+                && StringUtils.hasText(dag.getCronExpression())
+                && dag.getScheduleEnabled() != null && dag.getScheduleEnabled() == 1;
+        try {
+            if (!cron) {
+                // 注销既有 cron job（DAG 删除/转非 CRON/停调度）
+                Long oldJobId = dag.getSchedulerJobId();
+                if (oldJobId != null) {
+                    schedulerServiceForEngineering.unregisterDagCronJob(oldJobId);
+                    // 显式 set null 清空（MyBatis-Plus updateById 默认忽略 null 字段，需 UpdateWrapper.set 才能置空）
+                    dagMapper.update(null, new UpdateWrapper<Dag>()
+                            .eq("id", dagId)
+                            .set("scheduler_job_id", null)
+                            .set("updated_at", LocalDateTime.now()));
+                    logger.info("DAG cron job 已注销: dagId={}, oldSchedulerJobId={}", dagId, oldJobId);
+                }
+                return;
+            }
+            String name = dag.getName();
+            String cronExpression = dag.getCronExpression();
+            boolean start = dag.getScheduleEnabled() == 1;
+            Long oldJobId = dag.getSchedulerJobId();
+            if (oldJobId != null) {
+                schedulerServiceForEngineering.updateDagCronJob(oldJobId, dagId, name, cronExpression, start);
+            } else {
+                Long newJobId = schedulerServiceForEngineering.registerDagCronJob(dagId, name, cronExpression, start);
+                dag.setSchedulerJobId(newJobId);
+                dag.setUpdatedAt(LocalDateTime.now());
+                dagMapper.updateById(dag);
+                logger.info("DAG cron job 已注册: dagId={}, schedulerJobId={}, cron={}", dagId, newJobId, cronExpression);
+            }
+        } catch (Exception e) {
+            logger.error("DAG cron job 同步失败（不影响 DB 主流程）: dagId={}, err={}", dagId, e.getMessage(), e);
+        }
     }
 
     /**
@@ -557,29 +657,26 @@ public class DagService {
         dag.setUpdatedAt(LocalDateTime.now());
         dagMapper.updateById(dag);
 
-        // PowerJob 调度启停（HTTP 调用）放到事务提交后：避免 DB 回滚时调度侧状态与 DB 不一致
+        // Sprint 11 F3 方案 A：调度启停改为同步 job 侧 cron job（workflow 不再挂 cron，恒 enable）
+        // HTTP 调用放到事务提交后：避免 DB 回滚时调度侧状态与 DB 不一致
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
-                    // 重新读一行，避免用过期的内存实体
                     Dag fresh = dagMapper.selectById(id);
                     if (fresh == null) {
                         return;
                     }
                     if (fresh.getPowerjobWorkflowId() == null) {
-                        // 懒注册：尚未同步过，走全量同步（saveWorkflow 会按 scheduleEnabled 带 cron + enable）
+                        // 懒注册：尚未同步过，走全量同步 + cron job 注册
                         syncToScheduler(id);
+                        syncDagCronJob(id);
                         return;
                     }
-                    // 停调度=disableWorkflow（保留 workflowId）；启用=enableWorkflow（cron 已随 saveWorkflow 下发）
-                    if (enabled) {
-                        powerJobWorkflowClient.enableWorkflow(WORKER_APP_NAME, fresh.getPowerjobWorkflowId());
-                    } else {
-                        powerJobWorkflowClient.disableWorkflow(WORKER_APP_NAME, fresh.getPowerjobWorkflowId());
-                    }
+                    // 启停 cron job（enable/disable 独立 cron job，等价旧的 workflow enable/disable）
+                    syncDagCronJob(id);
                 } catch (Exception e) {
-                    logger.error("DAG 调度状态同步 PowerJob 异常（不影响已提交的 DB 数据）: dagId={}, enabled={}", id, enabled, e);
+                    logger.error("DAG 调度状态同步失败（不影响已提交的 DB 数据）: dagId={}, enabled={}", id, enabled, e);
                 }
             }
         });
@@ -919,6 +1016,10 @@ public class DagService {
         dto.setMaxParallelism(dag.getMaxParallelism());
         dto.setStatus(dag.getStatus());
         dto.setReleaseState(dag.getReleaseState());
+        // Sprint 11 F3：执行队列 + 优先级回显（否则 DAG 详情/列表丢失 queueName/priority，
+        // 前端 DAG 编辑器重开时下拉/选择器回显错误）
+        dto.setQueueName(dag.getQueueName());
+        dto.setPriority(dag.getPriority());
         dto.setCreatedAt(dag.getCreatedAt());
         dto.setUpdatedAt(dag.getUpdatedAt());
         dto.setCreatedBy(dag.getCreatedBy());

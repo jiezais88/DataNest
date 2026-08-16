@@ -4,6 +4,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.datanest.common.audit.AuditLogEvent;
+import com.datanest.common.audit.AuditLogRecorder;
+import com.datanest.common.audit.AuditOpType;
+import com.datanest.common.audit.AuditResourceType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
@@ -50,15 +54,18 @@ public class ExecutionQueueService {
     private final DagMapper dagMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final SystemUserApi systemUserApi;
+    private final AuditLogRecorder auditLogRecorder;
 
     public ExecutionQueueService(ExecutionQueueMapper executionQueueMapper,
                                  DagMapper dagMapper,
                                  DagExecutionMapper dagExecutionMapper,
-                                 SystemUserApi systemUserApi) {
+                                 SystemUserApi systemUserApi,
+                                 AuditLogRecorder auditLogRecorder) {
         this.executionQueueMapper = executionQueueMapper;
         this.dagMapper = dagMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.systemUserApi = systemUserApi;
+        this.auditLogRecorder = auditLogRecorder;
     }
 
     // ==================== 查询 ====================
@@ -172,6 +179,16 @@ public class ExecutionQueueService {
                     "执行队列已被 " + dagCount + " 个 DAG 绑定，无法删除");
         }
         executionQueueMapper.deleteById(id);
+        // 删除后 result 无 name，故手动埋点记录队列名（对齐 RoleService.writeRoleAudit 模式），fail-open
+        try {
+            auditLogRecorder.record(new AuditLogEvent(
+                    currentUserId(), null,
+                    AuditOpType.DELETE.name(), AuditResourceType.EXECUTION_QUEUE.name(),
+                    String.valueOf(id), queue.getQueueName(),
+                    null, AuditLogEvent.RESULT_SUCCESS, null, null));
+        } catch (Exception e) {
+            // fail-open：审计失败不影响删除主链路
+        }
     }
 
     // ==================== 队列调度辅助（trigger 排队 + job 调度器共用） ====================

@@ -15,14 +15,45 @@ public class SchedulerServiceForEngineering {
 
     private static final Logger logger = LoggerFactory.getLogger(SchedulerServiceForEngineering.class);
     private static final String HANDLER_NAME = "syncJobHandler";
+    /** Sprint 11 F3 方案 A：DAG cron 触发器 handler（job 侧 DagScheduledTriggerHandler） */
+    private static final String DAG_CRON_HANDLER_NAME = "dagScheduledTriggerHandler";
 
     @Value("${datanest.engineering.worker-appname:data-nest-worker}")
     private String appName;
+
+    @Value("${datanest.engineering.job-appname:data-nest-job}")
+    private String jobAppName;
 
     private final SchedulerClient schedulerClient;
 
     public SchedulerServiceForEngineering(SchedulerClient schedulerClient) {
         this.schedulerClient = schedulerClient;
+    }
+
+    // ==================== DAG cron（Sprint 11 F3 方案 A） ====================
+
+    /** 注册 DAG cron job（cron 到点调 /internal/dag/scheduled-trigger，做队列容量判定） */
+    public Long registerDagCronJob(Long dagId, String dagName, String cronExpression, boolean start) {
+        Long schedulerJobId = schedulerClient.registerJob(jobAppName, DAG_CRON_HANDLER_NAME, dagId, dagName,
+                cronExpression, "CRON", start, 0, 0);
+        logger.info("Registered DAG cron job: dagId={}, schedulerJobId={}, cron={}, start={}",
+                dagId, schedulerJobId, cronExpression, start);
+        return schedulerJobId;
+    }
+
+    /** 更新 DAG cron job（cron/启停变更后全量覆盖） */
+    public void updateDagCronJob(Long schedulerJobId, Long dagId, String dagName, String cronExpression, boolean start) {
+        schedulerClient.updateJob(schedulerJobId, jobAppName, DAG_CRON_HANDLER_NAME, dagId, dagName,
+                cronExpression, "CRON", start, 0, 0);
+        logger.info("Updated DAG cron job: schedulerJobId={}, dagId={}, cron={}, start={}",
+                schedulerJobId, dagId, cronExpression, start);
+    }
+
+    /** 注销 DAG cron job（DAG 删除或转非 CRON 时） */
+    public void unregisterDagCronJob(Long schedulerJobId) {
+        if (schedulerJobId != null) {
+            schedulerClient.unregisterJob(schedulerJobId);
+        }
     }
 
     public Long registerJob(Long syncJobId, String name, String cronExpression, String triggerType, boolean start) {

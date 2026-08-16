@@ -102,6 +102,12 @@ public class EngineeringDagExecutionApiFallbackFactory implements FallbackFactor
             }
 
             @Override
+            public Result<Long> scheduledTrigger(Long dagId) {
+                // 熔断时跳过本轮 cron 触发（下轮 cron 再触发），避免雪崩
+                return Result.ok(null);
+            }
+
+            @Override
             public Result<Integer> dispatchOnce() {
                 return Result.ok(0);
             }

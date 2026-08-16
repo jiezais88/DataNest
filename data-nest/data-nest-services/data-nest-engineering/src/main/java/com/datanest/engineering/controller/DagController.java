@@ -43,6 +43,14 @@ public class DagController {
         this.dagParameterService = dagParameterService;
     }
 
+    /** Sprint 11 F3 方案 A：存量 cron DAG 迁移到「job 侧独立 cron job」模式（管理员部署后调用一次） */
+    @Operation(summary = "DAG cron 调度迁移（方案 A）", description = "存量启用调度的 CRON DAG 迁移到 job 侧 cron job 模式，去掉 workflow 自带 cron；幂等")
+    @SaCheckPermission(PermissionCode.QUEUE_MANAGE)
+    @PostMapping("/migrate-cron-jobs")
+    public Result<Map<String, Object>> migrateCronJobs() {
+        return Result.ok(dagService.migrateCronJobs());
+    }
+
     @Operation(summary = "DAG 列表（可按项目/执行队列过滤）", description = "queueName 用于执行队列详情抽屉（Sprint 11 F3）")
     @SaCheckLogin
     @GetMapping

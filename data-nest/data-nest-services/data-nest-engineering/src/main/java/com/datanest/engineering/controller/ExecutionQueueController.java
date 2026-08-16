@@ -71,10 +71,9 @@ public class ExecutionQueueController {
 
     @Operation(summary = "删除执行队列", description = "系统内置队列不可删；有 DAG 绑定拒绝删除")
     @SaCheckPermission(PermissionCode.QUEUE_MANAGE)
-    @AuditLog(resourceType = AuditResourceType.EXECUTION_QUEUE, opType = AuditOpType.DELETE,
-            resourceId = "#id")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@Parameter(description = "队列 ID") @PathVariable Long id) {
+        // 审计在 ExecutionQueueService.deleteQueue 内手动埋点（删除后需记录队列名）
         executionQueueService.deleteQueue(id);
         return Result.ok(null);
     }

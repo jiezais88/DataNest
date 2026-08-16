@@ -39,11 +39,22 @@ public class InternalExecutionController {
 
     private final InternalDagExecutionService executionService;
     private final QueueDispatchService queueDispatchService;
+    private final com.datanest.engineering.service.DagExecutionService dagExecutionService;
 
     public InternalExecutionController(InternalDagExecutionService executionService,
-                                       QueueDispatchService queueDispatchService) {
+                                       QueueDispatchService queueDispatchService,
+                                       com.datanest.engineering.service.DagExecutionService dagExecutionService) {
         this.executionService = executionService;
         this.queueDispatchService = queueDispatchService;
+        this.dagExecutionService = dagExecutionService;
+    }
+
+    // ==================== DAG cron 触发（Sprint 11 F3 方案 A，job DagScheduledTriggerHandler 调） ====================
+
+    /** cron 到点触发：队列容量判定（满→WAITING 入池，空→RUNNING 直接执行），返回执行实例 ID */
+    @PostMapping("/dag/scheduled-trigger")
+    public Result<Long> scheduledTrigger(@RequestParam("dagId") Long dagId) {
+        return Result.ok(dagExecutionService.scheduledTrigger(dagId).getId());
     }
 
     // ==================== 队列调度（Sprint 11 F3，job 每 5s 调） ====================

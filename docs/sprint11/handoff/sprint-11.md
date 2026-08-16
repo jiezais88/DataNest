@@ -14,6 +14,11 @@
 | 原型（HTML/CSS/JS） | [OK] | 首页仪表盘 v3（一屏零滚动，两档适配 1440×900 / 1920×1080）：KPI 5 症状卡 + CSS sparkline + 环比 / indigo 单色面积趋势图（异常日琥珀点标记，无红绿柱）/ 右栏系统健康五项 + 快捷操作沉底 / 左下待处理异常（类型徽标 + 行内重跑/去处理）；其余视图沿用 v1.8（角色管理/权限配置/审计日志/执行队列/导航框架）；对齐 tokens.css（indigo #4f46e5）+ 真实 Sidebar/Layout/DsButton/DsStatusBadge 结构 |
 | 后端（F1 审计日志） | [OK] | 8 类已有实体写接口埋点（用户/数据源/同步/DAG/SQL/API/APIKey/分级；权限变更+队列留 F2/F3）+ common 审计基础设施（@AuditLog/AuditLogAspect 异步 fail-open/Recorder）+ system audit_log 表与查询/internal 端点 + 跨服务 Feign Recorder；编译通过；**E2E 全功能测试 24/24 通过（2026-08-14），跨服务（engineering/governance/data-service）Feign 埋点链路端到端实测通过** |
 | 前端（F1 审计日志页） | [OK] | 审计日志页（列表+组合筛选+失败行浅红高亮+详情抽屉）+ 大标题描述 + 时间范围必填默认近 7 天 + 每页 10 条（用户三轮微调）；build + Playwright 浏览器联调通过 |
+| 后端（F2 RBAC） | [OK] | 角色 CRUD（预置只读/自定义增删改、重名校验、删除校验绑定用户、审计）+ 权限点体系（88 点，登录返回 permissions）+ 三级数据权限（FULL/WHITELIST，白名单保存/查询/合并用户权限 internal）+ 五入口接入（SQL 终端 fail-closed 2012/资产目录/元数据树/同步创建/API 选表）；PM-14 保存即时生效（StpInterfaceImpl 每次动态查库）；PM-6 机密表锁定；**E2E 全功能测试 26/26 通过（2026-08-15，e2e/sprint11/e2e/f2-rbac.spec.ts）** |
+| 前端（F2 RBAC） | [OK] | 角色管理页（CRUD+详情弹窗）+ 权限配置页（角色清单+三 Tab：功能权限树快捷档位/数据权限三级树+机密锁定/成员）+ useCan 按钮级控制 + 菜单按权限动态渲染；角色管理新增详情（2026-08-15 用户确认，展示与编辑一致 readonly） |
+| 后端（F3 执行队列） | [OK] | 队列 CRUD（重名 7402/非法名 7405/default 保护 7403/绑定 DAG 拒绝 7404）+ DAG 绑定 queueName/priority（创建校验队列存在）+ 排队调度（队列满→WAITING，job 调度器 5s 轮询补触发，高优先先执行）+ 对账兜底 + 审计（DELETE 手动埋点补队列名）；**E2E 全功能测试 17/17 通过（2026-08-16，e2e/sprint11/e2e/f3-queue.spec.ts）**；测试发现并修复 2 真实缺陷（见 Next Action 3） |
+| 后端（F3 方案A cron 入队） | [OK] | cron 定时触发从 workflow 内嵌改为 job 侧独立 cron job（DagScheduledTriggerHandler + V1.7.2 `dag.scheduler_job_id` + migrateCronJobs 存量迁移），到点经 Feign 调 `/internal/dag/scheduled-trigger` 与手动共用排队链路，执行历史 `trigger_type='SCHEDULED'`；cron job 生命周期（创建注册/停用注销/删除注销）；**E2E 全功能测试 6/6 通过（2026-08-16，e2e/sprint11/e2e/f3-cron.spec.ts）**；修复前端 SCHEDULED 显示缺陷（TRIGGER_LABEL/OPTIONS 补 SCHEDULED） |
+| 前端（F3 执行队列） | [OK] | 执行队列页（列表含运行/等待/绑定统计 5s 轮询 + 新建/编辑弹窗 + 删除确认 + 详情抽屉绑定 DAG 列表含优先级/触发方式筛选）；DAG 表单新增执行队列+优先级字段；执行历史两列 |
 
 ---
 
@@ -44,5 +49,9 @@
 
 1. **F1 已交付并完成 E2E 全功能测试（2026-08-14）**：审计日志 8 类埋点 + 查询页全链路打通。**E2E 套件 `e2e/sprint11/e2e/audit.spec.ts`（24 用例全过）**：8 类埋点（用户/数据源/同步/DAG/SQL 成功+机密拦截/API/APIKey/分级）跨 5 服务（system/engineering/governance/data-service/前端 UI）端到端触发并验证落库，查询页全功能（列表/组合筛选/详情抽屉/失败高亮/分页）+ 权限（分析师 403）+ 只增不改均覆盖；测试数据自播种自清理（helpers/audit-seed.ts，物理清理 e2e_s11_*）。遗留已清零：① 跨服务 Feign 链路已实测通过；② 测试用户 `audit_test_185305` 已删除（含角色关联）；③ 审计页 PRD 原文"每页 20 条"已按用户决策改为默认 10 条（前端 defaultPageSize=10，后端 defaultValue=20 保留，前端显式传参）——此项已实现，非遗留。
 2. **技术文档跟进 v3 首页**：首页聚合接口按 v3 区块更新——5 症状 KPI 定义与统计口径（含 sparkline 7 天序列）、运行趋势（近 7 日任务运行量序列）、待处理异常（严重级/超时 4h 标记/重跑动作）、系统健康五项探活（数据源/集成任务/Flink CDC/Doris/平台服务）、快捷操作按角色；其余立项项不变（审计日志表、自定义角色数据模型、权限模型与缓存、队列与 PowerJob 对接、Nacos 热更新验证、菜单权限模型）。
-3. **F2 RBAC / F3 队列 / F5 首页 / F6 导航**：均未开始。注意：技术文档 §3.0 写的 engineering `V1.1.0__sprint11_queue.sql` **版本号已过时**——engineering 当前 Flyway 最高是 V1.6.0，队列脚本应定为 `V1.7.0`；F3 实施前重新核对。
-4. 原型制作：~~首页数据面板~~（v3 已完成）；DAG 表单新增字段待确认是否已在原型覆盖。
+3. **F2 RBAC / F3 队列 已交付并通过 E2E 全功能测试**：
+   - **F2（2026-08-15，26/26 通过）**：`e2e/sprint11/e2e/f2-rbac.spec.ts`——角色管理（PM-7~15）、权限点体系（PM-16）、数据权限五入口 fail-closed（PM-1/2/4/5）、机密表锁定（PM-6）、保存即时生效（PM-14）、权限配置页 UI、数据源列表按钮级。关键结论：PM-6 后端 permission-tree 返回 sensitivityLevel + 前端锁定图标已实现；PM-14 无需重新登录即生效。
+   - **F3（2026-08-16，17/17 通过）**：`e2e/sprint11/e2e/f3-queue.spec.ts`——队列 CRUD（QU-1/5）、删除约束（QU-3）、DAG 绑定（QU-2/4）、排队调度真实 PowerJob 执行（QU-6）、审计（QU-7）、队列页 UI、权限。**测试发现并修复 2 真实缺陷**：① `QueueDispatchService` 同类内部调用 @Transactional 代理不生效 → 排队补触发后执行永久 RUNNING（改用 TransactionTemplate）；② `DagService.toPayload` 未映射 queueName/priority → DAG 详情/列表丢失队列字段（补映射）。另补 DELETE 审计手动埋点队列名（对齐 RoleService 模式）。
+   - 注意：技术文档 §3.0 写的 engineering `V1.1.0__sprint11_queue.sql` **版本号已过时**——engineering 实际最高 V1.6.0，队列脚本实际落地为 `V1.7.0`（已执行，F3 实施时已重新核对）。
+4. **F5 首页 / F6 导航**：均未开始。
+5. 原型制作：~~首页数据面板~~（v3 已完成）；DAG 表单新增字段待确认是否已在原型覆盖。

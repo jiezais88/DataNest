@@ -97,6 +97,14 @@ public interface EngineeringDagExecutionApi {
 
     // ==================== 队列调度（Sprint 11 F3，job QueueDispatcherHandler 调） ====================
 
+    /**
+     * Sprint 11 F3 方案 A：cron 到点触发（job 侧 DagScheduledTriggerHandler 调用）。
+     * engineering 做队列容量判定：满 → 建 WAITING 入等待池；空 → 建 RUNNING 直接执行。
+     * 返回执行实例 ID；幂等（同 DAG 已有 WAITING/RUNNING 时抛 DAG_ALREADY_RUNNING）。
+     */
+    @PostMapping("/dag/scheduled-trigger")
+    Result<Long> scheduledTrigger(@RequestParam("dagId") Long dagId);
+
     /** 调度一轮等待池，返回本轮触发数 */
     @PostMapping("/queue/dispatch")
     Result<Integer> dispatchOnce();

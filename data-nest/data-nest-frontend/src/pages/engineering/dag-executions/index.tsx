@@ -38,6 +38,7 @@ const TRIGGER_LABEL: Record<string, string> = {
     MANUAL: '手动触发',
     CRON: '定时触发',
     SCHEDULE: '定时触发',
+    SCHEDULED: '定时触发',
 };
 
 const STATUS_OPTIONS = [
@@ -52,6 +53,7 @@ const TRIGGER_OPTIONS = [
     {value: '', label: '全部触发方式'},
     {value: 'MANUAL', label: '手动触发'},
     {value: 'CRON', label: '定时触发'},
+    {value: 'SCHEDULED', label: '定时触发'},
 ];
 
 // =================== helpers ===================

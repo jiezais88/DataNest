@@ -160,6 +160,23 @@
 - **`alert_rule_object`/`alert_history` 外键列是 `alert_rule_id`**（非 `rule_id`），cleanup 与断言都按此写。
 - **强制停止语义**：force-stop 只改 DB（置 STOPPED、清 flink_job_id/savepoint_path），不清 Flink 作业，需测试侧主动 cancel 释放 slot；savepoint_path 清空、恢复功能不再可用。
 
+### Sprint 11 F3 E2E（sprint11/f3-queue.spec.ts，2026-08-16，执行队列 17 用例全绿）
+
+- **真实缺陷①：同类内部调用 `@Transactional` 代理不生效 → 排队补触发后执行永久 RUNNING（2026-08-16 修复）**：`QueueDispatchService.dispatchOnce` 循环调 `this.dispatchOne()`，Spring 事务代理**不拦截同类内部调用**，`dispatchOne` 的 `@Transactional` 不生效 → `TransactionSynchronizationManager.registerSynchronization(afterCommit)` 在无事务时静默失效 → **`runWorkflow` 从未被调用**，`dag_execution` 被置 RUNNING 后无 PowerJob 实例跟进，执行卡死 RUNNING 不终态（PowerJob 侧根本无 workflow 实例）。修复：改用 `TransactionTemplate.executeWithoutResult` 显式开启事务包住「WAITING→RUNNING + node_execution 预建」，事务提交后再调 PowerJob runWorkflow 回写 wfInstanceId。**教训：`@Transactional` 只在跨 bean 代理调用生效；同类 self-invocation 必须用 TransactionTemplate 或自注入**。
+- **真实缺陷②：DagService.toPayload 未映射 queueName/priority（2026-08-16 修复）**：DAG 详情/列表接口丢失执行队列与优先级字段，前端 DAG 编辑器重开时队列/优先级下拉回显错误（丢默认值）。修复：`toPayload` 补 `setQueueName/setPriority`。**教训：新增实体字段后必须检查所有 DTO 映射方法（toXxx）是否同步**。
+- **DELETE 审计 resourceName 缺失（F3 补充）**：`@AuditLog` DELETE 只取 resourceId（无 name 可参考），队列删除后 result 无 name → 审计记录 resource_name 为空。参考 RoleService.writeRoleAudit 模式，在 Service 删除成功后手动埋点 `AuditLogRecorder.record` 补队列名；同时移除 Controller DELETE 的 @AuditLog 防重复。
+- **E2E 部署注意（F3 踩）**：改 engineering 代码后必须 `mvn package`（**不只是 compile**）→ `docker compose build app-engineering`（buildkit 缓存会在 jar 未变时复用旧层，需检查镜像 Created 时间戳确认）→ `up -d`；class 文件时间戳确认新代码已进容器。
+- **DAG 触发排队链路可测性**：新建 DAG 创建即同步 PowerJob（懒注册），纯 SQL 节点（`SELECT 1`）执行快无副作用；排队测试建并发=1 专用队列 + 触发两次（第 2 次 WAITING）→ 调度器 5s 轮询接管变 RUNNING → SUCCESS。断言 wfInstanceId 回写（非 NULL）是排队补触发成功的判据。
+
+### Sprint 11 F3 方案 A：cron 纳入队列控制（f3-cron.spec.ts，2026-08-16，6 用例全绿）
+
+- **方案 A 机制**：DAG 定时触发**不再走 workflow 内嵌 cron**，改为 job 侧独立 cron job（`DagScheduledTriggerHandler`，jobParams=dagId），到点经 Feign 调 engineering `/engineering/internal/dag/scheduled-trigger` → 与手动触发共用排队链路（`triggerWithType(dagId, "SCHEDULED", null)`，队列满→WAITING 入池/空→RUNNING），执行历史 `trigger_type='SCHEDULED'` 区分来源。`V1.7.2` 加 `dag.scheduler_job_id` 列 + `migrateCronJobs` 存量迁移。
+- **cron job 生命周期**：DAG 创建（scheduleEnabled=true）事务提交后经 `afterCommit` 注册 cron job 回填 scheduler_job_id；停用调度 → disableJob + 清空 scheduler_job_id；删除 DAG → deleteJob。**注意：PowerJob deleteJob 是软删除（status=99 保留行）**，断言注销需查 `status!=99` 而非 count=0。
+- **E2E 模拟 cron 到点**：PowerJob OpenAPI `POST /openApi/runJob?appId=1&jobId={id}`（**路径必须带 `/openApi` 前缀**，裸 `/runJob` 404）；worker 容器内从测试宿主机访问需用 `http://localhost:7700`（PowerJob server 端口映射到宿主机）。`curl.exe --%` 只在 PowerShell 有效，Node `execSync` 里要用 python urllib。
+- **队列满排队可测性**：SQL 节点执行太快（<2s），无法稳定占满并发=1 队列 → 用 **PYTHON 节点 `time.sleep(20)`** 慢节点占位（config `{"type":"PYTHON","pythonScript":"import time\ntime.sleep(20)","timeoutMinutes":30,"memoryLimitMb":512}`）。
+- **DAG 更新 PUT 请求**：路径 `/engineering/dev/dags/{id}`（DagController 类级 @RequestMapping("/dev/dags")），请求体必须带 `projectId`（缺则 7018 DAG_PROJECT_ID_REQUIRED），且需重传完整 nodes/edges。
+- **前端 SCHEDULED 显示（2026-08-16 修复）**：后端 cron 触发写 `trigger_type='SCHEDULED'`，但前端 dag-executions `TRIGGER_LABEL`/`TRIGGER_OPTIONS` 只有 MANUAL/CRON/SCHEDULE（无 SCHEDULED）→ 执行历史显示英文原值 + 定时筛选筛不到。修复：TRIGGER_LABEL 加 `SCHEDULED: '定时触发'`、TRIGGER_OPTIONS 加 `{value:'SCHEDULED'}`。后端筛选 `wrapper.eq("trigger_type", ...)` 天然支持。
+
 
 ## 八、微服务化改造踩坑（阶段 1-5，2026-08-06/07，当前有效）
 

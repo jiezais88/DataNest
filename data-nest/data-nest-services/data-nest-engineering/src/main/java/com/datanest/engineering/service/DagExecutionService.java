@@ -137,6 +137,21 @@ public class DagExecutionService {
 
     @Transactional
     public DagExecutionDTO trigger(Long dagId, Map<String, Object> manualParams) {
+        return triggerWithType(dagId, "MANUAL", manualParams);
+    }
+
+    /**
+     * Sprint 11 F3 方案 A：cron 定时触发（job 侧 DagScheduledTriggerHandler 到点调用）。
+     * <p>
+     * 与手动触发共用排队链路（队列满 → WAITING 入等待池，由调度器补触发；空位 → RUNNING 直接执行），
+     * 区别仅 triggerType=SCHEDULED，执行历史可区分来源。
+     */
+    @Transactional
+    public DagExecutionDTO scheduledTrigger(Long dagId) {
+        return triggerWithType(dagId, "SCHEDULED", null);
+    }
+
+    private DagExecutionDTO triggerWithType(Long dagId, String triggerType, Map<String, Object> manualParams) {
         Dag dag = dagMapper.selectById(dagId);
         if (dag == null) {
             throw new BusinessException(ErrorCode.DAG_NOT_FOUND);
@@ -177,8 +192,8 @@ public class DagExecutionService {
                 >= executionQueueService.getQueueByName(queueName).getMaxConcurrency();
         DagExecution execution = new DagExecution();
         execution.setDagId(dagId);
-        // 手动触发时固定记录为 MANUAL，避免执行历史里显示成定时触发
-        execution.setTriggerType("MANUAL");
+        // 触发来源：MANUAL（手动）/ SCHEDULED（定时），执行历史据此区分
+        execution.setTriggerType(triggerType);
         execution.setStatus(queueFull ? "WAITING" : "RUNNING");
         execution.setQueueName(queueName);
         execution.setPriority(priority);
