@@ -70,5 +70,8 @@ dump.rdb
 
 .codebuddy
 .workbuddy
+# DSH 临时工作目录 / 视觉产物（Sprint 13 补）
+.agent-teams/
+.dsh-vision-router/
 # Playwright 测试产物（Sprint 12 补）
 test-results/

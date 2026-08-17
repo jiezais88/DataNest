@@ -5,6 +5,7 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {
     HiOutlineChevronLeft,
     HiOutlineClipboardDocument,
+    HiOutlineCodeBracketSquare,
     HiOutlineKey,
     HiOutlinePencil,
     HiOutlinePlay,
@@ -25,8 +26,10 @@ import {
 import DsButton from '@/components/DsButton';
 import DsSpinner from '@/components/DsSpinner';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import {ApiKeyStatusBadge, DataApiStatusBadge, SensitivityBadge} from '../badges';
-import type {DataApiDetail} from '@/types/data-service';
+import {ApiKeyStatusBadge, DataApiQueryTypeBadge, DataApiStatusBadge, SensitivityBadge} from '../badges';
+import {CUSTOM_SQL_PARAM_TYPE_LABEL} from '@/types/data-service';
+import type {DataApiDetail, InvolvedTable} from '@/types/data-service';
+import {tokenizeSql, type SqlTokenKind} from './customSql';
 import ApiStatsSection from './ApiStatsSection';
 
 export default function ApiDetailPage() {
@@ -118,6 +121,9 @@ export default function ApiDetailPage() {
     const qualifiedTable = `${detail.databaseName}${detail.schemaName ? `.${detail.schemaName}` : ''}.${detail.tableName}`;
     const filters = detail.definition?.filters ?? [];
     const fields = detail.definition?.fields ?? [];
+    const isCustomSql = detail.queryType === 'CUSTOM_SQL';
+    const involvedTables = detail.involvedTables ?? [];
+    const involvedTablesLabel = involvedTables.map((t: InvolvedTable) => [t.database, t.schema, t.table].filter(Boolean).join('.') || t.table);
 
     return (
         <div className="flex flex-col pr-ds-4">
@@ -126,6 +132,7 @@ export default function ApiDetailPage() {
                 <div>
                     <div className="flex items-center gap-ds-3 flex-wrap">
                         <h1 className="text-ds-display text-ds-text-primary">{detail.name}</h1>
+                        <DataApiQueryTypeBadge queryType={detail.queryType}/>
                         <DataApiStatusBadge status={detail.status}/>
                         <SensitivityBadge level={detail.sensitivityLevel}/>
                     </div>
@@ -175,7 +182,9 @@ export default function ApiDetailPage() {
                 <h3 className="text-ds-small font-semibold text-ds-text-primary mb-ds-3">基本信息</h3>
                 <div className="grid grid-cols-4 gap-x-ds-4 gap-y-ds-3">
                     <InfoItem label="数据源" value={detail.datasourceName || '—'}/>
-                    <InfoItem label="数据表" value={qualifiedTable} mono/>
+                    <InfoItem label={isCustomSql ? '涉及表' : '数据表'}
+                              value={isCustomSql ? (involvedTablesLabel.length ? involvedTablesLabel.join(' · ') : '—') : qualifiedTable}
+                              mono/>
                     <InfoItem label="绑定 Key" value={`${detail.boundKeys.length} 个`}/>
                     <InfoItem label="近 7 天调用" value={formatNumber(detail.calls7d)} mono/>
                     <InfoItem label="创建人" value={detail.createdByName || '—'}/>
@@ -189,15 +198,55 @@ export default function ApiDetailPage() {
             <section
                 className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-5 mb-ds-4">
                 <h3 className="text-ds-small font-semibold text-ds-text-primary mb-ds-3">接口定义</h3>
-                <div className="grid grid-cols-2 gap-ds-5">
-                    <div>
-                        <p className="text-ds-caption text-ds-text-muted mb-ds-2">参数化筛选（{filters.length}）</p>
-                        {filters.length === 0 ? (
-                            <p className="text-ds-small text-ds-text-muted">未配置，仅支持分页拉取</p>
-                        ) : (
-                            <div className="flex flex-col gap-ds-2">
-                                {filters.map((f) => (
-                                    <div key={`${f.field}:${f.type}`} className="flex items-center gap-ds-2">
+                {isCustomSql ? (
+                    <div className="grid grid-cols-2 gap-ds-5">
+                        <div>
+                            <p className="text-ds-caption text-ds-text-muted mb-ds-2">
+                                SQL 参数（{(detail.sqlParams ?? []).length}）
+                            </p>
+                            {(detail.sqlParams ?? []).length === 0 ? (
+                                <p className="text-ds-small text-ds-text-muted">无参数，仅支持分页拉取</p>
+                            ) : (
+                                <div className="flex flex-col gap-ds-2">
+                                    {(detail.sqlParams ?? []).map((p) => (
+                                        <div key={p.name} className="flex items-center gap-ds-2 flex-wrap">
+                                            <span
+                                                className="text-ds-small text-ds-text-primary font-mono">:{p.name}</span>
+                                            <span
+                                                className="px-ds-2 py-0.5 rounded text-ds-caption font-medium bg-ds-accent-light text-ds-accent">
+                                                {CUSTOM_SQL_PARAM_TYPE_LABEL[p.type] || p.type}
+                                            </span>
+                                            <span className="text-ds-caption text-ds-text-muted">
+                                                {p.required ? '必填' : '选填'}{p.defaultValue ? ` · 默认 ${p.defaultValue}` : ''}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-ds-caption text-ds-text-muted mt-ds-3 mb-ds-1">排序 / 分页</p>
+                            <p className="text-ds-small text-ds-text-secondary">
+                                排序由 SQL 内 ORDER BY 决定（不支持外部排序）
+                                <span className="text-ds-text-muted"> · </span>
+                                {detail.paginated === 1 ? `分页启用（pageSize 上限 ${detail.pageSizeMax ?? 100}）` : '分页关闭'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-ds-caption text-ds-text-muted mb-ds-2">返回列</p>
+                            <p className="text-ds-small text-ds-text-muted">
+                                由 SQL 的 SELECT 决定，不提供字段裁剪（已知边界：请确保 SQL 未暴露敏感列）。
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-ds-5">
+                        <div>
+                            <p className="text-ds-caption text-ds-text-muted mb-ds-2">参数化筛选（{filters.length}）</p>
+                            {filters.length === 0 ? (
+                                <p className="text-ds-small text-ds-text-muted">未配置，仅支持分页拉取</p>
+                            ) : (
+                                <div className="flex flex-col gap-ds-2">
+                                    {filters.map((f) => (
+                                        <div key={`${f.field}:${f.type}`} className="flex items-center gap-ds-2">
                                         <span
                                             className="text-ds-small text-ds-text-primary font-mono">{f.field}</span>
                                         <span
@@ -208,36 +257,95 @@ export default function ApiDetailPage() {
                                             }`}>
                                             {f.type === 'RANGE' ? `范围（min_${f.field} / max_${f.field}）` : '等值（=）'}
                                         </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <p className="text-ds-caption text-ds-text-muted mt-ds-3 mb-ds-1">排序 / 分页</p>
-                        <p className="text-ds-small text-ds-text-secondary">
-                            {detail.orderBy ? <span className="font-mono">{detail.orderBy}</span> : '无排序'}
-                            <span className="text-ds-text-muted"> · </span>
-                            {detail.paginated === 1 ? `分页启用（pageSize 上限 ${detail.pageSizeMax ?? 100}）` : '分页关闭'}
-                        </p>
-                    </div>
-                    <div>
-                        <p className="text-ds-caption text-ds-text-muted mb-ds-2">
-                            返回字段（{fields.length === 0 ? '全部字段' : `${fields.length} 个`}）
-                        </p>
-                        {fields.length === 0 ? (
-                            <p className="text-ds-small text-ds-text-muted">未裁剪，返回表全部字段</p>
-                        ) : (
-                            <div className="flex flex-wrap gap-ds-2">
-                                {fields.map((f) => (
-                                    <span key={f}
-                                          className="px-ds-2 py-0.5 rounded bg-ds-bg-hover text-ds-small text-ds-text-secondary font-mono">
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-ds-caption text-ds-text-muted mt-ds-3 mb-ds-1">排序 / 分页</p>
+                            <p className="text-ds-small text-ds-text-secondary">
+                                {detail.orderBy ? <span className="font-mono">{detail.orderBy}</span> : '无排序'}
+                                <span className="text-ds-text-muted"> · </span>
+                                {detail.paginated === 1 ? `分页启用（pageSize 上限 ${detail.pageSizeMax ?? 100}）` : '分页关闭'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-ds-caption text-ds-text-muted mb-ds-2">
+                                返回字段（{fields.length === 0 ? '全部字段' : `${fields.length} 个`}）
+                            </p>
+                            {fields.length === 0 ? (
+                                <p className="text-ds-small text-ds-text-muted">未裁剪，返回表全部字段</p>
+                            ) : (
+                                <div className="flex flex-wrap gap-ds-2">
+                                    {fields.map((f) => (
+                                        <span key={f}
+                                              className="px-ds-2 py-0.5 rounded bg-ds-bg-hover text-ds-small text-ds-text-secondary font-mono">
                                         {f}
                                     </span>
-                                ))}
-                            </div>
-                        )}
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
             </section>
+
+            {/* SQL 定义（仅 CUSTOM_SQL 形态；对齐原型 view-detail） */}
+            {isCustomSql && detail.sqlText && (
+                <section
+                    className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-5 mb-ds-4">
+                    <div className="flex items-center justify-between mb-ds-3">
+                        <h3 className="text-ds-small font-semibold text-ds-text-primary flex items-center gap-ds-2">
+                            <HiOutlineCodeBracketSquare size={16} className="text-ds-accent"/>
+                            SQL 定义
+                        </h3>
+                        <span className="text-ds-caption text-ds-text-muted">只读 SELECT · 保存时重新校验并过权限闸门</span>
+                    </div>
+                    <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden bg-[#0f172a]">
+                        <pre className="m-0 p-ds-3.5 font-mono text-ds-small leading-relaxed whitespace-pre overflow-x-auto">
+                            <SqlHighlight sql={detail.sqlText}/>
+                        </pre>
+                    </div>
+                    <div className="flex flex-col gap-ds-2 mt-ds-3">
+                        <div className="flex items-start gap-ds-2">
+                            <span className="text-ds-caption text-ds-text-muted w-14 flex-shrink-0 pt-0.5">参数</span>
+                            {(detail.sqlParams ?? []).length === 0 ? (
+                                <span className="text-ds-small text-ds-text-muted">无参数</span>
+                            ) : (
+                                <span className="flex flex-wrap gap-ds-2">
+                                    {(detail.sqlParams ?? []).map((p) => (
+                                        <span key={p.name}
+                                              className="inline-flex items-center gap-1 px-ds-2 py-0.5 rounded-ds-xs bg-ds-bg-root border border-ds-border-subtle font-mono text-ds-small text-ds-text-primary">
+                                            :{p.name}
+                                            <span className="text-ds-caption text-ds-text-muted font-sans">
+                                                {CUSTOM_SQL_PARAM_TYPE_LABEL[p.type] || p.type} · {p.required ? '必填' : '选填'}
+                                                {p.defaultValue ? ` · 默认 ${p.defaultValue}` : ''}
+                                            </span>
+                                        </span>
+                                    ))}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-start gap-ds-2">
+                            <span className="text-ds-caption text-ds-text-muted w-14 flex-shrink-0 pt-0.5">涉及表</span>
+                            {involvedTablesLabel.length === 0 ? (
+                                <span className="text-ds-small text-ds-text-muted">—</span>
+                            ) : (
+                                <span className="flex flex-wrap gap-ds-2">
+                                    {involvedTablesLabel.map((t) => (
+                                        <span key={t}
+                                              className="px-ds-2 py-0.5 rounded-ds-xs bg-ds-bg-root border border-ds-border-subtle font-mono text-ds-small text-ds-text-secondary">
+                                            {t}
+                                        </span>
+                                    ))}
+                                    <span className="text-ds-caption text-ds-text-muted">
+                                        用于权限校验与血缘（fail-closed）
+                                    </span>
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </section>
+            )}
 
             {/* 调用文档 */}
             <section
@@ -348,5 +456,26 @@ function InfoItem({label, value, mono}: { label: string; value: string; mono?: b
             <p className="text-ds-caption text-ds-text-muted">{label}</p>
             <p className={`text-ds-small text-ds-text-primary mt-ds-1 break-all ${mono ? 'font-mono' : ''}`}>{value}</p>
         </div>
+    );
+}
+
+/** SQL 只读高亮（详情展示用；keyword/字符串/注释/:参数 着色，对齐原型 sql-kw/sql-str/sql-cm/sql-param） */
+function SqlHighlight({sql}: { sql: string }) {
+    const tokens = tokenizeSql(sql);
+    const colorOf = (kind: SqlTokenKind) => {
+        switch (kind) {
+            case 'kw': return 'text-sky-300';
+            case 'str': return 'text-emerald-300';
+            case 'comment': return 'text-slate-500 italic';
+            case 'param': return 'text-amber-300 font-bold';
+            default: return 'text-slate-200';
+        }
+    };
+    return (
+        <>
+            {tokens.map((t, i) => (
+                <span key={i} className={colorOf(t.kind)}>{t.text}</span>
+            ))}
+        </>
     );
 }

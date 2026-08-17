@@ -39,8 +39,8 @@ import SearchInput from '@/components/SearchInput';
 import StatsCards from '@/components/StatsCards';
 import Pagination from '@/components/Pagination';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import {DataApiStatusBadge, SensitivityBadge} from '../badges';
-import type {DataApiPageItem, DataApiStatus, DataApiSummary} from '@/types/data-service';
+import {DataApiQueryTypeBadge, DataApiStatusBadge, SensitivityBadge} from '../badges';
+import type {DataApiPageItem, DataApiQueryType, DataApiStatus, DataApiSummary} from '@/types/data-service';
 
 const STATUS_OPTIONS = [
     {value: '', label: '全部状态'},
@@ -49,13 +49,20 @@ const STATUS_OPTIONS = [
     {value: 'DISABLED', label: '已下线'},
 ];
 
+const QUERY_TYPE_OPTIONS = [
+    {value: '', label: '全部形态'},
+    {value: 'TABLE_SELECT', label: '选表'},
+    {value: 'CUSTOM_SQL', label: '自定义 SQL'},
+];
+
 interface ApiListQuery {
     keyword: string;
     status: DataApiStatus | '';
+    queryType: DataApiQueryType | '';
     scope: '' | 'mine';
 }
 
-const INITIAL_QUERY: ApiListQuery = {keyword: '', status: '', scope: ''};
+const INITIAL_QUERY: ApiListQuery = {keyword: '', status: '', queryType: '', scope: ''};
 
 export default function ApiManagePage() {
     const navigate = useNavigate();
@@ -72,6 +79,7 @@ export default function ApiManagePage() {
                     scope: q.scope || undefined,
                     keyword: q.keyword || undefined,
                     status: q.status || undefined,
+                    queryType: q.queryType || undefined,
                 });
                 return {list: res.data.records, total: res.data.total};
             },
@@ -181,11 +189,23 @@ export default function ApiManagePage() {
             ),
         },
         {
+            title: '形态',
+            dataIndex: 'queryType',
+            width: COL.STATUS,
+            render: (v?: DataApiQueryType) => <DataApiQueryTypeBadge queryType={v}/>,
+        },
+        {
             title: '数据表',
             key: 'table',
             width: 200,
             ellipsis: true,
             render: (_, item) => {
+                if (item.queryType === 'CUSTOM_SQL') {
+                    return (
+                        <span title="自定义 SQL 形态：查询逻辑见详情页 SQL 定义"
+                              className="text-ds-small text-ds-text-muted">自定义 SQL</span>
+                    );
+                }
                 const qualified = `${item.databaseName}${item.schemaName ? `.${item.schemaName}` : ''}.${item.tableName}`;
                 return (
                     <span title={`${item.datasourceName || '数据源'} · ${qualified}`}
@@ -387,7 +407,7 @@ export default function ApiManagePage() {
                                         </button>
                                     ))}
                                 </div>
-                                <DsButton onClick={() => applyQuery({...query, keyword: draft.keyword, status: draft.status})}
+                                <DsButton onClick={() => applyQuery({...query, keyword: draft.keyword, status: draft.status, queryType: draft.queryType})}
                                           disabled={loading} loading={loading}>
                                     查询
                                 </DsButton>
@@ -403,8 +423,14 @@ export default function ApiManagePage() {
                         <SearchInput
                             value={draft.keyword}
                             onChange={(e) => setDraft({...draft, keyword: e.target.value})}
-                            onEnter={() => applyQuery({...query, keyword: draft.keyword, status: draft.status})}
+                            onEnter={() => applyQuery({...query, keyword: draft.keyword, status: draft.status, queryType: draft.queryType})}
                             placeholder="搜索 API 名称 / 路径"
+                        />
+                        <DsFilterSelect
+                            value={draft.queryType}
+                            onChange={(v) => setDraft({...draft, queryType: v as DataApiQueryType | ''})}
+                            aria-label="按形态筛选"
+                            options={QUERY_TYPE_OPTIONS}
                         />
                         <DsFilterSelect
                             value={draft.status}
@@ -421,7 +447,7 @@ export default function ApiManagePage() {
                         rowKey="id"
                         loading={loading}
                         pagination={false}
-                        scroll={{x: 1700}}
+                        scroll={{x: 1800}}
                         columns={columns}
                         className="prototype-table prototype-table-flush"
                         locale={{

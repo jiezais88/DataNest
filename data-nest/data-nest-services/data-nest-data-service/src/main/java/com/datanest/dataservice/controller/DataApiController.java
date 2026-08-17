@@ -35,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 查看（列表/详情）四角色 OR；创建/编辑/发布/下线/删除仅超管/工程师（对齐 PRD §8 权限矩阵）。
  * 类级四角色 + 方法级写角色同时生效（与语义 = 写操作需超管/工程师）。
  */
-@Tag(name = "数据 API 管理", description = "表级参数化 API 定义 / 生命周期 / 自动文档（Sprint 10 F2）")
+@Tag(name = "数据 API 管理", description = "表级参数化 API 定义（Sprint 10 F2）/ 自定义 SQL API（Sprint 13 双形态）/ 生命周期 / 自动文档")
 @RestController
 @RequestMapping("/apis")
 public class DataApiController {
@@ -48,7 +48,7 @@ public class DataApiController {
         this.statsQueryService = statsQueryService;
     }
 
-    @Operation(summary = "创建 API", description = "校验表敏感度（机密禁止 / 内部需超管特批开放，fail-closed）；路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
+    @Operation(summary = "创建 API", description = "双形态：TABLE_SELECT 校验表敏感度（机密禁止 / 内部需超管特批开放，fail-closed）；CUSTOM_SQL 走只读校验 + 涉及表逐表闸门（9019）+ 参数校验（9018）+ 血缘。路径归一为 /open-api/v1/{段} 且唯一；创建后为 CREATED 未发布")
     @SaCheckPermission(PermissionCode.API_CREATE)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.CREATE,
             resourceId = "#result.data.id", resourceName = "#request.name")
@@ -57,7 +57,7 @@ public class DataApiController {
         return Result.ok(dataApiService.create(request));
     }
 
-    @Operation(summary = "API 列表（分页）", description = "scope=mine 仅看我创建的（默认全量）；keyword 匹配名称/路径；status 精确过滤；含绑定 Key 数与近 7 天调用")
+    @Operation(summary = "API 列表（分页）", description = "scope=mine 仅看我创建的（默认全量）；keyword 匹配名称/路径；status 精确过滤；queryType 形态筛选（TABLE_SELECT/CUSTOM_SQL）；列表项含 queryType 形态徽章、绑定 Key 数与近 7 天调用")
     @SaCheckLogin
     @GetMapping("/page")
     public Result<PageResult<DataApiPageItem>> page(
@@ -65,8 +65,9 @@ public class DataApiController {
             @RequestParam(value = "pageSize", defaultValue = "10") long pageSize,
             @RequestParam(value = "scope", required = false) String scope,
             @RequestParam(value = "keyword", required = false) String keyword,
-            @RequestParam(value = "status", required = false) String status) {
-        return Result.ok(dataApiService.page(page, pageSize, scope, keyword, status));
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "queryType", required = false) String queryType) {
+        return Result.ok(dataApiService.page(page, pageSize, scope, keyword, status, queryType));
     }
 
     @Operation(summary = "API 汇总（列表页统计卡）", description = "已发布/待发布/已下线计数 + 近 7 天总调用")
@@ -76,14 +77,14 @@ public class DataApiController {
         return Result.ok(dataApiService.summary());
     }
 
-    @Operation(summary = "API 详情", description = "定义（filters/fields）+ 自动文档（参数说明 + curl 示例）+ 绑定 Key + 近 7 天调用")
+    @Operation(summary = "API 详情", description = "双形态：选表返回定义（filters/fields），自定义 SQL 返回 sqlText/sqlParams/involvedTables + 自动文档（参数说明 + curl 示例）+ 绑定 Key + 近 7 天调用")
     @SaCheckLogin
     @GetMapping("/{id}")
     public Result<DataApiDetailDTO> detail(@PathVariable("id") Long id) {
         return Result.ok(dataApiService.detail(id));
     }
 
-    @Operation(summary = "编辑 API", description = "名称/路径/参数/字段/排序/分页可改；数据源/库/表绑定不可改；编辑前重新过敏感度闸门")
+    @Operation(summary = "编辑 API", description = "名称/路径/参数/字段/排序/分页/查询形态可改；数据源/库/表绑定不可改；编辑前重新过敏感度闸门；CUSTOM_SQL 换 SQL 后重新校验 + 重新过闸门 + 更新血缘")
     @SaCheckPermission(PermissionCode.API_UPDATE)
     @AuditLog(resourceType = AuditResourceType.DATA_API, opType = AuditOpType.UPDATE,
             resourceId = "#id", resourceName = "#request.name")

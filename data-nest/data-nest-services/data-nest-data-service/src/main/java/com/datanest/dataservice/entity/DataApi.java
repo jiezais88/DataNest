@@ -26,6 +26,11 @@ public class DataApi {
     /** 状态：已下线 */
     public static final String STATUS_DISABLED = "DISABLED";
 
+    /** 查询定义形态：选表（一期默认，SQL 由 OpenApiSqlBuilder 按 filters/fields 生成） */
+    public static final String QUERY_TYPE_TABLE_SELECT = "TABLE_SELECT";
+    /** 查询定义形态：自定义 SQL（Sprint 13，SQL 直通执行，:param 命名参数） */
+    public static final String QUERY_TYPE_CUSTOM_SQL = "CUSTOM_SQL";
+
     @Schema(description = "主键 ID")
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
@@ -54,8 +59,17 @@ public class DataApi {
     @Schema(description = "关联元数据表 ID（governance metadata_table）")
     private Long metadataTableId;
 
-    @Schema(description = "API 定义 JSON：filters 参数化筛选 + fields 返回字段白名单")
+    @Schema(description = "API 定义 JSON：filters 参数化筛选 + fields 返回字段白名单（选表形态）；CUSTOM_SQL 形态含 queryType/sqlParams")
     private String paramsJson;
+
+    @Schema(description = "查询定义形态：TABLE_SELECT 选表 / CUSTOM_SQL 自定义 SQL")
+    private String queryType;
+
+    @Schema(description = "自定义 SQL 文本（CUSTOM_SQL 形态，只读 SELECT，:param 命名参数）")
+    private String sqlText;
+
+    @Schema(description = "SQL 涉及表清单 JSON（[{datasourceId,database,schema,table}]，创建/编辑时解析落库）")
+    private String involvedTables;
 
     @Schema(description = "排序（如 cnt DESC，列名+方向白名单校验）")
     private String orderBy;

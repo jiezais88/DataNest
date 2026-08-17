@@ -38,7 +38,7 @@ export function normalizePathInput(raw: string): string {
 }
 
 /** 前端预校验（与后端白名单同规则，尽早反馈；后端仍会兜底） */
-export function validateApiConfig(value: ApiConfigValue): string | null {
+export function validateApiConfig(value: ApiConfigValue, opts?: {customSql?: boolean}): string | null {
     if (!value.name.trim()) return '请填写 API 名称';
     if (value.name.trim().length > 100) return 'API 名称最长 100 字符';
     const segment = normalizePathInput(value.path);
@@ -48,7 +48,8 @@ export function validateApiConfig(value: ApiConfigValue): string | null {
     if (value.paginated && (!Number.isInteger(value.pageSizeMax) || value.pageSizeMax < 1 || value.pageSizeMax > 1000)) {
         return 'pageSize 上限需为 1~1000 的整数';
     }
-    if (value.exposedFields.length === 0) return '请至少勾选 1 个暴露字段';
+    // 自定义 SQL 形态：返回列由 SQL 决定，不做字段白名单勾选（Sprint 13 PRD D7）
+    if (!opts?.customSql && value.exposedFields.length === 0) return '请至少勾选 1 个暴露字段';
     return null;
 }
 

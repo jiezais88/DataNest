@@ -1,5 +1,6 @@
-// API 创建向导（Sprint 10 F2）：3 步 —— 选择数据表 → 配置接口 → 绑定 API Key。
-// 选表即生成接口雏形（右侧 API 预览：路径 + 暴露字段勾选）；机密表禁选、内部表提示需超级管理员特批开放。
+// API 创建向导（Sprint 10 F2 + Sprint 13 F1）：4 步 —— 查询定义方式 → 选表/定义 SQL → 配置接口 → 绑定 API Key。
+// 双形态：选表（一期流程完全不变）/ 自定义 SQL（只读 SQL + :param 参数 + 校验 + 试跑预览）。
+// 自定义 SQL 形态：数据源/库/表绑定以 SQL 文本引用为准（仅 datasourceId 落库），返回列由 SQL 决定。
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearchParams} from 'react-router-dom';
 import {Tooltip} from 'antd';
@@ -7,6 +8,8 @@ import {
     HiOutlineCheckCircle,
     HiOutlineChevronLeft,
     HiOutlineChevronRight,
+    HiOutlineCodeBracketSquare,
+    HiOutlineExclamationTriangle,
     HiOutlineKey,
     HiOutlineLockClosed,
     HiOutlineTableCells,
@@ -28,6 +31,7 @@ import DsSpinner from '@/components/DsSpinner';
 import DsModal from '@/components/DsModal';
 import {SensitivityBadge} from '../badges';
 import ApiConfigForm from './ApiConfigForm';
+import CustomSqlForm from './CustomSqlForm';
 import {
     buildFilters,
     buildOrderBy,
@@ -35,13 +39,14 @@ import {
     normalizePathInput,
     validateApiConfig,
 } from './apiConfig';
+import {EMPTY_CUSTOM_SQL_STATE, clientCheckReadOnly, scanSqlParams} from './customSql';
+import type {CustomSqlState} from './customSql';
 import type {ApiColumnRow, ApiConfigValue} from './apiConfig';
 import type {MetadataTable} from '@/types/metadata';
-import type {ApiKeyCreateResult, ApiKeyPageItem, SqlDatasource} from '@/types/data-service';
-
-const STEPS = ['选择数据表', '配置接口', '绑定 API Key'];
+import type {ApiKeyCreateResult, ApiKeyPageItem, DataApiQueryType, SqlDatasource} from '@/types/data-service';
 
 type BindMode = 'none' | 'existing' | 'new';
+type QueryMode = 'table' | 'customSql';
 
 export default function ApiCreateWizardPage() {
     const navigate = useNavigate();
@@ -58,7 +63,11 @@ export default function ApiCreateWizardPage() {
         };
     }, [searchParams]);
 
-    // ============ 第 1 步：选表 ============
+    // ============ 第 0 步：查询定义方式 ============
+    // 默认选表（推荐）；资产详情「生成 API」带入时同样走选表形态（PRD 6.1，保持现状）
+    const [queryMode, setQueryMode] = useState<QueryMode>('table');
+
+    // ============ 第 1 步：选表（TABLE_SELECT 形态） ============
     const [datasources, setDatasources] = useState<SqlDatasource[]>([]);
     const [datasourceId, setDatasourceId] = useState('');
     const [databases, setDatabases] = useState<string[]>([]);
@@ -70,6 +79,9 @@ export default function ApiCreateWizardPage() {
     const [selectedTable, setSelectedTable] = useState<MetadataTable | null>(null);
     const [columns, setColumns] = useState<ApiColumnRow[]>([]);
     const [columnsLoading, setColumnsLoading] = useState(false);
+
+    // ============ 第 1 步：自定义 SQL（CUSTOM_SQL 形态） ============
+    const [customSql, setCustomSql] = useState<CustomSqlState>(EMPTY_CUSTOM_SQL_STATE);
 
     // ============ 第 2 步：接口配置 ============
     const [config, setConfig] = useState<ApiConfigValue>({
@@ -102,7 +114,12 @@ export default function ApiCreateWizardPage() {
     const needSchema = currentDatasource ? !isWithoutSchema(currentDatasource.type) : false;
     const dsDisplayName = (ds: SqlDatasource) => (ds.builtin ? 'Doris 数仓' : `${ds.name}（${ds.type}）`);
 
-    // 数据源下拉（含内置 Doris）
+    const stepTitles = useMemo(
+        () => ['查询定义方式', queryMode === 'customSql' ? '定义 SQL' : '选择数据表', '配置接口', '绑定 API Key'],
+        [queryMode],
+    );
+
+    // 数据源下拉（含内置 Doris），选表与自定义 SQL 共用
     useEffect(() => {
         listSqlDatasources()
             .then((res) => {
@@ -114,11 +131,17 @@ export default function ApiCreateWizardPage() {
                 } else if (doris) {
                     setDatasourceId(doris.id);
                 }
+                // 自定义 SQL 默认选中内置 Doris
+                setCustomSql((prev) => ({
+                    ...prev,
+                    datasourceId: prev.datasourceId || (preset?.datasourceId && list.some(d => d.id === preset.datasourceId) ? preset.datasourceId : doris?.id ?? ''),
+                }));
             })
             .catch(() => {
                 // 拦截器已提示
             });
-    }, []);
+        // preset 为 useMemo 稳定引用，仅随 URL 参数变化
+    }, [preset]);
 
     // 数据源 → 库列表
     useEffect(() => {
@@ -142,7 +165,7 @@ export default function ApiCreateWizardPage() {
             .catch(() => {
                 // 拦截器已提示
             });
-    }, [datasourceId]);
+    }, [datasourceId, preset]);
 
     // 库 → schema 列表（PG/Oracle/SQLServer）或直接查表（MySQL/Doris）
     useEffect(() => {
@@ -166,7 +189,7 @@ export default function ApiCreateWizardPage() {
                     // 拦截器已提示
                 });
         }
-    }, [datasourceId, databaseName, needSchema]);
+    }, [datasourceId, databaseName, needSchema, preset]);
 
     // 库/schema → 表列表（含敏感度；机密表禁选）
     useEffect(() => {
@@ -182,7 +205,6 @@ export default function ApiCreateWizardPage() {
             .catch(() => setTables([]))
             .finally(() => setTablesLoading(false));
     }, [datasourceId, databaseName, schemaName, needSchema]);
-
 
     // 选表 → 列清单 + 生成接口雏形（默认名称/路径/全字段暴露）
     const handleSelectTable = useCallback((table: MetadataTable) => {
@@ -218,12 +240,11 @@ export default function ApiCreateWizardPage() {
         if (target && selectedTable?.id !== target.id) {
             handleSelectTable(target);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tables, selectedTable, handleSelectTable, preset]);
 
-    // 进入第 3 步时加载启用态 Key
+    // 进入第 4 步时加载启用态 Key
     useEffect(() => {
-        if (step !== 2) return;
+        if (step !== 3) return;
         setKeysLoading(true);
         pageApiKeys({page: 1, pageSize: 100, status: 'ENABLED'})
             .then((res) => setEnabledKeys(res.data.records ?? []))
@@ -231,52 +252,97 @@ export default function ApiCreateWizardPage() {
             .finally(() => setKeysLoading(false));
     }, [step]);
 
+    /** 自定义 SQL 步骤校验（未通过禁止进入下一步；权威校验由后端保存时兜底） */
+    const validateCustomSqlStep = (): string | null => {
+        if (!customSql.datasourceId) return '请选择数据源';
+        if (!customSql.sqlText.trim()) return '请编写只读 SQL';
+        const err = clientCheckReadOnly(customSql.sqlText);
+        if (err) return err;
+        if (!customSql.validated) return '请先点击「校验 SQL」且校验通过后再进入下一步';
+        const placeholders = scanSqlParams(customSql.sqlText);
+        const defs = new Set(customSql.sqlParams.map((p) => p.name));
+        const missing = placeholders.filter((n) => !defs.has(n));
+        if (missing.length > 0) return `参数 ${missing.map((n) => `:${n}`).join('、')} 未定义，请先校验 SQL`;
+        return null;
+    };
+
     const goNext = () => {
         if (step === 0) {
-            if (!selectedTable) {
-                notify.warning('请先选择数据表');
-                return;
-            }
             setStep(1);
             return;
         }
         if (step === 1) {
-            const err = validateApiConfig(config);
+            if (queryMode === 'table') {
+                if (!selectedTable) {
+                    notify.warning('请先选择数据表');
+                    return;
+                }
+            } else {
+                const err = validateCustomSqlStep();
+                if (err) {
+                    notify.warning(err);
+                    return;
+                }
+            }
+            setStep(2);
+            return;
+        }
+        if (step === 2) {
+            const err = validateApiConfig(config, {customSql: queryMode === 'customSql'});
             if (err) {
                 notify.warning(err);
                 return;
             }
-            setStep(2);
+            setStep(3);
         }
     };
 
     const handleSubmit = async () => {
-        const err = validateApiConfig(config);
+        const err = validateApiConfig(config, {customSql: queryMode === 'customSql'});
         if (err) {
             notify.warning(err);
             return;
+        }
+        if (queryMode === 'customSql') {
+            const sqlErr = validateCustomSqlStep();
+            if (sqlErr) {
+                notify.warning(sqlErr);
+                return;
+            }
         }
         if (bindMode === 'new' && !newKeyName.trim()) {
             notify.warning('请填写新 Key 名称');
             return;
         }
-        if (!selectedTable) return;
         setSubmitting(true);
         try {
-            const res = await createDataApi({
-                name: config.name.trim(),
-                path: normalizePathInput(config.path),
-                datasourceId,
-                databaseName,
-                schemaName: needSchema ? schemaName : undefined,
-                tableName: selectedTable.tableName,
-                metadataTableId: selectedTable.id,
-                filters: buildFilters(config),
-                fields: config.exposedFields,
-                orderBy: buildOrderBy(config),
-                paginated: config.paginated ? 1 : 0,
-                pageSizeMax: config.pageSizeMax,
-            });
+            const res = await createDataApi(
+                queryMode === 'customSql'
+                    ? {
+                        name: config.name.trim(),
+                        path: normalizePathInput(config.path),
+                        datasourceId: customSql.datasourceId,
+                        queryType: 'CUSTOM_SQL' as DataApiQueryType,
+                        sqlText: customSql.sqlText.trim(),
+                        sqlParams: customSql.sqlParams,
+                        paginated: config.paginated ? 1 : 0,
+                        pageSizeMax: config.pageSizeMax,
+                    }
+                    : {
+                        name: config.name.trim(),
+                        path: normalizePathInput(config.path),
+                        datasourceId,
+                        databaseName,
+                        schemaName: needSchema ? schemaName : undefined,
+                        tableName: selectedTable?.tableName,
+                        metadataTableId: selectedTable?.id,
+                        filters: buildFilters(config),
+                        fields: config.exposedFields,
+                        orderBy: buildOrderBy(config),
+                        paginated: config.paginated ? 1 : 0,
+                        pageSizeMax: config.pageSizeMax,
+                    },
+            );
             const apiId = res.data.id;
             setCreatedApiId(apiId);
 
@@ -311,7 +377,7 @@ export default function ApiCreateWizardPage() {
             notify.success(`API「${res.data.name}」已创建（未发布）`);
             navigate(`/data-service/api-manage/${apiId}`);
         } catch {
-            // 拦截器已提示（含敏感度 9004 / 路径重复 9010 等）
+            // 拦截器已提示（含敏感度 9004 / 路径重复 9010 / 自定义 SQL 9016~9018 等）
         } finally {
             setSubmitting(false);
         }
@@ -334,7 +400,7 @@ export default function ApiCreateWizardPage() {
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">新建 API</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        三步完成：选择数据表 → 配置调用方式 → 绑定调用凭证（Key）。选好数据表，右侧即可预览生成的 API。
+                        四步完成：选择查询定义方式 → 定义查询（选表或自定义 SQL）→ 配置调用方式 → 绑定调用凭证（Key）。
                     </p>
                 </div>
                 <DsButton variant="secondary" onClick={() => navigate('/data-service/api-manage')}>
@@ -345,7 +411,7 @@ export default function ApiCreateWizardPage() {
 
             {/* 步骤条 */}
             <div className="flex items-center gap-ds-2 mb-ds-4 flex-shrink-0">
-                {STEPS.map((label, idx) => (
+                {stepTitles.map((label, idx) => (
                     <div key={label} className="flex items-center gap-ds-2">
                         {idx > 0 && <div className="w-10 h-px bg-ds-border-strong"/>}
                         <div className={`flex items-center gap-ds-2 px-ds-3 py-ds-2 rounded-ds-sm ${
@@ -365,7 +431,74 @@ export default function ApiCreateWizardPage() {
             </div>
 
             <div className="bg-ds-bg-surface rounded-ds-md shadow-ds-xs border border-ds-border-subtle p-ds-6">
+                {/* 第 1 步：查询定义方式（双形态单选卡片，对齐原型 mode-card） */}
                 {step === 0 && (
+                    <div>
+                        <h3 className="text-ds-small font-semibold text-ds-text-primary mb-ds-3">
+                            选择查询定义方式
+                            <span className="text-ds-caption text-ds-text-muted font-normal ml-ds-2">
+                                决定 API 的查询逻辑来源；选表适合简单查询，自定义 SQL 支持多表 JOIN / 聚合 / 子查询等复杂口径
+                            </span>
+                        </h3>
+                        <div className="grid grid-cols-2 gap-ds-4">
+                            {([
+                                {
+                                    value: 'table' as QueryMode,
+                                    title: '选表',
+                                    tag: '简单查询',
+                                    desc: '从一张表生成接口，支持字段筛选 / 排序 / 分页。适合单表维度查询，配置简单。',
+                                    icon: <HiOutlineTableCells size={20}/>,
+                                },
+                                {
+                                    value: 'customSql' as QueryMode,
+                                    title: '自定义 SQL',
+                                    tag: '灵活 · 复杂口径',
+                                    desc: '编写只读 SQL（支持多表 JOIN / 聚合 / 子查询 / CTE），将加工后的结果封装为接口。限定单一数据源内查询。',
+                                    icon: <HiOutlineCodeBracketSquare size={20}/>,
+                                },
+                            ]).map((opt) => (
+                                <label
+                                    key={opt.value}
+                                    className={`flex items-start gap-ds-3 border-2 rounded-ds-md px-ds-4 py-ds-4 cursor-pointer transition-colors ${
+                                        queryMode === opt.value
+                                            ? 'border-ds-accent bg-ds-accent-light'
+                                            : 'border-ds-border-subtle hover:border-ds-border-strong bg-ds-bg-surface'
+                                    }`}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="query-mode"
+                                        checked={queryMode === opt.value}
+                                        onChange={() => setQueryMode(opt.value)}
+                                        className="accent-ds-accent mt-1"
+                                    />
+                                    <span className="min-w-0">
+                                        <span className="flex items-center gap-ds-2">
+                                            <span className={`text-ds-body ${queryMode === opt.value ? 'text-ds-accent' : 'text-ds-text-muted'}`}>
+                                                {opt.icon}
+                                            </span>
+                                            <span className="text-ds-body font-bold text-ds-text-primary">{opt.title}</span>
+                                            <span className="px-ds-2 py-0.5 rounded-full text-ds-badge bg-ds-accent-light text-ds-accent">
+                                                {opt.tag}
+                                            </span>
+                                        </span>
+                                        <span className="block text-ds-small text-ds-text-secondary mt-ds-1 leading-relaxed">{opt.desc}</span>
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                        <div className="flex items-start gap-ds-2 mt-ds-4 px-ds-3 py-ds-2 rounded-ds-sm bg-ds-warning-light text-ds-warning text-ds-small">
+                            <HiOutlineExclamationTriangle size={15} className="mt-0.5 flex-shrink-0"/>
+                            <span>
+                                自定义 SQL 为只读查询，保存时将校验涉及的每一张表：机密表不可生成对外 API，
+                                超出你的数据权限的表将导致整体拒绝（fail-closed）。
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* 第 2 步：选表（一期流程） */}
+                {step === 1 && queryMode === 'table' && (
                     <div className="grid grid-cols-2 gap-ds-6">
                         {/* 左：数据源/库/表 */}
                         <div>
@@ -531,11 +664,24 @@ export default function ApiCreateWizardPage() {
                     </div>
                 )}
 
-                {step === 1 && (
-                    <ApiConfigForm columns={columns} value={config} onChange={setConfig}/>
+                {/* 第 2 步：自定义 SQL 定义 */}
+                {step === 1 && queryMode === 'customSql' && (
+                    <CustomSqlForm value={customSql} onChange={setCustomSql} datasources={datasources}/>
                 )}
 
+                {/* 第 3 步：配置接口 */}
                 {step === 2 && (
+                    <ApiConfigForm
+                        columns={columns}
+                        value={config}
+                        onChange={setConfig}
+                        queryType={queryMode === 'customSql' ? 'CUSTOM_SQL' : 'TABLE_SELECT'}
+                        sqlParams={queryMode === 'customSql' ? customSql.sqlParams : undefined}
+                    />
+                )}
+
+                {/* 第 4 步：绑定 Key */}
+                {step === 3 && (
                     <div className="flex flex-col gap-ds-4 max-w-[640px]">
                         <p className="text-ds-small text-ds-text-muted">
                             业务系统凭 Key 调用本 API；也可以稍后在「API Key 管理」中随时绑定。
@@ -643,7 +789,7 @@ export default function ApiCreateWizardPage() {
                         上一步
                     </DsButton>
                 )}
-                {step < 2 ? (
+                {step < 3 ? (
                     <DsButton onClick={goNext}>
                         下一步
                         <HiOutlineChevronRight size={14}/>

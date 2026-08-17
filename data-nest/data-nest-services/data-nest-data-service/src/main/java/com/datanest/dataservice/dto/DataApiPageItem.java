@@ -39,6 +39,9 @@ public class DataApiPageItem {
     @Schema(description = "表名")
     private String tableName;
 
+    @Schema(description = "查询定义形态：TABLE_SELECT 选表 / CUSTOM_SQL 自定义 SQL")
+    private String queryType;
+
     @Schema(description = "源表敏感度：PUBLIC 公开 / INTERNAL 内部 / CONFIDENTIAL 机密；governance 不可达时降级 null")
     private String sensitivityLevel;
 

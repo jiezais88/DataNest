@@ -29,8 +29,7 @@ public class DataApiCreateRequest {
     @NotNull(message = "数据源不能为空")
     private Long datasourceId;
 
-    @Schema(description = "库名", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "库名不能为空")
+    @Schema(description = "库名（CUSTOM_SQL 形态可不传，服务端取数据源默认库）")
     @Size(max = 100)
     private String databaseName;
 
@@ -38,13 +37,22 @@ public class DataApiCreateRequest {
     @Size(max = 100)
     private String schemaName;
 
-    @Schema(description = "表名", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "表名不能为空")
+    @Schema(description = "表名（仅 TABLE_SELECT 形态必填；CUSTOM_SQL 形态留空）")
     @Size(max = 100)
     private String tableName;
 
     @Schema(description = "关联元数据表 ID（从元数据/资产带入时传）")
     private Long metadataTableId;
+
+    @Schema(description = "查询定义形态：TABLE_SELECT 选表（默认，一期流程不变）/ CUSTOM_SQL 自定义 SQL")
+    private String queryType = "TABLE_SELECT";
+
+    @Schema(description = "自定义 SQL 文本（CUSTOM_SQL 形态必填，只读 SELECT，:param 命名参数）")
+    private String sqlText;
+
+    @Schema(description = "自定义 SQL 参数定义（CUSTOM_SQL 形态，与 SQL :param 一一对应）")
+    @Valid
+    private List<CustomSqlParamDef> sqlParams;
 
     @Schema(description = "参数化筛选（EQ/RANGE，AND 组合）")
     @Valid

@@ -22,13 +22,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 对外数据 API 执行入口（Sprint 10 F3）。
+ * 对外数据 API 执行入口（Sprint 10 F3 / Sprint 13 双形态）。
  * <p>
  * {@code GET /open-api/v1/{自定义path}}：网关已放行登录态，OpenApiKeyFilter 完成 X-API-Key 认证 +
  * 绑定校验 + Key 级限流（401/404/429 在 filter 直接返回）。此处完成状态校验（未发布 404）、
- * 熔断（503）、执行（200）。对外用 HTTP 状态码语义（区别于管理端 Result 信封 200）。
+ * 熔断（503）、执行（200）。对外用 HTTP 状态码语义（区别于管理端 Result 信封 200）；
+ * TABLE_SELECT 与 CUSTOM_SQL 双形态共用同一入口（技术文档 §4.2，对外零改动）。
  */
-@Tag(name = "对外数据 API", description = "业务系统凭 X-API-Key 调用已发布 API（Sprint 10 F3）")
+@Tag(name = "对外数据 API", description = "业务系统凭 X-API-Key 调用已发布 API（Sprint 10 F3 / Sprint 13 选表 + 自定义 SQL 双形态）")
 @RestController
 @RequestMapping("/open-api/v1")
 public class OpenApiController {
@@ -39,7 +40,7 @@ public class OpenApiController {
         this.openApiService = openApiService;
     }
 
-    @Operation(summary = "调用数据 API", description = "X-API-Key 认证 + 限流 + 熔断 + 参数化查询；未发布 404 / 熔断 503 / 超限 429")
+    @Operation(summary = "调用数据 API", description = "X-API-Key 认证 + 限流 + 熔断 + 参数化查询；选表形态支持 filters 筛选与分页，自定义 SQL 形态按 sqlParams 定义绑定参数；未发布 404 / 熔断 503 / 参数错误 400 / 超限 429")
     @GetMapping("/{segment}")
     public ResponseEntity<Result<OpenApiResult>> execute(@PathVariable("segment") String segment,
                                                          HttpServletRequest request) {
@@ -55,11 +56,12 @@ public class OpenApiController {
         }
     }
 
-    /** 业务错误码 → 对外 HTTP 状态码（未发布 404 / 熔断 503 / 其它 500） */
+    /** 业务错误码 → 对外 HTTP 状态码（未发布 404 / 熔断 503 / 参数错误 400 / 其它 500） */
     private HttpStatus mapStatus(ErrorCode errorCode) {
         return switch (errorCode) {
             case API_NOT_PUBLISHED -> HttpStatus.NOT_FOUND;
             case API_CIRCUIT_OPEN -> HttpStatus.SERVICE_UNAVAILABLE;
+            case CUSTOM_SQL_PARAM_MISMATCH -> HttpStatus.BAD_REQUEST;
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
     }

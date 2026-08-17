@@ -88,6 +88,43 @@ export const API_KEY_STATUS_LABEL: Record<ApiKeyStatus, string> = {
     DISABLED: '禁用',
 };
 
+// ============ Sprint 13 F1：自定义查询 SQL（双形态：选表 / 自定义 SQL） ============
+
+/** 查询定义形态：TABLE_SELECT 选表（一期流程）/ CUSTOM_SQL 自定义 SQL */
+export type DataApiQueryType = 'TABLE_SELECT' | 'CUSTOM_SQL';
+
+/** 自定义 SQL 参数类型（对齐 CancelableSqlExecutor 启发式推断，可手动修正） */
+export type CustomSqlParamType = 'LONG' | 'DECIMAL' | 'DATE' | 'DATETIME' | 'STRING' | 'BOOLEAN';
+
+export const CUSTOM_SQL_PARAM_TYPE_LABEL: Record<CustomSqlParamType, string> = {
+    LONG: '整数 LONG',
+    DECIMAL: '小数 DECIMAL',
+    DATE: '日期 DATE',
+    DATETIME: '日期时间 DATETIME',
+    STRING: '字符串 STRING',
+    BOOLEAN: '布尔 BOOLEAN',
+};
+
+/** 自定义 SQL 参数定义（CUSTOM_SQL 形态，与 SQL 内 :param 一一对应） */
+export interface CustomSqlParamDef {
+    /** 参数名（对应 SQL 内 :param 命名占位符） */
+    name: string;
+    /** 参数类型：LONG / DECIMAL / DATE / DATETIME / STRING / BOOLEAN */
+    type: CustomSqlParamType;
+    /** 是否必填（默认 true；选填参数缺省时不带该条件） */
+    required: boolean;
+    /** 默认值（选填参数缺省时使用；统一 string 传输，后端按 type 强转） */
+    defaultValue?: string | null;
+}
+
+/** SQL 涉及表（创建/编辑时后端解析落库，供权限校验与血缘；前端展示用） */
+export interface InvolvedTable {
+    datasourceId?: string;
+    database?: string;
+    schema?: string;
+    table: string;
+}
+
 /** API 分页列表项（Long 计数序列为 string） */
 export interface DataApiPageItem {
     id: string;
@@ -99,6 +136,8 @@ export interface DataApiPageItem {
     databaseName: string;
     schemaName?: string;
     tableName: string;
+    /** 查询定义形态（Sprint 13；缺省视为选表） */
+    queryType?: DataApiQueryType;
     /** 源表敏感度；governance 不可达时降级为空（显示「未知」） */
     sensitivityLevel?: SensitivityLevel;
     status: DataApiStatus;
@@ -167,6 +206,14 @@ export interface DataApiDetail {
     databaseName: string;
     schemaName?: string;
     tableName: string;
+    /** 查询定义形态（Sprint 13；缺省视为选表） */
+    queryType?: DataApiQueryType;
+    /** 自定义 SQL 文本（CUSTOM_SQL 形态） */
+    sqlText?: string;
+    /** 自定义 SQL 参数定义（CUSTOM_SQL 形态） */
+    sqlParams?: CustomSqlParamDef[];
+    /** SQL 涉及表（CUSTOM_SQL 形态，创建/编辑时后端解析落库） */
+    involvedTables?: InvolvedTable[];
     sensitivityLevel?: SensitivityLevel;
     metadataTableId?: string;
     definition: DataApiDefinition;
@@ -190,9 +237,17 @@ export interface DataApiCreateRequest {
     /** 可传自定义段 orders 或完整 /open-api/v1/orders，后端统一归一 */
     path: string;
     datasourceId: string;
-    databaseName: string;
+    /** 查询定义形态：TABLE_SELECT 选表（默认，一期流程）/ CUSTOM_SQL 自定义 SQL */
+    queryType?: DataApiQueryType;
+    /** 自定义 SQL 文本（CUSTOM_SQL 形态必填，只读 SELECT，:param 命名参数） */
+    sqlText?: string;
+    /** 自定义 SQL 参数定义（CUSTOM_SQL 形态，与 SQL :param 一一对应） */
+    sqlParams?: CustomSqlParamDef[];
+    /** 库名（CUSTOM_SQL 形态由 SQL 决定，可不传） */
+    databaseName?: string;
     schemaName?: string;
-    tableName: string;
+    /** 表名（CUSTOM_SQL 形态由 SQL 决定，可不传） */
+    tableName?: string;
     metadataTableId?: string;
     filters?: ApiParamDef[];
     /** 返回字段白名单（空 = 全部字段） */
@@ -202,10 +257,16 @@ export interface DataApiCreateRequest {
     pageSizeMax?: number;
 }
 
-/** 编辑 API 请求（数据源/库/表绑定不可改） */
+/** 编辑 API 请求（数据源/库/表绑定不可改；CUSTOM_SQL 形态可改 SQL/参数） */
 export interface DataApiUpdateRequest {
     name: string;
     path: string;
+    /** 查询定义形态：TABLE_SELECT 选表（默认）/ CUSTOM_SQL 自定义 SQL */
+    queryType?: DataApiQueryType;
+    /** 自定义 SQL 文本（CUSTOM_SQL 形态必填，只读 SELECT，:param 命名参数） */
+    sqlText?: string;
+    /** 自定义 SQL 参数定义（CUSTOM_SQL 形态，与 SQL :param 一一对应） */
+    sqlParams?: CustomSqlParamDef[];
     filters?: ApiParamDef[];
     fields?: string[];
     orderBy?: string;

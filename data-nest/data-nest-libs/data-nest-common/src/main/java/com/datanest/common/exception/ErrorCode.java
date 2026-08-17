@@ -190,6 +190,11 @@ public enum ErrorCode {
     API_CIRCUIT_OPEN(9015, "数据源暂不可用，请稍后重试"),
     API_PIPELINE_UNAVAILABLE(9016, "CDC 管道不可订阅（不存在或未运行）"),
 
+    // Custom SQL errors — Sprint 13 数据服务自定义查询 SQL（9xxx，对齐技术文档 §4.3，9016 已被占用故从 9017 起）
+    CUSTOM_SQL_INVALID(9017, "自定义 SQL 非法（非只读/多语句/语法错误）"),
+    CUSTOM_SQL_PARAM_MISMATCH(9018, "SQL 参数与定义不一致（多/漏/类型不符）"),
+    CUSTOM_SQL_TABLE_FORBIDDEN(9019, "涉及表含机密/未特批内部表或超出数据权限（fail-closed）"),
+
     // System errors (9xxx)
     NOT_FOUND(404, "请求的资源不存在"),
     INTERNAL_ERROR(9999, "系统内部错误");

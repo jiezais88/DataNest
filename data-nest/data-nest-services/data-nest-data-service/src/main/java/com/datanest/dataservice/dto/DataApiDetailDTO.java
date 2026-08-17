@@ -46,8 +46,20 @@ public class DataApiDetailDTO {
     @Schema(description = "关联元数据表 ID")
     private Long metadataTableId;
 
-    @Schema(description = "API 定义（filters + fields）")
+    @Schema(description = "API 定义（filters + fields；CUSTOM_SQL 形态含 queryType + sqlParams）")
     private DataApiDefinition definition;
+
+    @Schema(description = "查询定义形态：TABLE_SELECT 选表 / CUSTOM_SQL 自定义 SQL")
+    private String queryType;
+
+    @Schema(description = "自定义 SQL 文本（CUSTOM_SQL 形态）")
+    private String sqlText;
+
+    @Schema(description = "自定义 SQL 参数定义（CUSTOM_SQL 形态）")
+    private List<CustomSqlParamDef> sqlParams;
+
+    @Schema(description = "SQL 涉及表清单 JSON（[{datasourceId,database,schema,table}]）")
+    private String involvedTables;
 
     @Schema(description = "排序")
     private String orderBy;

@@ -2,7 +2,6 @@
 import request from './request';
 import type {Result, PageResult} from '@/types/common';
 import type {
-    ApiCallLogItem,
     ApiKeyCreateResult,
     ApiKeyDetail,
     ApiKeyPageItem,
@@ -27,8 +26,6 @@ import type {
     StatsTopApi,
     StatsTopKey,
     StatsTrendPoint,
-    StatusBreakdown,
-    SubscriberItem,
     SubscriptionStats,
 } from '@/types/data-service';
 
@@ -77,13 +74,14 @@ export function exportSqlResult(data: SqlExportRequest) {
 
 // ============ Sprint 10 F2：数据 API 管理 ============
 
-/** API 列表（分页；scope=mine 仅看我创建的；keyword 匹配名称/路径；status 精确过滤） */
+/** API 列表（分页；scope=mine 仅看我创建的；keyword 匹配名称/路径；status 精确过滤；queryType 形态过滤） */
 export function pageDataApis(params: {
     page: number;
     pageSize: number;
     scope?: 'mine';
     keyword?: string;
     status?: DataApiStatus | '';
+    queryType?: string;
 }) {
     const search = new URLSearchParams();
     search.set('page', String(params.page));
@@ -91,6 +89,7 @@ export function pageDataApis(params: {
     if (params.scope) search.set('scope', params.scope);
     if (params.keyword) search.set('keyword', params.keyword);
     if (params.status) search.set('status', params.status);
+    if (params.queryType) search.set('queryType', params.queryType);
     return request.get<Result<PageResult<DataApiPageItem>>>(`/data-service/apis/page?${search.toString()}`);
 }
 

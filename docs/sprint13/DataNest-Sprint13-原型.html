@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DataNest Sprint 13 原型 · 数据服务自定义查询 SQL</title>
+<style>
+  :root{
+    --bg-root:#eef0f7; --bg-surface:#ffffff; --bg-hover:#ebeff6;
+    --border-subtle:#d8dee8; --border-strong:#c6ceda;
+    --text-primary:#0f172a; --text-secondary:#475569; --text-muted:#64748b;
+    --accent:#4f46e5; --accent-hover:#4338ca; --accent-light:#eef2ff;
+    --danger:#dc2626; --danger-light:#fef2f2;
+    --success:#16a34a; --success-light:#f0fdf4;
+    --warning:#d97706; --warning-light:#fffbeb;
+    --sidebar-bg:#334155; --sidebar-border:#475569; --sidebar-text:#cbd5e1;
+    --r-xs:6px; --r-sm:8px; --r-md:12px; --r-lg:16px;
+    --shadow-xs:0 1px 2px rgba(0,0,0,.06);
+    --shadow-sm:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg-root); color:var(--text-primary); font-size:14px; line-height:1.6}
+  .layout{display:flex; min-height:100vh}
+  /* ── 侧边栏 ── */
+  .sidebar{width:232px; background:var(--sidebar-bg); color:var(--sidebar-text); display:flex; flex-direction:column; flex-shrink:0}
+  .logo{display:flex; align-items:center; gap:10px; padding:16px 16px 14px; color:#fff; font-weight:800; font-size:15px}
+  .logo .dot{width:22px;height:22px;border-radius:6px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800}
+  .nav-group{padding:10px 12px 4px; font-size:11px; font-weight:600; letter-spacing:.5px; color:#94a3b8; text-transform:uppercase}
+  .nav-item{display:flex; align-items:center; gap:10px; padding:8px 14px; margin:1px 8px; border-radius:8px; font-size:13px; cursor:pointer; color:var(--sidebar-text)}
+  .nav-item:hover{background:var(--sidebar-border)}
+  .nav-item.active{background:rgba(79,70,229,.28); color:#fff; font-weight:600}
+  .nav-item svg{width:17px; height:17px; flex-shrink:0}
+  /* ── 主区 ── */
+  .main{flex:1; display:flex; flex-direction:column; min-width:0}
+  .topbar{height:52px; background:var(--bg-surface); border-bottom:1px solid var(--border-subtle); display:flex; align-items:center; padding:0 20px; gap:12px; flex-shrink:0}
+  .crumb{font-size:13px; color:var(--text-muted)} .crumb b{color:var(--text-primary); font-weight:600}
+  .content{padding:20px 24px; flex:1; overflow:auto}
+  /* ── 页头 ── */
+  .page-head{display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px}
+  .page-head h1{font-size:24px; font-weight:800; letter-spacing:-.5px}
+  .page-head .desc{font-size:13px; color:var(--text-muted); margin-top:2px}
+  /* ── 按钮 ── */
+  .btn{display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; background:var(--bg-surface); color:var(--text-primary); border-color:var(--border-subtle)}
+  .btn:hover{border-color:var(--border-strong)}
+  .btn svg{width:15px; height:15px}
+  .btn.primary{background:var(--accent); color:#fff}
+  .btn.primary:hover{background:var(--accent-hover)}
+  .btn.ghost{background:transparent; border-color:transparent; color:var(--accent)}
+  .btn.sm{padding:5px 10px; font-size:12px}
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  /* ── 卡片/表格 ── */
+  .table-card{background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:12px; box-shadow:var(--shadow-xs)}
+  .toolbar{display:flex; align-items:center; gap:12px; padding:12px; border-bottom:1px solid var(--border-subtle); flex-wrap:wrap}
+  .search{min-width:240px; max-width:360px; display:flex; align-items:center; gap:8px; background:var(--bg-root); border:1px solid var(--border-subtle); border-radius:8px; padding:8px 12px}
+  .search svg{width:15px; height:15px; color:var(--text-muted)}
+  .search input{border:none; outline:none; background:transparent; font-size:13px; width:100%; color:var(--text-primary)}
+  .select{min-width:140px; padding:8px 12px; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; font-size:13px; color:var(--text-primary)}
+  .ml-auto{margin-left:auto}
+  table{width:100%; border-collapse:collapse}
+  thead th{background:var(--bg-root); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:var(--text-secondary); text-align:left; padding:10px 16px; border-bottom:2px solid var(--border-subtle)}
+  tbody td{padding:10px 16px; border-bottom:1px solid var(--border-subtle); font-size:13px; vertical-align:middle}
+  tbody tr:hover{background:var(--bg-hover)}
+  .link{color:var(--accent); cursor:pointer; font-weight:500}
+  .muted{color:var(--text-muted)} .sec{color:var(--text-secondary)}
+  .op{display:flex; gap:4px} .op span{font-size:12px; color:var(--accent); cursor:pointer}
+  /* ── 徽章 ── */
+  .badge{display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:600}
+  .badge .dot{width:6px; height:6px; border-radius:50%}
+  .badge.indigo{background:var(--accent-light); color:var(--accent)}
+  .badge.green{background:var(--success-light); color:var(--success)}
+  .badge.gray{background:#f1f5f9; color:var(--text-secondary)}
+  .badge.red{background:var(--danger-light); color:var(--danger)}
+  .badge.amber{background:var(--warning-light); color:var(--warning)}
+  .badge.blue{background:#eff6ff; color:#2563eb}
+  /* ── 分页 ── */
+  .pager{display:flex; align-items:center; justify-content:space-between; padding:12px 16px}
+  .pager .info{font-size:12px; color:var(--text-muted)}
+  .pager .nums{display:flex; gap:4px; align-items:center}
+  .pager .nums button{width:28px; height:28px; border:none; background:transparent; border-radius:6px; font-size:13px; cursor:pointer; color:var(--text-secondary)}
+  .pager .nums button.active{background:var(--accent); color:#fff; font-weight:600}
+  /* ── 向导 ── */
+  .wizard{max-width:920px; margin:0 auto}
+  .steps{display:flex; align-items:center; gap:8px; margin-bottom:20px; font-size:13px; color:var(--text-muted)}
+  .steps .step{display:flex; align-items:center; gap:8px}
+  .steps .num{width:22px; height:22px; border-radius:50%; background:var(--bg-root); border:1px solid var(--border-subtle); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600}
+  .steps .step.active{color:var(--accent); font-weight:600} .steps .step.active .num{background:var(--accent); color:#fff; border-color:var(--accent)}
+  .steps .step.done .num{background:var(--success-light); color:var(--success); border-color:var(--success)}
+  .steps .bar{width:32px; height:1px; background:var(--border-strong)}
+  .wizard-card{background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:12px; box-shadow:var(--shadow-xs); padding:24px}
+  .wizard-card h3{font-size:17px; font-weight:700; margin-bottom:4px}
+  .wizard-card .hint{font-size:13px; color:var(--text-muted); margin-bottom:16px}
+  .wizard-foot{display:flex; justify-content:flex-end; gap:10px; margin-top:20px}
+  /* 形态选择卡 */
+  .mode-cards{display:flex; gap:16px}
+  .mode-card{flex:1; border:2px solid var(--border-subtle); border-radius:12px; padding:20px; cursor:pointer; background:var(--bg-surface); transition:border-color .15s}
+  .mode-card:hover{border-color:var(--border-strong)}
+  .mode-card.selected{border-color:var(--accent); background:var(--accent-light)}
+  .mode-card .radio{width:16px; height:16px; border-radius:50%; border:2px solid var(--border-strong); display:inline-flex; align-items:center; justify-content:center; margin-bottom:10px}
+  .mode-card.selected .radio{border-color:var(--accent)} .mode-card.selected .radio::after{content:""; width:8px; height:8px; border-radius:50%; background:var(--accent)}
+  .mode-card h4{font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px}
+  .mode-card p{font-size:12.5px; color:var(--text-secondary); margin-top:6px}
+  .mode-card .tag{font-size:11px; color:var(--accent); background:var(--accent-light); padding:2px 8px; border-radius:999px; font-weight:600}
+  /* 表单 */
+  .field{margin-bottom:16px}
+  .field label{display:block; font-size:13px; font-weight:600; margin-bottom:6px}
+  .field label .req{color:var(--danger); margin-left:2px}
+  .input, .select-f{width:100%; padding:8px 12px; border:1px solid var(--border-subtle); border-radius:8px; font-size:13px; background:#fff; color:var(--text-primary)}
+  .input:focus,.select-f:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent)}
+  .row2{display:flex; gap:12px} .row2 .field{flex:1}
+  /* SQL 编辑器 */
+  .sql-editor{border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; background:#0f172a}
+  .sql-editor .bar{display:flex; align-items:center; justify-content:space-between; background:#1e293b; padding:6px 12px; font-size:11px; color:#94a3b8}
+  .sql-editor .bar .btns{display:flex; gap:6px}
+  .sql-editor pre{margin:0; padding:14px 16px; font-family:"JetBrains Mono",Consolas,monospace; font-size:13px; line-height:1.7; color:#e2e8f0; white-space:pre; overflow-x:auto}
+  .sql-kw{color:#93c5fd} .sql-str{color:#86efac} .sql-fn{color:#c4b5fd} .sql-cm{color:#64748b; font-style:italic} .sql-param{color:#fbbf24; font-weight:700}
+  /* 参数表 */
+  .param-table{width:100%; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden}
+  .param-table td{border-bottom:1px solid var(--border-subtle); padding:8px 12px}
+  .param-table tr:last-child td{border-bottom:none}
+  .param-table .chip{display:inline-flex; align-items:center; gap:4px; font-family:Consolas,monospace; font-size:12px; background:var(--bg-root); border:1px solid var(--border-subtle); border-radius:6px; padding:2px 8px; color:var(--text-primary)}
+  .param-table input,.param-table select{border:1px solid var(--border-subtle); border-radius:6px; padding:4px 8px; font-size:12.5px; width:100%}
+  .check{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-secondary)}
+  .check input{width:14px; height:14px; accent-color:var(--accent)}
+  /* 涉及表 & 预览 */
+  .involved{display:flex; flex-wrap:wrap; gap:8px}
+  .involved .tbl{font-family:Consolas,monospace; font-size:12px; background:var(--bg-root); border:1px solid var(--border-subtle); border-radius:6px; padding:3px 10px; color:var(--text-secondary)}
+  .alert-box{border-radius:8px; padding:10px 14px; font-size:12.5px; margin-top:12px; display:flex; gap:8px; align-items:flex-start}
+  .alert-box.warn{background:var(--warning-light); color:var(--warning)}
+  .alert-box.red{background:var(--danger-light); color:var(--danger)}
+  .alert-box svg{width:15px; height:15px; flex-shrink:0; margin-top:1px}
+  /* API 预览 */
+  .api-preview{background:var(--bg-root); border:1px solid var(--border-subtle); border-radius:8px; padding:12px 14px; font-family:Consolas,monospace; font-size:12.5px}
+  .api-preview .m{color:var(--accent); font-weight:700}
+  /* 详情 */
+  .detail-grid{display:flex; gap:16px; align-items:flex-start}
+  .detail-main{flex:1; min-width:0}
+  .info-cards{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px}
+  .info-card{background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow-xs)}
+  .info-card .k{font-size:12px; color:var(--text-muted)}
+  .info-card .v{font-size:15px; font-weight:700; margin-top:2px; word-break:break-all}
+  .section{background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:12px; box-shadow:var(--shadow-xs); margin-bottom:16px}
+  .section .st{font-size:14px; font-weight:700; padding:12px 16px; border-bottom:1px solid var(--border-subtle); display:flex; align-items:center; gap:8px}
+  .section .sb{padding:14px 16px}
+  .tabs{display:flex; gap:4px; border-bottom:1px solid var(--border-subtle); margin-bottom:14px}
+  .tabs .tab{padding:8px 14px; font-size:13px; color:var(--text-secondary); cursor:pointer; border-bottom:2px solid transparent; font-weight:500}
+  .tabs .tab.active{color:var(--accent); border-bottom-color:var(--accent); font-weight:600}
+  .kv{display:flex; gap:10px; padding:8px 0; font-size:13px}
+  .kv .k{width:110px; color:var(--text-muted); flex-shrink:0}
+  .kv .v{color:var(--text-primary)}
+  .hide{display:none}
+  .prototype-banner{position:fixed; bottom:16px; right:16px; z-index:99; background:var(--text-primary); color:#fff; font-size:11px; padding:6px 12px; border-radius:999px; opacity:.85}
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- ═══════ 侧边栏（数据服务域） ═══════ -->
+  <aside class="sidebar">
+    <div class="logo"><span class="dot">D</span> DataNest</div>
+    <div class="nav-group">数据服务</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1z"/><path d="M20 3h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1z"/><path d="M11 13H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1z"/><path d="M20 13h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1z"/></svg> SQL 查询终端</div>
+    <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> API 管理</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg> API Key 管理</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> API 运行统计</div>
+  </aside>
+
+  <!-- ═══════ 主区 ═══════ -->
+  <main class="main">
+    <div class="topbar">
+      <span class="crumb">数据服务 / <b id="crumb">API 管理</b></span>
+    </div>
+    <div class="content">
+
+      <!-- ─────────── 视图 1：API 管理列表 ─────────── -->
+      <section id="view-list">
+        <div class="page-head">
+          <div>
+            <h1>API 管理</h1>
+            <div class="desc">将数据表或自定义 SQL 封装为对外接口，供业务系统安全调用（X-API-Key 认证 + 限流熔断）</div>
+          </div>
+          <button class="btn primary" onclick="show('view-create1'); setStep(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>新建 API</button>
+        </div>
+        <div class="table-card">
+          <div class="toolbar">
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input placeholder="搜索 API 名称 / 路径..." /></div>
+            <select class="select"><option>全部形态</option><option>选表</option><option>自定义 SQL</option></select>
+            <select class="select"><option>全部状态</option><option>已发布</option><option>未发布</option><option>已下线</option></select>
+            <div class="ml-auto" style="display:flex;gap:8px"><button class="btn">查询</button><button class="btn">重置</button></div>
+          </div>
+          <table>
+            <thead><tr><th>名称 / 路径</th><th>形态</th><th>数据表 / SQL</th><th>敏感度</th><th>状态</th><th>绑定 Key</th><th>近 7 天调用</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><div style="font-weight:600">订单区域汇总</div><div class="muted" style="font-family:Consolas,monospace;font-size:12px">/open-api/v1/region-sum</div></td>
+                <td><span class="badge indigo">自定义 SQL</span></td>
+                <td class="muted">JOIN 2 表 · 聚合</td>
+                <td><span class="badge blue">公开</span></td>
+                <td><span class="badge green"><span class="dot" style="background:#16a34a"></span>已发布</span></td>
+                <td>2</td><td>128,492</td>
+                <td><div class="op"><span>查看</span><span>编辑</span><span>下线</span><span>删除</span></div></td>
+              </tr>
+              <tr>
+                <td><div style="font-weight:600">订单明细</div><div class="muted" style="font-family:Consolas,monospace;font-size:12px">/open-api/v1/orders</div></td>
+                <td><span class="badge gray">选表</span></td>
+                <td class="muted">dws_orders</td>
+                <td><span class="badge blue">公开</span></td>
+                <td><span class="badge green"><span class="dot" style="background:#16a34a"></span>已发布</span></td>
+                <td>3</td><td>32,408</td>
+                <td><div class="op"><span>查看</span><span>编辑</span><span>下线</span><span>删除</span></div></td>
+              </tr>
+              <tr>
+                <td><div style="font-weight:600">近 7 天区域金额趋势</div><div class="muted" style="font-family:Consolas,monospace;font-size:12px">/open-api/v1/region-trend</div></td>
+                <td><span class="badge indigo">自定义 SQL</span></td>
+                <td class="muted">窗口聚合</td>
+                <td><span class="badge blue">公开</span></td>
+                <td><span class="badge amber"><span class="dot" style="background:#d97706"></span>未发布</span></td>
+                <td>0</td><td>—</td>
+                <td><div class="op"><span>查看</span><span>编辑</span><span>发布</span><span>删除</span></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pager">
+            <div class="info">共 3 条 · 每页 10 条</div>
+            <div class="nums"><button class="active">1</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── 视图 2：创建向导 · 第 1 步 形态选择 ─────────── -->
+      <section id="view-create1" class="hide">
+        <div class="wizard">
+          <div class="steps">
+            <div class="step active"><span class="num">1</span> 查询定义方式</div><div class="bar"></div>
+            <div class="step"><span class="num">2</span> 定义 SQL</div><div class="bar"></div>
+            <div class="step"><span class="num">3</span> 配置接口</div><div class="bar"></div>
+            <div class="step"><span class="num">4</span> 绑定 Key</div>
+          </div>
+          <div class="wizard-card">
+            <h3>选择查询定义方式</h3>
+            <div class="hint">决定 API 的查询逻辑来源。选表适合简单查询；自定义 SQL 支持多表 JOIN / 聚合 / 子查询等复杂口径。</div>
+            <div class="mode-cards">
+              <div class="mode-card" onclick="pickMode(this,'选表')">
+                <span class="radio"></span>
+                <h4>选表 <span class="tag">简单查询</span></h4>
+                <p>从一张表生成接口，支持字段筛选 / 排序 / 分页。适合单表维度查询，配置简单。</p>
+              </div>
+              <div class="mode-card selected" onclick="pickMode(this,'自定义 SQL')">
+                <span class="radio"></span>
+                <h4>自定义 SQL <span class="tag">灵活 · 复杂口径</span></h4>
+                <p>编写只读 SQL（支持多表 JOIN / 聚合 / 子查询 / CTE），将加工后的结果封装为接口。限定单一数据源内查询。</p>
+              </div>
+            </div>
+            <div class="alert-box warn" style="margin-top:16px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+              <div>自定义 SQL 为只读查询，保存时将校验涉及的每一张表：机密表不可生成对外 API，超出你的数据权限的表将导致整体拒绝。</div>
+            </div>
+          </div>
+          <div class="wizard-foot">
+            <button class="btn" onclick="show('view-list')">取消</button>
+            <button class="btn primary" onclick="show('view-create2'); setStep(2)">下一步：定义 SQL</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── 视图 3：创建向导 · 第 2 步 自定义 SQL ─────────── -->
+      <section id="view-create2" class="hide">
+        <div class="wizard">
+          <div class="steps">
+            <div class="step done"><span class="num">✓</span> 查询定义方式</div><div class="bar"></div>
+            <div class="step active"><span class="num">2</span> 定义 SQL</div><div class="bar"></div>
+            <div class="step"><span class="num">3</span> 配置接口</div><div class="bar"></div>
+            <div class="step"><span class="num">4</span> 绑定 Key</div>
+          </div>
+          <div class="wizard-card">
+            <h3>定义 SQL</h3>
+            <div class="hint">编写只读 SELECT。SQL 中的 <b style="color:var(--accent)">:参数名</b> 会自动识别为 API 参数（如 <span style="font-family:Consolas,monospace">:startDate</span>）。</div>
+            <div class="field">
+              <label>数据源 <span class="req">*</span></label>
+              <div class="row2">
+                <select class="select-f"><option>Doris 数仓（内置）</option><option>demo-电商数仓-Doris</option><option>mysql-业务库</option></select>
+                <span class="muted" style="font-size:12px;align-self:center">仅展示当前用户可访问且已采集元数据的数据源</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>SQL（只读） <span class="req">*</span></label>
+              <div class="sql-editor">
+                <div class="bar">
+                  <span>orders_region_sum.sql</span>
+                  <span class="btns"><span class="btn sm" style="background:transparent;color:#93c5fd;border:none">格式化</span><span class="btn sm" style="background:transparent;color:#93c5fd;border:none">校验 SQL ✓</span></span>
+                </div>
+<pre><span class="sql-kw">SELECT</span> r.region_name,
+       <span class="sql-fn">SUM</span>(o.amount) <span class="sql-kw">AS</span> total_amount,
+       <span class="sql-fn">COUNT</span>(*) <span class="sql-kw">AS</span> order_cnt
+<span class="sql-kw">FROM</span> ods.orders o
+<span class="sql-kw">JOIN</span> dim.region r <span class="sql-kw">ON</span> o.region_id = r.id
+<span class="sql-kw">WHERE</span> o.order_date &gt;= <span class="sql-param">:startDate</span>
+  <span class="sql-kw">AND</span> o.status <span class="sql-kw">IN</span> (<span class="sql-str">'PAID'</span>, <span class="sql-str">'SHIPPED'</span>)
+<span class="sql-kw">GROUP BY</span> r.region_name
+<span class="sql-kw">ORDER BY</span> total_amount <span class="sql-kw">DESC</span></pre>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:10px">
+                <button class="btn sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>试跑预览</button>
+                <span class="muted" style="font-size:12px;align-self:center">预览将在当前数据源执行，返回前 100 条</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>参数（由 SQL 中的 :参数名 自动识别，可修正）</label>
+              <table class="param-table">
+                <tr><td style="width:30%"><span class="chip">:startDate</span></td>
+                    <td style="width:18%"><select><option>日期 DATE</option><option>整数 LONG</option><option>小数 DECIMAL</option><option>日期时间 DATETIME</option><option>字符串 STRING</option></select></td>
+                    <td style="width:18%"><label class="check"><input type="checkbox" checked /> 必填</label></td>
+                    <td style="width:34%"><input placeholder="默认值（选填）" /></td></tr>
+              </table>
+            </div>
+            <div class="field">
+              <label>涉及表（将用于权限校验与血缘）</label>
+              <div class="involved">
+                <span class="tbl">ods.orders</span>
+                <span class="tbl">dim.region</span>
+                <span class="muted" style="font-size:12px">共 2 张 · 均已通过敏感度与数据权限校验 ✓</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>预览结果</label>
+              <div style="border:1px solid var(--border-subtle);border-radius:8px;overflow:hidden">
+                <table>
+                  <thead><tr><th>region_name</th><th>total_amount</th><th>order_cnt</th></tr></thead>
+                  <tbody>
+                    <tr><td>华东</td><td>12,345,678.50</td><td>8,421</td></tr>
+                    <tr><td>华南</td><td>9,876,543.20</td><td>6,152</td></tr>
+                    <tr><td>华北</td><td>7,654,321.00</td><td>5,083</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="wizard-foot">
+            <button class="btn" onclick="show('view-create1'); setStep(1)">上一步</button>
+            <button class="btn primary" onclick="show('view-create3'); setStep(3)">下一步：配置接口</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── 视图 4：创建向导 · 第 3 步 配置接口 ─────────── -->
+      <section id="view-create3" class="hide">
+        <div class="wizard">
+          <div class="steps">
+            <div class="step done"><span class="num">✓</span> 查询定义方式</div><div class="bar"></div>
+            <div class="step done"><span class="num">✓</span> 定义 SQL</div><div class="bar"></div>
+            <div class="step active"><span class="num">3</span> 配置接口</div><div class="bar"></div>
+            <div class="step"><span class="num">4</span> 绑定 Key</div>
+          </div>
+          <div class="wizard-card">
+            <h3>配置接口</h3>
+            <div class="hint">设置对外路径与分页参数，自动生成接口文档。</div>
+            <div class="row2">
+              <div class="field"><label>API 名称 <span class="req">*</span></label><input class="input" value="订单区域汇总" /></div>
+              <div class="field"><label>API 路径 <span class="req">*</span></label><input class="input" value="/open-api/v1/region-sum" style="font-family:Consolas,monospace" /></div>
+            </div>
+            <div class="field">
+              <label>请求方法</label>
+              <span class="badge indigo">GET · 只读</span>
+              <span class="muted" style="font-size:12px;margin-left:8px">自定义 SQL API 固定为 GET（只读定位）</span>
+            </div>
+            <div class="field">
+              <label>分页</label>
+              <label class="check"><input type="checkbox" checked /> 启用分页（page 从 1 起，pageSize 默认 20，上限 100）</label>
+            </div>
+            <div class="field">
+              <label>API 预览</label>
+              <div class="api-preview"><span class="m">GET</span> /open-api/v1/region-sum?<span style="color:var(--warning)">startDate</span>=2026-08-01&amp;page=1&amp;pageSize=20</div>
+              <div class="muted" style="font-size:12px;margin-top:6px">自动生成 OpenAPI 文档：参数表（startDate）+ 分页参数 + curl 调用示例</div>
+            </div>
+            <div class="alert-box warn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+              <div>已知边界：自定义 SQL 的返回列由 SQL 决定，不提供字段裁剪；请确保 SQL 未暴露敏感列（如手机号、身份证）。</div>
+            </div>
+          </div>
+          <div class="wizard-foot">
+            <button class="btn" onclick="show('view-create2'); setStep(2)">上一步</button>
+            <button class="btn primary" onclick="show('view-create4'); setStep(4)">下一步：绑定 Key</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── 视图 5：创建向导 · 第 4 步 绑定 Key ─────────── -->
+      <section id="view-create4" class="hide">
+        <div class="wizard">
+          <div class="steps">
+            <div class="step done"><span class="num">✓</span> 查询定义方式</div><div class="bar"></div>
+            <div class="step done"><span class="num">✓</span> 定义 SQL</div><div class="bar"></div>
+            <div class="step done"><span class="num">✓</span> 配置接口</div><div class="bar"></div>
+            <div class="step active"><span class="num">4</span> 绑定 Key</div>
+          </div>
+          <div class="wizard-card">
+            <h3>绑定 API Key</h3>
+            <div class="hint">对外调用需通过 Key 认证（X-API-Key）。可绑定已有 Key，或新建。</div>
+            <div class="field">
+              <label class="check" style="font-size:13px"><input type="radio" name="keymode" checked /> 绑定已有 Key</label>
+              <div style="margin:8px 0 0 22px"><select class="select-f"><option>业务-订单组（QPS 50）</option><option>数据看板（QPS 10）</option></select></div>
+            </div>
+            <div class="field">
+              <label class="check" style="font-size:13px"><input type="radio" name="keymode" /> 新建 Key（生成后仅展示一次明文）</label>
+            </div>
+          </div>
+          <div class="wizard-foot">
+            <button class="btn" onclick="show('view-create3'); setStep(3)">上一步</button>
+            <button class="btn primary" onclick="show('view-list'); resetSteps()">完成创建</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────── 视图 6：API 详情（SQL 定义区块） ─────────── -->
+      <section id="view-detail" class="hide">
+        <div class="page-head">
+          <div>
+            <div class="crumb" style="margin-bottom:4px"><span class="link" onclick="show('view-list')">API 管理</span> / <b>订单区域汇总</b></div>
+            <h1 style="display:flex;align-items:center;gap:10px">订单区域汇总 <span class="badge indigo">自定义 SQL</span> <span class="badge green"><span class="dot" style="background:#16a34a"></span>已发布</span></h1>
+            <div class="desc" style="font-family:Consolas,monospace;font-size:12.5px">GET /open-api/v1/region-sum</div>
+          </div>
+          <div style="display:flex;gap:8px"><button class="btn">编辑</button><button class="btn">下线</button><button class="btn">删除</button></div>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-main">
+            <div class="tabs">
+              <div class="tab active">接口定义</div><div class="tab">调用文档</div><div class="tab">绑定 Key</div><div class="tab">调用统计</div>
+            </div>
+            <div class="info-cards">
+              <div class="info-card"><div class="k">数据源</div><div class="v">Doris 数仓（内置）</div></div>
+              <div class="info-card"><div class="k">涉及表</div><div class="v" style="font-size:13px">ods.orders · dim.region</div></div>
+              <div class="info-card"><div class="k">近 7 天调用</div><div class="v">128,492</div></div>
+            </div>
+            <div class="section">
+              <div class="st"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:15px;height:15px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> SQL 定义</div>
+              <div class="sb">
+                <div class="sql-editor" style="background:#0f172a">
+                  <div class="bar"><span>orders_region_sum.sql</span><span class="muted">只读 · 保存时重新校验</span></div>
+<pre><span class="sql-kw">SELECT</span> r.region_name, <span class="sql-fn">SUM</span>(o.amount) <span class="sql-kw">AS</span> total_amount
+<span class="sql-kw">FROM</span> ods.orders o
+<span class="sql-kw">JOIN</span> dim.region r <span class="sql-kw">ON</span> o.region_id = r.id
+<span class="sql-kw">WHERE</span> o.order_date &gt;= <span class="sql-param">:startDate</span>
+<span class="sql-kw">GROUP BY</span> r.region_name</pre>
+                </div>
+                <div class="kv" style="margin-top:12px"><span class="k">参数</span><span class="v"><span class="chip">:startDate</span>&nbsp;<span class="muted">日期 · 必填</span></span></div>
+                <div class="kv"><span class="k">血缘</span><span class="v link">查看血缘图谱（被 2 个自定义 SQL API 引用）</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<div class="prototype-banner">Sprint 13 原型 · 静态高保真（非真实系统）</div>
+
+<script>
+  var currentMode = '自定义 SQL';
+  function pickMode(el, name){
+    document.querySelectorAll('.mode-card').forEach(function(c){c.classList.remove('selected')});
+    el.classList.add('selected');
+    currentMode = name;
+  }
+  function show(id){
+    document.querySelectorAll('section[id^="view-"]').forEach(function(s){s.classList.add('hide')});
+    document.getElementById(id).classList.remove('hide');
+    var crumb = { 'view-list':'API 管理', 'view-create1':'新建 API · 查询定义方式', 'view-create2':'新建 API · 定义 SQL', 'view-create3':'新建 API · 配置接口', 'view-create4':'新建 API · 绑定 Key', 'view-detail':'订单区域汇总' };
+    document.getElementById('crumb').textContent = crumb[id] || 'API 管理';
+    window.scrollTo(0,0);
+  }
+  function setStep(n){
+    document.querySelectorAll('.wizard .step').forEach(function(s,i){ 
+      var idx = Math.floor(i/2); s.classList.remove('active','done');
+      if (idx < n-1) s.classList.add('done');
+      if (idx === n-1) s.classList.add('active');
+    });
+  }
+  function resetSteps(){ document.querySelectorAll('.wizard .step').forEach(function(s){s.classList.remove('done','active')}); }
+  document.querySelectorAll('tbody tr td .link, .op span').forEach(function(el){
+    el.addEventListener('click', function(){ if (el.textContent === '查看') show('view-detail'); });
+  });
+</script>
+</body>
+</html>

@@ -35,6 +35,7 @@ public class OpenApiService {
     private static final Logger logger = LoggerFactory.getLogger(OpenApiService.class);
 
     private final OpenApiSqlBuilder sqlBuilder;
+    private final CustomSqlService customSqlService;
     private final CancelableSqlExecutor executor;
     private final EngineeringDatasourceApi datasourceApi;
     private final EncryptionConfig encryptionConfig;
@@ -45,12 +46,14 @@ public class OpenApiService {
     private int queryTimeoutSeconds;
 
     public OpenApiService(OpenApiSqlBuilder sqlBuilder,
+                          CustomSqlService customSqlService,
                           CancelableSqlExecutor executor,
                           EngineeringDatasourceApi datasourceApi,
                           EncryptionConfig encryptionConfig,
                           CircuitBreakerService circuitBreakerService,
                           ApiCallLogWriter callLogWriter) {
         this.sqlBuilder = sqlBuilder;
+        this.customSqlService = customSqlService;
         this.executor = executor;
         this.datasourceApi = datasourceApi;
         this.encryptionConfig = encryptionConfig;
@@ -82,16 +85,37 @@ public class OpenApiService {
             String type = ds == null ? "DORIS" : ds.getType();
 
             int[] paging = parsePaging(api, queryParams);
-            OpenApiSqlBuilder.BuiltSql built = sqlBuilder.build(api, definition, type, queryParams, paging[0], paging[1]);
-            CancelableSqlExecutor.QueryResult qr = execute(ds, built.sql(), built.params());
-
-            // 分页启用时 COUNT 总数；COUNT 失败降级为当前页行数（不阻断数据返回）
-            long total = qr.rows().size();
-            if (api.getPaginated() != null && api.getPaginated() == 1) {
-                try {
-                    total = count(api, definition, type, queryParams, ds);
-                } catch (Exception e) {
-                    logger.warn("COUNT 查询失败，降级为当前页行数: apiId={}, err={}", api.getId(), e.getMessage());
+            CancelableSqlExecutor.QueryResult qr;
+            long total;
+            if (DataApi.QUERY_TYPE_CUSTOM_SQL.equals(api.getQueryType())) {
+                // 自定义 SQL（Sprint 13，技术文档 §3.2）：不支持外部 orderBy（PRD D9），
+                // 仅绑定 SQL 参数 + 分页参数；执行前词法级 :param→? 并再次校验参数定义（fail-closed 兜底）
+                CustomSqlService.BuiltSql built = customSqlService.buildQuery(
+                        api.getSqlText(), definition.getSqlParams(), queryParams);
+                if (api.getPaginated() != null && api.getPaginated() == 1) {
+                    qr = execute(ds, customSqlService.wrapPagination(built.sql(), type, paging[0], paging[1]),
+                            built.params());
+                    total = qr.rows().size();
+                    try {
+                        total = countCustom(ds, customSqlService.wrapCount(built.sql()), built.params());
+                    } catch (Exception e) {
+                        logger.warn("COUNT 查询失败，降级为当前页行数: apiId={}, err={}", api.getId(), e.getMessage());
+                    }
+                } else {
+                    qr = execute(ds, built.sql(), built.params());
+                    total = qr.rows().size();
+                }
+            } else {
+                OpenApiSqlBuilder.BuiltSql built = sqlBuilder.build(api, definition, type, queryParams, paging[0], paging[1]);
+                qr = execute(ds, built.sql(), built.params());
+                // 分页启用时 COUNT 总数；COUNT 失败降级为当前页行数（不阻断数据返回）
+                total = qr.rows().size();
+                if (api.getPaginated() != null && api.getPaginated() == 1) {
+                    try {
+                        total = count(api, definition, type, queryParams, ds);
+                    } catch (Exception e) {
+                        logger.warn("COUNT 查询失败，降级为当前页行数: apiId={}, err={}", api.getId(), e.getMessage());
+                    }
                 }
             }
 
@@ -118,11 +142,20 @@ public class OpenApiService {
                 ds.getSchemaName(), ds.getUsername(), password, sql, params, queryTimeoutSeconds);
     }
 
-    /** COUNT 总数查询（分页 total 用） */
+    /** COUNT 总数查询（分页 total 用，选表形态） */
     private long count(DataApi api, DataApiDefinition definition, String type,
                        Map<String, String> queryParams, DataSourceInfo ds) {
         OpenApiSqlBuilder.BuiltSql built = sqlBuilder.buildCount(api, definition, type, queryParams);
-        CancelableSqlExecutor.QueryResult qr = execute(ds, built.sql(), built.params());
+        return firstRowLong(execute(ds, built.sql(), built.params()));
+    }
+
+    /** COUNT 总数查询（自定义 SQL 形态，外层 SELECT COUNT(*) FROM (sql) AS _c） */
+    private long countCustom(DataSourceInfo ds, String sql, List<Object> params) {
+        return firstRowLong(execute(ds, sql, params));
+    }
+
+    /** 取结果首行首列数值（COUNT 值） */
+    private long firstRowLong(CancelableSqlExecutor.QueryResult qr) {
         if (qr.rows().isEmpty()) {
             return 0;
         }

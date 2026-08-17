@@ -15,6 +15,7 @@ import com.datanest.common.model.Result;
 import com.datanest.common.model.UserDataPermissionDTO;
 import com.datanest.dataservice.dto.ApiKeyBriefDTO;
 import com.datanest.dataservice.dto.ApiParamDef;
+import com.datanest.dataservice.dto.CustomSqlParamDef;
 import com.datanest.dataservice.dto.DataApiCreateRequest;
 import com.datanest.dataservice.dto.DataApiDefinition;
 import com.datanest.dataservice.dto.DataApiDetailDTO;
@@ -33,9 +34,13 @@ import com.datanest.engineering.api.EngineeringDatasourceApi;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.engineering.api.dto.IdsRequest;
 import com.datanest.governance.api.GovernanceMetadataApi;
+import com.datanest.governance.api.MetadataWriteApi;
+import com.datanest.governance.api.dto.LineageRecordBatchRequest;
+import com.datanest.governance.api.dto.LineageRecordItemDTO;
 import com.datanest.governance.api.dto.MetadataTableSensitivityDTO;
 import com.datanest.system.api.SystemPermissionApi;
 import com.datanest.system.api.SystemUserApi;
+import com.datanest.task.core.config.DorisDataSourceConfig;
 import com.datanest.task.core.support.DataPermissionResolver;
 import com.datanest.task.core.support.SystemUserResolver;
 import org.slf4j.Logger;
@@ -87,39 +92,42 @@ public class DataApiService {
     private final ApiKeyBindingMapper bindingMapper;
     private final ApiCallLogMapper callLogMapper;
     private final GovernanceMetadataApi governanceMetadataApi;
+    private final MetadataWriteApi metadataWriteApi;
     private final EngineeringDatasourceApi datasourceApi;
     private final SystemUserApi systemUserApi;
     private final SystemPermissionApi systemPermissionApi;
+    private final CustomSqlService customSqlService;
 
     public DataApiService(DataApiMapper dataApiMapper,
                           ApiKeyMapper apiKeyMapper,
                           ApiKeyBindingMapper bindingMapper,
                           ApiCallLogMapper callLogMapper,
                           GovernanceMetadataApi governanceMetadataApi,
+                          MetadataWriteApi metadataWriteApi,
                           EngineeringDatasourceApi datasourceApi,
                           SystemUserApi systemUserApi,
-                          SystemPermissionApi systemPermissionApi) {
+                          SystemPermissionApi systemPermissionApi,
+                          CustomSqlService customSqlService) {
         this.dataApiMapper = dataApiMapper;
         this.apiKeyMapper = apiKeyMapper;
         this.bindingMapper = bindingMapper;
         this.callLogMapper = callLogMapper;
         this.governanceMetadataApi = governanceMetadataApi;
+        this.metadataWriteApi = metadataWriteApi;
         this.datasourceApi = datasourceApi;
         this.systemUserApi = systemUserApi;
         this.systemPermissionApi = systemPermissionApi;
+        this.customSqlService = customSqlService;
     }
 
     /**
-     * 创建 API：校验数据源/表敏感度 → 归一路径查重 → 落库（状态 CREATED 未发布）。
+     * 创建 API（Sprint 13 双形态）：TABLE_SELECT 走一期流程（选表 + filters/fields）；
+     * CUSTOM_SQL 走只读校验 + 涉及表 fail-closed 闸门 + 参数校验 + 血缘（技术文档 §3.1）。
      */
     public DataApiDetailDTO create(DataApiCreateRequest request) {
         String path = normalizePath(request.getPath());
-        DataApiDefinition definition = buildDefinition(request.getFilters(), request.getFields());
-        String orderBy = normalizeOrderBy(request.getOrderBy());
+        String queryType = normalizeQueryType(request.getQueryType());
         validateDatasource(request.getDatasourceId());
-        checkDataPermission(request.getDatasourceId(), request.getDatabaseName(), request.getTableName());
-        checkSensitivityGate(request.getDatasourceId(), request.getDatabaseName(),
-                request.getSchemaName(), request.getTableName());
         assertPathAvailable(path, null);
 
         DataApi api = new DataApi();
@@ -127,69 +135,91 @@ public class DataApiService {
         api.setPath(path);
         api.setMethod("GET");
         api.setDatasourceId(request.getDatasourceId());
-        api.setDatabaseName(request.getDatabaseName().trim());
-        api.setSchemaName(trimToNull(request.getSchemaName()));
-        api.setTableName(request.getTableName().trim());
-        api.setMetadataTableId(request.getMetadataTableId());
-        api.setParamsJson(JSON.toJSONString(definition));
-        api.setOrderBy(orderBy);
+        api.setQueryType(queryType);
         api.setPaginated(request.getPaginated() == null ? 1 : (request.getPaginated() == 0 ? 0 : 1));
         api.setPageSizeMax(normalizePageSizeMax(request.getPageSizeMax()));
         api.setStatus(DataApi.STATUS_CREATED);
         api.setDeleted(0);
         api.setCreatedBy(currentUserId());
         api.setCreatedAt(LocalDateTime.now());
+
+        List<CustomSqlService.InvolvedTable> involvedTables = List.of();
+        if (DataApi.QUERY_TYPE_CUSTOM_SQL.equals(queryType)) {
+            involvedTables = applyCustomSqlDefinition(api, request);
+        } else {
+            applyTableSelectDefinition(api, request);
+        }
         dataApiMapper.insert(api);
-        logger.info("创建数据 API: id={}, path={}, table={}.{}", api.getId(), api.getPath(),
-                api.getDatabaseName(), api.getTableName());
+        if (DataApi.QUERY_TYPE_CUSTOM_SQL.equals(queryType)) {
+            writeLineage(api, involvedTables);
+        }
+        logger.info("创建数据 API: id={}, path={}, queryType={}, table={}.{}", api.getId(), api.getPath(),
+                api.getQueryType(), api.getDatabaseName(), api.getTableName());
         return detail(api.getId());
     }
 
     /**
-     * 编辑 API：名称/路径/参数/字段/排序/分页可改；数据源/库/表绑定不可改（换表 = 新建）。
-     * 编辑前重新过敏感度闸门（表可能在创建后被改级）。
+     * 编辑 API：名称/路径/参数/字段/排序/分页/查询形态可改；数据源/库/表绑定不可改（换表 = 新建）。
+     * 编辑前重新过敏感度闸门（表可能在创建后被改级）；CUSTOM_SQL 换 SQL 后重新校验 + 重新过闸门 + 更新血缘。
      */
     public DataApiDetailDTO update(Long id, DataApiUpdateRequest request) {
         DataApi api = loadApi(id);
         String path = normalizePath(request.getPath());
-        DataApiDefinition definition = buildDefinition(request.getFilters(), request.getFields());
-        String orderBy = normalizeOrderBy(request.getOrderBy());
-        checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
-        checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
+        String queryType = normalizeQueryType(request.getQueryType());
         assertPathAvailable(path, id);
 
-        // UpdateWrapper 显式 set：order_by 传空需写成 NULL（updateById 忽略 null 字段会导致无法清空排序）
-        dataApiMapper.update(null, new UpdateWrapper<DataApi>()
+        // UpdateWrapper 显式 set：order_by/sql_text/involved_tables 传空需写成 NULL（updateById 忽略 null 字段）
+        UpdateWrapper<DataApi> wrapper = new UpdateWrapper<DataApi>()
                 .eq("id", id)
                 .set("name", request.getName().trim())
                 .set("path", path)
-                .set("params_json", JSON.toJSONString(definition))
-                .set("order_by", orderBy)
+                .set("query_type", queryType)
                 .set("paginated", request.getPaginated() == null ? api.getPaginated()
                         : (request.getPaginated() == 0 ? 0 : 1))
                 .set("page_size_max", request.getPageSizeMax() == null ? api.getPageSizeMax()
                         : normalizePageSizeMax(request.getPageSizeMax()))
                 .set("updated_by", currentUserId())
-                .set("updated_at", LocalDateTime.now()));
-        logger.info("编辑数据 API: id={}, path={}", id, path);
+                .set("updated_at", LocalDateTime.now());
+
+        List<CustomSqlService.InvolvedTable> involvedTables = List.of();
+        if (DataApi.QUERY_TYPE_CUSTOM_SQL.equals(queryType)) {
+            involvedTables = applyCustomSqlUpdate(api, request, wrapper);
+        } else {
+            // 切回选表形态时清理自定义 SQL 字段
+            wrapper.set("sql_text", null).set("involved_tables", null);
+            wrapper.set("params_json", JSON.toJSONString(buildDefinition(request.getFilters(), request.getFields())));
+            wrapper.set("order_by", normalizeOrderBy(request.getOrderBy()));
+            checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
+            checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
+        }
+        dataApiMapper.update(null, wrapper);
+        if (DataApi.QUERY_TYPE_CUSTOM_SQL.equals(queryType)) {
+            writeLineage(api, involvedTables);
+        }
+        logger.info("编辑数据 API: id={}, path={}, queryType={}", id, path, queryType);
         return detail(id);
     }
 
     /**
      * 发布（CREATED/DISABLED → PUBLISHED，已发布幂等）：发布前重新过敏感度闸门。
+     * CUSTOM_SQL 形态按 involved_tables 逐表重新过闸门（表可能在创建后被改级/降权，fail-closed）。
      */
     public void publish(Long id) {
         DataApi api = loadApi(id);
         if (DataApi.STATUS_PUBLISHED.equals(api.getStatus())) {
             return;
         }
-        checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
-        checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
+        if (DataApi.QUERY_TYPE_CUSTOM_SQL.equals(api.getQueryType())) {
+            recheckCustomSqlGates(api);
+        } else {
+            checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
+            checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
+        }
         api.setStatus(DataApi.STATUS_PUBLISHED);
         api.setUpdatedBy(currentUserId());
         api.setUpdatedAt(LocalDateTime.now());
         dataApiMapper.updateById(api);
-        logger.info("发布数据 API: id={}, path={}", id, api.getPath());
+        logger.info("发布数据 API: id={}, path={}, queryType={}", id, api.getPath(), api.getQueryType());
     }
 
     /**
@@ -245,9 +275,10 @@ public class DataApiService {
     }
 
     /**
-     * 分页列表（scope=mine 仅看我创建的；keyword 匹配名称/路径；status 精确过滤）。
+     * 分页列表（scope=mine 仅看我创建的；keyword 匹配名称/路径；status 精确过滤；queryType 形态筛选）。
      */
-    public PageResult<DataApiPageItem> page(long page, long pageSize, String scope, String keyword, String status) {
+    public PageResult<DataApiPageItem> page(long page, long pageSize, String scope, String keyword,
+                                            String status, String queryType) {
         QueryWrapper<DataApi> wrapper = new QueryWrapper<DataApi>().eq("deleted", 0);
         if ("mine".equalsIgnoreCase(scope)) {
             wrapper.eq("created_by", currentUserId());
@@ -258,6 +289,10 @@ public class DataApiService {
         }
         if (status != null && !status.isBlank()) {
             wrapper.eq("status", status.trim());
+        }
+        if (queryType != null && !queryType.isBlank()) {
+            // 形态筛选：列存大写枚举，统一归一避免大小写不匹配（非法值自然查不到结果，不抛错）
+            wrapper.eq("query_type", queryType.trim().toUpperCase());
         }
         wrapper.orderByDesc("created_at");
         Page<DataApi> p = dataApiMapper.selectPage(
@@ -287,6 +322,7 @@ public class DataApiService {
             item.setDatabaseName(api.getDatabaseName());
             item.setSchemaName(api.getSchemaName());
             item.setTableName(api.getTableName());
+            item.setQueryType(api.getQueryType());
             item.setSensitivityLevel(sensitivityMap.get(sensitivityKey(
                     api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName())));
             item.setStatus(api.getStatus());
@@ -323,6 +359,10 @@ public class DataApiService {
                 api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName())));
         dto.setMetadataTableId(api.getMetadataTableId());
         dto.setDefinition(definition);
+        dto.setQueryType(api.getQueryType());
+        dto.setSqlText(api.getSqlText());
+        dto.setSqlParams(definition.getSqlParams());
+        dto.setInvolvedTables(api.getInvolvedTables());
         dto.setOrderBy(api.getOrderBy());
         dto.setPaginated(api.getPaginated());
         dto.setPageSizeMax(api.getPageSizeMax());
@@ -343,6 +383,227 @@ public class DataApiService {
     }
 
     // ---------- 内部方法 ----------
+
+    /** 查询定义形态白名单（TABLE_SELECT 选表 / CUSTOM_SQL 自定义 SQL） */
+    private String normalizeQueryType(String queryType) {
+        if (queryType == null || queryType.isBlank()) {
+            return DataApi.QUERY_TYPE_TABLE_SELECT;
+        }
+        String t = queryType.trim().toUpperCase();
+        if (!DataApi.QUERY_TYPE_TABLE_SELECT.equals(t) && !DataApi.QUERY_TYPE_CUSTOM_SQL.equals(t)) {
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID,
+                    "查询定义形态仅支持 TABLE_SELECT / CUSTOM_SQL: " + queryType);
+        }
+        return t;
+    }
+
+    /** 选表形态定义落库：库/表必填校验 + filters/fields 白名单 + 单表数据权限/敏感度闸门（一期流程不变） */
+    private void applyTableSelectDefinition(DataApi api, DataApiCreateRequest request) {
+        String database = request.getDatabaseName();
+        String table = request.getTableName();
+        if (database == null || database.isBlank()) {
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "选表形态必须指定库名");
+        }
+        if (table == null || table.isBlank()) {
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "选表形态必须指定表名");
+        }
+        api.setDatabaseName(database.trim());
+        api.setSchemaName(trimToNull(request.getSchemaName()));
+        api.setTableName(table.trim());
+        api.setMetadataTableId(request.getMetadataTableId());
+        api.setParamsJson(JSON.toJSONString(buildDefinition(request.getFilters(), request.getFields())));
+        api.setOrderBy(normalizeOrderBy(request.getOrderBy()));
+        checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
+        checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
+    }
+
+    /**
+     * CUSTOM_SQL 创建定义（技术文档 §3.1 流程）：只读校验 + 涉及表解析 → 参数校验（9018）→
+     * 逐表 fail-closed 闸门（9019）→ 落库 sql_text/involved_tables/params_json。
+     *
+     * @return 涉及表清单（供血缘写入）
+     */
+    private List<CustomSqlService.InvolvedTable> applyCustomSqlDefinition(DataApi api, DataApiCreateRequest request) {
+        String sql = trimToNull(request.getSqlText());
+        if (sql == null) {
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "CUSTOM_SQL 形态必须提供 SQL 文本");
+        }
+        String databaseName = trimToNull(request.getDatabaseName());
+        if (databaseName == null) {
+            databaseName = defaultDatabase(api.getDatasourceId());
+        }
+        String schemaName = trimToNull(request.getSchemaName());
+        api.setDatabaseName(databaseName);
+        api.setSchemaName(schemaName);
+        api.setTableName(trimToNull(request.getTableName()) == null ? "" : request.getTableName().trim());
+        api.setMetadataTableId(null);
+        api.setOrderBy(null);
+
+        List<CustomSqlService.InvolvedTable> tables =
+                customSqlService.extractInvolvedTables(sql, databaseName, schemaName);
+        if (tables.isEmpty()) {
+            throw new BusinessException(ErrorCode.CUSTOM_SQL_INVALID, "SQL 未引用任何表，无法校验权限与血缘");
+        }
+        customSqlService.validateParamDefs(sql, request.getSqlParams());
+        for (CustomSqlService.InvolvedTable t : tables) {
+            checkCustomSqlTableGates(api.getDatasourceId(), t.database(), t.schema(), t.table());
+        }
+        api.setSqlText(sql);
+        api.setInvolvedTables(involvedTablesJson(api.getDatasourceId(), tables));
+        api.setParamsJson(JSON.toJSONString(customSqlDefinition(request.getSqlParams())));
+        return tables;
+    }
+
+    /** CUSTOM_SQL 编辑定义：换 SQL 后重新校验 + 重新过闸门（数据源/默认库沿用已存记录） */
+    private List<CustomSqlService.InvolvedTable> applyCustomSqlUpdate(DataApi api, DataApiUpdateRequest request,
+                                                                      UpdateWrapper<DataApi> wrapper) {
+        String sql = trimToNull(request.getSqlText());
+        if (sql == null) {
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "CUSTOM_SQL 形态必须提供 SQL 文本");
+        }
+        List<CustomSqlService.InvolvedTable> tables = customSqlService.extractInvolvedTables(
+                sql, api.getDatabaseName(), api.getSchemaName());
+        if (tables.isEmpty()) {
+            throw new BusinessException(ErrorCode.CUSTOM_SQL_INVALID, "SQL 未引用任何表，无法校验权限与血缘");
+        }
+        customSqlService.validateParamDefs(sql, request.getSqlParams());
+        for (CustomSqlService.InvolvedTable t : tables) {
+            checkCustomSqlTableGates(api.getDatasourceId(), t.database(), t.schema(), t.table());
+        }
+        wrapper.set("sql_text", sql);
+        wrapper.set("involved_tables", involvedTablesJson(api.getDatasourceId(), tables));
+        wrapper.set("params_json", JSON.toJSONString(customSqlDefinition(request.getSqlParams())));
+        wrapper.set("order_by", null);
+        return tables;
+    }
+
+    /** CUSTOM_SQL 的 params_json 定义（queryType + sqlParams，不含 filters/fields） */
+    private DataApiDefinition customSqlDefinition(List<CustomSqlParamDef> sqlParams) {
+        DataApiDefinition definition = new DataApiDefinition();
+        definition.setQueryType(DataApi.QUERY_TYPE_CUSTOM_SQL);
+        definition.setSqlParams(sqlParams);
+        return definition;
+    }
+
+    /**
+     * CUSTOM_SQL 逐表 fail-closed 闸门（S13-ADR-003）：任一涉及表机密/未特批内部/无数据权限 → 9019 整体拒绝；
+     * 分级服务不可达保持 9012（fail-closed），不折算成 9019。
+     */
+    private void checkCustomSqlTableGates(Long datasourceId, String database, String schema, String table) {
+        try {
+            checkDataPermission(datasourceId, database, table);
+            checkSensitivityGate(datasourceId, database, schema, table);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.SENSITIVITY_SERVICE_UNAVAILABLE) {
+                throw e;
+            }
+            throw new BusinessException(ErrorCode.CUSTOM_SQL_TABLE_FORBIDDEN,
+                    "涉及表被安全闸门拒绝: " + qualifiedTable(database, schema, table) + "（" + e.getMessage() + "）");
+        }
+    }
+
+    private String qualifiedTable(String database, String schema, String table) {
+        if (schema != null && !schema.isBlank()) {
+            return schema + "." + table;
+        }
+        if (database != null && !database.isBlank()) {
+            return database + "." + table;
+        }
+        return table;
+    }
+
+    /** 发布/下线前对 CUSTOM_SQL 按落库的涉及表清单逐表重新过闸门（fail-closed；清单缺失/损坏则整体拒绝） */
+    private void recheckCustomSqlGates(DataApi api) {
+        List<CustomSqlService.InvolvedTable> tables = parseInvolvedTables(api.getInvolvedTables());
+        if (tables.isEmpty()) {
+            throw new BusinessException(ErrorCode.CUSTOM_SQL_TABLE_FORBIDDEN,
+                    "涉及表清单缺失或损坏，无法通过安全闸门，已阻止操作");
+        }
+        for (CustomSqlService.InvolvedTable t : tables) {
+            checkCustomSqlTableGates(api.getDatasourceId(), t.database(), t.schema(), t.table());
+        }
+    }
+
+    /** 解析 involved_tables JSON（[{datasourceId,database,schema,table}]）为涉及表清单 */
+    private List<CustomSqlService.InvolvedTable> parseInvolvedTables(String involvedTablesJson) {
+        if (involvedTablesJson == null || involvedTablesJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<Map<String, Object>> list = JSON.parseObject(involvedTablesJson,
+                    new com.alibaba.fastjson2.TypeReference<List<Map<String, Object>>>() {
+                    });
+            if (list == null || list.isEmpty()) {
+                return List.of();
+            }
+            List<CustomSqlService.InvolvedTable> tables = new ArrayList<>(list.size());
+            for (Map<String, Object> m : list) {
+                String table = m.get("table") == null ? null : m.get("table").toString();
+                if (table == null || table.isBlank()) {
+                    continue;
+                }
+                tables.add(new CustomSqlService.InvolvedTable(
+                        m.get("database") == null ? null : m.get("database").toString(),
+                        m.get("schema") == null ? null : m.get("schema").toString(),
+                        table.trim()));
+            }
+            return tables;
+        } catch (Exception e) {
+            logger.warn("涉及表清单 JSON 解析失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 涉及表清单 JSON（[{datasourceId,database,schema,table}]，技术文档 §2.1，冗余存储避免每次重解析） */
+    private String involvedTablesJson(Long datasourceId, List<CustomSqlService.InvolvedTable> tables) {
+        List<Map<String, Object>> list = new ArrayList<>(tables.size());
+        for (CustomSqlService.InvolvedTable t : tables) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("datasourceId", datasourceId);
+            m.put("database", t.database());
+            m.put("schema", t.schema());
+            m.put("table", t.table());
+            list.add(m);
+        }
+        return JSON.toJSONString(list);
+    }
+
+    /**
+     * CUSTOM_SQL 表级血缘写入（技术文档 §3.4）：source/target 均取涉及表限定名（表级，列空），
+     * dagId 空、dagName=API 名、lineageType=SQL；血缘写入失败降级 warn 不阻断保存（RemoteCalls 兜底）。
+     */
+    private void writeLineage(DataApi api, List<CustomSqlService.InvolvedTable> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return;
+        }
+        LineageRecordBatchRequest request = new LineageRecordBatchRequest();
+        request.setRecords(tables.stream().map(t -> {
+            LineageRecordItemDTO item = new LineageRecordItemDTO();
+            String qualified = t.qualified();
+            item.setSourceTable(qualified);
+            item.setTargetTable(qualified);
+            item.setLineageType("SQL");
+            item.setDagId(null);
+            item.setDagName(api.getName());
+            return item;
+        }).toList());
+        RemoteCalls.execute("governance.lineage.records-batch", () -> {
+            Result<Integer> result = metadataWriteApi.saveLineageRecords(request);
+            if (result == null || result.data() == null || result.data() < request.getRecords().size()) {
+                logger.warn("血缘记录批量写入条数不符（降级）: apiId={}, expected={}, actual={}",
+                        api.getId(), request.getRecords().size(), result == null ? null : result.data());
+            }
+        });
+    }
+
+    /** CUSTOM_SQL 未传库名时的默认库：内置 Doris 用当前连接库，外部数据源用其配置库 */
+    private String defaultDatabase(Long datasourceId) {
+        if (datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
+            return DorisDataSourceConfig.currentDatabase();
+        }
+        DataSourceInfo ds = validateDatasource(datasourceId);
+        return ds == null || ds.getDatabaseName() == null ? "" : ds.getDatabaseName();
+    }
 
     /**
      * API 管理列表页统计卡：按状态聚合计数（未删除行）+ 近 7 天总调用（含已软删 API 的历史调用）。
@@ -370,7 +631,10 @@ public class DataApiService {
         if (records.isEmpty()) {
             return Map.of();
         }
-        Map<String, List<DataApi>> groups = records.stream().collect(Collectors.groupingBy(
+        Map<String, List<DataApi>> groups = records.stream()
+                // CUSTOM_SQL 形态无单表绑定（table_name 为空串），不参与单表敏感度展示
+                .filter(api -> api.getTableName() != null && !api.getTableName().isBlank())
+                .collect(Collectors.groupingBy(
                 api -> sensitivityKey(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), ""),
                 LinkedHashMap::new, Collectors.toList()));
         Map<String, String> result = new LinkedHashMap<>();
@@ -530,16 +794,17 @@ public class DataApiService {
         }
     }
 
-    /** 数据源存在性校验（内置 Doris=-1 直接放行；外部经 engineering 查，查无抛 3001） */
-    private void validateDatasource(Long datasourceId) {
+    /** 数据源存在性校验（内置 Doris=-1 直接放行返回 null；外部经 engineering 查，查无抛 3001，返回连接信息） */
+    private DataSourceInfo validateDatasource(Long datasourceId) {
         if (datasourceId == DorisConstants.BUILTIN_DORIS_DATASOURCE_ID) {
-            return;
+            return null;
         }
         Result<DataSourceInfo> resp = RemoteCalls.execute("engineering.datasource.getById",
                 () -> datasourceApi.getById(datasourceId), null);
         if (resp == null || resp.data() == null) {
             throw new BusinessException(ErrorCode.DATASOURCE_NOT_FOUND);
         }
+        return resp.data();
     }
 
     /**
@@ -571,7 +836,7 @@ public class DataApiService {
         }
     }
 
-    /** 自动文档（PRD 6.3：创建时生成 OpenAPI 描述，详情页查看 + 复制 curl 示例） */
+    /** 自动文档（PRD 6.3：创建时生成 OpenAPI 描述，详情页查看 + 复制 curl 示例；Sprint 13 双形态） */
     private DataApiDocDTO buildDoc(DataApi api, DataApiDefinition definition) {
         DataApiDocDTO doc = new DataApiDocDTO();
         doc.setMethod(api.getMethod());
@@ -579,8 +844,17 @@ public class DataApiService {
         doc.setFullPath("/api/data-service" + api.getPath());
         doc.setAuth("请求头 X-API-Key: <你的API Key>（Key 需绑定本 API）");
 
+        boolean customSql = DataApi.QUERY_TYPE_CUSTOM_SQL.equals(api.getQueryType());
         List<DataApiDocDTO.DocParam> params = new ArrayList<>();
-        if (definition.getFilters() != null) {
+        if (customSql) {
+            if (definition.getSqlParams() != null) {
+                for (CustomSqlParamDef p : definition.getSqlParams()) {
+                    String required = p.getRequired() == null || p.getRequired() ? "必填" : "选填";
+                    params.add(docParam(p.getName(),
+                            "SQL 参数：" + p.getName() + "（类型 " + p.getType() + "，" + required + "）"));
+                }
+            }
+        } else if (definition.getFilters() != null) {
             for (ApiParamDef filter : definition.getFilters()) {
                 if (ApiParamDef.TYPE_RANGE.equals(filter.getType())) {
                     params.add(docParam("min_" + filter.getField(), "范围筛选：" + filter.getField() + " 下限"));
@@ -598,11 +872,29 @@ public class DataApiService {
         doc.setResponse("{\"code\":200,\"message\":\"success\",\"data\":{\"records\":[{...}],\"total\":0}}");
         StringBuilder curl = new StringBuilder("curl -H 'X-API-Key: <你的API Key>' 'http://localhost:8080")
                 .append(doc.getFullPath()).append("?");
+        if (customSql && definition.getSqlParams() != null) {
+            for (CustomSqlParamDef p : definition.getSqlParams()) {
+                curl.append(p.getName()).append('=').append(sampleParamValue(p.getType())).append('&');
+            }
+        }
         if (api.getPaginated() != null && api.getPaginated() == 1) {
             curl.append("page=1&pageSize=20");
         }
         doc.setCurl(curl.append("'").toString());
         return doc;
+    }
+
+    /** curl 示例参数样例值（按类型） */
+    private String sampleParamValue(String type) {
+        String t = type == null ? "" : type.trim().toUpperCase();
+        return switch (t) {
+            case CustomSqlService.TYPE_LONG -> "1";
+            case CustomSqlService.TYPE_DECIMAL -> "1.5";
+            case CustomSqlService.TYPE_DATE -> "2024-01-01";
+            case CustomSqlService.TYPE_DATETIME -> "2024-01-01T00:00:00";
+            case CustomSqlService.TYPE_BOOLEAN -> "true";
+            default -> "value";
+        };
     }
 
     private DataApiDocDTO.DocParam docParam(String name, String description) {
