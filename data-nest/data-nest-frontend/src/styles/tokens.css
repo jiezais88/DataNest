@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Sprint 11 F5：全局 button 字体继承。
+ * 根因：<button> 默认不继承 body 的 font-family（浏览器 UA 用系统控件字体），
+ * 导致小字号按钮（如「查看全部 ›」「去处理 ›」）渲染回退到系统字体，
+ * 看起来「像原生」。这里强制继承，与正文保持一致。
+ */
+button, input, select, textarea, optgroup {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
 :root {
     /**
      * 颜色唯一来源。以 RGB 通道形式定义，供两处引用：

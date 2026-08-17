@@ -84,4 +84,39 @@ public interface DagExecutionMapper extends BaseMapper<DagExecution> {
             "</script>")
     DagExecutionStatsDTO selectStats(@Param("startTimeFrom") LocalDateTime startTimeFrom,
                                      @Param("startTimeTo") LocalDateTime startTimeTo);
+
+    /**
+     * Sprint 11 F5 首页：按天聚合执行量（近 N 日），供 7 日趋势图 + KPI sparkline。
+     * 返回 {day: 'MM-dd', total, success, failed} 逐条记录（service 层补零并排序）。
+     */
+    @Select("SELECT TO_CHAR(start_time, 'MM-dd') AS day, " +
+            "  COUNT(*) AS total, " +
+            "  COUNT(*) FILTER (WHERE status = 'SUCCESS') AS success, " +
+            "  COUNT(*) FILTER (WHERE status = 'FAILED') AS failed " +
+            "FROM dag_execution " +
+            "WHERE start_time >= #{since} " +
+            "GROUP BY TO_CHAR(start_time, 'MM-dd') " +
+            "ORDER BY day")
+    List<DagDailyStat> selectDailyStats(@Param("since") LocalDateTime since);
+
+    /** 首页按天聚合返回行 */
+    @lombok.Data
+    class DagDailyStat {
+        private String day;
+        private Long total;
+        private Long success;
+        private Long failed;
+    }
+
+    /**
+     * Sprint 11 F5：近 N 天内各 DAG 最近一次 SUCCESS 时间（失败恢复判定：SUCCESS 必须晚于 FAILED 才算恢复）。
+     */
+    @Select("<script>"
+            + "SELECT dag_id, MAX(start_time) AS last_success FROM dag_execution"
+            + " WHERE dag_id IN <foreach collection='dagIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>"
+            + " AND status = 'SUCCESS' AND start_time &gt;= #{since}"
+            + " GROUP BY dag_id"
+            + "</script>")
+    List<java.util.Map<String, Object>> lastSuccessTimeByDagIdsSince(@Param("dagIds") List<Long> dagIds,
+                                                                     @Param("since") LocalDateTime since);
 }

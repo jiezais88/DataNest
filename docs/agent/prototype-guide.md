@@ -98,7 +98,7 @@ flowchart TD
 | `rounded-ds-xs` | 6px |
 | `shadow-ds-xs` | `0 1px 2px rgba(0,0,0,0.06)` |
 | `shadow-ds-sm` | `0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05)` |
-| 间距 `ds-1/2/3/4/5/6/8` | 4/8/12/16/20/24/32px |
+| 间距 `ds-0.5/1/1.5/2/2.5/3/4/5/6/8` | 2/4/6/8/10/12/16/20/24/32px（小数档 2026-08-16 补齐，此前是无效类）|
 | `text-ds-display` | `1.5rem`(24px) 800 `-0.5px` |
 | `text-ds-heading` | `1.25rem`(20px) 700 `-0.3px` |
 | `text-ds-subhead` | `1.0625rem`(17px) 700 |

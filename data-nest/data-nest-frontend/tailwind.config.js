@@ -99,7 +99,10 @@ export default {
                 'ds-nano': ['0.6875rem', {lineHeight: '1.4', fontWeight: '600', letterSpacing: '1px'}],
             },
             spacing: {
-                'ds-1': '4px', 'ds-2': '8px', 'ds-3': '12px',
+                'ds-0.5': '2px',
+                'ds-1': '4px', 'ds-1.5': '6px',
+                'ds-2': '8px', 'ds-2.5': '10px',
+                'ds-3': '12px',
                 'ds-4': '16px', 'ds-5': '20px', 'ds-6': '24px',
                 'ds-8': '32px', 'ds-10': '40px', 'ds-12': '48px',
             },
