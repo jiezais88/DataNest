@@ -49,6 +49,28 @@ export const getMe = () =>
     request.get<Result<{ userId: string; username: string; roles: string[]; permissions?: string[] }>>(
         '/system/auth/me');
 
+/** 个人中心：当前登录用户完整资料（含邮箱/手机号/创建时间） */
+export interface UserProfile {
+    userId: string;
+    username: string;
+    email?: string;
+    phone?: string;
+    roles: string[];
+    createdAt?: string;
+}
+
+export const getProfile = () =>
+    request.get<Result<UserProfile>>('/system/auth/profile').then(r => r.data);
+
+/** 更新当前用户资料（仅邮箱/手机号；空字符串表示清空，null 表示不修改） */
+export interface ProfileUpdateParams {
+    email?: string;
+    phone?: string;
+}
+
+export const updateProfile = (params: ProfileUpdateParams) =>
+    request.put<Result<void>>('/system/auth/profile', params);
+
 export const getUsers = (params: {
     page: number;
     pageSize: number;

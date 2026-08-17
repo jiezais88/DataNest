@@ -4,8 +4,8 @@ import Sidebar from './Sidebar';
 import Breadcrumb from './Breadcrumb';
 import ErrorBoundary from './ErrorBoundary';
 import {useAuthStore} from '@/store/useAuthStore';
-import ChangePasswordModal from './ChangePasswordModal';
-import {HiOutlineArrowRightOnRectangle, HiOutlineLockClosed} from 'react-icons/hi2';
+import ProfileDrawer from './ProfileDrawer';
+import {HiOutlineArrowRightOnRectangle, HiOutlineUserCircle} from 'react-icons/hi2';
 import {resolveMenuTitle} from '@/utils/breadcrumb';
 
 export default function Layout() {
@@ -13,7 +13,7 @@ export default function Layout() {
     const navigate = useNavigate();
     const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [pwdModalOpen, setPwdModalOpen] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
 
     useEffect(() => {
         const title = resolveMenuTitle(location.pathname);
@@ -61,12 +61,12 @@ export default function Layout() {
                                     <button
                                         onClick={() => {
                                             setMenuOpen(false);
-                                            setPwdModalOpen(true);
+                                            setProfileOpen(true);
                                         }}
                                         className="w-full flex items-center gap-ds-2 px-ds-3 py-ds-2 text-ds-small text-ds-text-secondary hover:bg-ds-bg-hover transition-colors"
                                     >
-                                        <HiOutlineLockClosed size={16}/>
-                                        修改密码
+                                        <HiOutlineUserCircle size={16}/>
+                                        个人中心
                                     </button>
                                     <button
                                         onClick={handleLogout}
@@ -92,7 +92,7 @@ export default function Layout() {
                 </main>
             </div>
 
-            <ChangePasswordModal open={pwdModalOpen} onClose={() => setPwdModalOpen(false)}/>
+            <ProfileDrawer open={profileOpen} onClose={() => setProfileOpen(false)}/>
         </div>
     );
 }

@@ -4,12 +4,15 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.datanest.common.model.LoginRequest;
 import com.datanest.common.model.Result;
 import com.datanest.common.model.UserLoginDTO;
+import com.datanest.system.dto.ProfileUpdateRequest;
+import com.datanest.system.dto.UserProfileDTO;
 import com.datanest.system.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -79,5 +82,18 @@ public class AuthController {
                 "roles", user.roles(),
                 "permissions", user.permissions()
         ));
+    }
+
+    @Operation(summary = "当前登录用户完整资料", description = "个人中心：返回当前用户的邮箱/手机号/角色/创建时间等完整身份信息")
+    @GetMapping("/profile")
+    public Result<UserProfileDTO> profile() {
+        return Result.ok(userService.getCurrentUserProfile());
+    }
+
+    @Operation(summary = "更新当前用户资料", description = "个人中心：仅可修改自己的邮箱/手机号；字段为 null 不修改，空字符串表示清空")
+    @PutMapping("/profile")
+    public Result<Void> updateProfile(@Valid @RequestBody ProfileUpdateRequest req) {
+        userService.updateCurrentUserProfile(req);
+        return Result.ok(null);
     }
 }

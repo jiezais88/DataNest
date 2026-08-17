@@ -2,6 +2,7 @@ package com.datanest.system.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -9,7 +10,9 @@ import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.UserLoginDTO;
+import com.datanest.system.dto.ProfileUpdateRequest;
 import com.datanest.system.dto.UserCreateRequest;
+import com.datanest.system.dto.UserProfileDTO;
 import com.datanest.system.dto.UserUpdateRequest;
 import com.datanest.system.dto.UserVO;
 import com.datanest.system.entity.Role;
@@ -21,6 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -67,6 +71,54 @@ public class UserService {
         List<String> permissions = permissionMapper.selectCodesByUserId(userId);
         return new UserLoginDTO(user.getId(), user.getUsername(),
                 user.getPassword(), user.getEnabled(), roles, permissions);
+    }
+
+    /**
+     * 当前登录用户完整资料（个人中心）。
+     * 比 getCurrentUserInfo 多返回 email/phone/createdAt，供 /auth/profile 展示身份信息。
+     */
+    public UserProfileDTO getCurrentUserProfile() {
+        Long userId = currentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        List<String> roles = userMapper.selectRoleCodesByUserId(userId);
+        return new UserProfileDTO(user.getId(), user.getUsername(), user.getEmail(),
+                user.getPhone(), roles, user.getCreatedAt());
+    }
+
+    /**
+     * 个人中心：更新当前登录用户资料（仅邮箱/手机号）。
+     * 字段为 null 表示不修改；空字符串/空白表示清空（存 null）。
+     * 用 LambdaUpdateWrapper.set 显式置 null（updateById 的 NOT_NULL 策略不会更新 null 字段）。
+     */
+    @Transactional
+    public void updateCurrentUserProfile(ProfileUpdateRequest req) {
+        Long userId = currentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        if (userMapper.selectById(userId) == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        if (req.email() == null && req.phone() == null) {
+            return;
+        }
+        LambdaUpdateWrapper<User> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(User::getId, userId);
+        wrapper.set(User::getUpdatedBy, userId);
+        wrapper.set(User::getUpdatedAt, LocalDateTime.now());
+        if (req.email() != null) {
+            wrapper.set(User::getEmail, req.email().isBlank() ? null : req.email().trim());
+        }
+        if (req.phone() != null) {
+            wrapper.set(User::getPhone, req.phone().isBlank() ? null : req.phone().trim());
+        }
+        userMapper.update(null, wrapper);
     }
 
     public UserLoginDTO verify(String username, String password) {
@@ -140,24 +192,33 @@ public class UserService {
 
     @Transactional
     public UserVO updateUser(Long userId, UserUpdateRequest req) {
-        User user = userMapper.selectById(userId);
-        if (user == null) {
+        if (userMapper.selectById(userId) == null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-        if (req.email() != null) user.setEmail(req.email());
-        if (req.phone() != null) user.setPhone(req.phone());
-        if (req.password() != null && !req.password().isEmpty()) {
-            user.setPassword(passwordEncoder.encode(req.password()));
+        // 用 LambdaUpdateWrapper.set 显式置 null（updateById 的 NOT_NULL 策略不会更新 null 字段），
+        // 空字符串/空白表示清空（存 null），null 表示不修改
+        LambdaUpdateWrapper<User> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(User::getId, userId);
+        wrapper.set(User::getUpdatedBy, currentUserId());
+        wrapper.set(User::getUpdatedAt, LocalDateTime.now());
+        if (req.email() != null) {
+            wrapper.set(User::getEmail, req.email().isBlank() ? null : req.email().trim());
         }
-        user.setUpdatedBy(currentUserId());
-        userMapper.updateById(user);
+        if (req.phone() != null) {
+            wrapper.set(User::getPhone, req.phone().isBlank() ? null : req.phone().trim());
+        }
+        if (req.password() != null && !req.password().isEmpty()) {
+            wrapper.set(User::getPassword, passwordEncoder.encode(req.password()));
+        }
+        userMapper.update(null, wrapper);
 
         if (req.roles() != null) {
             assignRoles(userId, req.roles());
         }
 
+        User updated = userMapper.selectById(userId);
         List<String> roles = userMapper.selectRoleCodesByUserId(userId);
-        return toUserVO(user, roles);
+        return toUserVO(updated, roles);
     }
 
     private UserVO toUserVO(User user, List<String> roles) {
