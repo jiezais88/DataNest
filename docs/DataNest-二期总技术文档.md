@@ -1,8 +1,8 @@
 # DataNest 二期总技术文档
 
-> **文档状态**：定稿（技术总纲级） | **作者**：软件架构师 | **关联文档**：`DataNest-二期总PRD.md`（v1.1）、`DataNest-技术架构文档-v1.0.md`（一期架构总纲）、`docs/agent/architecture.md`（现状架构明细）
+> **文档状态**：定稿（技术总纲级） | **作者**：软件架构师 | **关联文档**：`DataNest-二期总PRD.md`（v1.5）、`DataNest-技术架构文档-v1.0.md`（一期架构总纲）、`docs/agent/architecture.md`（现状架构明细）
 >
-> 本文档定义 DataNest **二期（Sprint 13~19）** 的技术方案与关键架构决策（ADR），是二期各 Sprint 技术文档的技术底座。
+> 本文档定义 DataNest **二期（Sprint 13~20）** 的技术方案与关键架构决策（ADR），是二期各 Sprint 技术文档的技术底座。
 > 各 Sprint 的数据模型、表结构、接口细节、Flyway 脚本由各 Sprint 技术文档承接，不在本文档展开。
 
 ---
@@ -61,11 +61,11 @@
 gateway / system / alert /           （服务拓扑不变，9 个 app 容器）
 engineering / governance /           + 租户维度横切所有持库表
 worker / job / data-service          + 租户上下文跨服务透传
-  │                                   + SSO 身份接入（Sprint 14）
-  ├─ PG（6 业务库，无租户）           + Doris 多副本 / PG 备份（Sprint 15）
+  │                                   + SSO 身份接入（Sprint 15）
+  ├─ PG（6 业务库，无租户）           + Doris 多副本 / PG 备份（Sprint 16）
   ├─ Doris（共享，无命名空间）        + Doris 租户命名空间隔离
   ├─ PowerJob（任务无租户）           + PowerJob 任务/工作流租户隔离
-  ├─ Flink Session 集群（仅 CDC）     + Flink SQL 流任务托管（Sprint 16-17）
+  ├─ Flink Session 集群（仅 CDC）     + Flink SQL 流任务托管（Sprint 17-18）
   └─ MinIO（湖仓 + savepoint）        + MinIO 按租户路径隔离
 ```
 
@@ -73,18 +73,19 @@ worker / job / data-service          + 租户上下文跨服务透传
 
 | 横切能力 | 落点 | Sprint |
 |----------|------|--------|
-| 租户维度（tenant_id） | 6 个业务库全部持库业务表 + 租户上下文透传 | 13 |
-| OIDC/OAuth2 登录桥接 | system-service 认证链路 | 14 |
-| 动态脱敏 / 列级加密 | 查询层 + 存储层（复用 AES） | 15 |
-| Flink SQL 流任务托管 | realtime-service（复用 Flink Session 集群） | 16-17 |
-| 流处理血缘 | governance-service（复用 SQL 解析器） | 16-17 |
-| 任务版本/环境/CI-CD | engineering-service | 18 |
+| 自定义查询 SQL API | data-service（data_api 双形态查询定义） | 13 |
+| 租户维度（tenant_id） | 6 个业务库全部持库业务表 + 租户上下文透传 | 14 |
+| OIDC/OAuth2 登录桥接 | system-service 认证链路 | 15 |
+| 动态脱敏 / 列级加密 | 查询层 + 存储层（复用 AES） | 16 |
+| Flink SQL 流任务托管 | realtime-service（复用 Flink Session 集群） | 17-18 |
+| 流处理血缘 | governance-service（复用 SQL 解析器） | 17-18 |
+| 任务版本/环境/CI-CD | engineering-service | 19 |
 
 ---
 
 ## 3. 主线一技术方案：企业级能力
 
-### 3.1 多租户架构（Sprint 13）
+### 3.1 多租户架构（Sprint 14）
 
 > 对应 PRD 主线一·子模块 A（MT-01~07）。这是二期最重、风险最高的技术改造，单独成 Sprint。
 
@@ -135,7 +136,7 @@ worker / job / data-service          + 租户上下文跨服务透传
 - 迁移采用**单脚本原子执行**，紧凑单行风格（对齐 gotchas 约定），版本号大于各库当前最高版本。
 - 迁移后一期所有功能在默认租户下行为不变（T-G7）。
 
-### 3.2 SSO 身份接入（Sprint 14）
+### 3.2 SSO 身份接入（Sprint 15）
 
 > 对应 PRD 主线一·子模块 B（SSO-01~05）。
 
@@ -155,7 +156,7 @@ worker / job / data-service          + 租户上下文跨服务透传
 - **角色映射**：OIDC 的 group/role claim → DataNest 角色（预置 + 自定义角色），映射规则存 Nacos 或配置表。
 - **密码策略强化**：本地账号密码复杂度、过期、登录失败锁定（复用 Sa-Token 会话 + Redis 计数）。
 
-### 3.3 高可用与数据安全（Sprint 15）
+### 3.3 高可用与数据安全（Sprint 16）
 
 > 对应 PRD 主线一·子模块 C/D（HA-01~04、DS-01~04）。
 
@@ -179,7 +180,7 @@ worker / job / data-service          + 租户上下文跨服务透传
 
 > 对应 PRD 主线二（ST-01~06、LB-01~02、RQ-01~03）。
 
-### 4.1 流处理 SQL 架构（Sprint 16）
+### 4.1 流处理 SQL 架构（Sprint 17）
 
 **方案：复用 Flink 2.2.1 Session 集群，流任务以"Flink SQL 作业"形态托管（ADR-017，对齐 P2-D6）。**
 
@@ -202,14 +203,14 @@ realtime-service ──REST 提交──▶ Flink Session 集群
 - **监控复用**：Sprint 9 的 `CdcMonitorService` 指标历史（分钟降采样）+ Flink REST（vertex 指标 double、取消用 PATCH 等已知坑见 gotchas）复用到流任务。
 - **告警复用**：app-alert 新增 `STREAM_JOB` 对象类型，触发条件=作业失败/延迟超阈值/外部停止。
 
-### 4.2 流处理血缘（Sprint 16-17）
+### 4.2 流处理血缘（Sprint 17-18）
 
 **方案：流 SQL 复用现有 SQL 血缘解析器（ADR-018）。**
 
 - 流任务 SQL 与离线 SQL 走**同一套 SQL 血缘解析器**（一期 `LineageInterceptor`/JSqlParser 解析），产出表级/字段级血缘写入现有 `lineage_record`。
 - 流批血缘融合：实时表 → 下游离线表的混合链路在同一血缘图谱展示（LB-02）。
 
-### 4.3 实时数据质量与观测（Sprint 17）
+### 4.3 实时数据质量与观测（Sprint 18）
 
 - **实时数据质量（RQ-01）**：流处理链路嵌入质量校验（空值/唯一/阈值），复用一期质量体系（规则模板/批次/明细），异常告警复用 app-alert。
 - **背压观测（RQ-02）**：Flink 背压/消费滞后指标可视化（复用 Flink REST metrics）。
@@ -240,6 +241,7 @@ realtime-service ──REST 提交──▶ Flink Session 集群
 
 | 遗留项 | 技术要点 | 复用点 |
 |--------|----------|--------|
+| 自定义查询 SQL（LF-00，Sprint 13 先行） | data_api 增查询定义形态（选表 vs 自定义 SQL），SQL 只读校验 + 参数绑定 + 敏感度/数据权限闸门 | 复用 CancelableSqlExecutor（只读执行）/ OpenApiSqlBuilder（参数化）/ SQL 血缘解析器 |
 | API 数据源接入（LF-01） | 新增 API 数据源类型，RESTful/GraphQL 拉取 → 落湖仓/Doris | 复用数据源管理 + 同步任务引擎 |
 | 物化视图（LF-02） | Doris 物化视图创建/管理，预聚合加速 | Doris 原生能力 |
 | 联邦查询（LF-03） | Doris 外表（Iceberg/外部 JDBC Catalog）跨源查询 | Doris Multi-Catalog |
@@ -330,17 +332,27 @@ realtime-service ──REST 提交──▶ Flink Session 集群
 | **决策** | 环境为任务级维度（dev/test/prod），任务绑定环境的数据源/连接；发布走草稿→审批→发布流水线，审批留审计 |
 | **后果** | 📈 复用现有 DAG/数据源/审计体系；📉 环境配置一致性需治理，避免环境间配置漂移 |
 
+### ADR-020：数据 API 自定义查询 SQL —— 双形态查询定义
+
+| 项目 | 内容 |
+|------|------|
+| **状态** | Accepted |
+| **上下文** | 一期数据 API 仅支持"选表 + 字段筛选"，无法表达 JOIN/聚合/复杂口径（P2-D14） |
+| **决策** | data_api 增加查询定义形态（`query_type` 区分"选表"与"自定义 SQL"）；自定义 SQL **限定单数据源**内 JOIN（跨源留联邦查询），走只读校验 + 参数绑定 + 敏感度/数据权限闸门（**涉及无权限表整体拒绝**，fail-closed），复用 `CancelableSqlExecutor`（只读执行）与 `OpenApiSqlBuilder`（参数化），血缘复用现有 SQL 解析器 |
+| **后果** | 📈 突破单表限制、复用一期能力；📉 自定义 SQL 安全面更大，只读校验 + 参数化 + 闸门必须 fail-closed |
+
 ---
 
 ## 8. 风险与演进
 
 | # | 风险 | 影响 | 缓解 |
 |---|------|------|------|
-| R1 | **多租户手写 SQL 改造面大**：MP 多租户插件对 @Select/@Update 手写 SQL 覆盖有限，需逐条补 tenant_id | 工期长、漏改引发跨租户泄露 | 全量盘点手写 SQL 清单；Sprint 13 单独成 Sprint；E2E 加跨租户越权用例；code review 逐条核对 |
+| R1 | **多租户手写 SQL 改造面大**：MP 多租户插件对 @Select/@Update 手写 SQL 覆盖有限，需逐条补 tenant_id | 工期长、漏改引发跨租户泄露 | 全量盘点手写 SQL 清单；Sprint 14 单独成 Sprint；E2E 加跨租户越权用例；code review 逐条核对 |
 | R2 | **Doris 租户命名空间与连接校验**：共享实例一旦连接级校验有缺口即泄露 | 数据泄露 | 连接级强制限定租户库 + 禁止跨库 catalog；E2E 跨租户查询必测 |
 | R3 | **异步链路租户上下文丢失**：worker/job 执行不依赖请求线程，易漏 tenant_id | 越权/错乱 | 任务记录落 tenant_id，执行与回写统一从记录读取；job 对账兜底 |
 | R4 | **Flink SQL 产品化复杂度**：SQL 校验、UDF、状态恢复对用户透明度 | 流任务可用性 | 复用 Sprint 9 Checkpoint/Savepoint 底座；模板化 SQL；流 SQL 方言覆盖度预验证 |
 | R5 | **单机部署高可用边界**：分布式 HA 超出单机定位 | 期望错位 | 二期 HA = 数据可靠性（副本 + 备份），分布式扩展留未来 |
+| R6 | **自定义 SQL 的注入/越权风险**：自定义 SQL 比"选表"更易绕过字段白名单 | 数据泄露 | 只读校验 + 参数化绑定 + 敏感度/数据权限闸门（fail-closed）+ 发布前预览 |
 
 ---
 
@@ -351,3 +363,5 @@ realtime-service ──REST 提交──▶ Flink Session 集群
 | v1.0 | 2026-08-17 | 初始版本：二期四大主线技术方案、ADR-012~019、风险与演进 | 软件架构师 |
 | v1.1 | 2026-08-17 | 同步 P2-D7/D12/D13 决策：租户=组织、单账号多租户可切换（sys_user_tenant 关联表）、租户内权限默认最小；新增 R6 风险 | 软件架构师 |
 | v1.2 | 2026-08-17 | 租户内权限默认策略改回**默认全量可见、按需收缩**（P2-D13 修正），移除 R6 风险 | 软件架构师 |
+| v1.3 | 2026-08-17 | 新增"数据服务自定义查询 SQL"（ADR-020/LF-00），规划到最前 Sprint 13；多租户顺延为 Sprint 14，后续 Sprint 编号整体 +1，新增 R6 风险 | 软件架构师 |
+| v1.4 | 2026-08-17 | 自定义 SQL 边界定稿：限定单数据源、多表权限 fail-closed 整体拒绝（同步 ADR-020） | 软件架构师 |
