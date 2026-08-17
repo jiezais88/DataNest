@@ -779,6 +779,8 @@ services:
       - NACOS_PASSWORD=nacos
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
+      - POWERJOB_HOST=middleware-powerjob
+      - POWERJOB_PORT=7700
     depends_on:
       mailhog:
         condition: service_started
@@ -821,6 +823,8 @@ services:
       - NACOS_PASSWORD=nacos
       - REDIS_HOST=middleware-redis
       - REDIS_PORT=6379
+      - POWERJOB_HOST=middleware-powerjob
+      - POWERJOB_PORT=7700
     depends_on:
       mailhog:
         condition: service_started

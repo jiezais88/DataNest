@@ -41,8 +41,10 @@ function ColumnNode({data}: NodeProps<FieldLineageData>) {
                 data.current
                     ? 'border-ds-accent bg-ds-accent-light shadow-[0_0_0_3px_rgba(79,70,229,.12)]'
                     : data.upstream
-                        ? 'border-ds-success bg-ds-success-light'
+                        // 上游=来源（中性 slate），方向由布局与箭头表达，不用绿色（绿色只做状态语义）
+                        ? 'border-ds-border-strong bg-ds-bg-hover'
                         : data.downstream
+                            // 下游=受影响方（amber 影响警示语义）
                             ? 'border-ds-warning bg-ds-warning-light'
                             : 'border-ds-border-strong',
             ].join(' ')}

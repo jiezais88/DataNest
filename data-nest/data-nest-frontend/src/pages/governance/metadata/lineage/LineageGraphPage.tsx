@@ -200,7 +200,7 @@ function LineageGraphPageInner() {
             target: e.target,
             animated: highlightedEdges.has(`${e.source}→${e.target}`),
             style: highlightedEdges.has(`${e.source}→${e.target}`)
-                ? {stroke: '#16a34a', strokeWidth: 2.5}
+                ? {stroke: '#4f46e5', strokeWidth: 2.5}
                 : {stroke: '#cbd5e1', strokeWidth: 1.8},
         }));
         const layouted = layoutWithDagre<LineageNodeData>(nodes, edges, 'LR', {

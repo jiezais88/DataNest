@@ -48,5 +48,10 @@ COPY --from=builder /build/application/ ./
 
 EXPOSE 8085 9997
 
-# 绝对路径绕过 /opt/addax/bin 的 shim，应用跑 JRE 25
-ENTRYPOINT ["/opt/java/openjdk/bin/java", "org.springframework.boot.loader.launch.JarLauncher"]
+# 统一启动脚本：JVM 启动前等待中间件 TCP 就绪（Docker daemon 重启无依赖编排兜底）；
+# JAVA_BIN 指向 JRE 25 绝对路径，绕过 /opt/addax/bin 的 shim
+COPY docker/wait-and-start.sh /wait-and-start.sh
+RUN chmod +x /wait-and-start.sh
+ENV JAVA_BIN=/opt/java/openjdk/bin/java
+
+ENTRYPOINT ["/wait-and-start.sh"]

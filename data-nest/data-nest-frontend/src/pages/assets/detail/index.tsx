@@ -291,11 +291,12 @@ export default function AssetDetailPage() {
                 items={[
                     {label: '质量评分', icon: <HiOutlineCheckCircle size={20}/>, iconClass: 'bg-ds-accent-light text-ds-accent',
                      value: <QualityScoreBadge score={score?.score ?? null} healthLevel={score?.healthLevel}/>},
-                    {label: '字段数', icon: <HiOutlineQueueList size={20}/>, iconClass: 'bg-ds-success-light text-ds-success',
+                    {label: '字段数', icon: <HiOutlineQueueList size={20}/>, iconClass: 'bg-ds-accent-light text-ds-accent',
                      value: <span className="text-ds-heading font-bold text-ds-text-primary">{table.columnCount ?? '—'}</span>},
-                    {label: '直接上游 / 下游表', icon: <HiOutlineShare size={20}/>, iconClass: 'bg-ds-warning-light text-ds-warning',
+                    {label: '直接上游 / 下游表', icon: <HiOutlineShare size={20}/>, iconClass: 'bg-ds-accent-light text-ds-accent',
                      value: <span className="text-ds-heading font-bold text-ds-text-primary">{lineageStats ? `${lineageStats.up} / ${lineageStats.down}` : '—'}</span>},
-                    {label: '热度（近 30 天访问）', icon: <HiOutlineFire size={20}/>, iconClass: 'bg-ds-danger-light text-ds-danger',
+                    // 热度是中性指标不是警报，不用红色（红色只做失败/警报语义）
+                    {label: '热度（近 30 天访问）', icon: <HiOutlineFire size={20}/>, iconClass: 'bg-ds-accent-light text-ds-accent',
                      value: <span className="text-ds-heading font-bold text-ds-text-primary">{collaboration?.viewCount30d ?? '—'}</span>},
                 ]}
             />

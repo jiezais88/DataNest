@@ -24,6 +24,10 @@ COPY --from=builder /build/spring-boot-loader/ ./
 COPY --from=builder /build/snapshot-dependencies/ ./
 COPY --from=builder /build/application/ ./
 
+# 统一启动脚本：JVM 启动前等待中间件 TCP 就绪（Docker daemon 重启无依赖编排兜底）
+COPY docker/wait-and-start.sh /wait-and-start.sh
+RUN chmod +x /wait-and-start.sh
+
 EXPOSE 8087
 
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["/wait-and-start.sh"]

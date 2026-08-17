@@ -30,10 +30,10 @@ COPY --from=builder /build/spring-boot-loader/ ./
 COPY --from=builder /build/snapshot-dependencies/ ./
 COPY --from=builder /build/application/ ./
 
-# 启动脚本（等待 Nacos + 以 JarLauncher 启动分层应用）
-COPY data-nest-services/data-nest-engineering/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+# 统一启动脚本：JVM 启动前等待中间件 TCP 就绪（Docker daemon 重启无依赖编排兜底）
+COPY docker/wait-and-start.sh /wait-and-start.sh
+RUN chmod +x /wait-and-start.sh
 
 EXPOSE 8082
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/wait-and-start.sh"]
