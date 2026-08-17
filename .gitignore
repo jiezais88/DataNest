@@ -70,3 +70,5 @@ dump.rdb
 
 .codebuddy
 .workbuddy
+# Playwright 测试产物（Sprint 12 补）
+test-results/
