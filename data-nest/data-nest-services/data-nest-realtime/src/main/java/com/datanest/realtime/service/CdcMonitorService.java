@@ -13,7 +13,6 @@ import com.datanest.realtime.mapper.CdcPipelineMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -72,7 +71,10 @@ public class CdcMonitorService {
         this.alertApi = alertApi;
     }
 
-    @Scheduled(fixedDelayString = "${datanest.realtime.monitor.interval-ms:5000}", initialDelay = 15000)
+    /**
+     * 轮询 RUNNING 管道的 Flink 作业状态（原 @Scheduled 本地调度，2026-08-17 迁至 app-job 统一调度，
+     * 由 CdcInternalController.poll 端点经 Feign 触发；内存状态仍在本服务内保留）。
+     */
     public void pollRunningPipelines() {
         List<CdcPipeline> running = pipelineMapper.selectList(new QueryWrapper<CdcPipeline>()
                 .eq("status", CdcPipeline.STATUS_RUNNING)
@@ -91,7 +93,9 @@ public class CdcMonitorService {
      * F4 事件作业监控：轮询 cdc_events_flink_job_id 非空的管道，事件作业 FAILED/外部停止时
      * 清该字段 + WARN 日志。失败降级不影响主管道状态/指标（独立于 pollOne）。
      */
-    @Scheduled(fixedDelayString = "${datanest.realtime.monitor.interval-ms:5000}", initialDelay = 15000)
+    /**
+     * F4 事件作业监控（原 @Scheduled 本地调度，2026-08-17 迁至 app-job 统一调度）。
+     */
     public void pollEventJobs() {
         List<CdcPipeline> withEventJob = pipelineMapper.selectList(new QueryWrapper<CdcPipeline>()
                 .isNotNull("cdc_events_flink_job_id"));

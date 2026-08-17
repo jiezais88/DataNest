@@ -22,6 +22,7 @@ import com.datanest.task.core.support.DataPermissionResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
@@ -52,6 +53,7 @@ import java.util.stream.Collectors;
  * （Future + 打开的 Connection），「停止」时 interrupt 线程 + 关闭连接，立即中断 JDBC 阻塞读取。
  */
 @Service
+@RefreshScope
 public class SqlQueryService {
 
     private static final Logger logger = LoggerFactory.getLogger(SqlQueryService.class);

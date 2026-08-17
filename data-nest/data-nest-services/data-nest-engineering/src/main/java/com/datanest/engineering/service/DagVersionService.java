@@ -85,6 +85,17 @@ public class DagVersionService {
         return version;
     }
 
+    /**
+     * 删除 DAG 时级联清理其全部版本快照（Sprint 11 收尾 2026-08-17：DagService.delete /
+     * DagProjectService.delete 此前漏删版本快照，已产生孤儿数据，此处补级联）。
+     */
+    public void deleteByDagId(Long dagId) {
+        int deleted = dagVersionMapper.delete(new QueryWrapper<DagVersion>().eq("dag_id", dagId));
+        if (deleted > 0) {
+            logger.info("级联删除 DAG 版本快照: dagId={}, versions={}", dagId, deleted);
+        }
+    }
+
     public List<DagVersionPayload> listVersions(Long dagId) {
         List<DagVersionPayload> payloads = dagVersionMapper.selectByDagId(dagId).stream()
                 .map(this::toPayload)

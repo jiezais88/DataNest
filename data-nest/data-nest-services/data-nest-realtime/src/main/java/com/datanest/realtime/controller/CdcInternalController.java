@@ -3,7 +3,10 @@ package com.datanest.realtime.controller;
 import com.datanest.common.model.Result;
 import com.datanest.realtime.api.dto.CdcPipelineReferenceDTO;
 import com.datanest.realtime.api.dto.CdcPipelineSubscribeDTO;
+import com.datanest.realtime.service.CdcMonitorService;
 import com.datanest.realtime.service.CdcPipelineService;
+import com.datanest.realtime.service.MetricRetentionCleaner;
+import com.datanest.realtime.service.MetricSnapshotWriter;
 import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +23,9 @@ import java.util.Map;
  * <p>
  * 仅供服务间内部调用，路径挂在 context-path /realtime 下（servlet path 以 /internal/ 开头），
  * 由 common 的 InternalTokenFilter 做内部令牌鉴权。
+ * <p>
+ * 2026-08-17：原 realtime 侧 @Scheduled 本地调度（监控轮询/分钟落库/保留期清理）统一迁至
+ * app-job 按 PowerJob cron 调度，经本控制器端点远程触发；执行逻辑与内存状态仍在 realtime 服务内。
  */
 @Hidden // 内部 Feign 契约端点，不进接口文档
 @RestController
@@ -27,9 +33,18 @@ import java.util.Map;
 public class CdcInternalController {
 
     private final CdcPipelineService pipelineService;
+    private final CdcMonitorService monitorService;
+    private final MetricSnapshotWriter metricSnapshotWriter;
+    private final MetricRetentionCleaner metricRetentionCleaner;
 
-    public CdcInternalController(CdcPipelineService pipelineService) {
+    public CdcInternalController(CdcPipelineService pipelineService,
+                                 CdcMonitorService monitorService,
+                                 MetricSnapshotWriter metricSnapshotWriter,
+                                 MetricRetentionCleaner metricRetentionCleaner) {
         this.pipelineService = pipelineService;
+        this.monitorService = monitorService;
+        this.metricSnapshotWriter = metricSnapshotWriter;
+        this.metricRetentionCleaner = metricRetentionCleaner;
     }
 
     /** 按源数据源查询引用它的 CDC 管道（engineering 删除数据源前置校验用） */
@@ -54,5 +69,33 @@ public class CdcInternalController {
     @GetMapping("/cdc/pipelines/{id}/subscribe")
     public Result<CdcPipelineSubscribeDTO> getSubscribeInfo(@PathVariable("id") Long id) {
         return Result.ok(pipelineService.subscribeInfo(id));
+    }
+
+    /** 触发 RUNNING 管道状态轮询（app-job cdcMonitorPollHandler 调度触发，2026-08-17 迁移） */
+    @PostMapping("/cdc-monitor/poll")
+    public Result<Void> pollRunningPipelines() {
+        monitorService.pollRunningPipelines();
+        return Result.ok(null);
+    }
+
+    /** 触发事件作业轮询（app-job cdcMonitorPollHandler 调度触发，F4 事件作业 FAILED/外部停止检测） */
+    @PostMapping("/cdc-monitor/poll-event-jobs")
+    public Result<Void> pollEventJobs() {
+        monitorService.pollEventJobs();
+        return Result.ok(null);
+    }
+
+    /** 触发分钟级指标落库（app-job cdcMetricFlushHandler 调度触发，每 60s） */
+    @PostMapping("/cdc-metrics/flush-minute")
+    public Result<Void> flushMinuteMetrics() {
+        metricSnapshotWriter.flushMinuteSnapshot();
+        return Result.ok(null);
+    }
+
+    /** 触发分钟指标历史清理（app-job cdcMetricRetentionCleaner 调度触发，每天 03:40） */
+    @PostMapping("/cdc-metrics/cleanup")
+    public Result<Void> cleanupMetrics() {
+        metricRetentionCleaner.cleanExpired();
+        return Result.ok(null);
     }
 }

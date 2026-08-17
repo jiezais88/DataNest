@@ -47,6 +47,7 @@ import com.datanest.task.core.service.PythonExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +71,7 @@ import java.util.stream.Stream;
  * {@code sql_expression} 执行时动态生成（{@link RuleSqlGenerator}），配置层不落库。
  */
 @Service
+@RefreshScope
 public class QualityRuleService {
 
     private static final Logger log = LoggerFactory.getLogger(QualityRuleService.class);

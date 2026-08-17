@@ -8,6 +8,7 @@ import com.datanest.engineering.api.dto.ReapStuckRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Component;
  * 收割阈值由 datanest.task.stuck-running-timeout-minutes 配置（默认 120 分钟）。
  */
 @Component
+@RefreshScope
 public class StuckExecutionReaperHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(StuckExecutionReaperHandler.class);

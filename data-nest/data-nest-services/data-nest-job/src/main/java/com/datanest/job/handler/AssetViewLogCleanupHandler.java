@@ -7,6 +7,7 @@ import com.datanest.governance.api.dto.CleanupRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
  * RemoteCalls 容错：governance 不可用本轮跳过，下轮调度再来。
  */
 @Component
+@RefreshScope
 public class AssetViewLogCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(AssetViewLogCleanupHandler.class);

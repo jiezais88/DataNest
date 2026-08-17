@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.constant.DorisConstants;
 import com.datanest.common.constant.MetadataSourceStatus;
 import com.datanest.common.constant.SourceType;
+import com.datanest.common.exception.BusinessException;
+import com.datanest.common.exception.ErrorCode;
 import com.datanest.governance.api.dto.LineageRecordBatchRequest;
 import com.datanest.governance.api.dto.LineageRecordItemDTO;
 import com.datanest.governance.api.dto.MetadataRefreshIfExistsRequest;
@@ -13,9 +15,11 @@ import com.datanest.governance.api.dto.MetadataRemoveRequest;
 import com.datanest.governance.entity.LineageRecord;
 import com.datanest.governance.entity.MetadataColumn;
 import com.datanest.governance.entity.MetadataTable;
+import com.datanest.governance.entity.QualityRule;
 import com.datanest.governance.mapper.LineageRecordMapper;
 import com.datanest.governance.mapper.MetadataColumnMapper;
 import com.datanest.governance.mapper.MetadataTableMapper;
+import com.datanest.governance.mapper.QualityRuleMapper;
 import com.datanest.governance.service.AssetCollaborationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,15 +47,18 @@ public class MetadataWriteService {
     private final MetadataColumnMapper metadataColumnMapper;
     private final LineageRecordMapper lineageRecordMapper;
     private final AssetCollaborationService assetCollaborationService;
+    private final QualityRuleMapper qualityRuleMapper;
 
     public MetadataWriteService(MetadataTableMapper metadataTableMapper,
                                 MetadataColumnMapper metadataColumnMapper,
                                 LineageRecordMapper lineageRecordMapper,
-                                AssetCollaborationService assetCollaborationService) {
+                                AssetCollaborationService assetCollaborationService,
+                                QualityRuleMapper qualityRuleMapper) {
         this.metadataTableMapper = metadataTableMapper;
         this.metadataColumnMapper = metadataColumnMapper;
         this.lineageRecordMapper = lineageRecordMapper;
         this.assetCollaborationService = assetCollaborationService;
+        this.qualityRuleMapper = qualityRuleMapper;
     }
 
     /**
@@ -118,6 +125,16 @@ public class MetadataWriteService {
         if (table == null) {
             logger.debug("元数据表 {}.{} 不存在，跳过删除", request.getDatabaseName(), request.getTableName());
             return;
+        }
+        // Sprint 11 收尾（2026-08-17）：删除前校验质量规则引用——表被质量规则作目标时禁止删除，
+        // 否则规则悬空指向已删表（fail-closed，与数据源删除的引用校验语义一致）。
+        // 注意 remove 是 worker 采集侧"发现表消失"的清理路径，静默删除会让质量规则悬空，
+        // 因此需先处理相关质量规则再清理元数据。
+        Long ruleCount = qualityRuleMapper.selectCount(
+                new QueryWrapper<QualityRule>().eq("table_id", table.getId()));
+        if (ruleCount != null && ruleCount > 0) {
+            throw new BusinessException(ErrorCode.HAS_REFERENCES,
+                    "元数据表已被 " + ruleCount + " 个质量规则引用，请先处理相关质量规则再删除");
         }
         metadataColumnMapper.delete(new QueryWrapper<MetadataColumn>().eq("table_id", table.getId()));
         metadataTableMapper.deleteById(table.getId());

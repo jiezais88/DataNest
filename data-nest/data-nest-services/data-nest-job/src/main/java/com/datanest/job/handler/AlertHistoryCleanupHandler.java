@@ -6,6 +6,7 @@ import com.datanest.common.model.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
  * 微服务化改造：alert_history 归 alert-service 所有，清理经 Feign 远程执行。
  */
 @Component
+@RefreshScope
 public class AlertHistoryCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(AlertHistoryCleanupHandler.class);

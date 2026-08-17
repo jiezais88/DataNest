@@ -6,6 +6,7 @@ import com.datanest.system.api.fallback.SystemAuditApiFallbackFactory;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * 系统服务审计日志内部 Feign 契约（Sprint 11 F1）。
@@ -20,4 +21,8 @@ public interface SystemAuditApi {
     /** 写入一条审计日志（fail-open：system 不可用时丢弃，不阻断业务） */
     @PostMapping
     Result<Void> record(@RequestBody AuditLogEvent event);
+
+    /** 清理保留天数之前的审计记录（job 定时调用），返回删除条数 */
+    @PostMapping("/cleanup")
+    Result<Integer> cleanup(@RequestParam("retainDays") int retainDays);
 }

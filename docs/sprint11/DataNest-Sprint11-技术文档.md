@@ -346,17 +346,41 @@ job QueueDispatcherHandler（每 5s）
 
 ### 7.1 配置项（Nacos shared-configs）
 
-| 键 | 默认 | 说明 |
-|----|------|------|
-| `datanest.audit.retain-days` | 90 | 审计日志保留天数（job 清理 + system 兜底） |
-| `datanest.queue.dispatch-interval-seconds` | 5 | 队列调度器轮询间隔 |
+共享配置经 `spring.config.import: optional:nacos:shared-*.yaml?group=shared-configs&refreshEnabled=true` 加载（各服务 import 各自需要的 shared 文件）。
+
+**Nacos 热更新验证结论（2026-08-17 实测，PRD N2/D4）**：
+
+| 配置类别 | 修改 Nacos 后是否生效 | 说明 |
+|----------|----------------------|------|
+| `logging.level.*`（shared-common.yaml） | ✅ **热生效，无需重启** | Spring Boot `LoggingRebinder` 监听环境变更实时刷新 logger；实测 app-system 改 `com.datanest: debug` 后登录请求立即输出 MyBatis SQL DEBUG，改回后立即回落（验证 A） |
+| 业务参数 `@Value`（已配 `@RefreshScope`，如 `datanest.asset.search.max-results`） | ✅ **热生效，无需重启** | Nacos 推送 → `Refresh keys changed: [xxx]` → `@RefreshScope` Bean 被失效并在下次访问时重建（重新注入 `@Value`）；实测改 max-results 200→3 后资产搜索立即从 5 条变 3 条（2026-08-17 改造后复测） |
+| 普通 `@Value`（未配 `@RefreshScope`） | ❌ **不生效，需重启服务** | 仅 Environment 刷新，Bean 字段不变（验证 B 原始结论）；如新增业务参数需要热更新，须加 `@RefreshScope` 或 `@ConfigurationProperties` |
+
+> 注意：`logging.level.com.datanest` 在 shared-common.yaml 中为 `${DATANEST_LOG_LEVEL:info}` 占位符（docker compose 未注入该 env，占位符解析为默认 info）。**改 Nacos 里占位符的默认值无效**（env 优先），要调整日志级别应改为字面量 `debug`/`info`（见验证 A 步骤）。
+>
+> **`@RefreshScope` 适用边界（2026-08-17 定稿）**：仅给**纯业务参数 Bean**（cleanup retain-days、query-timeout、max-results、熔断/限流阈值、质量扣分阈值等）配置；**连接/凭据类**（Doris/MinIO/Flink/Kafka）与 **PowerJob appname** 不加（重建 Bean 会中断连接或改了不生效，此类配置经重启更新）。已加范围：job 11 个 handler、governance `AssetCatalogService`/`QualityRuleService`/`ScoreCalculator`、data-service `SqlQueryService`/`OpenApiService`/`RateLimitService`/`CircuitBreakerService`/`DataServiceOpsController`。
+>
+> **realtime 调度迁移（2026-08-17）**：realtime 原 3 处本地 `@Scheduled`（`CdcMonitorService` 监控轮询×2、`MetricSnapshotWriter` 分钟落库、`MetricRetentionCleaner` 保留期清理）已全部移除，**统一迁至 app-job 按 PowerJob cron 调度**（符合「本地禁止 @Scheduled，统一 PowerJob cron」约定）——job 新增 `CdcOpsApi` Feign 契约，经 realtime `CdcInternalController` 的 4 个内部端点触发执行，内存状态（累加器/告警去重/404 计数）仍留在 realtime。**cron 热更新**：`JobRegistrar` 监听 `RefreshScopeRefreshedEvent`，Nacos 配置推送（任何 @RefreshScope Bean 重建）后从 Environment 重算全部 cron 并 `saveOrUpdate` 幂等重注册；实测改 `datanest.job.cdc-monitor-poll.interval-ms` 5000→10000 后 PowerJob cron 自动 `0/5`→`0/10` 无需重启。
+
+**实际业务配置键**（来自代码，非全量）：
+
+| 键 | 默认 | 读取方 | 说明 |
+|----|------|--------|------|
+| `datanest.asset.search.max-results` | 200 | governance `AssetCatalogService` | 资产搜索结果裁剪上限（@RefreshScope） |
+| `datanest.queue.dispatch-interval-seconds` | 5 | job `JobRegistrar` | 执行队列调度 cron 间隔（生成 `0/N * * * * ?`，热更新） |
+| `datanest.job.cdc-monitor-poll.interval-ms` | 5000 | job `JobRegistrar` | CDC 监控轮询间隔（毫秒→cron `0/N * * * * ?`，热更新；原 realtime `datanest.realtime.monitor.interval-ms` 迁移） |
+| `datanest.dataservice.sql.query-timeout-seconds` | 60 | data-service `SqlQueryService`/`OpenApiService` | SQL 终端/API 查询超时（@RefreshScope） |
+| `datanest.job.*-cleanup.retain-days` | 30~90 | job 各 CleanupHandler | 各类历史数据清理保留天数（dag-history/lineage/alert-history/quality-check/sql/api-call/asset-view-log/audit-log，均 @RefreshScope） |
+| `datanest.realtime.monitor.not-found-threshold` / `datanest.realtime.lag.warn-threshold` | 3 / 30 | realtime `CdcMonitorService` | 监控判定阈值（逻辑在 realtime，非热更新） |
+
+> 审计日志清理：system 暴露 `InternalAuditController.cleanup`（Feign，`retainDays` 参数默认 90）；**job 侧已注册 `auditLogCleanupHandler`**（2026-08-17，PowerJob jobId=397，cron `0 0 5 * * ?` 每天凌晨 5 点，`SystemAuditApi.cleanup` Feign 契约 + 降级返回 0）。
 
 ### 7.2 依赖与构建变更
 
 - common：新增 `@AuditLog` 注解 + `AuditLogAspect` + `AuditLogEvent` DTO + `AuditLogRecorder` 接口（改动 common = **全量重建所有后端服务镜像**，见红线）。
 - system-api：新增 `SystemAuditApi` Feign 契约（internal 写入 + 权限查询）。
 - engineering：加 `queue` 相关 Service/Controller/Mapper；依赖 system-api（已有）。
-- job：新增 `AuditLogCleanupHandler` + `QueueDispatcherHandler`（依赖 system-api/engineering-api）。
+- job：新增 `QueueDispatcherHandler`（执行队列调度，依赖 engineering-api）。
 - 前端：Sidebar/路由/首页/系统管理页重写，权限点映射表 + `usePermission` hook。
 
 ### 7.3 部署步骤

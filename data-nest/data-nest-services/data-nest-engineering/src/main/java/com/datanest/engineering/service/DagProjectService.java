@@ -47,6 +47,8 @@ public class DagProjectService {
     private final DagEdgeMapper dagEdgeMapper;
     private final DagExecutionMapper dagExecutionMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
+    private final DagVersionService dagVersionService;
+    private final DagParameterMapper dagParameterMapper;
     private final PowerJobWorkflowClient powerJobWorkflowClient;
     private final SystemUserApi systemUserApi;
     private final AlertApi alertApi;
@@ -54,6 +56,7 @@ public class DagProjectService {
     public DagProjectService(DagProjectMapper dagProjectMapper, DagMapper dagMapper,
                              DagNodeMapper dagNodeMapper, DagEdgeMapper dagEdgeMapper,
                              DagExecutionMapper dagExecutionMapper, NodeExecutionMapper nodeExecutionMapper,
+                             DagVersionService dagVersionService, DagParameterMapper dagParameterMapper,
                              PowerJobWorkflowClient powerJobWorkflowClient,
                              SystemUserApi systemUserApi,
                              AlertApi alertApi) {
@@ -63,6 +66,8 @@ public class DagProjectService {
         this.dagEdgeMapper = dagEdgeMapper;
         this.dagExecutionMapper = dagExecutionMapper;
         this.nodeExecutionMapper = nodeExecutionMapper;
+        this.dagVersionService = dagVersionService;
+        this.dagParameterMapper = dagParameterMapper;
         this.powerJobWorkflowClient = powerJobWorkflowClient;
         this.systemUserApi = systemUserApi;
         this.alertApi = alertApi;
@@ -131,6 +136,9 @@ public class DagProjectService {
             Long dagId = dag.getId();
             dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", dagId));
             dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", dagId));
+            // Sprint 11 收尾（2026-08-17）：级联删除 DAG 版本快照与自定义参数（与 DagService.delete 对齐）
+            dagVersionService.deleteByDagId(dagId);
+            dagParameterMapper.delete(new QueryWrapper<DagParameter>().eq("dag_id", dagId));
             // 级联删除执行历史（与 DagService.delete 对齐：先删 node_execution 再删 dag_execution）
             List<DagExecution> executions = dagExecutionMapper.selectByDagId(dagId);
             List<Long> executionIds = executions == null ? List.of()

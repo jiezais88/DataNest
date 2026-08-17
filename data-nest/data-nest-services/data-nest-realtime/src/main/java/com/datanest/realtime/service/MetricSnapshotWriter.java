@@ -7,7 +7,6 @@ import com.datanest.realtime.mapper.CdcMetricMinuteMapper;
 import com.datanest.realtime.mapper.CdcPipelineMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -38,7 +37,10 @@ public class MetricSnapshotWriter {
         this.pipelineMapper = pipelineMapper;
     }
 
-    @Scheduled(fixedDelay = 60000, initialDelay = 30000)
+    /**
+     * 分钟级指标落库（原 @Scheduled 本地调度，2026-08-17 迁至 app-job 统一调度，
+     * 由 CdcInternalController.flushMinute 端点经 Feign 每 60s 触发）。
+     */
     public void flushMinuteSnapshot() {
         Map<Long, CdcMonitorService.MetricAccumulator> snapshot = monitorService.accumulatorSnapshot();
         if (snapshot.isEmpty()) {

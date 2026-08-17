@@ -21,11 +21,17 @@ public class SystemAuditApiFallbackFactory implements FallbackFactory<SystemAudi
 
     @Override
     public SystemAuditApi create(Throwable cause) {
-        logger.warn("SystemAuditApi 审计写入降级（fail-open）: {}", cause == null ? "unknown" : cause.getMessage());
+        logger.warn("SystemAuditApi 审计调用降级（fail-open）: {}", cause == null ? "unknown" : cause.getMessage());
         return new SystemAuditApi() {
             @Override
             public Result<Void> record(AuditLogEvent event) {
                 return Result.ok(null);
+            }
+
+            @Override
+            public Result<Integer> cleanup(int retainDays) {
+                // 清理失败返回 0：job 侧 RemoteCalls 按行数判定，0 不会触发失败上报
+                return Result.ok(0);
             }
         };
     }

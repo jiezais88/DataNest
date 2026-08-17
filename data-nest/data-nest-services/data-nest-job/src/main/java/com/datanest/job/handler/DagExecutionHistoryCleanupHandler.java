@@ -7,6 +7,7 @@ import com.datanest.engineering.api.dto.CleanupRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
  * 远程失败经 RemoteCalls 降级按 0 处理，下轮再来。
  */
 @Component
+@RefreshScope
 public class DagExecutionHistoryCleanupHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagExecutionHistoryCleanupHandler.class);

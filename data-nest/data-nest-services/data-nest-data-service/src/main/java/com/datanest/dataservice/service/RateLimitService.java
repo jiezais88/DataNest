@@ -1,6 +1,7 @@
 package com.datanest.dataservice.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +17,7 @@ import java.util.UUID;
  * 注：removeRange + zCard + add 非原子，极端并发下可能少量超发；验收口径（顺序请求第 N 次 429）下准确。
  */
 @Service
+@RefreshScope
 public class RateLimitService {
 
     private static final String KEY_PREFIX = "datanest:ratelimit:";

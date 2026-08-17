@@ -185,6 +185,11 @@ public class CdcPipelineService {
         if (CdcPipeline.STATUS_RUNNING.equals(entity.getStatus())) {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_STATUS_INVALID, "管道运行中，请先停止");
         }
+        // Sprint 11 收尾（2026-08-17，P1）：删除前兜底取消 Flink 作业。
+        // 场景：管道 ERROR/STOPPED 但 Flink 作业实际存活（监控轮询与真实状态漂移、或作业外部拉起），
+        // 直接删库会产生游离作业。best-effort：主管道 + 事件作业都尝试 cancel，
+        // 作业已不存在 / Flink 不可达时静默（cancelJob 抛异常被捕获），不阻断删除主流程。
+        cancelFlinkJobsIfPresent(entity);
         // 级联清理 savepoint 文件（fail-open：删文件失败不阻断删除主流程，R5；
         // Review 2026-08-11 修复：挪到事务提交后，防回滚后路径指向已删文件）
         if (entity.getSavepointPath() != null && !entity.getSavepointPath().isBlank()) {
@@ -211,6 +216,31 @@ public class CdcPipelineService {
         logMapper.delete(new QueryWrapper<CdcPipelineLog>().eq("pipeline_id", id));
         metricMinuteMapper.delete(new QueryWrapper<CdcMetricMinute>().eq("pipeline_id", id));
         pipelineMapper.deleteById(id);
+    }
+
+    /**
+     * 删除管道前兜底取消残留 Flink 作业（Sprint 11 收尾 P1，2026-08-17）。
+     * <p>
+     * 主管道 flink_job_id 与事件作业 cdc_events_flink_job_id 即便在 ERROR/STOPPED 状态也可能仍有
+     * 实际存活作业（监控轮询漂移/外部拉起），删除时兜底 cancel 防游离作业；作业已不存在或
+     * Flink 不可达时静默跳过（fail-open），不阻断删除主流程。
+     */
+    private void cancelFlinkJobsIfPresent(CdcPipeline entity) {
+        cancelFlinkJobQuietly(entity.getId(), "主作业", entity.getFlinkJobId());
+        cancelFlinkJobQuietly(entity.getId(), "事件作业", entity.getCdcEventsFlinkJobId());
+    }
+
+    private void cancelFlinkJobQuietly(Long pipelineId, String label, String flinkJobId) {
+        if (flinkJobId == null || flinkJobId.isBlank()) {
+            return;
+        }
+        try {
+            flinkJobService.cancelJob(flinkJobId);
+            logger.info("删除管道时兜底取消 Flink {}: pipelineId={}, jobId={}", label, pipelineId, flinkJobId);
+        } catch (Exception e) {
+            logger.warn("删除管道时兜底取消 Flink {}失败（作业可能已不存在，忽略）: pipelineId={}, jobId={}, error={}",
+                    label, pipelineId, flinkJobId, e.getMessage());
+        }
     }
 
     /** 删除管道时清理 PG 源复制槽（datanest_cdc_<pipelineId>；best effort fail-open，失败只记 warn） */

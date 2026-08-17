@@ -18,6 +18,7 @@ import com.datanest.common.constant.QualityScoreConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -46,6 +47,7 @@ import java.util.List;
  * 显式 bean 名保留无害，注入方均按类型注入。
  */
 @Service("governanceScoreCalculator")
+@RefreshScope
 public class ScoreCalculator {
 
     private static final Logger logger = LoggerFactory.getLogger(ScoreCalculator.class);

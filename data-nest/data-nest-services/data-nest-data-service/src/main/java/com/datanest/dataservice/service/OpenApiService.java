@@ -15,6 +15,7 @@ import com.datanest.engineering.api.dto.DataSourceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -28,6 +29,7 @@ import java.util.Map;
  * 分页时 COUNT 总数 → 记录熔断结果 + 异步写 api_call_log。
  */
 @Service
+@RefreshScope
 public class OpenApiService {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenApiService.class);

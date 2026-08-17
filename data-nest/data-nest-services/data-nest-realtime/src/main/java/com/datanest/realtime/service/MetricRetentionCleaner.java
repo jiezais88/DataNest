@@ -4,7 +4,6 @@ import com.datanest.realtime.mapper.CdcMetricMinuteMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -29,7 +28,10 @@ public class MetricRetentionCleaner {
         this.metricMapper = metricMapper;
     }
 
-    @Scheduled(cron = "0 40 3 * * ?")
+    /**
+     * 分钟指标历史清理（原 @Scheduled 本地调度，2026-08-17 迁至 app-job 统一调度，
+     * 由 CdcInternalController.cleanupMetrics 端点经 Feign 每天 03:40 触发）。
+     */
     public void cleanExpired() {
         try {
             LocalDateTime boundary = LocalDateTime.now().minusDays(retentionDays);

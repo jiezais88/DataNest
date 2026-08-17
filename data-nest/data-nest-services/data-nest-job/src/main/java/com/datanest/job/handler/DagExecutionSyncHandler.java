@@ -10,6 +10,7 @@ import com.datanest.task.core.service.DagExecutionSyncService.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -36,6 +37,7 @@ import java.util.List;
  * PowerJob 迁移后由 JobRegistrar 注册 cron（默认 "0/30 * * * * ?"）触发。
  */
 @Component
+@RefreshScope
 public class DagExecutionSyncHandler implements PlatformJobHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DagExecutionSyncHandler.class);

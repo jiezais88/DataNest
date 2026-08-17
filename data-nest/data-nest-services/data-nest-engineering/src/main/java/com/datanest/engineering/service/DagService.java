@@ -249,6 +249,10 @@ public class DagService {
         }
         dagNodeMapper.delete(new QueryWrapper<DagNode>().eq("dag_id", id));
         dagEdgeMapper.delete(new QueryWrapper<DagEdge>().eq("dag_id", id));
+        // Sprint 11 收尾（2026-08-17）：级联删除 DAG 版本快照与自定义参数（此前漏删，
+        // 已产生 dag_version 70 条 / dag_parameter 53 条孤儿数据）
+        dagVersionService.deleteByDagId(id);
+        dagParameterMapper.delete(new QueryWrapper<DagParameter>().eq("dag_id", id));
         // Sprint 6：删除 DAG 时按 dag_id 清理其产生的血缘记录（血缘是"当前加工关系"呈现，DAG 删除后成死边）
         // 微服务化 3.4：lineage_record 归治理域，经 governance 远程删除；失败经 RemoteCalls 降级
         // 记 warn，不阻断 DAG 删除（最终一致，残留由人工或后续补偿清理）

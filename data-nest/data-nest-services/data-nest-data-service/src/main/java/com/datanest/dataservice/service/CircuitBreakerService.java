@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -21,6 +22,7 @@ import java.util.concurrent.TimeUnit;
  * 计数窗口 = failure-threshold，失败率阈值 50%（即窗口内 ≥ 半数为失败即开闸，贴合「连续失败」语义）。
  */
 @Service
+@RefreshScope
 public class CircuitBreakerService {
 
     private final ConcurrentMap<Long, CircuitBreaker> breakers = new ConcurrentHashMap<>();
