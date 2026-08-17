@@ -50,6 +50,9 @@ coverage/
 .nyc_output/
 *.tsbuildinfo
 
+# 本地产物（python-sandbox 挂载点等，Sprint 12 发布卫生检查）
+data-nest/data/
+
 # Build caches
 .cache/
 out/

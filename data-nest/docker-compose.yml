@@ -112,7 +112,7 @@ services:
       test: [ "CMD-SHELL", "curl -sf http://localhost:7700/ > /dev/null || exit 1" ]
       interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 30
       start_period: 90s
     networks:
       - datanest-net
@@ -285,7 +285,8 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1" ]
+      # JVM CLI 探针（kafka-broker-api-versions.sh）冷启动可达 50s+，远超超时窗口，改轻量 TCP 探测
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9092' 2>/dev/null || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -295,9 +296,11 @@ services:
 
   # ============================================
   # Test MySQL 8.0 — 数据源 E2E 测试目标库
+  # profiles: ["test"] 默认不启动（Sprint 12 ADR-S12-004）；E2E 用 docker compose --profile test up -d
   # ============================================
   middleware-test-mysql:
     image: mysql:8.0
+    profiles: ["test"]
     container_name: datanest-middleware-test-mysql
     restart: unless-stopped
     command: --default-time-zone=+08:00
@@ -323,9 +326,11 @@ services:
 
   # ============================================
   # Test PostgreSQL 16 — 数据源 E2E 测试目标库
+  # profiles: ["test"] 默认不启动（Sprint 12 ADR-S12-004）；E2E 用 docker compose --profile test up -d
   # ============================================
   middleware-test-postgres:
     image: postgres:16-alpine
+    profiles: ["test"]
     container_name: datanest-middleware-test-postgres
     restart: unless-stopped
     command: postgres -c timezone=Asia/Shanghai -c wal_level=logical -c max_replication_slots=8 -c max_wal_senders=8
@@ -381,9 +386,11 @@ services:
   # 持久化：test-oracle-data 卷
   # 启动慢（start_period=120s），需等 initdb 完成
   # 2026-08-11 停用（资源占用大）；2026-08-12 Sprint 10 F1 数据服务多数据源测试重新启用
+  # 2026-08-17 Sprint 12 ADR-S12-004：收敛到 test profile，默认不启动；E2E 用 docker compose --profile test up -d
   # ============================================
   middleware-test-oracle:
     image: gvenzl/oracle-free:23-slim
+    profiles: ["test"]
     container_name: datanest-middleware-test-oracle
     restart: unless-stopped
     environment:
@@ -412,8 +419,10 @@ services:
   # 必须 ACCEPT_EULA=Y；用 sqlserver-entrypoint.sh 跑 initdb/*.sql
   # ============================================
   # Sprint 5 临时注释（资源不足）；2026-08-12 Sprint 10 F1 数据服务多数据源测试重新启用
+  # 2026-08-17 Sprint 12 ADR-S12-004：收敛到 test profile，默认不启动；E2E 用 docker compose --profile test up -d
   middleware-test-sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["test"]
     container_name: datanest-middleware-test-sqlserver
     restart: unless-stopped
     environment:
@@ -472,7 +481,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8080" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
@@ -514,7 +523,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8087" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
@@ -565,7 +574,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8088" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
@@ -658,7 +667,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8090" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 90s
     networks:
       - datanest-net
@@ -703,7 +712,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8082" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
@@ -744,7 +753,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8084" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
@@ -784,7 +793,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8085" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
@@ -826,7 +835,7 @@ services:
       test: [ "CMD-SHELL", "nc -z localhost 8086" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 60s
     networks:
       - datanest-net
