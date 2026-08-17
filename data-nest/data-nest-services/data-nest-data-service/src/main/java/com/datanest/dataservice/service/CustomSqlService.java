@@ -84,6 +84,7 @@ public class CustomSqlService {
      * @return 解析后的涉及表清单（去重保序）；空表示无表引用
      */
     public List<InvolvedTable> extractInvolvedTables(String sql, String databaseName, String schemaName) {
+        checkSingleStatement(sql); // 技术文档 §6.2：分号检测，多语句拒绝（9001）
         List<String> rawTables = readOnlySqlValidator.validateAndExtractTables(sql);
         List<InvolvedTable> result = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -161,6 +162,7 @@ public class CustomSqlService {
      * 必填参数缺省 → 9018；选填参数缺省时取 defaultValue，无默认值则绑定 NULL（调用方需保证 SQL 条件语义）。
      */
     public BuiltSql buildQuery(String sql, List<CustomSqlParamDef> sqlParams, Map<String, String> queryParams) {
+        checkSingleStatement(sql); // 执行前兜底再校验（技术文档 §6.2 / §3.3，防落库后绕过）
         List<String> placeholders = validateParamDefs(sql, sqlParams);
         ScanResult scan = scanParams(sql);
         Map<String, CustomSqlParamDef> defMap = new LinkedHashMap<>();
@@ -193,6 +195,9 @@ public class CustomSqlService {
      * 分页包裹：{@code SELECT * FROM (sql) AS _p + 分页}，方言与 OpenApiSqlBuilder.buildPagination 对齐
      * （Doris/MySQL 用 LIMIT offset, size；PG 用 LIMIT size OFFSET offset；Oracle/SQLServer 用 OFFSET FETCH）。
      * 内层 SQL 尾部多余分号先剥离（防外层包裹语法错误）。
+     * <p>
+     * 缺陷回归（CS-23）：SQL 内顶层 {@code ORDER BY} 必须上提到外层包裹——Doris 会优化掉子查询内的
+     * ORDER BY，导致分页结果顺序错误。上提后 ORDER BY 仅能引用 SELECT 输出列/别名（推荐写法）。
      */
     public String wrapPagination(String baseSql, String type, int page, int pageSize) {
         int offset = Math.max(page - 1, 0) * pageSize;
@@ -205,7 +210,9 @@ public class CustomSqlService {
             case POSTGRESQL -> " LIMIT " + pageSize + " OFFSET " + offset;
             case ORACLE, SQLSERVER -> " OFFSET " + offset + " ROWS FETCH NEXT " + pageSize + " ROWS ONLY";
         };
-        return "SELECT * FROM (" + stripTrailingSemicolon(baseSql) + ") AS _p" + paging;
+        OrderBySplit split = splitTrailingOrderBy(stripTrailingSemicolon(baseSql));
+        String orderBy = split.orderByClause();
+        return "SELECT * FROM (" + split.prefix() + ") AS _p" + (orderBy.isEmpty() ? "" : " " + orderBy) + paging;
     }
 
     /** COUNT 包裹：{@code SELECT COUNT(*) FROM (sql) AS _c} */
@@ -214,6 +221,159 @@ public class CustomSqlService {
     }
 
     // ---------- 内部方法 ----------
+
+    /** 顶层 ORDER BY 拆分结果：prefix 为去掉 ORDER BY 的 SQL，orderByClause 为完整排序子句（可为空串） */
+    private record OrderBySplit(String prefix, String orderByClause) {
+    }
+
+    /**
+     * 顶层 ORDER BY 拆分（分页包裹用）：词法扫描跳过字符串/注释/括号内，取深度 0 的最后一个
+     * {@code ORDER BY ...} 整体作为外层排序子句（CS-23 缺陷回归）。
+     */
+    private OrderBySplit splitTrailingOrderBy(String sql) {
+        int n = sql.length();
+        int depth = 0;
+        int lastOrderBy = -1;
+        int i = 0;
+        while (i < n) {
+            char c = sql.charAt(i);
+            if (c == '\'') {
+                i = skipString(sql, i);
+                continue;
+            }
+            if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-') {
+                i = skipLineComment(sql, i);
+                continue;
+            }
+            if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
+                i = skipBlockComment(sql, i);
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+                i++;
+                continue;
+            }
+            if (c == ')') {
+                depth = Math.max(0, depth - 1);
+                i++;
+                continue;
+            }
+            if (depth == 0 && (c == 'O' || c == 'o') && matchesWord(sql, i, "ORDER")) {
+                int j = skipWhitespace(sql, i + 5);
+                if (matchesWord(sql, j, "BY")) {
+                    lastOrderBy = i;
+                    i = j + 2;
+                    continue;
+                }
+            }
+            i++;
+        }
+        if (lastOrderBy < 0) {
+            return new OrderBySplit(sql, "");
+        }
+        return new OrderBySplit(sql.substring(0, lastOrderBy), sql.substring(lastOrderBy).trim());
+    }
+
+    /**
+     * 单语句校验（技术文档 §6.2 分号检测）：顶层 {@code ;} 后存在非空内容（含注释）即拒（9001）。
+     * 词法扫描跳过字符串/注释；允许语句尾部纯分号（{@code SELECT ...;} 视为单条）。
+     */
+    private void checkSingleStatement(String sql) {
+        int n = sql.length();
+        int i = 0;
+        while (i < n) {
+            char c = sql.charAt(i);
+            if (c == '\'') {
+                i = skipString(sql, i);
+                continue;
+            }
+            if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-') {
+                i = skipLineComment(sql, i);
+                continue;
+            }
+            if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
+                i = skipBlockComment(sql, i);
+                continue;
+            }
+            if (c == ';') {
+                int j = skipWhitespace(sql, i + 1);
+                if (j < n) {
+                    throw new BusinessException(ErrorCode.SQL_NOT_READ_ONLY,
+                            "仅支持单条 SQL 语句（检测到「;」后仍有内容，多语句将被拒绝）");
+                }
+                return; // 尾部纯分号 → 允许
+            }
+            i++;
+        }
+    }
+
+    /** 跳过单引号字符串（含 '' 与反斜杠转义），返回字符串结束后的下标 */
+    private int skipString(String sql, int start) {
+        int i = start + 1;
+        int n = sql.length();
+        while (i < n) {
+            char s = sql.charAt(i);
+            if (s == '\'') {
+                if (i + 1 < n && sql.charAt(i + 1) == '\'') {
+                    i += 2;
+                    continue;
+                }
+                return i + 1;
+            }
+            if (s == '\\' && i + 1 < n) {
+                i += 2;
+                continue;
+            }
+            i++;
+        }
+        return n;
+    }
+
+    /** 跳过 -- 行注释，返回注释结束后的下标（到行尾，不含换行） */
+    private int skipLineComment(String sql, int start) {
+        int i = start;
+        int n = sql.length();
+        while (i < n && sql.charAt(i) != '\n') {
+            i++;
+        }
+        return i;
+    }
+
+    /** 跳过 /* 块注释 *&#47;，返回注释结束后的下标 */
+    private int skipBlockComment(String sql, int start) {
+        int i = start + 2;
+        int n = sql.length();
+        while (i + 1 < n && !(sql.charAt(i) == '*' && sql.charAt(i + 1) == '/')) {
+            i++;
+        }
+        return i + 1 < n ? i + 2 : n;
+    }
+
+    /** 从 start 起大小写不敏感匹配关键字（需词边界） */
+    private boolean matchesWord(String sql, int start, String word) {
+        int n = sql.length();
+        if (start < 0 || start + word.length() > n) {
+            return false;
+        }
+        for (int k = 0; k < word.length(); k++) {
+            if (Character.toLowerCase(sql.charAt(start + k)) != Character.toLowerCase(word.charAt(k))) {
+                return false;
+            }
+        }
+        int after = start + word.length();
+        return after >= n || !isIdentPart(sql.charAt(after));
+    }
+
+    /** 跳过连续空白，返回首个非空白下标 */
+    private int skipWhitespace(String sql, int start) {
+        int i = start;
+        int n = sql.length();
+        while (i < n && Character.isWhitespace(sql.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
 
     /** 词法级 :param 扫描结果：替换后的 SQL + 参数名列表（保序去重） */
     private record ScanResult(String sql, List<String> params) {

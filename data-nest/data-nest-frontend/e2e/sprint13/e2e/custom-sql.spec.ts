@@ -38,7 +38,7 @@ async function gotoWizardCustomSql(page: Page): Promise<void> {
     await gotoAs(page, ADMIN.username, ADMIN.password, '/data-service/api-manage/new');
     await expect(page.getByRole('heading', {name: '新建 API'})).toBeVisible();
     // 第 1 步：双形态单选卡片
-    await expect(page.getByText('选择查询定义方式')).toBeVisible();
+    await expect(page.getByRole('heading', {name: '选择查询定义方式'})).toBeVisible();
     await expect(page.locator('label').filter({hasText: '选表'}).first()).toBeVisible();
     const customCard = page.locator('label').filter({hasText: '自定义 SQL'}).first();
     await customCard.click();
@@ -60,7 +60,7 @@ async function fillSqlEditor(page: Page, sql: string): Promise<void> {
 
 test('CS-UI-01 双形态向导：第 1 步出现「选表/自定义 SQL」单选，默认选表', async ({page}) => {
     await gotoAs(page, ADMIN.username, ADMIN.password, '/data-service/api-manage/new');
-    await expect(page.getByText('选择查询定义方式')).toBeVisible();
+    await expect(page.getByRole('heading', {name: '选择查询定义方式'})).toBeVisible();
     const tableCard = page.locator('label').filter({hasText: '选表'}).first();
     const customCard = page.locator('label').filter({hasText: '自定义 SQL'}).first();
     await expect(tableCard).toBeVisible();
@@ -79,12 +79,12 @@ test('CS-UI-02 自定义 SQL 定义：数据源单选（Doris）+ 编辑器 + �
     await page.getByRole('button', {name: '校验 SQL'}).click();
     // 校验通过提示（识别参数 1 个 · 涉及表 2 张）
     await expect(page.getByText(/校验通过：识别参数 1 个/)).toBeVisible();
-    // 参数表出现 :startDate（默认 STRING，可改类型）
-    await expect(page.getByText(':startDate', {exact: true})).toBeVisible();
+    // 参数表出现 :startDate（默认 STRING，可改类型）；Monaco 编辑器内也有同名文本，用 font-mono chip 精确定位
+    await expect(page.locator('span.font-mono').filter({hasText: /^:startDate$/})).toBeVisible();
     await expect(page.getByLabel('参数 startDate 类型')).toHaveValue('STRING');
-    // 涉及表 chips
-    await expect(page.getByText('datanest.e2e_s13_orders', {exact: true})).toBeVisible();
-    await expect(page.getByText('datanest.e2e_s13_region', {exact: true})).toBeVisible();
+    // 涉及表 chips（同上：编辑器文本也会命中 getByText，限定 font-mono chip）
+    await expect(page.locator('span.font-mono').filter({hasText: /^datanest\.e2e_s13_orders$/})).toBeVisible();
+    await expect(page.locator('span.font-mono').filter({hasText: /^datanest\.e2e_s13_region$/})).toBeVisible();
     await expect(page.getByText(/共 2 张/)).toBeVisible();
 });
 
@@ -95,16 +95,21 @@ test('CS-UI-03 只读校验：DELETE 语句行内报错，禁止进入下一步'
     // 行内错误（红色提示，含「只读」）
     await expect(page.locator('.bg-ds-danger-light').first()).toBeVisible();
     await expect(page.locator('.bg-ds-danger-light').first()).toContainText(/只读|SELECT/);
-    // 下一步被拦
+    // 下一步被拦（门控先做只读预检：DELETE 直接弹只读错误 toast，优于「请先校验」提示）
     await page.getByRole('button', {name: /下一步/}).click();
-    await expect(page.getByText(/请先点击「校验 SQL」/)).toBeVisible();
+    await expect(page.locator('.ant-message-notice-title')
+        .getByText(/仅支持只读 SELECT[（(]当前以 DELETE 开头/).first()).toBeVisible();
 });
 
 test('CS-UI-04 试跑预览：返回结果表（前 100 条）', async ({page}) => {
     await gotoWizardCustomSql(page);
     await fillSqlEditor(page, MAIN_SQL);
+    // 先校验（识别参数，默认 STRING），将 startDate 类型改为 DATE，再试跑预览（日期示例值 2026-01-01）
+    await page.getByRole('button', {name: '校验 SQL'}).click();
+    await expect(page.getByText(/校验通过/)).toBeVisible();
+    await page.getByLabel('参数 startDate 类型').selectOption('DATE');
     await page.getByRole('button', {name: '试跑预览'}).click();
-    // 预览结果表出现（startDate 未填 → 前端示例值 2026-01-01）
+    // 预览结果表出现（startDate 示例值 2026-01-01 → 全量 3 组）
     await expect(page.getByText(/预览结果/)).toBeVisible();
     await expect(page.locator('.prototype-table').first()).toBeVisible();
     await expect(page.getByText('SOUTH', {exact: true}).first()).toBeVisible();
@@ -113,6 +118,11 @@ test('CS-UI-04 试跑预览：返回结果表（前 100 条）', async ({page}) 
 test('CS-UI-05 向导完成：配置接口（自定义 SQL 无字段白名单）+ 新建 Key → 详情 SQL 定义区块', async ({page}) => {
     await gotoWizardCustomSql(page);
     await fillSqlEditor(page, MAIN_SQL);
+    await page.getByRole('button', {name: '校验 SQL'}).click();
+    await expect(page.getByText(/校验通过/)).toBeVisible();
+    // startDate 改为 DATE：步骤 3 API 预览与后续调用均按日期示例值 2026-01-01
+    // （改参数类型会重置 validated，需重新校验才能进入下一步）
+    await page.getByLabel('参数 startDate 类型').selectOption('DATE');
     await page.getByRole('button', {name: '校验 SQL'}).click();
     await expect(page.getByText(/校验通过/)).toBeVisible();
     // 下一步：配置接口
@@ -158,7 +168,7 @@ test('CS-UI-06 列表：形态列徽章 + 形态筛选（t7 前端）', async ({
     // 列表行出现 CUSTOM_SQL 徽章（「自定义 SQL」文本）
     const row = page.locator('.ant-table-row').filter({hasText: `${PREFIX}UI区域汇总`});
     await expect(row).toBeVisible();
-    await expect(row.getByText('自定义 SQL', {exact: true})).toBeVisible();
+    await expect(row.getByText('自定义 SQL', {exact: true}).first()).toBeVisible();
     // 形态筛选下拉：选「自定义 SQL」→ 只剩 CUSTOM_SQL 行
     await page.getByLabel('按形态筛选').selectOption('CUSTOM_SQL');
     await page.getByRole('button', {name: '查询', exact: true}).click();
@@ -173,10 +183,10 @@ test('CS-UI-07 编辑页：SQL 只读展示数据源 + 可改 SQL 重新校验',
     await page.getByRole('button', {name: '编辑'}).click();
     await expect(page).toHaveURL(/\/edit$/);
     await expect(page.getByRole('heading', {name: '编辑 API'})).toBeVisible();
-    // 数据源只读
-    await expect(page.getByText('Doris 数仓', {exact: true})).toBeVisible();
-    // SQL 编辑器预填
-    await expect(page.getByText(/FROM datanest\.e2e_s13_orders/)).toBeVisible();
+    // 数据源只读（页头 span + readOnly 表单 option 同名，取首个）
+    await expect(page.getByText('Doris 数仓', {exact: true}).first()).toBeVisible();
+    // SQL 编辑器预填（Monaco 内部文本不走 getByText，断言 view-lines 容器）
+    await expect(page.locator('.monaco-editor .view-lines').first()).toContainText('FROM datanest.e2e_s13_orders');
     // 改成单表 SQL 并保存
     await fillSqlEditor(page, 'SELECT region_id, COUNT(*) AS cnt FROM datanest.e2e_s13_orders GROUP BY region_id');
     await page.getByRole('button', {name: '校验 SQL'}).click();
@@ -198,4 +208,13 @@ test('CS-UI-08 选表流程回归：第 1 步选表形态走完三步无差异�
     // 选中表 → API 预览出现
     await page.locator('label').filter({hasText: 'e2e_s13_orders'}).click();
     await expect(page.getByText('/open-api/v1/e2e_s13_orders')).toBeVisible();
+});
+
+test('CS-UI-09 试跑预览空结果提示：参数未设默认值（示例值）且 0 行时给出原因', async ({page}) => {
+    await gotoWizardCustomSql(page);
+    await fillSqlEditor(page, MAIN_SQL); // :startDate 未校验/未设默认值 → 默认 STRING，示例值 '示例'
+    await page.getByRole('button', {name: '试跑预览'}).click();
+    // 预览结果 0 行 + 原因提示（日期列与 '示例' 比较查不到数据）
+    await expect(page.getByText(/预览结果/).first()).toBeVisible();
+    await expect(page.getByText(/结果为空：参数 :startDate 未设默认值/)).toBeVisible();
 });

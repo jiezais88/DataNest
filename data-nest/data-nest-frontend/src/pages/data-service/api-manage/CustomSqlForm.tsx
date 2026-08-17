@@ -7,6 +7,7 @@ import {Table} from 'antd';
 import {
     HiOutlineCheckCircle,
     HiOutlineExclamationTriangle,
+    HiOutlineInformationCircle,
     HiOutlinePlay,
     HiOutlineShieldCheck,
     HiOutlineTrash,
@@ -67,6 +68,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
         rowCount: number;
     } | null>(null);
     const [previewError, setPreviewError] = useState<string | null>(null);
+    const [previewHint, setPreviewHint] = useState<string | null>(null);
     const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
     const dsDisplayName = (ds: SqlDatasource) => (ds.builtin ? 'Doris 数仓' : `${ds.name}（${ds.type}）`);
@@ -120,6 +122,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
         setPreviewing(true);
         setPreview(null);
         setPreviewError(null);
+        setPreviewHint(null);
         try {
             const res = await executeSql({
                 datasourceId: value.datasourceId,
@@ -127,8 +130,17 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
                 timeoutSeconds: 10,
             });
             setPreview(res.data);
+            // 体验优化：结果为空且参数未设默认值（预览用了示例值）时，提示可能的原因
+            // （典型场景：:startDate 默认 STRING → 示例 '示例' 与日期列比较查不到数据）
+            const sampleUsed = params
+                .filter((p) => !(p.defaultValue && p.defaultValue.trim()))
+                .map((p) => `:${p.name}`);
+            setPreviewHint(res.data && res.data.rowCount === 0 && sampleUsed.length > 0
+                ? `结果为空：参数 ${sampleUsed.join('、')} 未设默认值，预览使用了示例值，日期/数值列比较可能查不到数据。请在参数表修正类型（如日期参数改为 DATE）或填写默认值后重新试跑。`
+                : null);
         } catch (e) {
             setPreviewError(getErrorMessage(e, '预览执行失败'));
+            setPreviewHint(null);
         } finally {
             setPreviewing(false);
         }
@@ -369,6 +381,12 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
                 <div className="flex items-start gap-ds-2 px-ds-3 py-ds-2 rounded-ds-sm bg-ds-danger-light text-ds-danger text-ds-small">
                     <HiOutlineXCircle size={15} className="mt-0.5 flex-shrink-0"/>
                     <span>{previewError}</span>
+                </div>
+            )}
+            {previewHint && (
+                <div className="flex items-start gap-ds-2 mt-ds-2 px-ds-3 py-ds-2 rounded-ds-sm bg-ds-bg-root border border-ds-border-subtle text-ds-text-secondary text-ds-small">
+                    <HiOutlineInformationCircle size={15} className="mt-0.5 flex-shrink-0"/>
+                    <span>{previewHint}</span>
                 </div>
             )}
         </div>

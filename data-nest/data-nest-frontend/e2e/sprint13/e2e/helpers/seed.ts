@@ -22,7 +22,7 @@ export const PW = 'Test123456';
 
 /** 内置 Doris 常量 */
 export const BUILTIN_DORIS_ID = -1;
-export const EXTERNAL_DORIS_ID = 2089276945965502465; // demo-电商数仓-Doris（权限闸门用）
+export const EXTERNAL_DORIS_ID = '2089276945965502465'; // demo-电商数仓-Doris（权限闸门用；超 2^53 必须字符串防 JS Number 精度丢失，见 AGENTS.md 已知坑）
 export const DORIS_DB = 'datanest';
 export const EXTERNAL_DB = 'demo_ecommerce';
 

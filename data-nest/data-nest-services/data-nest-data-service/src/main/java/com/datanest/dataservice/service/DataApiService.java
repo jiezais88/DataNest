@@ -20,6 +20,7 @@ import com.datanest.dataservice.dto.DataApiCreateRequest;
 import com.datanest.dataservice.dto.DataApiDefinition;
 import com.datanest.dataservice.dto.DataApiDetailDTO;
 import com.datanest.dataservice.dto.DataApiDocDTO;
+import com.datanest.dataservice.dto.DataApiInvolvedTableDTO;
 import com.datanest.dataservice.dto.DataApiPageItem;
 import com.datanest.dataservice.dto.DataApiSummaryDTO;
 import com.datanest.dataservice.dto.DataApiUpdateRequest;
@@ -362,7 +363,7 @@ public class DataApiService {
         dto.setQueryType(api.getQueryType());
         dto.setSqlText(api.getSqlText());
         dto.setSqlParams(definition.getSqlParams());
-        dto.setInvolvedTables(api.getInvolvedTables());
+        dto.setInvolvedTables(parseInvolvedTableDtos(api.getInvolvedTables()));
         dto.setOrderBy(api.getOrderBy());
         dto.setPaginated(api.getPaginated());
         dto.setPageSizeMax(api.getPageSizeMax());
@@ -550,6 +551,22 @@ public class DataApiService {
             return tables;
         } catch (Exception e) {
             logger.warn("涉及表清单 JSON 解析失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 详情返回涉及表数组（契约对齐前端 {@code InvolvedTable[]}；存库为 JSON 字符串，损坏时容错为空列表） */
+    private List<DataApiInvolvedTableDTO> parseInvolvedTableDtos(String involvedTablesJson) {
+        if (involvedTablesJson == null || involvedTablesJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<DataApiInvolvedTableDTO> list = JSON.parseObject(involvedTablesJson,
+                    new com.alibaba.fastjson2.TypeReference<List<DataApiInvolvedTableDTO>>() {
+                    });
+            return list == null ? List.of() : list;
+        } catch (Exception e) {
+            logger.warn("涉及表清单 JSON 解析失败（详情展示降级）: {}", e.getMessage());
             return List.of();
         }
     }

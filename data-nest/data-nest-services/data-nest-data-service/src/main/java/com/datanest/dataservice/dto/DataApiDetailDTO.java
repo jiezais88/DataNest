@@ -58,8 +58,8 @@ public class DataApiDetailDTO {
     @Schema(description = "自定义 SQL 参数定义（CUSTOM_SQL 形态）")
     private List<CustomSqlParamDef> sqlParams;
 
-    @Schema(description = "SQL 涉及表清单 JSON（[{datasourceId,database,schema,table}]）")
-    private String involvedTables;
+    @Schema(description = "SQL 涉及表清单（[{datasourceId,database,schema,table}]，CUSTOM_SQL 形态解析为数组返回）")
+    private List<DataApiInvolvedTableDTO> involvedTables;
 
     @Schema(description = "排序")
     private String orderBy;

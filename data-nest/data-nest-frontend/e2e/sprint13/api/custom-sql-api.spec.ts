@@ -57,7 +57,7 @@ test('CS-01 创建：JOIN+聚合 SQL 保存成功，involvedTables 2 张', async
     mainApiId = detail.id;
     expect(detail.queryType).toBe('CUSTOM_SQL');
     expect(detail.sqlText).toContain('JOIN');
-    const involved = JSON.parse(detail.involvedTables);
+    const involved = detail.involvedTables ?? [];
     expect(involved).toHaveLength(2);
     const tables = involved.map((t: any) => t.table).sort();
     expect(tables).toEqual(['e2e_s13_orders', 'e2e_s13_region']);
@@ -360,7 +360,7 @@ test('CS-17 编辑：改 SQL 重新校验 + involvedTables 更新 + 非法 SQL �
         sqlParams: [], paginated: 1, pageSizeMax: 50,
     });
     expect(ok.queryType).toBe('CUSTOM_SQL');
-    expect(JSON.parse(ok.involvedTables)).toHaveLength(1);
+    expect(ok.involvedTables ?? []).toHaveLength(1);
     const bad = await api.raw('PUT', `/data-service/apis/${mainApiId}`, {
         name: `${PREFIX}区域汇总V2`, path: `${PATH_PREFIX}region-sum`, queryType: 'CUSTOM_SQL',
         sqlText: 'DELETE FROM datanest.e2e_s13_orders', sqlParams: [],
@@ -378,13 +378,15 @@ test('CS-18 血缘：创建后 lineage_record 出现涉及表（AC-7/V6）', asy
 
 test('CS-19 审计：创建/编辑/发布/删除埋点（N-3）', async () => {
     const {psqlSys} = await import('../e2e/helpers/seed');
+    // 创建/编辑审计含资源名（resourceName=#request.name）；发布/删除等 id-only 操作按项目惯例仅记 resource_id
     const rows = psqlSys(`
         SELECT op_type FROM audit_log
         WHERE resource_name LIKE '${PREFIX}%'
         ORDER BY created_at DESC LIMIT 30`);
     expect(rows).toContain('CREATE');
     expect(rows).toContain('UPDATE');
-    expect(rows).toContain('PUBLISH');
+    const pub = psqlSys(`SELECT op_type FROM audit_log WHERE resource_id='${mainApiId}' AND op_type='PUBLISH'`);
+    expect(pub).toContain('PUBLISH');
     const api = await Api.create();
     await api.login(ADMIN.username, ADMIN.password);
     const detail = await api.post('/data-service/apis', {
@@ -394,7 +396,7 @@ test('CS-19 审计：创建/编辑/发布/删除埋点（N-3）', async () => {
     });
     await api.del(`/data-service/apis/${detail.id}`);
     await api.dispose();
-    const del = psqlSys(`SELECT op_type FROM audit_log WHERE resource_name LIKE '${PREFIX}%' AND op_type='DELETE'`);
+    const del = psqlSys(`SELECT op_type FROM audit_log WHERE resource_id='${detail.id}' AND op_type='DELETE'`);
     expect(del).toContain('DELETE');
 });
 

@@ -70,8 +70,9 @@ Sprint 13 对 `CUSTOM_SQL` 形态扩展为：
 ① 前端提交：query_type=CUSTOM_SQL + datasource_id + sql_text + sqlParams + name/path
     │
     ▼
-② 只读校验：SqlStatementSplitter.classify(sql) —— 必须为只读 SELECT
-    │        （非只读 → 9002 语义；分号检测：; 后非空/注释即拒，防多语句）
+② 只读校验：ReadOnlySqlValidator（JSqlParser 分类，只放行 SELECT/WITH/SHOW/DESC/EXPLAIN）
+    │        + checkSingleStatement（词法分号检测：; 后非空/注释即拒，防多语句）
+    │        （非只读/多语句 → 9001 SQL_NOT_READ_ONLY；语法错 → 9002）
     ▼
 ③ 涉及表解析：JSqlParser 提取 FROM/JOIN/子查询/CTE 的表清单（datasourceId 取入参）
     │
@@ -109,6 +110,8 @@ OpenApiService 分支：
         ② 参数值按 sqlParams.type 类型转换（LONG/DECIMAL/DATE/DATETIME/STRING/BOOLEAN）
         ③ 分页包裹：外层 SELECT * FROM (sql) AS _p LIMIT ? OFFSET ?（Doris/MySQL）
                                    或 OFFSET ? FETCH NEXT ? ROWS ONLY（PG）
+            **顶层 ORDER BY 上提到外层**（缺陷修复 CS-23：Doris 会优化掉子查询内 ORDER BY，
+            导致分页顺序错误；上提后 ORDER BY 仅引用 SELECT 输出列/别名）
             total：SELECT COUNT(*) FROM (sql) AS _c
         ④ CancelableSqlExecutor PreparedStatement 执行（超时 10s 可配，截断 1000 行）
     │
@@ -125,7 +128,7 @@ OpenApiService 分支：
 | **分页方言** | 按数据源类型（Doris/MySQL 用 LIMIT/OFFSET，PG 用 OFFSET FETCH）动态生成包裹 SQL；`page` 从 1 起、`pageSize` 默认 20 上限 100（`page_size_max` 可配） |
 | **只读校验兜底** | 执行前再次 `SqlStatementSplitter.classify`（防 SQL 落库后被编辑绕过）；执行器层面保持只读连接/只读语句 |
 | **超时与截断** | 执行超时默认 10s（Nacos `datanest.data-service.custom-sql.timeout-seconds` 可配，@RefreshScope）；结果上限 1000 行 |
-| **涉及表解析落库** | `involved_tables` 冗余存储，列表/详情/权限校验直接读取，避免每次重解析；表被删除时血缘级联清理、involved_tables 保留文本 |
+| **涉及表解析落库** | `involved_tables` 冗余存储，列表/权限校验直接读取，避免每次重解析；表被删除时血缘级联清理、involved_tables 保留文本。**详情接口返回解析后数组**（契约对齐前端 `InvolvedTable[]`：`[{datasourceId,database,schema,table}]`，损坏/缺失容错为空列表） |
 
 ### 3.4 血缘
 
