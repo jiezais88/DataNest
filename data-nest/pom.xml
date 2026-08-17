@@ -244,13 +244,6 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- DataNest Data Service API（Sprint 10 F1：job 定时清理等内部运维契约） -->
-            <dependency>
-                <groupId>com.datanest</groupId>
-                <artifactId>data-nest-data-service-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
             <!-- DataNest Alert Service（微服务化改造：独立告警服务） -->
             <dependency>
                 <groupId>com.datanest</groupId>
