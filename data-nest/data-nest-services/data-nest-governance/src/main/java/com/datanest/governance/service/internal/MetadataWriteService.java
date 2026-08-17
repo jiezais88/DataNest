@@ -152,6 +152,14 @@ public class MetadataWriteService {
         if (items == null || items.isEmpty()) {
             return 0;
         }
+        // 防御性过滤：无目标表的记录无血缘意义（如 DROP/USE 语句的解析占位），
+        // 不过滤会导致 target_table 非空约束报错、整批写入失败并触发 Feign 熔断（Sprint 12 实测）
+        items = items.stream()
+                .filter(it -> it != null && it.getTargetTable() != null && !it.getTargetTable().isBlank())
+                .toList();
+        if (items.isEmpty()) {
+            return 0;
+        }
         LocalDateTime now = LocalDateTime.now();
         List<LineageRecord> records = new ArrayList<>(items.size());
         for (LineageRecordItemDTO item : items) {
