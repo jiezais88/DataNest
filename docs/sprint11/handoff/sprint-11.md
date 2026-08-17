@@ -19,6 +19,8 @@
 | 后端（F3 执行队列） | [OK] | 队列 CRUD（重名 7402/非法名 7405/default 保护 7403/绑定 DAG 拒绝 7404）+ DAG 绑定 queueName/priority（创建校验队列存在）+ 排队调度（队列满→WAITING，job 调度器 5s 轮询补触发，高优先先执行）+ 对账兜底 + 审计（DELETE 手动埋点补队列名）；**E2E 全功能测试 17/17 通过（2026-08-16，e2e/sprint11/e2e/f3-queue.spec.ts）**；测试发现并修复 2 真实缺陷（见 Next Action 3） |
 | 后端（F3 方案A cron 入队） | [OK] | cron 定时触发从 workflow 内嵌改为 job 侧独立 cron job（DagScheduledTriggerHandler + V1.7.2 `dag.scheduler_job_id` + migrateCronJobs 存量迁移），到点经 Feign 调 `/internal/dag/scheduled-trigger` 与手动共用排队链路，执行历史 `trigger_type='SCHEDULED'`；cron job 生命周期（创建注册/停用注销/删除注销）；**E2E 全功能测试 6/6 通过（2026-08-16，e2e/sprint11/e2e/f3-cron.spec.ts）**；修复前端 SCHEDULED 显示缺陷（TRIGGER_LABEL/OPTIONS 补 SCHEDULED） |
 | 前端（F3 执行队列） | [OK] | 执行队列页（列表含运行/等待/绑定统计 5s 轮询 + 新建/编辑弹窗 + 删除确认 + 详情抽屉绑定 DAG 列表含优先级/触发方式筛选）；DAG 表单新增执行队列+优先级字段；执行历史两列 |
+| 后端（F5 首页 KPI） | [OK] | 4 域聚合 KPI：工程（today/失败去重 pendingFailed/failedItems/14 天 trend）+ 告警（近 24h 汇总）+ 治理（采集/质量异常/Doris 探活）+ 实时（CDC/Flink 探活）；**E2E 测试 5/5 通过（2026-08-17，e2e/sprint11/e2e/f5-home.spec.ts）** |
+| 前端（F5 首页 v4.1） | [OK] | 「值班态势总览」：态势横幅（判定+状态分布条钻取）+ 待处理异常队列（重跑/日志/等待时长标色）+ 系统健康 5 项 + 快捷操作 4 入口 + 14 日趋势 strip（失败红点+悬停浮层）+ 空平台三步引导 + 60s 自动刷新；**E2E 5/5 通过** |
 
 ---
 
@@ -54,4 +56,6 @@
    - **F3（2026-08-16，17/17 通过）**：`e2e/sprint11/e2e/f3-queue.spec.ts`——队列 CRUD（QU-1/5）、删除约束（QU-3）、DAG 绑定（QU-2/4）、排队调度真实 PowerJob 执行（QU-6）、审计（QU-7）、队列页 UI、权限。**测试发现并修复 2 真实缺陷**：① `QueueDispatchService` 同类内部调用 @Transactional 代理不生效 → 排队补触发后执行永久 RUNNING（改用 TransactionTemplate）；② `DagService.toPayload` 未映射 queueName/priority → DAG 详情/列表丢失队列字段（补映射）。另补 DELETE 审计手动埋点队列名（对齐 RoleService 模式）。
    - 注意：技术文档 §3.0 写的 engineering `V1.1.0__sprint11_queue.sql` **版本号已过时**——engineering 实际最高 V1.6.0，队列脚本实际落地为 `V1.7.0`（已执行，F3 实施时已重新核对）。
 4. **F5 首页**：**v4.1「值班态势总览」重设计已落地（2026-08-16，用户评审原型后拍板）**——v3 落地后用户反馈"丑"，经行业调研（DataLeap/DataWorks/Dataphin + dashboard 最佳实践，结论见 `docs/sprint11/DataNest-Sprint11-首页重设计-v4.md` §0）重做信息架构：①态势横幅（状态判定 + 今日状态分布条分段可钻取，行业标配组件）②待处理异常工作队列（失败原因 + 等待时长 4h 黄/24h 红 + 行内重跑/日志）③系统健康人话化（去 TM 等术语）④快捷操作 8→4 ⑤趋势降级为 100px 14 日面积 strip（悬停浮层 + 贴边点钳制）。后端改动：engineering `home/kpis` 趋势 7→14 天 + 新增 todaySuccess/todayFailed/waiting + FailedItem.refId（行内重跑用）+ pendingFailed 按任务去重；前端 `pages/home/index.tsx` 整体重写。**同日指标审计修复（用户追问"口径都正确吗"触发）**：a) **恢复判定 bug（Sprint 11 F5 遗留）**——原 `countSuccessByDagIdsSince` 只查窗口内有无 SUCCESS 不比较先后，"先成功后失败"的任务会被误判已恢复从队列消失；改为 `lastSuccessTimeBy*Since`（MAX(start_time)）+ `isRecovered`（lastSuccess 必须晚于 failedAt）；b) 质量异常 pageSize 3→50（原截断导致横幅计数低估）；c) 趋势图成功率标注明确为「近 7 天」（图是 14 天口径）；d) 「平台服务」行从只看 engineering 接口改为统计全部 6 个首页接口的失败数。**两个落地教训**：①tailwind spacing 原来只有整数档，旧代码 `px-ds-1.5` 等小数档曾是无效类——已于 2026-08-16 修复（config 补齐 ds-0.5/1.5/2.5 = 2/6/10px，全站 169 处生效，回归截图无破版）；②后端 Long 序列化为字符串，前端算术前必须 Number() 归一（否则 3+"2"="32"）。**F6 导航**：未开始。
-5. 原型制作：~~首页数据面板~~（v3 已完成）；DAG 表单新增字段待确认是否已在原型覆盖。
+   - **F5 E2E 测试完成（2026-08-17，5/5 通过）**：`e2e/sprint11/e2e/f5-home.spec.ts`——4 域 KPI 契约 + 态势横幅判定/状态分布条 + 待处理异常队列（质量行/徽章/等待时长/查看报告）+ 系统健康 5 项 + 快捷操作 + 14 日趋势浮层。前置清理：删 `test` 遗留 DAG、恢复 `E2E-条件节点多前驱`（pendingFailed 归零）。空平台三步引导基于全局数据不可 E2E（代码审查确认）。**附带环境修复**：整栈 middleware 重启后网关 Nacos 配置加载失败→全 401，`restart app-gateway` 恢复（已记 gotchas）。
+5. **F6 导航**：未开始。
+6. 原型制作：~~首页数据面板~~（v3 已完成）；DAG 表单新增字段待确认是否已在原型覆盖。

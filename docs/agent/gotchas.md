@@ -177,6 +177,14 @@
 - **DAG 更新 PUT 请求**：路径 `/engineering/dev/dags/{id}`（DagController 类级 @RequestMapping("/dev/dags")），请求体必须带 `projectId`（缺则 7018 DAG_PROJECT_ID_REQUIRED），且需重传完整 nodes/edges。
 - **前端 SCHEDULED 显示（2026-08-16 修复）**：后端 cron 触发写 `trigger_type='SCHEDULED'`，但前端 dag-executions `TRIGGER_LABEL`/`TRIGGER_OPTIONS` 只有 MANUAL/CRON/SCHEDULE（无 SCHEDULED）→ 执行历史显示英文原值 + 定时筛选筛不到。修复：TRIGGER_LABEL 加 `SCHEDULED: '定时触发'`、TRIGGER_OPTIONS 加 `{value:'SCHEDULED'}`。后端筛选 `wrapper.eq("trigger_type", ...)` 天然支持。
 
+### Sprint 11 F5 首页 v4.1（f5-home.spec.ts，2026-08-17，5 用例全绿）
+
+- **网关全 401 排查（关键教训，2026-08-17）**：整栈 middleware（Nacos/Redis/PG/MySQL）重启后，网关若在 Nacos 就绪前启动，`optional:` 的 shared-configs 拉取失败不阻塞启动 → **Sa-Token 配置缺失 → 所有接口 401**（但 system 服务内部校验 token 成功，仅网关侧失败）。排查路径：system 容器内直连 `/system/auth/me`（绕过网关）成功 → 定位到网关；`docker logs app-gateway` 发现 `ErrCode:403 User not found / Connection refused`（Nacos 连接失败）。修复：`docker compose restart app-gateway`（Nacos 就绪后重新拉取配置）。**教训：middleware 重启后必须检查各服务 Nacos 配置加载是否成功**；`optional:` 前缀会掩盖配置缺失。
+- **首页 KPI 接口**：`/api/{engineering|alert|governance|realtime}/home/kpis`，网关剥前缀后各服务 `/home/kpis`。工程域含 todayTotal/Success/Failed + waiting/running/pendingFailed（7 天失败去重，失败后有 SUCCESS 即恢复）+ failedItems（含 refId 重跑）+ 14 天 trend；治理域 qualityIssues（按规则+表去重，历史 SEVERE/WARNING 也计异常，用户确认）；实时域 cdc + flink 探活。
+- **首页测试环境准备**：pendingFailed 残留会让横幅「N 项需关注」而非「运行正常」。清理方法：给失败 DAG 触发成功执行（失败后有 SUCCESS 即恢复）；失败 DAG 无法恢复（如 SYNC 节点指向不可用源）则直接删除该测试遗留 DAG。注意 **qualityIssues/数据源连接失败也计 warning**——测试断言不能假设「运行正常」，应按环境实际计数断言「N 项需关注」。
+- **首页 UI 断言技巧**：状态分布条按钮文本是「成功 2」（label+数字）用 `getByRole('button', {name: /成功\s*\d+/})`；系统健康「Flink」实际文案「Flink CDC」；「快捷操作」在 `div.bg-ds-bg-surface` 容器（非 section）；成功率文案「近 7 天成功率 83.3%」正则需 `[\d.]+%`。
+- **空平台三步引导不可 E2E**：`isFreshPlatform` 判定基于**全局数据**（todayTotal=0 且 trend 全 0 且无质量异常），与登录用户无关，当前有数据环境无法触发（新建用户无用），不做 UI E2E（代码审查确认）。
+
 
 ## 八、微服务化改造踩坑（阶段 1-5，2026-08-06/07，当前有效）
 
