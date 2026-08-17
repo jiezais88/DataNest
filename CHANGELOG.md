@@ -64,4 +64,5 @@
 - 一键部署脚本 `deploy.sh`：环境预检 → Doris 交互配置 → 构建 → 启动 → 健康等待 → 登录冒烟
 - 部署指南 `docs/deploy.md`（环境要求/外部 Doris 配置/端口清单/FAQ/卸载）
 - E2E 测试库收敛到 compose `test` profile，默认部署不再拉起
+- Flink CDC 运行时 jar（182MB）移出 git 仓库，改为 GitHub Release 附件分发（`scripts/fetch-flink-libs.sh` 按需拉取 + sha256 校验），仓库体积 158MB → 9.5MB
 - Apache-2.0 License、README 重写、本 Changelog
