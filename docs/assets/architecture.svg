@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="768" viewBox="0 0 1240 768" font-family="'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif">
+  <defs>
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.06"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-indigo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4f46e5"/>
+    </marker>
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+    </marker>
+  </defs>
+
+  <!-- ===== 标题 ===== -->
+  <text x="40" y="44" font-size="22" font-weight="700" fill="#0f172a">DataNest 平台架构</text>
+  <text x="40" y="66" font-size="12" fill="#64748b">一站式数据中台 · Java 25 + Spring Boot 4 微服务 · PowerJob 统一调度 · Flink CDC 实时链路</text>
+
+  <!-- ===== 层 1：接入层 ===== -->
+  <rect x="24" y="84" width="1192" height="96" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="44" y="106" font-size="11" font-weight="700" fill="#94a3b8" letter-spacing="2">接入层</text>
+
+  <g filter="url(#card-shadow)">
+    <rect x="60" y="112" width="280" height="52" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="72" y="124" width="28" height="28" rx="7" fill="#f1f5f9"/>
+    <text x="86" y="143" font-size="13" text-anchor="middle">👤</text>
+    <text x="110" y="133" font-size="13" font-weight="600" fill="#1e293b">用户 / 业务系统</text>
+    <text x="110" y="150" font-size="11" fill="#64748b">浏览器 · 数据 API 调用方</text>
+  </g>
+
+  <line x1="348" y1="138" x2="400" y2="138" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <g filter="url(#card-shadow)">
+    <rect x="408" y="112" width="300" height="52" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="420" y="124" width="28" height="28" rx="7" fill="#e0f2fe"/>
+    <text x="434" y="143" font-size="12" text-anchor="middle" font-weight="700" fill="#0284c7">R</text>
+    <text x="458" y="133" font-size="13" font-weight="600" fill="#1e293b">Frontend（React 18）</text>
+    <text x="458" y="150" font-size="11" fill="#64748b">Nginx 托管 · :3000</text>
+  </g>
+
+  <line x1="716" y1="138" x2="768" y2="138" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <g filter="url(#card-shadow)">
+    <rect x="776" y="112" width="400" height="52" rx="10" fill="#eef2ff" stroke="#c7d2fe"/>
+    <rect x="788" y="124" width="28" height="28" rx="7" fill="#4f46e5"/>
+    <text x="802" y="143" font-size="11" text-anchor="middle" font-weight="700" fill="#ffffff">GW</text>
+    <text x="826" y="133" font-size="13" font-weight="600" fill="#1e293b">Gateway（Spring Cloud Gateway）</text>
+    <text x="826" y="150" font-size="11" fill="#64748b">统一入口 :8080 · Sa-Token + JWT 鉴权 · 路由/限流</text>
+  </g>
+
+  <!-- 接入层 → 服务层 -->
+  <line x1="620" y1="182" x2="620" y2="202" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ===== 层 2：业务服务层 ===== -->
+  <rect x="24" y="208" width="1192" height="182" rx="14" fill="#eef2ff" fill-opacity="0.45" stroke="#e2e8f0"/>
+  <text x="44" y="230" font-size="11" font-weight="700" fill="#94a3b8" letter-spacing="2">业务服务（9 个微服务 · Nacos 注册发现 · Feign 内部调用）</text>
+
+  <!-- 行 1 -->
+  <g filter="url(#card-shadow)">
+    <rect x="44" y="240" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="56" y="254" width="30" height="30" rx="8" fill="#eef2ff"/>
+    <text x="71" y="274" font-size="11" text-anchor="middle" font-weight="700" fill="#4f46e5">SYS</text>
+    <text x="96" y="267" font-size="13" font-weight="600" fill="#1e293b">system</text>
+    <text x="96" y="284" font-size="11" fill="#64748b">用户 · 角色权限 RBAC · 审计日志</text>
+  </g>
+  <g filter="url(#card-shadow)">
+    <rect x="340" y="240" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="352" y="254" width="30" height="30" rx="8" fill="#eef2ff"/>
+    <text x="367" y="274" font-size="11" text-anchor="middle" font-weight="700" fill="#4f46e5">ENG</text>
+    <text x="392" y="267" font-size="13" font-weight="600" fill="#1e293b">engineering</text>
+    <text x="392" y="284" font-size="11" fill="#64748b">数据源 · 批量同步 · DAG 编排</text>
+  </g>
+  <g filter="url(#card-shadow)">
+    <rect x="636" y="240" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="648" y="254" width="30" height="30" rx="8" fill="#ecfdf5"/>
+    <text x="663" y="274" font-size="10" text-anchor="middle" font-weight="700" fill="#059669">GOV</text>
+    <text x="688" y="267" font-size="13" font-weight="600" fill="#1e293b">governance</text>
+    <text x="688" y="284" font-size="11" fill="#64748b">元数据 · 血缘 · 质量 · 资产目录</text>
+  </g>
+  <g filter="url(#card-shadow)">
+    <rect x="932" y="240" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="944" y="254" width="30" height="30" rx="8" fill="#fff7ed"/>
+    <text x="959" y="274" font-size="10" text-anchor="middle" font-weight="700" fill="#d97706">ALT</text>
+    <text x="984" y="267" font-size="13" font-weight="600" fill="#1e293b">alert</text>
+    <text x="984" y="284" font-size="11" fill="#64748b">告警规则 · 邮件通知 · 发送历史</text>
+  </g>
+
+  <!-- 行 2 -->
+  <g filter="url(#card-shadow)">
+    <rect x="44" y="312" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="56" y="326" width="30" height="30" rx="8" fill="#f0f9ff"/>
+    <text x="71" y="346" font-size="10" text-anchor="middle" font-weight="700" fill="#0284c7">RT</text>
+    <text x="96" y="339" font-size="13" font-weight="600" fill="#1e293b">realtime</text>
+    <text x="96" y="356" font-size="11" fill="#64748b">CDC 管道 · 指标监控 · 事件订阅</text>
+  </g>
+  <g filter="url(#card-shadow)">
+    <rect x="340" y="312" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="352" y="326" width="30" height="30" rx="8" fill="#faf5ff"/>
+    <text x="367" y="346" font-size="10" text-anchor="middle" font-weight="700" fill="#7c3aed">DS</text>
+    <text x="392" y="339" font-size="13" font-weight="600" fill="#1e293b">data-service</text>
+    <text x="392" y="356" font-size="11" fill="#64748b">SQL 终端 · 数据 API · 分级分类</text>
+  </g>
+  <g filter="url(#card-shadow)">
+    <rect x="636" y="312" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="648" y="326" width="30" height="30" rx="8" fill="#eef2ff"/>
+    <text x="663" y="346" font-size="10" text-anchor="middle" font-weight="700" fill="#4f46e5">WRK</text>
+    <text x="688" y="339" font-size="13" font-weight="600" fill="#1e293b">worker</text>
+    <text x="688" y="356" font-size="11" fill="#64748b">任务执行器 · Addax / Python / SQL</text>
+  </g>
+  <g filter="url(#card-shadow)">
+    <rect x="932" y="312" width="280" height="58" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="944" y="326" width="30" height="30" rx="8" fill="#eef2ff"/>
+    <text x="959" y="346" font-size="10" text-anchor="middle" font-weight="700" fill="#4f46e5">JOB</text>
+    <text x="984" y="339" font-size="13" font-weight="600" fill="#1e293b">job</text>
+    <text x="984" y="356" font-size="11" fill="#64748b">平台定时任务 · 清理 / 对账 / 采集</text>
+  </g>
+
+  <!-- 服务层 → 中间件层 -->
+  <line x1="620" y1="392" x2="620" y2="412" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ===== 层 3：中间件层 ===== -->
+  <rect x="24" y="418" width="1192" height="128" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="44" y="440" font-size="11" font-weight="700" fill="#94a3b8" letter-spacing="2">中间件（Docker Compose 一键拉起）</text>
+
+  <!-- 行 1 -->
+  <g>
+    <rect x="44" y="450" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="64" cy="470" r="5" fill="#4f46e5"/>
+    <text x="78" y="468" font-size="12" font-weight="600" fill="#1e293b">Nacos 3.1</text>
+    <text x="78" y="483" font-size="10" fill="#64748b">注册 / 配置中心（热更新）</text>
+  </g>
+  <g>
+    <rect x="340" y="450" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="360" cy="470" r="5" fill="#4f46e5"/>
+    <text x="374" y="468" font-size="12" font-weight="600" fill="#1e293b">PowerJob 5.1</text>
+    <text x="374" y="483" font-size="10" fill="#64748b">统一调度 · DAG 工作流</text>
+  </g>
+  <g>
+    <rect x="636" y="450" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="656" cy="470" r="5" fill="#336791"/>
+    <text x="670" y="468" font-size="12" font-weight="600" fill="#1e293b">PostgreSQL 16</text>
+    <text x="670" y="483" font-size="10" fill="#64748b">业务库 ×6（按域拆分）</text>
+  </g>
+  <g>
+    <rect x="932" y="450" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="952" cy="470" r="5" fill="#00758f"/>
+    <text x="966" y="468" font-size="12" font-weight="600" fill="#1e293b">MySQL 8</text>
+    <text x="966" y="483" font-size="10" fill="#64748b">Nacos / PowerJob 库</text>
+  </g>
+
+  <!-- 行 2 -->
+  <g>
+    <rect x="44" y="496" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="64" cy="516" r="5" fill="#dc2626"/>
+    <text x="78" y="514" font-size="12" font-weight="600" fill="#1e293b">Redis 7</text>
+    <text x="78" y="529" font-size="10" fill="#64748b">会话 / 缓存 / 分布式锁</text>
+  </g>
+  <g>
+    <rect x="340" y="496" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="360" cy="516" r="5" fill="#c72e49"/>
+    <text x="374" y="514" font-size="12" font-weight="600" fill="#1e293b">MinIO</text>
+    <text x="374" y="529" font-size="10" fill="#64748b">对象存储 · Iceberg 湖仓</text>
+  </g>
+  <g>
+    <rect x="636" y="496" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="656" cy="516" r="5" fill="#0f172a"/>
+    <text x="670" y="514" font-size="12" font-weight="600" fill="#1e293b">Kafka 4</text>
+    <text x="670" y="529" font-size="10" fill="#64748b">CDC 变更事件总线</text>
+  </g>
+  <g>
+    <rect x="932" y="496" width="280" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="952" cy="516" r="5" fill="#e6526f"/>
+    <text x="966" y="514" font-size="12" font-weight="600" fill="#1e293b">Flink 2.2 + CDC 3.6</text>
+    <text x="966" y="529" font-size="10" fill="#64748b">实时计算引擎（Session 集群）</text>
+  </g>
+
+  <!-- ===== 层 4：数据层 ===== -->
+  <rect x="24" y="570" width="1192" height="158" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-dasharray="5 4"/>
+  <text x="44" y="592" font-size="11" font-weight="700" fill="#94a3b8" letter-spacing="2">数据层（平台之外）</text>
+
+  <g filter="url(#card-shadow)">
+    <rect x="60" y="604" width="320" height="100" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="80" y="632" font-size="13" font-weight="600" fill="#1e293b">源数据库</text>
+    <text x="80" y="652" font-size="11" fill="#64748b">MySQL · PostgreSQL</text>
+    <text x="80" y="669" font-size="11" fill="#64748b">Oracle · SQL Server</text>
+    <text x="80" y="692" font-size="10" fill="#94a3b8">批量抽取 / Binlog · 逻辑复制</text>
+  </g>
+
+  <!-- 数据流箭头 -->
+  <line x1="392" y1="634" x2="820" y2="634" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrow-indigo)"/>
+  <rect x="500" y="620" width="220" height="26" rx="13" fill="#eef2ff"/>
+  <text x="610" y="637" font-size="11" text-anchor="middle" font-weight="600" fill="#4f46e5">批量：Addax → Stream Load</text>
+
+  <line x1="392" y1="680" x2="820" y2="680" stroke="#059669" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+  <rect x="486" y="666" width="250" height="26" rx="13" fill="#ecfdf5"/>
+  <text x="611" y="683" font-size="11" text-anchor="middle" font-weight="600" fill="#059669">实时：CDC → Iceberg（MinIO）→ Doris</text>
+
+  <g filter="url(#card-shadow)">
+    <rect x="832" y="604" width="344" height="100" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="852" y="632" font-size="13" font-weight="600" fill="#1e293b">外部 Apache Doris 数仓 ⭐</text>
+    <text x="852" y="652" font-size="11" fill="#64748b">同步目标端 · SQL 终端 / 数据 API 查询引擎</text>
+    <text x="852" y="669" font-size="11" fill="#64748b">Iceberg 湖仓外表查询</text>
+    <text x="852" y="692" font-size="10" fill="#b45309">需自备，不在 Compose 内（见 docs/deploy.md §3）</text>
+  </g>
+</svg>

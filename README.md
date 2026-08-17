@@ -32,39 +32,9 @@
 
 ## 架构
 
-```mermaid
-flowchart TB
-    User([用户 / 业务系统]) --> FE[Frontend<br/>React :3000]
-    User --> GW[Gateway<br/>统一入口 :8080]
-    FE --> GW
-
-    subgraph Services["业务微服务（9 个，内网互联）"]
-        SYS[system<br/>用户/权限/审计]
-        ENG[engineering<br/>数据源/同步/DAG]
-        GOV[governance<br/>元数据/血缘/质量/资产]
-        ALT[alert<br/>告警中心]
-        RT[realtime<br/>CDC 管道]
-        DS[data-service<br/>SQL 终端/数据 API]
-        WRK[worker<br/>任务执行器 Addax/Python]
-        JOB[job<br/>平台定时任务]
-    end
-    GW --> Services
-
-    subgraph Middleware["中间件（Docker Compose 一键拉起）"]
-        NACOS[Nacos<br/>注册/配置中心]
-        PJ[PowerJob<br/>统一调度]
-        PG[(PostgreSQL<br/>业务库 ×6)]
-        MY[(MySQL<br/>Nacos/PowerJob)]
-        RD[(Redis<br/>会话/缓存)]
-        MINIO[(MinIO<br/>Iceberg 湖仓)]
-        FLINK[Flink CDC<br/>实时计算]
-        KAFKA[Kafka<br/>事件总线]
-    end
-    Services <--> Middleware
-
-    DORIS[(外部 Apache Doris<br/>数仓目标端)]
-    ENG & WRK & DS & RT --> DORIS
-```
+<div align="center">
+<img src="docs/assets/architecture.svg" alt="DataNest 平台架构" width="900"/>
+</div>
 
 - 跨服务调用一律走 Feign 契约（`/internal/**` + 内部令牌），读路径降级、写路径 fail-closed
 - 所有调度（DAG 工作流 + 平台定时任务）收敛到 PowerJob；DAG 支持执行队列（并发上限 + 优先级）
