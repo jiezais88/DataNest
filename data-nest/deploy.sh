@@ -276,6 +276,10 @@ if [ "$WITH_TEST_DEPS" -eq 1 ]; then
 else
   info "[5/7] 启动全部容器（测试库不启动；E2E 请加 --with-test-deps）..."
 fi
+# Flink CDC 运行时 jar 不入库（Sprint 12 发布方案③）：缺失时从 GitHub Release 附件拉取
+info "检查 Flink 运行时 jar ..."
+bash scripts/fetch-flink-libs.sh
+
 # 全栈冷启动时依赖健康检查窗口可能被 JVM 慢启动打爆，compose 会报 dependency failed；
 # 此时容器仍在继续启动，重试即可收敛（最多 3 次）
 UP_OK=0

@@ -53,6 +53,9 @@ coverage/
 # 本地产物（python-sandbox 挂载点等，Sprint 12 发布卫生检查）
 data-nest/data/
 
+# Flink CDC 运行时 jar（约 182MB，不入库；从 GitHub Release 附件拉取，见 scripts/fetch-flink-libs.sh）
+data-nest/docker/flink/lib/*.jar
+
 # Build caches
 .cache/
 out/
