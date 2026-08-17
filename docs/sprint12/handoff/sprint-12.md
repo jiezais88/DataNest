@@ -41,5 +41,5 @@
 
 1. ~~与用户确认 D6~~（已确认：bash 单脚本，2026-08-17）。
 2. ~~写 Sprint 12 技术文档~~（已完成 v1.0，见 `../DataNest-Sprint12-技术文档.md`）。
-3. 实施 F1 `deploy.sh`（按 ADR-S12-001/002/003/005）+ compose 测试库加 `test` profile（ADR-S12-004，同步更新 `docs/agent/build-and-deploy.md` 的 E2E 说明）。
-4. F2 部署文档 `docs/deploy.md` → F3 物料（LICENSE/README/CHANGELOG/截图）→ F4 等用户建好 GitHub 仓库后执行。
+3. ~~实施 F1 `deploy.sh`~~ → ~~F2 `docs/deploy.md`~~ → ~~F3 物料~~ → ~~F4 发布~~（v1.0.0/v1.0.1/v1.0.2 均已发布）。
+4. **v5 首页重设计已实施（2026-08-17 用户拍板「重新设计」后落地）**：方案 `../DataNest-首页重设计-v5.md`（运营仪表盘，V5-D1~D5 全部按推荐执行）+ 原型 `../DataNest-首页原型-v5.html`。后端 home 聚合扩展（engineering：数据源/任务总数/失败 TOP5/最近运行 feed；governance：assets 表总数+近 7 天新增）+ 前端 home 整体重构（R1 问候/R2 统计卡×5/R3 运行态势+健康+快捷/R4 异常·TOP5·feed 三栏）+ 红绿排查修复 2 处（血缘高亮绿→indigo、资产详情统计卡统一 accent）。**实施中修复**：①健康行挤掉「平台服务」（加 dense 紧凑模式）；②趋势图红点 SVG 拉伸变形（改 HTML 圆点）；③**Docker daemon 重启一窝蜂启动无依赖编排**（depends_on 仅 compose up 生效——新增 `docker/wait-and-start.sh` 统一入口：JVM 启动前 nc 等待 Nacos 8848+9848/PG/Redis/PowerJob 就绪，9 个 Dockerfile 全部接入，engineering 旧 entrypoint 已删，worker 用 JAVA_BIN 双 JRE 兼容）。待办：部署验证（含 daemon 重启模拟）→ E2E f5-home 断言更新 → 提交。

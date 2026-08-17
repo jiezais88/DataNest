@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataNest — 首页 v5 运营仪表盘原型</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   DataNest 首页 v5「运营仪表盘」高保真原型（2026-08-17）
+   定位：平台驾驶舱 —— 规模感 / 态势感 / 风险感 / 行动入口
+   硬约束：一屏零滚动（1440×900 / 1920×1080）；语义色小面积；token 对齐 tokens.css
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  --bg-root: 238 240 247; --bg-surface: 255 255 255; --bg-hover: 235 239 246;
+  --border-subtle: 216 222 232; --border-strong: 198 206 218;
+  --text-primary: 15 23 42; --text-secondary: 71 85 105; --text-muted: 100 116 139;
+  --accent: 79 70 229; --accent-hover: 67 56 202; --accent-light: 238 242 255;
+  --danger: 220 38 38; --danger-light: 254 242 242;
+  --success: 22 163 74; --success-light: 240 253 244;
+  --warning: 217 119 6; --warning-light: 255 251 235;
+  --sky: 2 132 199; --sky-light: 240 249 255;
+  --sidebar-bg: 51 65 85; --sidebar-border: 71 85 105; --sidebar-text: 203 213 225; --sidebar-hover: 71 85 105;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: rgb(var(--bg-root)); color: rgb(var(--text-primary)); font-size: 14px;
+}
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ── 侧边栏（复刻 Sidebar.tsx）── */
+.sb { position: fixed; left: 0; top: 0; height: 100%; width: 248px; background: rgb(var(--sidebar-bg)); border-right: 1px solid rgb(var(--sidebar-border)); display: flex; flex-direction: column; overflow: hidden; z-index: 100; }
+.sb-brand { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid rgb(var(--sidebar-border)); }
+.sb-brand span { color: #fff; font-weight: 700; font-size: 14px; letter-spacing: -0.2px; }
+.sb-nav { flex: 1; overflow-y: auto; padding: 12px 8px; }
+.sb-group { font-size: 11px; font-weight: 700; color: rgb(var(--sidebar-text)); text-transform: uppercase; letter-spacing: 0.8px; padding: 16px 12px 6px; }
+.sb-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-radius: 8px; border: none; background: transparent; font-size: 13px; font-weight: 500; color: rgb(var(--sidebar-text)); cursor: pointer; text-align: left; }
+.sb-item:hover { background: rgb(var(--sidebar-hover)); color: #fff; }
+.sb-item.active { background: rgb(79 70 229 / 0.25); color: #fff; font-weight: 600; }
+.sb-item svg { flex-shrink: 0; opacity: .9; }
+
+/* ── 顶栏（复刻 Layout.tsx）── */
+.topbar { position: fixed; left: 248px; right: 0; top: 0; height: 56px; z-index: 100; background: rgb(255 255 255 / 0.8); backdrop-filter: blur(8px); border-bottom: 1px solid rgb(var(--border-subtle)); display: flex; align-items: center; justify-content: flex-end; padding: 0 24px; }
+.topbar-user { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; }
+.topbar-avatar { width: 28px; height: 28px; border-radius: 50%; background: rgb(var(--accent)); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; }
+.topbar-user .name { font-size: 13px; color: rgb(var(--text-secondary)); }
+
+/* ── 内容骨架 ── */
+.main { margin-left: 248px; padding-top: 56px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.content { flex: 1; min-height: 0; padding: 18px 24px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+
+/* ── R1 问候行 ── */
+.r1 { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+.r1-left { display: flex; align-items: baseline; gap: 12px; }
+.r1-hello { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+.r1-date { font-size: 12px; color: rgb(var(--text-muted)); }
+.r1-right { display: flex; align-items: center; gap: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
+.pill-ok { background: rgb(var(--success-light)); color: rgb(var(--success)); }
+.pill-warn { background: rgb(var(--warning-light)); color: rgb(var(--warning)); }
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill-plain { background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-subtle)); color: rgb(var(--text-secondary)); font-weight: 500; }
+.r1-refresh { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: rgb(var(--text-secondary)); background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-subtle)); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.r1-refresh:hover { background: rgb(var(--bg-hover)); }
+.r1-time { font-size: 11px; color: rgb(var(--text-muted)); }
+
+/* ── R2 统计卡 ── */
+.r2 { flex-shrink: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.stat { position: relative; background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-subtle)); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.05); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; transition: box-shadow .15s, transform .15s; overflow: hidden; }
+.stat:hover { box-shadow: 0 4px 12px rgba(15,23,42,.08); transform: translateY(-1px); }
+.stat-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: rgb(var(--text-muted)); }
+.stat-label svg { opacity: .8; }
+.stat-num { font-size: 27px; font-weight: 800; letter-spacing: -0.6px; line-height: 1.15; }
+.stat-sub { font-size: 12px; color: rgb(var(--text-muted)); display: flex; align-items: center; gap: 5px; }
+.stat-sub .up { color: rgb(var(--success)); font-weight: 600; }
+.stat-sub .down { color: rgb(var(--danger)); font-weight: 600; }
+.stat-sub .ok-dot { color: rgb(var(--success)); font-weight: 600; }
+.stat-sub .warn-dot { color: rgb(var(--warning)); font-weight: 600; }
+.stat-risk { border-color: rgb(217 119 6 / 0.45); background: linear-gradient(180deg, rgb(255 251 235 / 0.6), rgb(var(--bg-surface)) 60%); }
+.stat-risk .stat-num { color: rgb(var(--warning)); }
+.stat-risk::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: rgb(var(--warning)); }
+
+/* ── 通用卡片 ── */
+.card { background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-subtle)); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.05); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.card-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 10px; border-bottom: 1px solid rgb(var(--border-subtle)); flex-shrink: 0; }
+.card-title { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+.card-title .sub { font-size: 11px; font-weight: 500; color: rgb(var(--text-muted)); }
+.card-more { font-size: 12px; color: rgb(var(--text-muted)); cursor: pointer; white-space: nowrap; }
+.card-more:hover { color: rgb(var(--accent)); }
+.card-body { flex: 1; min-height: 0; padding: 10px 16px 12px; display: flex; flex-direction: column; }
+
+/* ── R3 主区 ── */
+.r3 { flex: 1.25; min-height: 0; display: grid; grid-template-columns: 1fr 340px; gap: 14px; }
+.r3-right { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+/* 趋势卡内的今日状态分段条 */
+.dist { display: flex; align-items: center; gap: 10px; }
+.dist-bar { display: flex; width: 180px; height: 8px; border-radius: 999px; overflow: hidden; background: rgb(var(--bg-hover)); }
+.dist-bar .seg { height: 100%; cursor: pointer; }
+.dist-bar .seg:hover { opacity: .75; }
+.seg-ok { background: rgb(var(--accent)); } .seg-fail { background: rgb(var(--danger)); } .seg-run { background: rgb(var(--sky)); } .seg-wait { background: #cbd5e1; }
+.dist-legend { display: flex; gap: 10px; font-size: 12px; color: rgb(var(--text-secondary)); }
+.dist-legend .dl { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.dl .d { width: 7px; height: 7px; border-radius: 50%; }
+.d-ok { background: rgb(var(--accent)); } .d-fail { background: rgb(var(--danger)); } .d-run { background: rgb(var(--sky)); } .d-wait { background: #cbd5e1; }
+.trend-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+.trend-labels { display: flex; justify-content: space-between; font-size: 11px; color: rgb(var(--text-muted)); padding-top: 4px; }
+
+/* 系统健康 */
+.health-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.health-row + .health-row { border-top: 1px dashed rgb(var(--border-subtle)); }
+.health-ico { width: 26px; height: 26px; border-radius: 7px; background: rgb(var(--accent-light)); color: rgb(var(--accent)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.health-label { font-size: 13px; color: rgb(var(--text-secondary)); flex: 1; }
+.health-value { font-size: 12px; font-weight: 600; color: rgb(var(--text-primary)); display: flex; align-items: center; gap: 6px; }
+.health-value .h-dot { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--success)); }
+
+/* 快捷操作 */
+.qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.qa { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid rgb(var(--border-subtle)); border-radius: 10px; font-size: 13px; font-weight: 500; color: rgb(var(--text-secondary)); cursor: pointer; background: rgb(var(--bg-surface)); }
+.qa:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); background: rgb(var(--accent-light)); }
+.qa svg { color: rgb(var(--accent)); }
+
+/* ── R4 三栏 ── */
+.r4 { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.q-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+.q-row + .q-row { border-top: 1px dashed rgb(var(--border-subtle)); }
+.q-badge { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: rgb(var(--danger-light)); color: rgb(var(--danger)); }
+.q-main { flex: 1; min-width: 0; }
+.q-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-reason { font-size: 11px; color: rgb(var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.q-wait { font-size: 11px; color: rgb(var(--warning)); font-weight: 600; flex-shrink: 0; }
+.q-btn { flex-shrink: 0; font-size: 12px; font-weight: 600; color: rgb(var(--accent)); border: 1px solid rgb(var(--accent) / 0.35); background: rgb(var(--accent-light)); border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+.q-btn:hover { background: rgb(var(--accent)); color: #fff; }
+.q-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: rgb(var(--text-muted)); font-size: 12px; }
+
+/* TOP5 */
+.top-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.top-row + .top-row { border-top: 1px dashed rgb(var(--border-subtle)); }
+.top-rank { width: 20px; height: 20px; border-radius: 6px; background: rgb(var(--bg-hover)); color: rgb(var(--text-muted)); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.top-rank.hot { background: rgb(var(--danger-light)); color: rgb(var(--danger)); }
+.top-name { flex: 1; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-meta { font-size: 11px; color: rgb(var(--text-muted)); flex-shrink: 0; }
+.top-count { font-size: 12px; font-weight: 700; color: rgb(var(--danger)); flex-shrink: 0; }
+
+/* 动态 feed */
+.feed-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 12px; }
+.feed-row + .feed-row { border-top: 1px dashed rgb(var(--border-subtle)); }
+.feed-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.feed-name { flex: 1; color: rgb(var(--text-secondary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-name b { color: rgb(var(--text-primary)); font-weight: 600; }
+.feed-dur { color: rgb(var(--text-muted)); flex-shrink: 0; }
+.feed-time { color: rgb(var(--text-muted)); flex-shrink: 0; width: 64px; text-align: right; }
+</style>
+</head>
+<body>
+
+<!-- ══════════ 侧边栏 ══════════ -->
+<aside class="sb">
+  <div class="sb-brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z" stroke="#818cf8" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 7l4 2.2v4.6L12 16l-4-2.2V9.2L12 7z" stroke="#c7d2fe" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    <span>DataNest</span>
+  </div>
+  <nav class="sb-nav">
+    <div class="sb-group">数据平台</div>
+    <button class="sb-item active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>首页</button>
+    <div class="sb-group">数据工程</div>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>数据源管理</button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>CDC 管道</button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 16l-4-4 4-4M17 8l4 4-4 4M14 4l-4 16"/></svg>批量数据同步任务</button>
+    <div class="sb-group">数据开发</div>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>项目管理</button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 5h16M4 12h16M4 19h10"/></svg>任务模板库</button>
+    <div class="sb-group">数据服务</div>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg>SQL 查询终端</button>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M15 7a4 4 0 11-8 0 4 4 0 018 0zM3 21v-1a6 6 0 016-6h6a6 6 0 016 6v1"/></svg>API Key 管理</button>
+    <div class="sb-group">数据资产</div>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>数据资产</button>
+    <div class="sb-group">数据治理</div>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>元数据</button>
+    <div class="sb-group">系统管理</div>
+    <button class="sb-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.9.3h0a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5h0a1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.9v0a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>系统管理</button>
+  </nav>
+</aside>
+
+<!-- ══════════ 顶栏 ══════════ -->
+<header class="topbar">
+  <div class="topbar-user"><div class="topbar-avatar">A</div><span class="name">admin</span></div>
+</header>
+
+<main class="main">
+<div class="content">
+
+  <!-- ═══ R1 问候 + 状态 ═══ -->
+  <div class="r1">
+    <div class="r1-left">
+      <span class="r1-hello">下午好，admin</span>
+      <span class="r1-date">2026年8月17日 周一</span>
+    </div>
+    <div class="r1-right">
+      <span class="pill pill-warn"><span class="dot"></span>1 项需关注</span>
+      <span class="pill pill-plain num">24h 告警 0</span>
+      <span class="r1-time">17:26 更新</span>
+      <button class="r1-refresh"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 11-2.6-6.4M21 4v5h-5"/></svg>刷新</button>
+    </div>
+  </div>
+
+  <!-- ═══ R2 统计卡（规模感 + 风险卡） ═══ -->
+  <div class="r2">
+    <div class="stat">
+      <span class="stat-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>数据源</span>
+      <span class="stat-num num">1</span>
+      <span class="stat-sub"><span class="ok-dot">●</span>1 正常 · 0 连接失败</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>数据表</span>
+      <span class="stat-num num">9</span>
+      <span class="stat-sub"><span class="up">▲ 9</span>近 7 天新增</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>调度任务</span>
+      <span class="stat-num num">2</span>
+      <span class="stat-sub">今日已运行 <b class="num" style="color:rgb(var(--text-primary))">3</b> 次</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>数据 API</span>
+      <span class="stat-num num">0</span>
+      <span class="stat-sub">近 24h 调用 0 次</span>
+    </div>
+    <div class="stat stat-risk">
+      <span class="stat-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>待处理异常</span>
+      <span class="stat-num num">1</span>
+      <span class="stat-sub"><span class="warn-dot">●</span>最早已等待 15 分钟 · 去处理 ›</span>
+    </div>
+  </div>
+
+  <!-- ═══ R3 主区：运行态势 + 右栏 ═══ -->
+  <div class="r3">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">运行态势<span class="sub">近 14 日 · 近 7 天成功率 <b class="num" style="color:rgb(var(--text-primary))">88.9%</b></span></span>
+        <div class="dist">
+          <span style="font-size:11px;color:rgb(var(--text-muted))">今日</span>
+          <div class="dist-bar">
+            <div class="seg seg-ok" style="width:66%"></div>
+            <div class="seg seg-fail" style="width:34%"></div>
+          </div>
+          <div class="dist-legend">
+            <span class="dl"><span class="d d-ok"></span>成功 2</span>
+            <span class="dl"><span class="d d-fail"></span>失败 1</span>
+            <span class="dl"><span class="d d-run"></span>运行中 0</span>
+            <span class="dl"><span class="d d-wait"></span>等待 0</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="trend-wrap">
+          <svg viewBox="0 0 1200 220" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
+            <defs>
+              <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4f46e5" stop-opacity="0.22"/>
+                <stop offset="100%" stop-color="#4f46e5" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="190.5" x2="1200" y2="190.5" stroke="#d8dee8" stroke-width="1"/>
+            <line x1="0" y1="60" x2="1200" y2="60" stroke="#eef0f7" stroke-width="1" stroke-dasharray="4 4"/>
+            <line x1="0" y1="125" x2="1200" y2="125" stroke="#eef0f7" stroke-width="1" stroke-dasharray="4 4"/>
+            <path d="M8,160 L99,60 L190,160 L281,160 L372,110 L463,160 L554,160 L645,160 L736,160 L827,160 L918,160 L1009,160 L1100,160 L1192,50 L1192,220 L8,220 Z" fill="url(#area)"/>
+            <path d="M8,160 L99,60 L190,160 L281,160 L372,110 L463,160 L554,160 L645,160 L736,160 L827,160 L918,160 L1009,160 L1100,160 L1192,50" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="1192" cy="50" r="5" fill="#fff" stroke="#dc2626" stroke-width="2.5"/>
+            <circle cx="99" cy="60" r="3.5" fill="#4f46e5" opacity="0.85"/>
+            <circle cx="372" cy="110" r="3.5" fill="#4f46e5" opacity="0.85"/>
+          </svg>
+          <div class="trend-labels"><span>08-04</span><span>08-06</span><span>08-08</span><span>08-10</span><span>08-12</span><span>08-14</span><span>08-16</span><span>今天</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="r3-right">
+      <div class="card" style="flex:1.2">
+        <div class="card-head"><span class="card-title">系统健康</span><span class="card-more">全部正常</span></div>
+        <div class="card-body" style="padding-top:4px;padding-bottom:4px">
+          <div class="health-row">
+            <span class="health-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg></span>
+            <span class="health-label">数据源</span>
+            <span class="health-value"><span class="h-dot"></span>1 正常</span>
+          </div>
+          <div class="health-row">
+            <span class="health-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 16l-4-4 4-4M17 8l4 4-4 4"/></svg></span>
+            <span class="health-label">集成任务</span>
+            <span class="health-value"><span class="h-dot"></span>0 个运行中</span>
+          </div>
+          <div class="health-row">
+            <span class="health-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg></span>
+            <span class="health-label">Flink CDC</span>
+            <span class="health-value"><span class="h-dot"></span>正常 · 0 张表同步中</span>
+          </div>
+          <div class="health-row">
+            <span class="health-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg></span>
+            <span class="health-label">Doris</span>
+            <span class="health-value"><span class="h-dot"></span>正常 · 4ms</span>
+          </div>
+          <div class="health-row">
+            <span class="health-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 12l2 2 4-4"/></svg></span>
+            <span class="health-label">平台服务</span>
+            <span class="health-value"><span class="h-dot"></span>全部正常</span>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="flex:1">
+        <div class="card-head"><span class="card-title">快捷操作</span></div>
+        <div class="card-body">
+          <div class="qa-grid">
+            <button class="qa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>同步任务</button>
+            <button class="qa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>新建 DAG</button>
+            <button class="qa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3"/></svg>SQL 查询</button>
+            <button class="qa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>数据源</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ R4 三栏：异常 / 失败TOP / 动态 ═══ -->
+  <div class="r4">
+    <div class="card">
+      <div class="card-head"><span class="card-title">待处理异常<span class="sub num">1</span></span><span class="card-more">全部 1 条 ›</span></div>
+      <div class="card-body" style="padding-top:2px">
+        <div class="q-row">
+          <span class="q-badge">DAG</span>
+          <div class="q-main">
+            <div class="q-name">订单质量核查（异常示例）</div>
+            <div class="q-reason">失败原因：执行失败</div>
+          </div>
+          <span class="q-wait num">15 分钟</span>
+          <button class="q-btn">重跑</button>
+        </div>
+        <!-- 空态时替换为：
+        <div class="q-empty">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+          近 24 小时无异常
+        </div> -->
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">失败任务排行<span class="sub">近 14 日</span></span><span class="card-more">执行历史 ›</span></div>
+      <div class="card-body" style="padding-top:2px">
+        <div class="top-row">
+          <span class="top-rank hot">1</span>
+          <span class="top-name">订单质量核查（异常示例）</span>
+          <span class="top-meta">2 小时前</span>
+          <span class="top-count num">1 次</span>
+        </div>
+        <div class="q-empty" style="padding:14px 0 4px">其余任务近 14 日零失败</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">最近运行</span><span class="card-more">执行历史 ›</span></div>
+      <div class="card-body" style="padding-top:2px">
+        <div class="feed-row"><span class="feed-dot" style="background:rgb(var(--danger))"></span><span class="feed-name"><b>订单质量核查（异常示例）</b> 执行失败</span><span class="feed-dur num">8s</span><span class="feed-time">15 分钟前</span></div>
+        <div class="feed-row"><span class="feed-dot" style="background:rgb(var(--success))"></span><span class="feed-name"><b>电商每日经营加工</b> 执行成功</span><span class="feed-dur num">3m41s</span><span class="feed-time">32 分钟前</span></div>
+        <div class="feed-row"><span class="feed-dot" style="background:rgb(var(--success))"></span><span class="feed-name"><b>电商每日经营加工</b> 执行成功</span><span class="feed-dur num">3m52s</span><span class="feed-time">1 小时前</span></div>
+        <div class="feed-row"><span class="feed-dot" style="background:rgb(var(--success))"></span><span class="feed-name"><b>电商每日经营加工</b> 执行成功</span><span class="feed-dur num">4m03s</span><span class="feed-time">1 小时前</span></div>
+        <div class="feed-row"><span class="feed-dot" style="background:rgb(var(--success))"></span><span class="feed-name"><b>电商每日经营加工</b> 执行成功</span><span class="feed-dur num">3m58s</span><span class="feed-time">2 小时前</span></div>
+        <div class="feed-row"><span class="feed-dot" style="background:rgb(var(--success))"></span><span class="feed-name"><b>demo-电商数仓采集</b> 采集成功</span><span class="feed-dur num">21s</span><span class="feed-time">2 小时前</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</main>
+</body>
+</html>
