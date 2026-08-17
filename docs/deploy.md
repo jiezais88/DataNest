@@ -30,6 +30,8 @@ cd "Data Platform/data-nest"
 
 脚本自动完成：环境预检 → Doris 配置 → 后端构建（mvn）→ 前端构建（pnpm）→ 容器启动 → 健康等待 → 登录冒烟。看到 `DataNest 部署完成` 即成功。
 
+> 首次执行会自动从 GitHub Release 附件下载 Flink CDC 运行时 jar（约 182MB，实时 CDC 功能所需，已做 sha256 校验）；下载一次后本地缓存，后续离线可重复部署。
+
 - 首次部署时脚本会显示当前 Doris 配置并询问是否修改（见 §3）；没有 Doris 可暂选跳过。
 - 部署完成后访问 **http://localhost:3000**，默认账号 `admin / admin123`。
 
