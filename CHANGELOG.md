@@ -2,6 +2,12 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 精神记录变更，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.2] - 2026-08-17
+
+### Fixed
+
+- **首页趋势图贴边失败点定位偏移**：末/首日数据点的失败红点此前只做单边 6px 钳制，与折线顶点脱开（视觉"外飘"）；趋势坐标系改为左右各 8px 内边距，红点与折线顶点天然重合且不再被画布裁切
+
 ## [1.0.1] - 2026-08-17
 
 全新卸载重装演练抓出的部署初始化修复补丁。Flink 运行时 jar 附件仍挂在 [v1.0.0](https://github.com/jiezais88/DataNest/releases/tag/v1.0.0)（pinned 运行时依赖，`fetch-flink-libs.sh` 固定从该 Release 拉取）。

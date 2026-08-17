@@ -185,10 +185,12 @@ function TrendStrip({eng}: {eng: HomeEngineeringKpi | null}) {
     const H = 100;
     const BASE = 88;
     const max = Math.max(...points.map(p => Number(p.total)), 1);
-    const step = points.length > 1 ? W / (points.length - 1) : W;
-    const xy = points.map((p, i) => [i * step, BASE - (Number(p.total) / max) * 70] as const);
+    /** 左右各留 8px 内边距：贴边数据点（含失败红点）不被裁切，且红点与折线顶点天然重合 */
+    const PAD = 8;
+    const step = points.length > 1 ? (W - 2 * PAD) / (points.length - 1) : W;
+    const xy = points.map((p, i) => [PAD + i * step, BASE - (Number(p.total) / max) * 70] as const);
     const line = xy.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-    const area = `${line} L${W},${H} L0,${H} Z`;
+    const area = xy.length ? `${line} L${xy[xy.length - 1][0]},${H} L${xy[0][0]},${H} Z` : '';
     const xLabels = points.filter((_, i) => i % 2 === 0 || i === points.length - 1);
     /** 贴边点半径 4 + 描边 2，钳制 6px 防裁切 */
     const clampX = (x: number) => Math.min(Math.max(x, 6), W - 6);
