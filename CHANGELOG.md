@@ -2,6 +2,23 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 精神记录变更，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-08-17
+
+全新卸载重装演练抓出的部署初始化修复补丁。Flink 运行时 jar 附件仍挂在 [v1.0.0](https://github.com/jiezais88/DataNest/releases/tag/v1.0.0)（pinned 运行时依赖，`fetch-flink-libs.sh` 固定从该 Release 拉取）。
+
+### Fixed
+
+- **全新部署初始化修复**（老数据卷掩盖、全新空卷首次暴露）：
+  - Nacos 初始化 schema 补默认用户种子（`nacos/nacos`）——此前全新 MySQL 卷 users 表为空，登录探针 500，全栈启动卡死
+  - PostgreSQL initdb 新增 6 个业务域库（`scripts/init-postgres-db.sql`）——此前 6 域库靠老卷存活，6 个持库服务全部起不来；同时废弃旧共享库 `datanest`（`POSTGRES_DB` 改 `postgres`，不再初始化）
+  - 4 个服务（system/engineering/alert/governance）Flyway baseline 删除 pg_dump 附带的 `\restrict/\unrestrict` psql 元命令——此前全新库首个迁移即失败
+  - 补种子数据迁移：system 预置 4 角色 + admin + 角色权限矩阵（V1.1.3）、governance 质量规则内置模板 ×4（V1.7.1）——此前全新库无法登录、质量模板缺失
+- **血缘批量写入过滤空 target 记录**：SQL 节点含 DROP/USE 语句时不再因非空约束报错导致整批失败 + Feign 熔断丢血缘
+
+### Added
+
+- README 增加「界面展示」区块（首页仪表盘 / DAG 编排 / 血缘图谱 / 资产详情 / 审计日志 / 权限配置 6 张实拍截图）
+
 ## [1.0.0] - 2026-08-17
 
 首个开源发布版本（Sprint 0 ~ Sprint 12）。

@@ -12,6 +12,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 LIB_DIR="docker/flink/lib"
+# pinned 运行时依赖：jar 附件固定在 v1.0.0 Release（不随平台版本升级；
+# 若未来升级 Flink/CDC 版本需重新挂载附件并同步下方 sha256）
 BASE_URL="https://github.com/jiezais88/DataNest/releases/download/v1.0.0"
 mkdir -p "$LIB_DIR"
 
