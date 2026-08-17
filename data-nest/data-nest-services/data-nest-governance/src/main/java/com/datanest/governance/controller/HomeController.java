@@ -39,13 +39,16 @@ public class HomeController {
     private final CollectHistoryService collectHistoryService;
     private final QualityReportService qualityReportService;
     private final DorisSqlExecutor dorisSqlExecutor;
+    private final com.datanest.governance.mapper.MetadataTableMapper metadataTableMapper;
 
     public HomeController(CollectHistoryService collectHistoryService,
                           QualityReportService qualityReportService,
-                          DorisSqlExecutor dorisSqlExecutor) {
+                          DorisSqlExecutor dorisSqlExecutor,
+                          com.datanest.governance.mapper.MetadataTableMapper metadataTableMapper) {
         this.collectHistoryService = collectHistoryService;
         this.qualityReportService = qualityReportService;
         this.dorisSqlExecutor = dorisSqlExecutor;
+        this.metadataTableMapper = metadataTableMapper;
     }
 
     @Operation(summary = "首页治理域 KPI 聚合", description = "collect 统计 + 质量异常（WARNING/SEVERE 前3条）+ Doris 延迟探活")
@@ -82,6 +85,19 @@ public class HomeController {
 
         // ---- Doris 延迟探活（连接耗时 ms；失败 = null，前端显示「不可用」） ----
         result.put("doris", probeDoris());
+
+        // ---- v5 运营仪表盘：数据表规模（总数 + 近 7 天新增） ----
+        try {
+            Map<String, Object> assets = new LinkedHashMap<>();
+            assets.put("tableTotal", metadataTableMapper.selectCount(null));
+            assets.put("tableNew7d", metadataTableMapper.selectCount(
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<com.datanest.governance.entity.MetadataTable>()
+                            .ge("created_at", LocalDateTime.now().minusDays(7))));
+            result.put("assets", assets);
+        } catch (Exception e) {
+            logger.warn("首页资产规模聚合失败（降级为空）: {}", e.getMessage());
+            result.put("assets", Map.of());
+        }
         return Result.ok(result);
     }
 

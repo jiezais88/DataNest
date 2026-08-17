@@ -27,6 +27,26 @@ export interface HomeFailedItem {
     reason?: string;
 }
 
+/** v5 失败任务排行条目 */
+export interface HomeTopFailureItem {
+    type: 'dag' | 'sync';
+    name: string;
+    refId?: string;
+    failCount: CountField;
+    lastFailedAt?: string;
+}
+
+/** v5 最近运行条目 */
+export interface HomeRecentRunItem {
+    type: 'dag' | 'sync';
+    name: string;
+    refId?: string;
+    executionId: string;
+    status: string;
+    durationMs?: CountField;
+    startTime?: string;
+}
+
 export interface HomeEngineeringKpi {
     todayTotal: CountField;
     yesterdayTotal: CountField;
@@ -42,6 +62,15 @@ export interface HomeEngineeringKpi {
     failedLast1h: CountField;
     trend: HomeTrendPoint[];
     failedItems: HomeFailedItem[];
+    /** v5：规模统计卡 */
+    datasourceTotal?: CountField;
+    datasourceNormal?: CountField;
+    datasourceFailed?: CountField;
+    taskTotal?: CountField;
+    /** v5：失败任务排行 TOP5（近 14 日） */
+    topFailures?: HomeTopFailureItem[];
+    /** v5：最近运行 feed（最多 8 条） */
+    recentRuns?: HomeRecentRunItem[];
 }
 
 export interface HomeAlertKpi {
@@ -67,6 +96,8 @@ export interface HomeGovernanceKpi {
         checkedAt: string;
     }>;
     doris: {status: 'UP' | 'DOWN'; latencyMs?: number};
+    /** v5：数据表规模（总数 + 近 7 天新增） */
+    assets?: {tableTotal?: CountField; tableNew7d?: CountField};
 }
 
 export interface HomeRealtimeKpi {

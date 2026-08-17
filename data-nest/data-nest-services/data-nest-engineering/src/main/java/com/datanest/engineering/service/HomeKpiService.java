@@ -1,15 +1,18 @@
 package com.datanest.engineering.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.constant.DataSourceStatus;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.engineering.dto.DagExecutionStatsDTO;
 import com.datanest.engineering.dto.HomeKpiDTO;
 import com.datanest.engineering.dto.SyncJobHistoryStatsDTO;
 import com.datanest.engineering.entity.Dag;
 import com.datanest.engineering.entity.DagExecution;
+import com.datanest.engineering.entity.DataSourceConnection;
 import com.datanest.engineering.entity.SyncJobHistory;
 import com.datanest.engineering.mapper.DagExecutionMapper;
 import com.datanest.engineering.mapper.DagMapper;
+import com.datanest.engineering.mapper.DataSourceConnectionMapper;
 import com.datanest.engineering.mapper.SyncJobHistoryMapper;
 import com.datanest.engineering.mapper.SyncJobMapper;
 import org.slf4j.Logger;
@@ -49,15 +52,18 @@ public class HomeKpiService {
     private final SyncJobHistoryMapper syncJobHistoryMapper;
     private final DagMapper dagMapper;
     private final SyncJobMapper syncJobMapper;
+    private final DataSourceConnectionMapper dataSourceConnectionMapper;
 
     public HomeKpiService(DagExecutionMapper dagExecutionMapper,
                           SyncJobHistoryMapper syncJobHistoryMapper,
                           DagMapper dagMapper,
-                          SyncJobMapper syncJobMapper) {
+                          SyncJobMapper syncJobMapper,
+                          DataSourceConnectionMapper dataSourceConnectionMapper) {
         this.dagExecutionMapper = dagExecutionMapper;
         this.syncJobHistoryMapper = syncJobHistoryMapper;
         this.dagMapper = dagMapper;
         this.syncJobMapper = syncJobMapper;
+        this.dataSourceConnectionMapper = dataSourceConnectionMapper;
     }
 
     /**
@@ -186,7 +192,140 @@ public class HomeKpiService {
         // ---- 14 日趋势（v4.1：7 → 14 天窗口） ----
         dto.setTrend(buildTrend(fourteenDaysAgo, todayEnd));
 
+        // ---- v5 运营仪表盘：规模统计卡（数据源 / 调度任务） ----
+        dto.setDatasourceTotal(dataSourceConnectionMapper.selectCount(null));
+        dto.setDatasourceNormal(dataSourceConnectionMapper.selectCount(
+                new QueryWrapper<DataSourceConnection>().eq("status", DataSourceStatus.NORMAL.getCode())));
+        dto.setDatasourceFailed(dataSourceConnectionMapper.selectCount(
+                new QueryWrapper<DataSourceConnection>().eq("status", DataSourceStatus.ERROR.getCode())));
+        dto.setTaskTotal(dagMapper.selectCount(null) + syncJobMapper.selectCount(null));
+
+        // ---- v5 运营仪表盘：失败任务排行 TOP5（近 14 日）+ 最近运行 feed ----
+        dto.setTopFailures(buildTopFailures(fourteenDaysAgo, todayEnd));
+        dto.setRecentRuns(buildRecentRuns());
+
         return dto;
+    }
+
+    // ==================== v5 新增聚合 ====================
+
+    /** 近 14 日失败任务排行（DAG + 同步，按失败次数降序，TOP5；名称批量解析避免 N+1） */
+    private List<HomeKpiDTO.TopFailureItem> buildTopFailures(LocalDateTime since, LocalDateTime until) {
+        record Agg(long count, LocalDateTime lastAt) {}
+        Map<String, Agg> dagAgg = new HashMap<>();
+        for (DagExecution e : dagExecutionMapper.selectList(new QueryWrapper<DagExecution>()
+                .eq("status", "FAILED").ge("start_time", since).lt("start_time", until))) {
+            if (e.getDagId() == null) continue;
+            String key = "dag:" + e.getDagId();
+            LocalDateTime t = e.getEndTime() != null ? e.getEndTime() : e.getStartTime();
+            dagAgg.merge(key, new Agg(1, t),
+                    (a, b) -> new Agg(a.count() + 1, a.lastAt() != null && a.lastAt().isAfter(t) ? a.lastAt() : t));
+        }
+        Map<String, Agg> syncAgg = new HashMap<>();
+        for (SyncJobHistory h : syncJobHistoryMapper.selectList(new QueryWrapper<SyncJobHistory>()
+                .eq("status", "FAILED").ge("start_time", since).lt("start_time", until))) {
+            if (h.getSyncJobId() == null) continue;
+            String key = "sync:" + h.getSyncJobId();
+            LocalDateTime t = h.getEndTime() != null ? h.getEndTime() : h.getStartTime();
+            syncAgg.merge(key, new Agg(1, t),
+                    (a, b) -> new Agg(a.count() + 1, a.lastAt() != null && a.lastAt().isAfter(t) ? a.lastAt() : t));
+        }
+        Map<Long, String> dagNames = dagNamesOf(dagAgg.keySet().stream()
+                .map(k -> Long.valueOf(k.substring(4))).toList());
+        Map<Long, String> syncNames = syncJobNamesOf(syncAgg.keySet().stream()
+                .map(k -> Long.valueOf(k.substring(5))).toList());
+
+        List<HomeKpiDTO.TopFailureItem> items = new ArrayList<>();
+        dagAgg.forEach((key, agg) -> {
+            long id = Long.parseLong(key.substring(4));
+            HomeKpiDTO.TopFailureItem item = new HomeKpiDTO.TopFailureItem();
+            item.setType("dag");
+            item.setRefId(String.valueOf(id));
+            item.setName(dagNames.getOrDefault(id, String.valueOf(id)));
+            item.setFailCount(agg.count());
+            item.setLastFailedAt(formatTime(agg.lastAt()));
+            items.add(item);
+        });
+        syncAgg.forEach((key, agg) -> {
+            long id = Long.parseLong(key.substring(5));
+            HomeKpiDTO.TopFailureItem item = new HomeKpiDTO.TopFailureItem();
+            item.setType("sync");
+            item.setRefId(String.valueOf(id));
+            item.setName(syncNames.getOrDefault(id, String.valueOf(id)));
+            item.setFailCount(agg.count());
+            item.setLastFailedAt(formatTime(agg.lastAt()));
+            items.add(item);
+        });
+        items.sort((a, b) -> {
+            int c = Long.compare(b.getFailCount(), a.getFailCount());
+            if (c != 0) return c;
+            String ta = a.getLastFailedAt() == null ? "" : a.getLastFailedAt();
+            String tb = b.getLastFailedAt() == null ? "" : b.getLastFailedAt();
+            return tb.compareTo(ta);
+        });
+        return items.size() > 5 ? items.subList(0, 5) : items;
+    }
+
+    /** 最近运行 feed（DAG + 同步各取最近 8 条，合并排序取前 8；名称批量解析避免 N+1） */
+    private List<HomeKpiDTO.RecentRunItem> buildRecentRuns() {
+        List<DagExecution> dags = dagExecutionMapper.selectList(new QueryWrapper<DagExecution>()
+                .orderByDesc("start_time").last("LIMIT 8"));
+        List<SyncJobHistory> syncs = syncJobHistoryMapper.selectList(new QueryWrapper<SyncJobHistory>()
+                .orderByDesc("start_time").last("LIMIT 8"));
+        Map<Long, String> dagNames = dagNamesOf(dags.stream()
+                .map(DagExecution::getDagId).filter(Objects::nonNull).distinct().toList());
+        Map<Long, String> syncNames = syncJobNamesOf(syncs.stream()
+                .map(SyncJobHistory::getSyncJobId).filter(Objects::nonNull).distinct().toList());
+
+        List<HomeKpiDTO.RecentRunItem> items = new ArrayList<>();
+        for (DagExecution e : dags) {
+            HomeKpiDTO.RecentRunItem item = new HomeKpiDTO.RecentRunItem();
+            item.setType("dag");
+            item.setRefId(e.getDagId() == null ? null : String.valueOf(e.getDagId()));
+            item.setName(e.getDagId() == null ? "—" : dagNames.getOrDefault(e.getDagId(), String.valueOf(e.getDagId())));
+            item.setExecutionId(String.valueOf(e.getId()));
+            item.setStatus(e.getStatus());
+            item.setDurationMs(e.getDurationMs());
+            item.setStartTime(formatTime(e.getStartTime()));
+            items.add(item);
+        }
+        for (SyncJobHistory h : syncs) {
+            HomeKpiDTO.RecentRunItem item = new HomeKpiDTO.RecentRunItem();
+            item.setType("sync");
+            item.setRefId(h.getSyncJobId() == null ? null : String.valueOf(h.getSyncJobId()));
+            item.setName(h.getSyncJobId() == null ? "—" : syncNames.getOrDefault(h.getSyncJobId(), String.valueOf(h.getSyncJobId())));
+            item.setExecutionId(String.valueOf(h.getId()));
+            item.setStatus(h.getStatus());
+            item.setDurationMs(h.getDurationMs());
+            item.setStartTime(formatTime(h.getStartTime()));
+            items.add(item);
+        }
+        items.sort((a, b) -> {
+            String ta = a.getStartTime() == null ? "" : a.getStartTime();
+            String tb = b.getStartTime() == null ? "" : b.getStartTime();
+            return tb.compareTo(ta);
+        });
+        return items.size() > 8 ? items.subList(0, 8) : items;
+    }
+
+    /** 批量解析 DAG 名称（selectBatchIds 一次查询） */
+    private Map<Long, String> dagNamesOf(java.util.Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        Map<Long, String> result = new HashMap<>();
+        for (Dag dag : dagMapper.selectBatchIds(ids)) {
+            result.put(dag.getId(), dag.getName());
+        }
+        return result;
+    }
+
+    /** 批量解析同步任务名称（selectBatchIds 一次查询） */
+    private Map<Long, String> syncJobNamesOf(java.util.Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        Map<Long, String> result = new HashMap<>();
+        for (com.datanest.engineering.entity.SyncJob job : syncJobMapper.selectBatchIds(ids)) {
+            result.put(job.getId(), job.getName());
+        }
+        return result;
     }
 
     // ==================== 内部 ====================

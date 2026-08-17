@@ -53,6 +53,58 @@ public class HomeKpiDTO {
     @Schema(description = "失败任务异常列表（最多 3 条，按时间倒序）")
     private List<FailedItem> failedItems;
 
+    // ---------- v5 运营仪表盘：规模统计卡 ----------
+    @Schema(description = "数据源总数")
+    private Long datasourceTotal;
+    @Schema(description = "数据源正常数（status=NORMAL）")
+    private Long datasourceNormal;
+    @Schema(description = "数据源异常数（status=ERROR）")
+    private Long datasourceFailed;
+    @Schema(description = "调度任务总数（DAG + 同步任务）")
+    private Long taskTotal;
+
+    // ---------- v5 运营仪表盘：失败任务排行 ----------
+    @Schema(description = "近 14 日失败任务排行 TOP5（按失败次数降序）")
+    private List<TopFailureItem> topFailures;
+
+    // ---------- v5 运营仪表盘：最近运行 ----------
+    @Schema(description = "最近运行记录（DAG + 同步混排，按开始时间倒序，最多 8 条）")
+    private List<RecentRunItem> recentRuns;
+
+    @Schema(description = "失败任务排行条目（v5）")
+    @lombok.Data
+    public static class TopFailureItem {
+        @Schema(description = "类型：dag / sync")
+        private String type;
+        @Schema(description = "任务名")
+        private String name;
+        @Schema(description = "关联对象 ID（dagId / syncJobId）")
+        private String refId;
+        @Schema(description = "近 14 日失败次数")
+        private Long failCount;
+        @Schema(description = "最近失败时间（yyyy-MM-dd HH:mm:ss）")
+        private String lastFailedAt;
+    }
+
+    @Schema(description = "最近运行条目（v5）")
+    @lombok.Data
+    public static class RecentRunItem {
+        @Schema(description = "类型：dag / sync")
+        private String type;
+        @Schema(description = "任务名")
+        private String name;
+        @Schema(description = "关联对象 ID（dagId / syncJobId）")
+        private String refId;
+        @Schema(description = "执行 ID")
+        private String executionId;
+        @Schema(description = "状态：SUCCESS / FAILED / RUNNING / TERMINATED")
+        private String status;
+        @Schema(description = "耗时（毫秒）")
+        private Long durationMs;
+        @Schema(description = "开始时间（yyyy-MM-dd HH:mm:ss）")
+        private String startTime;
+    }
+
     @Schema(description = "近 7 日趋势点（按天）")
     @lombok.Data
     public static class TrendPoint {
