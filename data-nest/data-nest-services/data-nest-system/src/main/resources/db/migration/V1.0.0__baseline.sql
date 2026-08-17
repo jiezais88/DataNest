@@ -1,6 +1,5 @@
 -- system 域基线（微服务化阶段 5：从共享 datanest 库 pg_dump --schema-only 生成，含当前全部 DDL/索引/约束/注释）
 -- 后续演进脚本版本号必须大于 1.0.0（如 V1.1.0），紧凑单行风格
-\restrict XxPLDe7tNXTA2KYPvSXiCECkNVYzgClmwzl2zIeGGl6tUTSpeQZFiwHrMvh1THp
 CREATE TABLE public.sys_permission (
     id bigint NOT NULL,
     code character varying(50) NOT NULL,
@@ -79,4 +78,3 @@ CREATE UNIQUE INDEX uk_sys_role_code ON public.sys_role USING btree (code);
 CREATE UNIQUE INDEX uk_sys_role_permission ON public.sys_role_permission USING btree (role_id, permission_id);
 CREATE UNIQUE INDEX uk_sys_user_role ON public.sys_user_role USING btree (user_id, role_id);
 CREATE UNIQUE INDEX uk_sys_user_username ON public.sys_user USING btree (username);
-\unrestrict XxPLDe7tNXTA2KYPvSXiCECkNVYzgClmwzl2zIeGGl6tUTSpeQZFiwHrMvh1THp

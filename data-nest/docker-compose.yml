@@ -128,12 +128,15 @@ services:
     environment:
       POSTGRES_USER: datanest
       POSTGRES_PASSWORD: datanest123
-      POSTGRES_DB: datanest
+      # 显式设为系统维护库 postgres：避免 initdb 再建已废弃的旧共享库 datanest（Sprint 10 已拆 6 域库，
+      # 且 POSTGRES_DB 缺省会取 POSTGRES_USER 同名建库）；6 域库由 init-postgres-db.sql 创建
+      POSTGRES_DB: postgres
       TZ: Asia/Shanghai
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-postgres-db.sql:/docker-entrypoint-initdb.d/01-init-postgres-db.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U datanest" ]
       interval: 5s

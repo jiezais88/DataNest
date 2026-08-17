@@ -1,6 +1,5 @@
 -- engineering 域基线（微服务化阶段 5：从共享 datanest 库 pg_dump --schema-only 生成，含当前全部 DDL/索引/约束/注释）
 -- 后续演进脚本版本号必须大于 1.0.0（如 V1.1.0），紧凑单行风格
-\restrict 2j4aPegsk11jGyxf0TcCFpXhdHwwtsy1lhnomaiEgm3OcKwMyNuBVGeUPBMeBYc
 CREATE TABLE public.dag (
     id bigint NOT NULL,
     project_id bigint NOT NULL,
@@ -463,4 +462,3 @@ CREATE UNIQUE INDEX uk_dag_project_id_name ON public.dag USING btree (project_id
 CREATE UNIQUE INDEX uk_dag_project_name ON public.dag_project USING btree (name);
 CREATE UNIQUE INDEX uk_datasource_connection_name ON public.datasource_connection USING btree (name);
 CREATE UNIQUE INDEX uk_sync_job_name ON public.sync_job USING btree (name);
-\unrestrict 2j4aPegsk11jGyxf0TcCFpXhdHwwtsy1lhnomaiEgm3OcKwMyNuBVGeUPBMeBYc

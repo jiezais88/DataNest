@@ -187,6 +187,12 @@ CREATE TABLE `permissions`
     UNIQUE INDEX `uk_role_permission` (`role`,`resource`,`action`) USING BTREE
 );
 
+-- 默认管理员账号 nacos/nacos（官方 bcrypt 密文，Sprint 12 补：此前缺失导致全新卷部署时 Nacos 登录探针 500、全栈启动卡死）
+INSERT INTO `users` (username, password, enabled)
+VALUES ('nacos', '$2a$10$EuWPZHzz32dJN7jexM34MOeYirDdFAZm2kuWj7VEOJhhZkDrxfvUu', TRUE);
+INSERT INTO `roles` (username, role)
+VALUES ('nacos', 'ROLE_ADMIN');
+
 -- DataNest scheduler database for XXL-JOB
 CREATE
 DATABASE IF NOT EXISTS datanest_scheduler CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

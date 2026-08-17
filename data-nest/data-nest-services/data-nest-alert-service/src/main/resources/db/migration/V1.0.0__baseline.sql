@@ -1,6 +1,5 @@
 -- alert 域基线（微服务化阶段 5：从共享 datanest 库 pg_dump --schema-only 生成，含当前全部 DDL/索引/约束/注释）
 -- 后续演进脚本版本号必须大于 1.0.0（如 V1.1.0），紧凑单行风格
-\restrict ccdBe81RDZHrdXbZqE9fr5kdBQ0O3uYXH3jlEx2QtUK9aEiuKuED5xlNSWir0Ek
 CREATE TABLE public.alert_history (
     id bigint NOT NULL,
     alert_rule_id bigint,
@@ -158,4 +157,3 @@ CREATE INDEX idx_dag_alert_history_execution ON public.dag_alert_history USING b
 CREATE UNIQUE INDEX uk_alert_rule_name ON public.alert_rule USING btree (object_type, name);
 ALTER TABLE ONLY public.alert_rule_object
     ADD CONSTRAINT fk_alert_rule_object_rule FOREIGN KEY (alert_rule_id) REFERENCES public.alert_rule(id) ON DELETE CASCADE;
-\unrestrict ccdBe81RDZHrdXbZqE9fr5kdBQ0O3uYXH3jlEx2QtUK9aEiuKuED5xlNSWir0Ek

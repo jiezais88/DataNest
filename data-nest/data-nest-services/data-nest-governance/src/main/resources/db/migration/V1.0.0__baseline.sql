@@ -1,6 +1,5 @@
 -- governance 域基线（微服务化阶段 5：从共享 datanest 库 pg_dump --schema-only 生成，含当前全部 DDL/索引/约束/注释）
 -- 后续演进脚本版本号必须大于 1.0.0（如 V1.1.0），紧凑单行风格
-\restrict OlhiKEy4I7Z9o5vLXpNJpv8ybk6m2NCLFTiLvVCk0FEf8gJVc5VH8bGjXc0LU9R
 CREATE TABLE public.asset_classification (
     id bigint NOT NULL,
     level character varying(20) NOT NULL,
@@ -694,4 +693,3 @@ CREATE UNIQUE INDEX uk_field_type_standard_name ON public.field_type_standard US
 CREATE UNIQUE INDEX uk_metadata_column_unique ON public.metadata_column USING btree (table_id, column_name);
 CREATE UNIQUE INDEX uk_metadata_table_unique ON public.metadata_table USING btree (datasource_id, database_name, COALESCE(schema_name, ''::character varying), table_name);
 CREATE UNIQUE INDEX uk_naming_standard_name ON public.naming_standard USING btree (name);
-\unrestrict OlhiKEy4I7Z9o5vLXpNJpv8ybk6m2NCLFTiLvVCk0FEf8gJVc5VH8bGjXc0LU9R
