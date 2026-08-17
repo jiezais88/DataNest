@@ -40,6 +40,14 @@
 - 所有调度（DAG 工作流 + 平台定时任务）收敛到 PowerJob；DAG 支持执行队列（并发上限 + 优先级）
 - 实时链路：MySQL Binlog / PG 逻辑复制 → Flink CDC → Iceberg（MinIO）→ Doris
 
+## 界面展示
+
+| | |
+|---|---|
+| ![首页仪表盘](docs/screenshots/home.png)<br/>**首页仪表盘**：值班态势总览（待处理异常 / 系统健康 / 14 日趋势） | ![DAG 可视化编排](docs/screenshots/dag-editor.png)<br/>**DAG 编排**：ReactFlow 拖拽画布，SQL / Python / 条件分支 / 子 DAG |
+| ![血缘图谱](docs/screenshots/lineage.png)<br/>**血缘图谱**：表级血缘自动解析，影响分析 / 溯源分析 | ![资产详情](docs/screenshots/asset-detail.png)<br/>**资产目录**：注释、血缘、质量、热度聚合的资产详情 |
+| ![审计日志](docs/screenshots/audit-logs.png)<br/>**审计日志**：10 类操作全量留痕，只增不改 | ![权限配置](docs/screenshots/permission.png)<br/>**细粒度 RBAC**：自定义角色 + 数据源/库/表三级数据权限 |
+
 ## 能力全景
 
 ### 🔌 数据工程
