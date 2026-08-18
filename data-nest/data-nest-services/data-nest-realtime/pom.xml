@@ -59,12 +59,6 @@
             <artifactId>minio</artifactId>
         </dependency>
 
-        <!-- fastjson2：configJson 高级配置解析（项目统一 JSON 库） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-
         <!-- ========== Flink CDC 提交端依赖集（Sprint 8 M0 验证范本 tmp/m0-cdc-verify/pom.xml 照抄；
              版本统一由根 pom cdc.version/flink.version/flink-shaded-guava.version 管理，勿在子模块重复声明） ========== -->
         <!-- CDC YAML 解析 + 作业组装 -->

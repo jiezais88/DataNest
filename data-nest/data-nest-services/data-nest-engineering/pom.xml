@@ -82,16 +82,6 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
-        <!-- Fastjson2（Sprint 3 起统一 JSON 序列化，替代 Jackson ObjectMapper） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2-extension</artifactId>
-        </dependency>
-
         <!-- Sprint 3 性能优化：DagExecutionSyncService 使用 Caffeine 本地缓存 -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>

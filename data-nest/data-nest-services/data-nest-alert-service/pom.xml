@@ -48,12 +48,6 @@
             <artifactId>data-nest-realtime-api</artifactId>
         </dependency>
 
-        <!-- Fastjson2（触发条件 JSON 解析/序列化） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-
         <!-- 邮件（告警服务自己发信） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

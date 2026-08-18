@@ -119,20 +119,10 @@
             <artifactId>powerjob-worker-spring-boot-starter</artifactId>
         </dependency>
 
-        <!-- Fastjson2（Sprint 3 起统一 JSON 序列化） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-
         <!-- Sprint 3 性能优化：DagExecutionSyncService 使用 Caffeine 本地缓存 -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2-extension</artifactId>
         </dependency>
 
         <!-- Sprint 4：DAG 邮件告警（task-core 中为 provided 作用域，消费方需显式声明） -->

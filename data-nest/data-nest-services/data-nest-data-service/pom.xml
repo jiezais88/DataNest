@@ -64,15 +64,7 @@
             <artifactId>jsqlparser</artifactId>
         </dependency>
 
-        <!-- fastjson2（项目统一 JSON 库） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2-extension</artifactId>
-        </dependency>
+        <!-- JSON 统一走 Jackson 3（tools.jackson.*），见 data-nest-common/com.datanest.common.json.JsonUtils -->
 
         <!-- Caffeine cache for LoadBalancer service instance cache -->
         <dependency>

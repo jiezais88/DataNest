@@ -54,12 +54,6 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- Sprint 4：worker 承接 DAG 节点回调，使用 fastjson2 序列化 -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-
         <!-- Sprint 4：DAG 邮件告警（task-core 中为 provided 作用域，消费方需显式声明） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

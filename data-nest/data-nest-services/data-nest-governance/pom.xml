@@ -58,16 +58,6 @@
             <artifactId>data-nest-data-service-api</artifactId>
         </dependency>
 
-        <!-- Fastjson2（task-core 中为 provided，需在本服务显式声明，否则 AlertRuleService 等报 ClassNotFoundException） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2-extension</artifactId>
-        </dependency>
-
         <!-- Sprint 6 质量分级告警：governance 注入 QualityCheckService → AlertFiringService → MailService，需显式声明 mail（task-core 中为 provided） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

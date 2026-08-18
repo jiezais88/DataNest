@@ -132,13 +132,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Sprint 4：Python 节点、血缘等使用 fastjson2 -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-            <scope>provided</scope>
-        </dependency>
-
         <!-- Sprint 3 性能优化：Dag 信息本地缓存 -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>

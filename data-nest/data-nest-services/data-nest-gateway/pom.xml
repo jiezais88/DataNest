@@ -71,16 +71,6 @@
             <artifactId>commons-pool2</artifactId>
         </dependency>
 
-        <!-- Fastjson2（Sprint 3 起统一 JSON 序列化，替代 Jackson ObjectMapper） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2-extension</artifactId>
-        </dependency>
-
         <!-- springdoc WebFlux UI：托管聚合文档页 /swagger-ui.html（springdoc 3.x 适配 Boot 4） -->
         <dependency>
             <groupId>org.springdoc</groupId>
