@@ -432,11 +432,15 @@ public class UserService {
         if (user.getSsoSubject() == null) {
             return toUserVO(user, userMapper.selectRoleCodesByUserId(userId)); // 幂等返回
         }
-        user.setSsoSubject(null);
+        // 显式 set null：updateById 的 NOT_NULL 策略会忽略 null 字段导致 sso_subject 清不掉
+        // （与 unlockUser/resetLoginState 同款 LambdaUpdateWrapper 写法）
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .set(User::getSsoSubject, null)
+                .set(User::getAuthSource, "LOCAL")
+                .set(User::getUpdatedBy, currentUserId())
+                .set(User::getUpdatedAt, LocalDateTime.now()));
         user.setAuthSource("LOCAL");
-        user.setUpdatedBy(currentUserId());
-        user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
         sessionPermissionRefresher.refreshUser(userId);
         return toUserVO(user, userMapper.selectRoleCodesByUserId(userId));
     }

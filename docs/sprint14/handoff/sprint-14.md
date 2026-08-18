@@ -14,7 +14,7 @@
 | 技术文档 | [OK] v1.1 | 已同步实现：自研 OIDC 客户端（nimbus 验签，D8）、LDAP 编程式 JNDI、配置热生效、回调 hash token、memberOf operational、nacos-init 重置注意事项、Flyway V1.2.0 |
 | 后端开发 | [OK] | system + common + gateway，全部自测通过（见 §5 验证记录） |
 | 前端开发 | [OK] | 登录页/身份认证页/用户管理/强制改密页 + 路由守卫，构建部署完成 |
-| 测试用例清单 | [待做] | SSO-01~05 逐条 AC + 登录链路 E2E（下个会话补） |
+| 测试用例清单 | [OK] | 2026-08-18 测试收尾：**26/26 全绿**（API 17 + E2E 9），详见 `../测试报告.md`；含 1 个真实 Bug 修复（`unbindSso` MyBatis-Plus NOT_NULL 坑） |
 
 ## 2. 已定稿决策（用户 2026-08-18 确认）
 
@@ -97,12 +97,14 @@
 ## 6. 已知坑 / 注意事项
 
 - **nacos-init 重置**：`docker compose up`（任意服务）触发 `middleware-nacos-init` 把 `sso-config.yaml` 重置为默认（enabled=false）。身份认证页保存的运行时配置在重启后会丢，需重新保存。产品运行环境（非 compose）不受影响。技术文档已注明。
+- **OIDC 浏览器跳转需显式 `authorizationEndpoint`**（2026-08-18 测试发现）：Discovery 拿到的授权端点是 `http://host.docker.internal:9040/authorize`，但宿主机浏览器**无法解析** `host.docker.internal`（Windows Docker Desktop 仅对容器注入此 DNS），E2E SU-02 因此卡死。**修复**：在 `sso-config.yaml` 显式配 `authorizationEndpoint=http://localhost:9040/authorize`（覆盖 Discovery），token/jwks 端点留空走 Discovery（容器内访问 OK）。生产环境用公网 IdP URL 时无需此配置。详见 `测试报告.md` §3.1。
+- **MyBatis-Plus NOT_NULL 策略坑（已修）**：`UserService.unbindSso` 用 `updateById(user)` 设置 `ssoSubject=null` 不生效，导致解绑后 `sso_subject` 残留、AC-8「解绑后 SSO 登录不再命中」不成立。**修复**：改用 `LambdaUpdateWrapper` 显式 `set(User::getSsoSubject, null)`（与 `unlockUser`/`resetLoginState` 一致）。已重建 `datanest-app-system`。
 - **测试用户**：OIDC/LDAP 验证在 system 库创建了 alice/bob/carol/carol_local/dave/zhangsan/lisi/testlock，清理前先问用户。
 - **sa-token 过期配置警告**：shared-security.yaml 的 `activity-timeout` 已过期（应换 `active-timeout`），本轮未动（既有问题，范围外）。
 
 ## 7. Next Action
 
-1. **前端浏览器联调确认**：用户在 IDE 预览确认登录页 SSO 入口、身份认证页、用户管理页渲染与交互。
-2. **测试用例清单**：SSO-01~05 逐条 AC + 登录链路 E2E。
-3. **清理测试产物**：临时 ps1/json/yaml 脚本、测试用户（先问用户）。
-4. **代码提交**：feature/phase2-s14-sso 子分支中文提交（写 UTF-8 文件后 git commit -F）。
+1. **前端浏览器联调确认**：用户在 IDE 预览确认登录页 SSO 入口、身份认证页、用户管理页渲染与交互（当前 SSO 已保持启用，mixed 模式，可直接登录页点企业 SSO / AD 域入口验证）。
+2. **测试用例清单**：[OK] 26/26 全绿，详见 `../测试报告.md`。
+3. **清理测试产物**：`e2e_s14_*` 已自动清理；`dave` 已恢复开发原始状态；SSO 运行时配置保持启用（便于联调确认）。`test-results/` 残留因 IDE safe-delete 守卫未清，手动 cmd rmdir。
+4. **代码提交**：feature/phase2-s14-sso 子分支中文提交（写 UTF-8 文件后 git commit -F）。当前 working tree 含：① `system` 服务 `unbindSso` 修复；② 三个新文件 `e2e/sprint14/api/sso-api.spec.ts`、`e2e/sprint14/e2e/sso.spec.ts`、`e2e/sprint14/e2e/helpers/seed.ts`；③ `docs/sprint14/测试报告.md` + handoff 更新。

@@ -148,6 +148,16 @@
 - **CDC 管道 E2E 约束**（见 §一实时 CDC 小节）：Flink 1 slot 串行启停；LATEST_OFFSET 位点竞态需持续补插；湖仓断言经 `refresh-catalog` + Doris 轮询。
 - **psql 播种静默失败**：`docker exec psql` 不带 ON_ERROR_STOP 时 SQL 出错也退出 0（如缺显式 id 的 INSERT），播种后关键行数值得校验（F1 已注销评论用例踩过）。
 
+### Sprint 14 SSO + 认证安全 E2E（sprint14/，2026-08-18，API 17 + E2E 9 全绿）
+
+- **OIDC 浏览器跳转必须显式配 `authorizationEndpoint`**：`OidcClientService` 走 Discovery 拿到的授权端点是 `http://host.docker.internal:9040/authorize`，但 **Windows Docker Desktop 仅对容器内注入 `host.docker.internal` DNS**（→ 宿主机 Docker 网关），**宿主机浏览器无该记录**，E2E SU-02 浏览器跳转卡死 4.5min。**修复**：在 `sso-config.yaml` 显式 `authorizationEndpoint=http://localhost:9040/authorize`（覆盖 Discovery），token/jwks 端点留空走 Discovery（容器内 OK）。三个端点都显式才跳过 Discovery，所以仅授权端点显式是最优组合。生产环境用公网 IdP URL 时无需此配置。**幂等**：`OidcClientService.discovery` `explicit = !blank(authEp) && !blank(tokenEp) && !blank(jwksUri)`，配一个端点不触发 explicit 走 Discovery。
+- **MyBatis-Plus NOT_NULL 策略坑（已修，2026-08-18）**：`UserService.unbindSso` 用 `userMapper.updateById(user)` 设 `ssoSubject=null` 被默认 FieldStrategy.NOT_NULL 忽略，导致解绑后 sso_subject 残留，AC-8「解绑后 SSO 不再命中」不成立（旁证 handoff 中 carol_local 异常状态 LOCAL+subject 共存）。**修复**：改用 `LambdaUpdateWrapper` 显式 `set(User::getSsoSubject, null)`（与 `unlockUser`/`resetLoginState` 一致）。**教训**：凡 set null 字段更新必须用 `LambdaUpdateWrapper`；`updateById` 仅适用于非 null 字段。改后须重建 **app-system**。
+- **Nacos 配置热生效有秒级延迟**：PUT `/system/auth/sso/config` 后立即 GET 可能拿旧值（PUT 走 Nacos publishConfig → system 监听器推送内存）。测试断言用 `expect.poll(async () => ..., {timeout: 10_000})` 轮询等待。E2E 不影响（用户操作有间隔）。
+- **登录页多入口选择器冲突**（sso.spec.ts 踩坑）：「登 录」/「查询」/「解绑企业身份」等按钮名与侧边栏菜单（如「SQL 查询终端」含「查询」/「企业 SSO 登录」含「登录」）或多行（lisi/zhangsan LDAP 用户解绑按钮）匹配冲突。规则：精确文本用 `name: 'xxx', exact: true`；重复行用 `getByRole('row', {name: /e2e_s14_bind/}).getByLabel('解绑企业身份')` 限定；modal 内元素用 `getByRole('dialog', {name: title})` 限定。
+- **OIDC 回调 hash 中间态极短**：`useEffect` 立即 `replaceState` 清 `#ssoToken=` 再 `navigate('/')`，`waitForURL(pathname==='/login' && hash.startsWith('#ssoToken='))` 永远等不到。直接等最终 `waitForURL('**/')` + `expect.poll(token)`。
+- **SsoConfigVO 端点覆盖契约**：`oidc.{authorizationEndpoint, tokenEndpoint, jwksUri}` 任一为空走 Discovery，全显式跳过；Nacos 保存走 publishConfig → system 监听 → 内存 SsoProperties 热生效（数秒）。
+- **测试命令**：`$env:SKIP_SETUP='1'; npx playwright test e2e/sprint14 --workers=1 --reporter=list`（前端目录）。`SKIP_SETUP=1` 跳过 global-setup 播种（S5/S6/S7 ~2min 浪费），S14 spec 自带 `seedUsers()` 幂等创建 e2e_s14_* + afterAll 物理清理。
+
 ### Sprint 9 E2E（sprint9/cdc-sprint9.spec.ts，2026-08-11，实时计算深化 F1-F3 + 遗留清零）
 
 - **`expect.poll` 内 DB 计数同样返回字符串**：`Number(psqlRt(...))` 包裹（外层直接断言用 `expect(Number(psqlX(...)))`），否则 `Expected "1" >= 1` 类型不匹配。
