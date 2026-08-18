@@ -7,8 +7,8 @@ import cn.dev33.satoken.exception.NotRoleException;
 import cn.dev33.satoken.reactor.filter.SaReactorFilter;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.model.Result;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -81,6 +81,6 @@ public class SaTokenConfig {
      * 框架会自动用 String 写响应体。我们用 fastjson2 序列化 Result。
      */
     private static String writeResult(Result<?> result) {
-        return JSON.toJSONString(result);
+        return JsonUtils.toJSONString(result);
     }
 }

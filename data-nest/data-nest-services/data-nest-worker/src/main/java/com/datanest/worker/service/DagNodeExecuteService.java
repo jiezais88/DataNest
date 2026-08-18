@@ -1,6 +1,5 @@
 package com.datanest.worker.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -21,6 +20,7 @@ import com.datanest.engineering.api.dto.SyncJobTriggerRequest;
 import com.datanest.task.core.dto.ConditionNodeConfig;
 import com.datanest.task.core.dto.PythonExecuteResult;
 import com.datanest.task.core.dto.PythonNodeConfig;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.task.core.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,7 +148,7 @@ public class DagNodeExecuteService {
 
             LocalDateTime endTime = LocalDateTime.now();
             markNode(ne, markRequest("SUCCESS", r -> {
-                r.setOutputInfo(JSON.toJSONString(output));
+                r.setOutputInfo(JsonUtils.toJSONString(output));
                 r.setEndTime(endTime);
                 r.setDurationMs(Duration.between(ne.getStartTime(), endTime).toMillis());
             }));
@@ -373,7 +373,7 @@ public class DagNodeExecuteService {
 
             if (result.isSuccess()) {
                 markNode(ne, markRequest("SUCCESS", r -> {
-                    r.setOutputInfo(JSON.toJSONString(result));
+                    r.setOutputInfo(JsonUtils.toJSONString(result));
                     r.setEndTime(LocalDateTime.now());
                     r.setDurationMs(durationMs);
                 }));
@@ -423,7 +423,7 @@ public class DagNodeExecuteService {
 
     private PythonNodeConfig parsePythonConfig(String configJson) {
         try {
-            return JSON.parseObject(configJson, PythonNodeConfig.class);
+            return JsonUtils.parseObject(configJson, PythonNodeConfig.class);
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Python 节点配置解析失败: " + e.getMessage());
         }
@@ -472,7 +472,7 @@ public class DagNodeExecuteService {
             ConditionNodeConfig.ConditionBranch selected = config.getBranches().get(branchIndex);
 
             markNode(ne, markRequest("SUCCESS", r -> {
-                r.setOutputInfo(JSON.toJSONString(Map.of(
+                r.setOutputInfo(JsonUtils.toJSONString(Map.of(
                         "branchIndex", branchIndex,
                         "nextNodeId", selected.getNextNodeId(),
                         "branchName", selected.getBranchName())));
@@ -498,7 +498,7 @@ public class DagNodeExecuteService {
 
     private ConditionNodeConfig parseConditionConfig(String configJson) {
         try {
-            return JSON.parseObject(configJson, ConditionNodeConfig.class);
+            return JsonUtils.parseObject(configJson, ConditionNodeConfig.class);
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.CONDITION_CONFIG_INVALID,
                     "条件节点配置解析失败: " + e.getMessage());
@@ -584,7 +584,7 @@ public class DagNodeExecuteService {
             return null;
         }
         try {
-            return JSON.parseObject(outputInfo).getString("nextNodeId");
+            return JsonUtils.getString(JsonUtils.parseObject(outputInfo), "nextNodeId");
         } catch (Exception e) {
             return null;
         }
@@ -917,7 +917,7 @@ public class DagNodeExecuteService {
             return Map.of();
         }
         try {
-            return JSON.parseObject(json, new com.alibaba.fastjson2.TypeReference<Map<String, Object>>() {
+            return JsonUtils.parseObject(json, new tools.jackson.core.type.TypeReference<Map<String, Object>>() {
             });
         } catch (Exception e) {
             return Map.of();

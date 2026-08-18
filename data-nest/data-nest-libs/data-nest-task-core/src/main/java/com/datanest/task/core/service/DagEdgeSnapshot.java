@@ -1,10 +1,11 @@
 package com.datanest.task.core.service;
 
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.engineering.api.dto.DagEdgeInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 
@@ -36,14 +37,14 @@ public final class DagEdgeSnapshot {
     public static String capture(List<DagEdgeInfo> edges) {
         try {
             List<DagEdgeInfo> safe = edges == null ? List.of() : edges;
-            JSONArray arr = new JSONArray(safe.size());
+            ArrayNode arr = JsonUtils.createArrayNode();
             for (DagEdgeInfo edge : safe) {
-                JSONObject obj = new JSONObject();
+                ObjectNode obj = JsonUtils.createObjectNode();
                 obj.put("source", edge.getSourceNodeId());
                 obj.put("target", edge.getTargetNodeId());
                 arr.add(obj);
             }
-            return arr.toJSONString();
+            return JsonUtils.toJSONString(arr);
         } catch (Exception e) {
             logger.warn("序列化边快照失败，edge_snapshot 降级为 null", e);
             return null;

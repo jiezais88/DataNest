@@ -1,8 +1,8 @@
 package com.datanest.worker.job.dag;
 
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.engineering.api.EngineeringDagApi;
 import com.datanest.engineering.api.dto.DagNodeInfo;
 import com.datanest.worker.service.DagNodeExecuteService;
@@ -31,8 +31,8 @@ public class DagSqlNodeHandler extends AbstractDagNodeHandler {
     @Override
     protected void enrichBody(Map<String, Object> body, DagNodeTask task) {
         DagNodeInfo node = fetchNode(task.dagId(), task.nodeId());
-        JSONObject config = parseNodeConfig(node, task.nodeId());
-        String sqlContent = config.getString("sqlContent");
+        tools.jackson.databind.node.ObjectNode config = parseNodeConfig(node, task.nodeId());
+        String sqlContent = JsonUtils.getString(config, "sqlContent");
         if (!StringUtils.hasText(sqlContent)) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "SQL 节点 sqlContent 为空: " + task.nodeId());
         }

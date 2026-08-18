@@ -1,7 +1,6 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
@@ -204,7 +203,7 @@ public class DagExecutionService {
         execution.setCreatedAt(LocalDateTime.now());
         // 解析并保存本次执行的参数（手动覆盖 > 默认值 > 系统变量）
         Map<String, Object> resolvedParams = dagParameterService.resolveParams(dagId, manualParams);
-        execution.setResolvedParams(JSON.toJSONString(resolvedParams));
+        execution.setResolvedParams(com.datanest.common.json.JsonUtils.toJSONString(resolvedParams));
         // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
         // （engineering 本地归属 dag_edge，沿用本地查询并映射为 DagEdgeInfo DTO 后序列化）
         execution.setEdgeSnapshot(DagEdgeSnapshot.capture(
@@ -256,7 +255,7 @@ public class DagExecutionService {
             public void afterCommit() {
                 Long wfInstanceId;
                 try {
-                    String initParams = JSON.toJSONString(Map.of("dagExecutionId", executionId));
+                    String initParams = com.datanest.common.json.JsonUtils.toJSONString(Map.of("dagExecutionId", executionId));
                     wfInstanceId = powerJobWorkflowClient.runWorkflow(WORKER_APP_NAME, powerjobWorkflowId, initParams);
                 } catch (Exception e) {
                     // 补偿：DB 已提交不能回滚，把 RUNNING 占位行标 FAILED，避免无人轮询的悬挂记录

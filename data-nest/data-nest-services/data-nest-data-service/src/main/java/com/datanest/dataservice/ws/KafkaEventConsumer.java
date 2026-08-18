@@ -1,7 +1,6 @@
 package com.datanest.dataservice.ws;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
+import com.datanest.common.json.JsonUtils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,34 +87,34 @@ public class KafkaEventConsumer {
      */
     private NormalizedEvent normalize(Long pipelineId, String value, long kafkaTsMs) {
         try {
-            JSONObject debezium = JSON.parseObject(value);
+            tools.jackson.databind.node.ObjectNode debezium = JsonUtils.parseObject(value);
             if (debezium == null) {
                 return null;
             }
-            String opType = mapOpType(debezium.getString("op"));
+            String opType = mapOpType(JsonUtils.getString(debezium, "op"));
             if (opType == null) {
                 return null;
             }
-            JSONObject source = debezium.getJSONObject("source");
-            String table = source == null ? null : source.getString("table");
-            JSONObject data = debezium.getJSONObject("after");
+            tools.jackson.databind.node.ObjectNode source = JsonUtils.getObject(debezium, "source");
+            String table = source == null ? null : JsonUtils.getString(source, "table");
+            tools.jackson.databind.node.ObjectNode data = JsonUtils.getObject(debezium, "after");
             if (data == null) {
-                data = debezium.getJSONObject("before");
+                data = JsonUtils.getObject(debezium, "before");
             }
-            Long tsMs = debezium.getLong("ts_ms");
+            Long tsMs = JsonUtils.getLong(debezium, "ts_ms");
             // Flink CDC 3.6 debezium-json 不输出 ts_ms（序列化枚举固定为 before/after/op/source{db,table}），
             // 退用 Kafka 消息时间戳（Flink 写入 Kafka 时刻，接近事件发生时间）。
             long effectiveTsMs = tsMs != null ? tsMs : kafkaTsMs;
             String ts = Instant.ofEpochMilli(effectiveTsMs).toString();
             long latencyMs = Math.max(System.currentTimeMillis() - effectiveTsMs, 0);
 
-            JSONObject event = new JSONObject();
-            event.put("pipelineId", pipelineId);
-            event.put("table", table);
-            event.put("opType", opType);
-            event.put("data", data);
-            event.put("ts", ts);
-            return new NormalizedEvent(event.toJSONString(), latencyMs);
+            tools.jackson.databind.node.ObjectNode event = JsonUtils.createObjectNode();
+            JsonUtils.put(event, "pipelineId", pipelineId);
+            JsonUtils.put(event, "table", table);
+            JsonUtils.put(event, "opType", opType);
+            JsonUtils.put(event, "data", data);
+            JsonUtils.put(event, "ts", ts);
+            return new NormalizedEvent(JsonUtils.toJSONString(event), latencyMs);
         } catch (Exception e) {
             logger.warn("解析 Kafka 事件消息失败（丢弃）: pipelineId={}, error={}", pipelineId, e.getMessage());
             return null;

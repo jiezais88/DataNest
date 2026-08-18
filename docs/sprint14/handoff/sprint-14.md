@@ -83,6 +83,8 @@
 | OIDC 自动绑定 carol→carol_local（保留手动角色） | 通过 |
 | OIDC bob 自动建号 + GOVERNANCE_ADMIN 映射 | 通过 |
 | **容器化后回归**：LDAP 登录 zhangsan→DATA_ENGINEER、LDAP 同步 total=2 updated=2、OIDC authorize→callback→/login#ssoToken | 通过 |
+| **Jackson 3 替换回归**：OidcClientService 去 fastjson2 → 注入 Boot JsonMapper Bean（`readTree`+`path().asString()`），OIDC 全链路 + LDAP 登录 | 通过 |
+| **全项目 fastjson2→JsonUtils 迁移**：31 Java 文件 + 10 pom 全部移除 fastjson2（新增 `com.datanest.common.json.JsonUtils` 静态工具，持单例 Jackson 3 JsonMapper；JSONObject/JSONArray→ObjectNode/ArrayNode）。全量编译通过、8 服务（system/alert/realtime/data-service/engineering/governance/worker/gateway）全部 healthy 启动。冒烟：admin 登录、SSO 配置保存热生效、OIDC 全链路、LDAP 登录 zhangsan→DATA_ENGINEER | 通过 |
 | LDAP 域登录 zhangsan（+组映射 DATA_ENGINEER）/ 错误密码 1017 | 通过 |
 | LDAP 同步（total=2 created=1 updated=1） | 通过 |
 | 解绑 carol_local → 恢复 LOCAL → 本地登录 | 通过 |

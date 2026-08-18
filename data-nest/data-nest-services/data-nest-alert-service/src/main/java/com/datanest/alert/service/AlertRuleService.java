@@ -1,6 +1,5 @@
 package com.datanest.alert.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
@@ -390,7 +389,7 @@ public class AlertRuleService {
             return false;
         }
         try {
-            List<String> conditions = JSON.parseArray(rule.getTriggerConditions(), String.class);
+            List<String> conditions = com.datanest.common.json.JsonUtils.parseArray(rule.getTriggerConditions(), String.class);
             return conditions != null && conditions.contains(alertType);
         } catch (Exception e) {
             return false;
@@ -571,7 +570,7 @@ public class AlertRuleService {
             rule.setEnabled(1);
         }
         if (dto.getTriggerConditions() != null) {
-            rule.setTriggerConditions(JSON.toJSONString(dto.getTriggerConditions()));
+            rule.setTriggerConditions(com.datanest.common.json.JsonUtils.toJSONString(dto.getTriggerConditions()));
         }
         if (dto.getTimeoutMinutes() != null) {
             rule.setTimeoutMinutes(dto.getTimeoutMinutes());
@@ -724,7 +723,7 @@ public class AlertRuleService {
             return Collections.emptyList();
         }
         try {
-            return JSON.parseArray(json, String.class);
+            return com.datanest.common.json.JsonUtils.parseArray(json, String.class);
         } catch (Exception e) {
             return Collections.emptyList();
         }

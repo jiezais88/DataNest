@@ -1,7 +1,7 @@
 package com.datanest.governance.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSONObject;
+import com.datanest.common.json.JsonUtils;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -487,8 +487,14 @@ public class QualityRuleService {
         resp.setSuccess(result.isSuccess());
         resp.setDurationMs(result.getDurationMs());
         if (result.isSuccess()) {
-            if (result.getOutput() instanceof JSONObject out) {
-                resp.setResult(out.getJSONObject("check_result"));
+            if (result.getOutput() instanceof tools.jackson.databind.node.ObjectNode out) {
+                tools.jackson.databind.node.ObjectNode check = JsonUtils.getObject(out, "check_result");
+                if (check != null) {
+                    // ObjectNode → Map<String,Object>（响应契约）
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> resultMap = JsonUtils.MAPPER.convertValue(check, Map.class);
+                    resp.setResult(resultMap);
+                }
             }
             if (resp.getResult() == null) {
                 resp.setSuccess(false);

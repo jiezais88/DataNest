@@ -1,6 +1,5 @@
 package com.datanest.engineering.service.internal;
 
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -163,7 +162,7 @@ public class InternalDagExecutionService {
             // 无映射/父执行缺失时保持 null（原语义，节点执行按默认值+系统变量现算）
             Map<String, Object> subDagOverrides = resolveSubDagOverrides(request.getParentDagExecutionId(), dagId);
             if (!subDagOverrides.isEmpty()) {
-                execution.setResolvedParams(JSON.toJSONString(dagParameterService.resolveParams(dagId, subDagOverrides)));
+                execution.setResolvedParams(com.datanest.common.json.JsonUtils.toJSONString(dagParameterService.resolveParams(dagId, subDagOverrides)));
             }
             // 边快照：历史视图（run-view）用快照渲染边，避免后续删节点导致历史实例连线丢失
             execution.setEdgeSnapshot(DagEdgeSnapshot.capture(

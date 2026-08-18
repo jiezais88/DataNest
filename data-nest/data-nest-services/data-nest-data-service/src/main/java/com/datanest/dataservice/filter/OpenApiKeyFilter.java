@@ -1,7 +1,7 @@
 package com.datanest.dataservice.filter;
 
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.model.Result;
 import com.datanest.dataservice.entity.ApiKey;
@@ -121,6 +121,6 @@ public class OpenApiKeyFilter extends OncePerRequestFilter {
         response.setStatus(httpStatus);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write(JSON.toJSONString(Result.fail(errorCode.getCode(), errorCode.getMessage())));
+        response.getWriter().write(JsonUtils.toJSONString(Result.fail(errorCode.getCode(), errorCode.getMessage())));
     }
 }

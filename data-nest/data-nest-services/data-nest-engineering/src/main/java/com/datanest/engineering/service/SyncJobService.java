@@ -1,7 +1,6 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -691,7 +690,7 @@ public class SyncJobService {
         // Sprint 4：多表映射与限流字段暴露给前端
         if (StringUtils.hasText(entity.getSourceTablesDetail())) {
             try {
-                dto.setSourceTablesDetail(JSON.parseArray(entity.getSourceTablesDetail(), SourceTableDetail.class));
+                dto.setSourceTablesDetail(com.datanest.common.json.JsonUtils.parseArray(entity.getSourceTablesDetail(), SourceTableDetail.class));
             } catch (Exception e) {
                 logger.warn("解析 sourceTablesDetail 失败: syncJobId={}", entity.getId(), e);
             }
@@ -790,7 +789,7 @@ public class SyncJobService {
             return null;
         }
         try {
-            return JSON.parseArray(text, SyncTableResultDTO.class);
+            return com.datanest.common.json.JsonUtils.parseArray(text, SyncTableResultDTO.class);
         } catch (Exception e) {
             logger.warn("解析 sync_job_history.table_results 失败: {}", e.getMessage());
             return null;

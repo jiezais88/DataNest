@@ -1,6 +1,5 @@
 package com.datanest.engineering.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.common.exception.BusinessException;
@@ -170,7 +169,7 @@ public class QueueDispatchService {
         // 事务已提交，调 PowerJob 触发（HTTP 调用放事务外）
         Long wfInstanceId;
         try {
-            String initParams = JSON.toJSONString(Map.of("dagExecutionId", executionId));
+            String initParams = com.datanest.common.json.JsonUtils.toJSONString(Map.of("dagExecutionId", executionId));
             wfInstanceId = powerJobWorkflowClient.runWorkflow(WORKER_APP_NAME, dagWorkflowId[0], initParams);
         } catch (Exception e) {
             String reason = "队列调度触发失败: " + e.getMessage();

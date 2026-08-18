@@ -1,6 +1,5 @@
 package com.datanest.alert.controller;
 
-import com.alibaba.fastjson2.JSON;
 import com.datanest.alert.dto.DagAlertConfigPayload;
 import com.datanest.alert.entity.DagAlertConfig;
 import com.datanest.alert.mapper.DagAlertConfigMapper;
@@ -82,7 +81,7 @@ public class DagAlertConfigController {
         config.setEnabled(Boolean.TRUE.equals(payload.getEnabled()) ? 1 : 0);
         config.setRecipients(payload.getRecipients());
         config.setTriggerConditions(payload.getTriggerConditions() == null
-                ? null : JSON.toJSONString(payload.getTriggerConditions()));
+                ? null : com.datanest.common.json.JsonUtils.toJSONString(payload.getTriggerConditions()));
         config.setTimeoutMinutes(payload.getTimeoutMinutes());
         config.setDagId(dagId);
         config.setUpdatedAt(now);
@@ -140,7 +139,7 @@ public class DagAlertConfigController {
     private List<String> parseConditions(String json) {
         if (!StringUtils.hasText(json)) return List.of();
         try {
-            return JSON.parseArray(json, String.class);
+            return com.datanest.common.json.JsonUtils.parseArray(json, String.class);
         } catch (Exception e) {
             return List.of();
         }

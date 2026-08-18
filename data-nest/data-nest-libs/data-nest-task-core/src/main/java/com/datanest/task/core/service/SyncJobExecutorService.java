@@ -1,10 +1,10 @@
 package com.datanest.task.core.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.datanest.alert.api.AlertApi;
 import com.datanest.alert.api.dto.AlertFireRequest;
 import com.datanest.common.constant.ExecutionStatus;
 import com.datanest.common.exception.BusinessException;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
 import com.datanest.common.model.Result;
@@ -238,7 +238,7 @@ public class SyncJobExecutorService {
                 request.setSourceRows(result.readRows());
                 request.setTargetRows(result.writeRows());
                 if (result.tableResults() != null && !result.tableResults().isEmpty()) {
-                    request.setTableResults(JSON.toJSONString(result.tableResults()));
+                    request.setTableResults(JsonUtils.toJSONString(result.tableResults()));
                 }
                 if (!result.success() && result.errorMessage() != null) {
                     request.setErrorMessage(result.errorMessage());

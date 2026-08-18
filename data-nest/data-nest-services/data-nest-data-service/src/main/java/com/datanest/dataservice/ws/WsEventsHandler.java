@@ -1,8 +1,7 @@
 package com.datanest.dataservice.ws;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
+import com.datanest.common.json.JsonUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -45,9 +44,9 @@ public class WsEventsHandler extends TextWebSocketHandler {
         String op;
         Long pipelineId;
         try {
-            JSONObject msg = JSON.parseObject(message.getPayload());
-            op = msg.getString("op");
-            pipelineId = msg.getLong("pipelineId");
+            tools.jackson.databind.node.ObjectNode msg = JsonUtils.parseObject(message.getPayload());
+            op = JsonUtils.getString(msg, "op");
+            pipelineId = JsonUtils.getLong(msg, "pipelineId");
         } catch (Exception e) {
             sendError(session, 9008, "消息格式非法，应为 {\"op\":\"subscribe\",\"pipelineId\":N}");
             return;
@@ -68,7 +67,7 @@ public class WsEventsHandler extends TextWebSocketHandler {
         try {
             subscriptionService.checkSubscribe(keyId, pipelineId);
             registry.subscribe(pipelineId, session);
-            send(session, JSON.toJSONString(Map.of("op", "subscribed", "pipelineId", pipelineId)));
+            send(session, JsonUtils.toJSONString(Map.of("op", "subscribed", "pipelineId", pipelineId)));
         } catch (BusinessException e) {
             sendError(session, e.getErrorCode().getCode(), e.getMessage());
         }
@@ -78,7 +77,7 @@ public class WsEventsHandler extends TextWebSocketHandler {
         if (pipelineId != null) {
             registry.unsubscribe(pipelineId, session);
         }
-        send(session, JSON.toJSONString(Map.of("op", "unsubscribed", "pipelineId", pipelineId)));
+        send(session, JsonUtils.toJSONString(Map.of("op", "unsubscribed", "pipelineId", pipelineId)));
     }
 
     @Override
@@ -87,7 +86,7 @@ public class WsEventsHandler extends TextWebSocketHandler {
     }
 
     private void sendError(WebSocketSession session, int code, String message) {
-        send(session, JSON.toJSONString(Map.of("op", "error", "code", code, "message", message)));
+        send(session, JsonUtils.toJSONString(Map.of("op", "error", "code", code, "message", message)));
     }
 
     private void send(WebSocketSession session, String json) {

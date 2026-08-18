@@ -1,6 +1,5 @@
 package com.datanest.alert.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.datanest.alert.api.dto.DagExecutionInfo;
@@ -224,7 +223,7 @@ public class DagAlertService {
             return false;
         }
         try {
-            List<String> conditions = JSON.parseArray(config.getTriggerConditions(), String.class);
+            List<String> conditions = com.datanest.common.json.JsonUtils.parseArray(config.getTriggerConditions(), String.class);
             return conditions != null && conditions.contains(condition);
         } catch (Exception e) {
             logger.warn("告警触发条件 JSON 解析失败: {}", config.getTriggerConditions());

@@ -1,15 +1,12 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONException;
-import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.model.PageResult;
 import com.datanest.common.model.Result;
 import com.datanest.task.core.support.SystemUserResolver;
@@ -46,6 +43,9 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * 任务模板库（Sprint 7 DD-09）。
@@ -190,13 +190,13 @@ public class TaskTemplateService {
         if (template.getEnabled() == null || template.getEnabled() != 1) {
             throw new BusinessException(ErrorCode.TASK_TEMPLATE_CREATE_FAILED, "模板已停用，无法创建任务");
         }
-        JSONObject templateJson = parseTemplateJson(template.getConfigTemplate());
-        JSONObject config = templateJson.getJSONObject("config");
+        ObjectNode templateJson = parseTemplateJson(template.getConfigTemplate());
+        ObjectNode config = JsonUtils.getObject(templateJson, "config");
         if (config == null) {
             throw new BusinessException(ErrorCode.TASK_TEMPLATE_CONFIG_INVALID, "模板缺少 config 节点");
         }
-        Map<String, PlaceholderMeta> metas = parsePlaceholders(templateJson.getJSONArray("placeholders"));
-        String resolvedConfig = resolvePlaceholders(config.toJSONString(), metas,
+        Map<String, PlaceholderMeta> metas = parsePlaceholders(JsonUtils.getArray(templateJson, "placeholders"));
+        String resolvedConfig = resolvePlaceholders(JsonUtils.toJSONString(config), metas,
                 request.getValues() == null ? Collections.emptyMap() : request.getValues());
 
         if (TaskTemplate.TYPE_SYNC.equals(template.getType())) {
@@ -236,37 +236,37 @@ public class TaskTemplateService {
 
     /** 从既有任务另存为模板：配置原样保留，单表 SYNC 的源表与 CRON 表达自动占位化。 */
     private String buildFromTask(String type, Long sourceTaskId) {
-        JSONObject config = new JSONObject(new LinkedHashMap<>());
-        JSONArray placeholders = new JSONArray();
+        ObjectNode config = JsonUtils.createObjectNode();
+        ArrayNode placeholders = JsonUtils.createArrayNode();
         if (TaskTemplate.TYPE_SYNC.equals(type)) {
             SyncJob job = syncJobMapper.selectById(sourceTaskId);
             if (job == null) {
                 throw new BusinessException(ErrorCode.SYNC_JOB_NOT_FOUND);
             }
-            config.put("sourceDatasourceId", job.getSourceDatasourceId());
-            config.put("sourceDatabase", job.getSourceDatabase());
-            config.put("sourceSchema", job.getSourceSchema());
+            JsonUtils.put(config, "sourceDatasourceId", job.getSourceDatasourceId());
+            JsonUtils.put(config, "sourceDatabase", job.getSourceDatabase());
+            JsonUtils.put(config, "sourceSchema", job.getSourceSchema());
             List<String> sourceTables = job.getSourceTables();
             if (sourceTables != null && sourceTables.size() == 1) {
-                config.put("sourceTables", List.of("{source_table}"));
-                placeholders.add(placeholder("source_table", "源表名", true, null));
+                JsonUtils.put(config, "sourceTables", List.of("{source_table}"));
+                JsonUtils.add(placeholders, placeholder("source_table", "源表名", true, null));
             } else {
-                config.put("sourceTables", sourceTables);
+                JsonUtils.put(config, "sourceTables", sourceTables);
             }
-            config.put("syncMode", job.getSyncMode());
-            config.put("incrementalField", job.getIncrementalField());
-            config.put("triggerType", job.getTriggerType());
+            JsonUtils.put(config, "syncMode", job.getSyncMode());
+            JsonUtils.put(config, "incrementalField", job.getIncrementalField());
+            JsonUtils.put(config, "triggerType", job.getTriggerType());
             putCronWithPlaceholder(config, placeholders, job.getTriggerType(), job.getCronExpression());
-            config.put("targetDatabase", job.getTargetDatabase());
-            config.put("targetTable", job.getTargetTable());
-            config.put("retryTimes", job.getRetryTimes());
-            config.put("retryInterval", job.getRetryInterval());
-            config.put("fieldMapping", job.getFieldMapping());
-            config.put("sourceTablesDetail", job.getSourceTablesDetail());
-            config.put("readRateLimitMbps", job.getReadRateLimitMbps());
-            config.put("writeRateLimitRowsPerSecond", job.getWriteRateLimitRowsPerSecond());
-            config.put("rateLimitEnabled", job.getRateLimitEnabled() != null && job.getRateLimitEnabled() == 1);
-            config.put("description", job.getDescription());
+            JsonUtils.put(config, "targetDatabase", job.getTargetDatabase());
+            JsonUtils.put(config, "targetTable", job.getTargetTable());
+            JsonUtils.put(config, "retryTimes", job.getRetryTimes());
+            JsonUtils.put(config, "retryInterval", job.getRetryInterval());
+            JsonUtils.put(config, "fieldMapping", job.getFieldMapping());
+            JsonUtils.put(config, "sourceTablesDetail", job.getSourceTablesDetail());
+            JsonUtils.put(config, "readRateLimitMbps", job.getReadRateLimitMbps());
+            JsonUtils.put(config, "writeRateLimitRowsPerSecond", job.getWriteRateLimitRowsPerSecond());
+            JsonUtils.put(config, "rateLimitEnabled", job.getRateLimitEnabled() != null && job.getRateLimitEnabled() == 1);
+            JsonUtils.put(config, "description", job.getDescription());
         } else {
             // COLLECT：经内部端点读任务定义（读路径失败按任务不存在处理）
             Result<CollectTaskInfoDTO> result = collectWriteApi.getTask(sourceTaskId);
@@ -274,37 +274,37 @@ public class TaskTemplateService {
             if (task == null) {
                 throw new BusinessException(ErrorCode.TASK_NOT_FOUND);
             }
-            config.put("datasourceId", task.getDatasourceId());
-            config.put("scope", task.getScope());
-            config.put("collectMode", task.getCollectMode());
-            config.put("triggerType", task.getTriggerType());
+            JsonUtils.put(config, "datasourceId", task.getDatasourceId());
+            JsonUtils.put(config, "scope", task.getScope());
+            JsonUtils.put(config, "collectMode", task.getCollectMode());
+            JsonUtils.put(config, "triggerType", task.getTriggerType());
             putCronWithPlaceholder(config, placeholders, task.getTriggerType(), task.getCronExpression());
-            config.put("description", task.getDescription());
+            JsonUtils.put(config, "description", task.getDescription());
         }
-        JSONObject templateJson = new JSONObject(new LinkedHashMap<>());
-        templateJson.put("placeholders", placeholders);
-        templateJson.put("config", config);
-        return templateJson.toJSONString();
+        ObjectNode templateJson = JsonUtils.createObjectNode();
+        JsonUtils.put(templateJson, "placeholders", placeholders);
+        JsonUtils.put(templateJson, "config", config);
+        return JsonUtils.toJSONString(templateJson);
     }
 
     /** CRON 任务的 cronExpression 自动占位化（非必填，默认值为原 cron）。 */
-    private void putCronWithPlaceholder(JSONObject config, JSONArray placeholders, String triggerType, String cronExpression) {
+    private void putCronWithPlaceholder(ObjectNode config, ArrayNode placeholders, String triggerType, String cronExpression) {
         if ("CRON".equalsIgnoreCase(triggerType) && cronExpression != null && !cronExpression.isBlank()) {
-            config.put("cronExpression", "{schedule_cron}");
-            placeholders.add(placeholder("schedule_cron", "调度 Cron", false, cronExpression));
+            JsonUtils.put(config, "cronExpression", "{schedule_cron}");
+            JsonUtils.add(placeholders, placeholder("schedule_cron", "调度 Cron", false, cronExpression));
         } else {
-            config.put("cronExpression", cronExpression);
+            JsonUtils.put(config, "cronExpression", cronExpression);
         }
     }
 
-    private JSONObject placeholder(String key, String label, boolean required, String defaultValue) {
-        JSONObject p = new JSONObject(new LinkedHashMap<>());
-        p.put("key", key);
-        p.put("label", label);
-        p.put("required", required);
-        p.put("valueType", "TEXT");
+    private ObjectNode placeholder(String key, String label, boolean required, String defaultValue) {
+        ObjectNode p = JsonUtils.createObjectNode();
+        JsonUtils.put(p, "key", key);
+        JsonUtils.put(p, "label", label);
+        JsonUtils.put(p, "required", required);
+        JsonUtils.put(p, "valueType", "TEXT");
         if (defaultValue != null) {
-            p.put("defaultValue", defaultValue);
+            JsonUtils.put(p, "defaultValue", defaultValue);
         }
         return p;
     }
@@ -313,49 +313,46 @@ public class TaskTemplateService {
 
     /** 保存时校验：JSON 可解析、config 可反序列化为对应类型创建请求。 */
     private void validateTemplateJson(String type, String configTemplate) {
-        JSONObject templateJson;
+        ObjectNode templateJson;
         try {
             templateJson = parseTemplateJson(configTemplate);
         } catch (BusinessException e) {
             throw e;
         }
-        JSONObject config = templateJson.getJSONObject("config");
+        ObjectNode config = JsonUtils.getObject(templateJson, "config");
         if (config == null) {
             throw new BusinessException(ErrorCode.TASK_TEMPLATE_CONFIG_INVALID, "模板缺少 config 节点");
         }
         // 占位符原样保留时数值字段（如 datasourceId）无法反序列化，先以哑值替换再校验结构可解析
-        String dummyResolved = PLACEHOLDER_PATTERN.matcher(config.toJSONString()).replaceAll("1");
+        String dummyResolved = PLACEHOLDER_PATTERN.matcher(JsonUtils.toJSONString(config)).replaceAll("1");
         Class<?> requestClass = TaskTemplate.TYPE_SYNC.equals(type)
                 ? SyncJobCreateRequest.class : CollectTaskCreateInternalRequest.class;
         parseAndValidate(dummyResolved, requestClass);
     }
 
-    private JSONObject parseTemplateJson(String configTemplate) {
+    private ObjectNode parseTemplateJson(String configTemplate) {
         try {
-            JSONObject json = JSON.parseObject(configTemplate);
-            if (json == null) {
-                throw new JSONException("empty");
-            }
-            return json;
-        } catch (JSONException e) {
+            return JsonUtils.parseObject(configTemplate);
+        } catch (JacksonException e) {
             throw new BusinessException(ErrorCode.TASK_TEMPLATE_CONFIG_INVALID, "模板配置不是合法 JSON");
         }
     }
 
-    private Map<String, PlaceholderMeta> parsePlaceholders(JSONArray array) {
+    private Map<String, PlaceholderMeta> parsePlaceholders(ArrayNode array) {
         Map<String, PlaceholderMeta> metas = new LinkedHashMap<>();
         if (array == null) {
             return metas;
         }
         for (int i = 0; i < array.size(); i++) {
-            JSONObject p = array.getJSONObject(i);
-            if (p == null || p.getString("key") == null) {
+            ObjectNode p = JsonUtils.asObject(array.get(i));
+            String key = p == null ? null : JsonUtils.getString(p, "key");
+            if (key == null) {
                 continue;
             }
             PlaceholderMeta meta = new PlaceholderMeta();
-            meta.required = p.getBooleanValue("required");
-            meta.defaultValue = p.getString("defaultValue");
-            metas.put(p.getString("key"), meta);
+            meta.required = Boolean.TRUE.equals(JsonUtils.getBoolean(p, "required"));
+            meta.defaultValue = JsonUtils.getString(p, "defaultValue");
+            metas.put(key, meta);
         }
         return metas;
     }
@@ -392,12 +389,8 @@ public class TaskTemplateService {
 
     private <T> T parseAndValidate(String json, Class<T> clazz) {
         try {
-            T bean = JSON.parseObject(json, clazz);
-            if (bean == null) {
-                throw new JSONException("empty");
-            }
-            return bean;
-        } catch (JSONException e) {
+            return JsonUtils.parseObject(json, clazz);
+        } catch (JacksonException e) {
             throw new BusinessException(ErrorCode.TASK_TEMPLATE_CONFIG_INVALID, "模板配置解析失败: " + e.getMessage());
         }
     }

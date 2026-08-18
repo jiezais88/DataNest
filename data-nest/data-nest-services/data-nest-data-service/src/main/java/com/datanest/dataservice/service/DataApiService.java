@@ -1,7 +1,6 @@
 package com.datanest.dataservice.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -188,7 +187,7 @@ public class DataApiService {
         } else {
             // 切回选表形态时清理自定义 SQL 字段
             wrapper.set("sql_text", null).set("involved_tables", null);
-            wrapper.set("params_json", JSON.toJSONString(buildDefinition(request.getFilters(), request.getFields())));
+            wrapper.set("params_json", com.datanest.common.json.JsonUtils.toJSONString(buildDefinition(request.getFilters(), request.getFields())));
             wrapper.set("order_by", normalizeOrderBy(request.getOrderBy()));
             checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
             checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
@@ -412,7 +411,7 @@ public class DataApiService {
         api.setSchemaName(trimToNull(request.getSchemaName()));
         api.setTableName(table.trim());
         api.setMetadataTableId(request.getMetadataTableId());
-        api.setParamsJson(JSON.toJSONString(buildDefinition(request.getFilters(), request.getFields())));
+        api.setParamsJson(com.datanest.common.json.JsonUtils.toJSONString(buildDefinition(request.getFilters(), request.getFields())));
         api.setOrderBy(normalizeOrderBy(request.getOrderBy()));
         checkDataPermission(api.getDatasourceId(), api.getDatabaseName(), api.getTableName());
         checkSensitivityGate(api.getDatasourceId(), api.getDatabaseName(), api.getSchemaName(), api.getTableName());
@@ -451,7 +450,7 @@ public class DataApiService {
         }
         api.setSqlText(sql);
         api.setInvolvedTables(involvedTablesJson(api.getDatasourceId(), tables));
-        api.setParamsJson(JSON.toJSONString(customSqlDefinition(request.getSqlParams())));
+        api.setParamsJson(com.datanest.common.json.JsonUtils.toJSONString(customSqlDefinition(request.getSqlParams())));
         return tables;
     }
 
@@ -473,7 +472,7 @@ public class DataApiService {
         }
         wrapper.set("sql_text", sql);
         wrapper.set("involved_tables", involvedTablesJson(api.getDatasourceId(), tables));
-        wrapper.set("params_json", JSON.toJSONString(customSqlDefinition(request.getSqlParams())));
+        wrapper.set("params_json", com.datanest.common.json.JsonUtils.toJSONString(customSqlDefinition(request.getSqlParams())));
         wrapper.set("order_by", null);
         return tables;
     }
@@ -531,8 +530,8 @@ public class DataApiService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> list = JSON.parseObject(involvedTablesJson,
-                    new com.alibaba.fastjson2.TypeReference<List<Map<String, Object>>>() {
+            List<Map<String, Object>> list = com.datanest.common.json.JsonUtils.parseObject(involvedTablesJson,
+                    new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() {
                     });
             if (list == null || list.isEmpty()) {
                 return List.of();
@@ -561,8 +560,8 @@ public class DataApiService {
             return List.of();
         }
         try {
-            List<DataApiInvolvedTableDTO> list = JSON.parseObject(involvedTablesJson,
-                    new com.alibaba.fastjson2.TypeReference<List<DataApiInvolvedTableDTO>>() {
+            List<DataApiInvolvedTableDTO> list = com.datanest.common.json.JsonUtils.parseObject(involvedTablesJson,
+                    new tools.jackson.core.type.TypeReference<List<DataApiInvolvedTableDTO>>() {
                     });
             return list == null ? List.of() : list;
         } catch (Exception e) {
@@ -582,7 +581,7 @@ public class DataApiService {
             m.put("table", t.table());
             list.add(m);
         }
-        return JSON.toJSONString(list);
+        return com.datanest.common.json.JsonUtils.toJSONString(list);
     }
 
     /**
@@ -971,7 +970,7 @@ public class DataApiService {
             return new DataApiDefinition();
         }
         try {
-            DataApiDefinition definition = JSON.parseObject(paramsJson, DataApiDefinition.class);
+            DataApiDefinition definition = com.datanest.common.json.JsonUtils.parseObject(paramsJson, DataApiDefinition.class);
             return definition == null ? new DataApiDefinition() : definition;
         } catch (Exception e) {
             logger.warn("API 定义 JSON 解析失败，按空定义处理: {}", e.getMessage());

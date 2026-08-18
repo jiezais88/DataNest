@@ -1,8 +1,8 @@
 package com.datanest.worker.job.dag;
 
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.EngineeringDagApi;
 import com.datanest.engineering.api.dto.DagNodeInfo;
@@ -43,8 +43,8 @@ public class DagSubDagAsyncHandler extends AbstractDagNodeHandler {
     public void execute(TaskContext context) {
         DagNodeTask task = parseNodeTask(context);
         DagNodeInfo node = fetchNode(task.dagId(), task.nodeId());
-        JSONObject config = parseNodeConfig(node, task.nodeId());
-        Long subDagId = config.getLong("subDagId");
+        tools.jackson.databind.node.ObjectNode config = parseNodeConfig(node, task.nodeId());
+        Long subDagId = JsonUtils.getLong(config, "subDagId");
         if (subDagId == null) {
             throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND, "子 DAG 节点缺少 subDagId: " + task.nodeId());
         }
@@ -53,7 +53,7 @@ public class DagSubDagAsyncHandler extends AbstractDagNodeHandler {
         body.put("dagId", task.dagId());
         body.put("nodeId", task.nodeId());
         body.put("subDagId", subDagId);
-        body.put("subDagName", config.getString("subDagName"));
+        body.put("subDagName", JsonUtils.getString(config, "subDagName"));
 
         logger.info("子 DAG 异步触发: subDagId={}, parentDagId={}, parentNodeId={}",
                 subDagId, task.dagId(), task.nodeId());

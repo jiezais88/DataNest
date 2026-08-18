@@ -1,7 +1,6 @@
 package com.datanest.task.core.service;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.task.core.config.DorisDataSourceConfig;
 import com.datanest.task.core.dto.PythonExecuteResult;
 import org.slf4j.Logger;
@@ -9,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.sql.DataSource;
 import java.io.BufferedReader;
@@ -91,7 +92,7 @@ public class PythonExecutor {
             DorisConfig doris = resolveDorisConfig();
             writeDorisConfig(workDir, doris);
             if (conn != null) {
-                Files.writeString(workDir.resolve("conn.json"), JSON.toJSONString(conn), StandardCharsets.UTF_8);
+                Files.writeString(workDir.resolve("conn.json"), JsonUtils.toJSONString(conn), StandardCharsets.UTF_8);
             }
             writeTaskScript(workDir, userScript, context, conn != null, targetTable);
             return runPython(workDir, timeout, memory, context, startTime);
@@ -199,7 +200,7 @@ public class PythonExecutor {
         map.put("user", cfg.user);
         map.put("password", cfg.password);
         map.put("database", cfg.database);
-        Files.writeString(workDir.resolve("doris.json"), JSON.toJSONString(map), StandardCharsets.UTF_8);
+        Files.writeString(workDir.resolve("doris.json"), JsonUtils.toJSONString(map), StandardCharsets.UTF_8);
     }
 
     private void writeTaskScript(Path workDir, String userScript, PythonContext context,
@@ -282,7 +283,7 @@ public class PythonExecutor {
 
         // 参数上下文
         String paramsJson = context != null && context.params != null
-                ? JSON.toJSONString(context.params)
+                ? JsonUtils.toJSONString(context.params)
                 : "{}";
         sb.append("_PARAMS = ").append(paramsJson).append("\n");
         sb.append("_OUTPUT_TABLES = []\n");
@@ -482,7 +483,7 @@ public class PythonExecutor {
                 """);
         // 质量检查模式收尾：以目标表 DataFrame 调 check(df)，返回 dict 写 output.json
         if (qualityMode) {
-            sb.append("_quality_target = ").append(JSON.toJSONString(targetTable)).append("\n");
+            sb.append("_quality_target = ").append(JsonUtils.toJSONString(targetTable)).append("\n");
             sb.append("""
                     _check_df = read_table(_quality_target)
                     _output['check_result'] = check(_check_df)
@@ -550,10 +551,9 @@ public class PythonExecutor {
             if (Files.exists(outputFile)) {
                 try {
                     String content = Files.readString(outputFile, StandardCharsets.UTF_8);
-                    JSONObject json = JSON.parseObject(content);
+                    ObjectNode json = JsonUtils.parseObject(content);
                     output = json;
-                    outputTables = json.getList("output_tables", String.class);
-                    if (outputTables == null) outputTables = Collections.emptyList();
+                    outputTables = extractStringList(json, "output_tables");
                 } catch (Exception e) {
                     logger.warn("解析 output.json 失败", e);
                 }
@@ -597,6 +597,17 @@ public class PythonExecutor {
                 logger.debug("Python 流读取异常: {}", e.getMessage());
             }
         }
+    }
+
+    /** 从 output.json 的 ObjectNode 提取字符串数组字段（原 fastjson2 getList(String.class)） */
+    private List<String> extractStringList(ObjectNode node, String field) {
+        tools.jackson.databind.JsonNode arrNode = node == null ? null : node.get(field);
+        if (!(arrNode instanceof ArrayNode arr)) {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>(arr.size());
+        arr.forEach(item -> result.add(item == null ? null : item.asString(null)));
+        return result;
     }
 
     private void joinQuietly(Thread thread, long millis) {

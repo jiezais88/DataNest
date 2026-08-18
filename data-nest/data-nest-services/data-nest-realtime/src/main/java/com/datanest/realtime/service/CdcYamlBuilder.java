@@ -1,7 +1,5 @@
 package com.datanest.realtime.service;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.realtime.entity.CdcPipeline;
@@ -53,9 +51,9 @@ public class CdcYamlBuilder {
         if (configJson == null || configJson.isBlank()) {
             return new AdvancedConfig(null, null, null, null);
         }
-        JSONObject json;
+        tools.jackson.databind.node.ObjectNode json;
         try {
-            json = JSON.parseObject(configJson);
+            json = com.datanest.common.json.JsonUtils.parseObject(configJson);
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
                     "configJson 不是合法 JSON: " + e.getMessage());
@@ -64,12 +62,12 @@ public class CdcYamlBuilder {
             return new AdvancedConfig(null, null, null, null);
         }
         try {
-            String behavior = json.getString(CONFIG_KEY_SCHEMA_CHANGE_BEHAVIOR);
+            String behavior = com.datanest.common.json.JsonUtils.getString(json, CONFIG_KEY_SCHEMA_CHANGE_BEHAVIOR);
             return new AdvancedConfig(
-                    json.getInteger(CONFIG_KEY_PARALLELISM),
-                    json.getInteger(CONFIG_KEY_CHECKPOINT_INTERVAL_SECONDS),
+                    com.datanest.common.json.JsonUtils.getInteger(json, CONFIG_KEY_PARALLELISM),
+                    com.datanest.common.json.JsonUtils.getInteger(json, CONFIG_KEY_CHECKPOINT_INTERVAL_SECONDS),
                     behavior == null || behavior.isBlank() ? null : behavior.trim().toUpperCase(),
-                    json.getInteger(CONFIG_KEY_SCAN_CHUNK_SIZE));
+                    com.datanest.common.json.JsonUtils.getInteger(json, CONFIG_KEY_SCAN_CHUNK_SIZE));
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.CDC_PIPELINE_CONFIG_INVALID,
                     "configJson 高级配置整数键必须为整数（parallelism / checkpointIntervalSeconds / scanChunkSize）: "

@@ -1,11 +1,11 @@
 package com.datanest.worker.job.dag;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.model.Result;
+import tools.jackson.databind.node.ObjectNode;
 import com.datanest.engineering.api.EngineeringDagApi;
 import com.datanest.engineering.api.dto.DagNodeInfo;
 import com.datanest.worker.job.PlatformJobHandler;
@@ -95,18 +95,18 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
         if (!StringUtils.hasText(nodeParams)) {
             return null;
         }
-        JSONObject params;
+        ObjectNode params;
         try {
-            params = JSON.parseObject(nodeParams);
+            params = JsonUtils.parseObject(nodeParams);
         } catch (Exception e) {
             return null;
         }
-        Long dagId = params.getLong("dagId");
-        String nodeId = params.getString("nodeId");
+        Long dagId = JsonUtils.getLong(params, "dagId");
+        String nodeId = JsonUtils.getString(params, "nodeId");
         if (dagId == null || !StringUtils.hasText(nodeId)) {
             return null;
         }
-        return new DagNodeTask(dagId, nodeId, params.getString("nodeType"));
+        return new DagNodeTask(dagId, nodeId, JsonUtils.getString(params, "nodeType"));
     }
 
     /**
@@ -166,7 +166,7 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
             return null;
         }
         try {
-            Long id = JSON.parseObject(initParams).getLong("dagExecutionId");
+            Long id = JsonUtils.getLong(JsonUtils.parseObject(initParams), "dagExecutionId");
             if (id != null) {
                 return id;
             }
@@ -190,12 +190,12 @@ public abstract class AbstractDagNodeHandler implements PlatformJobHandler {
     }
 
     /** 解析节点 config JSON，缺失/解析失败抛 BusinessException */
-    protected JSONObject parseNodeConfig(DagNodeInfo node, String nodeId) {
+    protected ObjectNode parseNodeConfig(DagNodeInfo node, String nodeId) {
         if (node == null || !StringUtils.hasText(node.getConfig())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "节点配置缺失: " + nodeId);
         }
         try {
-            return JSON.parseObject(node.getConfig());
+            return JsonUtils.parseObject(node.getConfig());
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                     "节点 config JSON 解析失败 (nodeId=" + nodeId + "): " + e.getMessage(), e);

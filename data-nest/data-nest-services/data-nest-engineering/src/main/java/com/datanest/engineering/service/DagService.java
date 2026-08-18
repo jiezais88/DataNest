@@ -1,9 +1,7 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
+import com.datanest.common.json.JsonUtils;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
@@ -783,11 +781,11 @@ public class DagService {
                 continue;
             }
             try {
-                JSONObject cfg = JSON.parseObject(node.getConfig());
+                tools.jackson.databind.node.ObjectNode cfg = JsonUtils.parseObject(node.getConfig());
                 if ("CONDITION".equals(nodeType)) {
                     validateConditionConfig(cfg, node, nodeIds);
                 } else if ("SUB_DAG".equals(nodeType)) {
-                    Long subDagId = cfg.getLong("subDagId");
+                    Long subDagId = JsonUtils.getLong(cfg, "subDagId");
                     if (subDagId == null) {
                         throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND,
                                 "子 DAG 节点缺少 subDagId (nodeId=" + node.getNodeId() + ")");
@@ -806,8 +804,8 @@ public class DagService {
         validateSubDagCycle(payload);
     }
 
-    private void validateConditionConfig(JSONObject cfg, DagNodePayload node, Set<String> nodeIds) {
-        ConditionNodeConfig config = cfg.toJavaObject(ConditionNodeConfig.class);
+    private void validateConditionConfig(tools.jackson.databind.node.ObjectNode cfg, DagNodePayload node, Set<String> nodeIds) {
+        ConditionNodeConfig config = JsonUtils.toJavaObject(cfg, ConditionNodeConfig.class);
         List<ConditionNodeConfig.ConditionBranch> branches =
                 config == null ? null : config.getBranches();
         if (branches == null || branches.size() < 2) {
@@ -834,8 +832,8 @@ public class DagService {
      * subParam 在映射内唯一；mainParam 必须在主 DAG 已声明参数或系统变量中——
      * 新建 DAG（payload.id 为空，参数尚未落库）跳过存在性校验。
      */
-    private void validateSubDagParamMappings(JSONObject cfg, DagNodePayload node, Long dagId) {
-        JSONArray mappings = cfg.getJSONArray("paramMappings");
+    private void validateSubDagParamMappings(tools.jackson.databind.node.ObjectNode cfg, DagNodePayload node, Long dagId) {
+        tools.jackson.databind.node.ArrayNode mappings = JsonUtils.getArray(cfg, "paramMappings");
         if (mappings == null || mappings.isEmpty()) {
             return;
         }
@@ -845,11 +843,11 @@ public class DagService {
         }
         Set<String> seenSubParams = new HashSet<>();
         for (int i = 0; i < mappings.size(); i++) {
-            JSONObject mapping = mappings.getJSONObject(i);
+            tools.jackson.databind.node.ObjectNode mapping = JsonUtils.asObject(mappings.get(i));
             String mainKey = mapping == null ? null
-                    : SubDagParamMappingResolver.normalizeParamName(mapping.getString("mainParam"));
+                    : SubDagParamMappingResolver.normalizeParamName(JsonUtils.getString(mapping, "mainParam"));
             String subKey = mapping == null ? null
-                    : SubDagParamMappingResolver.normalizeParamName(mapping.getString("subParam"));
+                    : SubDagParamMappingResolver.normalizeParamName(JsonUtils.getString(mapping, "subParam"));
             if (mainKey == null || subKey == null) {
                 throw new BusinessException(ErrorCode.SUB_DAG_PARAM_INVALID,
                         "参数映射的主参数/子参数不能为空 (nodeId=" + node.getNodeId() + ")");
@@ -925,7 +923,7 @@ public class DagService {
                 continue;
             }
             try {
-                Long subDagId = JSON.parseObject(node.getConfig()).getLong("subDagId");
+                Long subDagId = JsonUtils.getLong(JsonUtils.parseObject(node.getConfig()), "subDagId");
                 if (subDagId != null) {
                     refs.add(subDagId);
                 }
@@ -949,7 +947,7 @@ public class DagService {
                 continue;
             }
             try {
-                Long subDagId = JSON.parseObject(node.getConfig()).getLong("subDagId");
+                Long subDagId = JsonUtils.getLong(JsonUtils.parseObject(node.getConfig()), "subDagId");
                 if (subDagId != null) {
                     refs.add(subDagId);
                 }

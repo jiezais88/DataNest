@@ -40,12 +40,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-ldap</artifactId>
         </dependency>
-
-        <!-- Fastjson2（JSON 解析：OIDC token/Discovery 响应；版本根 pom 管理） -->
-        <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2</artifactId>
-        </dependency>
     </dependencies>
 
     <build>

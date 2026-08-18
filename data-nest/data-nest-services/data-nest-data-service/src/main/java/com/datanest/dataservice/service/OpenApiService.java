@@ -1,6 +1,5 @@
 package com.datanest.dataservice.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.DataSourceStatus;
 import com.datanest.common.constant.DorisConstants;
@@ -215,7 +214,7 @@ public class OpenApiService {
             return new DataApiDefinition();
         }
         try {
-            DataApiDefinition definition = JSON.parseObject(paramsJson, DataApiDefinition.class);
+            DataApiDefinition definition = com.datanest.common.json.JsonUtils.parseObject(paramsJson, DataApiDefinition.class);
             return definition == null ? new DataApiDefinition() : definition;
         } catch (Exception e) {
             logger.warn("API 定义 JSON 解析失败，按空定义处理: {}", e.getMessage());

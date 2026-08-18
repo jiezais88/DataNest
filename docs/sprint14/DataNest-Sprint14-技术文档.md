@@ -30,10 +30,12 @@
 |------|------|------|
 | `nimbus-jose-jwt` | OIDC id_token 验签 / JWKS 解析（**自研 OIDC 客户端**，决策 D8；sa-token-oauth2-client 是 Sa-Token 生态 OAuth2 Server 对接用，不适合通用 OIDC 客户端） | system 服务 pom（新增，版本根 pom 统一管理） |
 | `spring-boot-starter-data-ldap` | LDAP/AD 绑定认证 + 用户同步（编程式 JNDI，未配 spring.ldap.urls 时自动配置不生效，无冲突） | system 服务 pom（新增） |
-| `fastjson2` | OIDC Discovery / token 响应 JSON 解析 | system 服务 pom（新增，版本根 pom 管理） |
+| `tools.jackson`（Jackson 3） | OIDC Discovery / token 响应 JSON 解析（`JsonMapper.readTree` + `JsonNode.path().asString()`） | **复用 Boot 自动配置的 `JsonMapper` Bean**（含 common `Long→String` 定制），不新增依赖、不 new |
 | `spring-security-crypto` | BCrypt（已有，密码策略校验复用） | system 服务 pom（已存在） |
 
-> **依赖版本**：nimbus-jose-jwt 版本由根 pom 统一管理（子模块禁止写第三方字面量版本）；spring-boot-starter-data-ldap / fastjson2 由 Boot 4 BOM 管理版本。LdapClientService 使用 `javax.naming`（java.naming 模块），system pom 的 maven-compiler-plugin 已加 `--add-modules java.naming`。
+> **依赖版本**：nimbus-jose-jwt 版本由根 pom 统一管理（子模块禁止写第三方字面量版本）；spring-boot-starter-data-ldap 由 Boot 4 BOM 管理版本。LdapClientService 使用 `javax.naming`（java.naming 模块），system pom 的 maven-compiler-plugin 已加 `--add-modules java.naming`。
+>
+> **Jackson 3 注意**：项目统一用 Jackson 3（`tools.jackson.*` 包名，Boot 4 默认），不用 fastjson2。JsonNode 取值用 `asString()`（Jackson 2 的 `asText()` 已改名，仍保留但已 deprecated）；`readTree` 抛 `JacksonException`（unchecked，无需显式捕获）。OidcClientService 构造注入 Boot 的 `JsonMapper` Bean（继承 common `Long→String` 全局序列化定制）。
 
 ## 3. OIDC/OAuth2 登录桥接（F1）
 

@@ -5,6 +5,7 @@ import com.datanest.alert.api.dto.AlertFireRequest;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.common.internal.RemoteCalls;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.model.Result;
 import com.datanest.engineering.api.dto.DataSourceInfo;
 import com.datanest.governance.api.QualityExecutionApi;
@@ -499,8 +500,9 @@ public class QualityCheckService {
             throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
                     "Python 脚本执行失败: " + abbreviate(err, 500));
         }
-        com.alibaba.fastjson2.JSONObject checkResult = result.getOutput() instanceof com.alibaba.fastjson2.JSONObject out
-                ? out.getJSONObject("check_result") : null;
+        tools.jackson.databind.node.ObjectNode checkResult =
+                result.getOutput() instanceof tools.jackson.databind.node.ObjectNode out
+                        ? JsonUtils.asObject(out.get("check_result")) : null;
         if (checkResult == null || checkResult.isEmpty()) {
             throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
                     "Python 脚本未通过 check(df) 返回结果 dict");
@@ -508,13 +510,14 @@ public class QualityCheckService {
         String metric = rule.getResultMetric();
         Object metricVal;
         if (metric != null && !metric.isBlank()) {
-            metricVal = checkResult.get(metric.trim());
-            if (metricVal == null) {
+            tools.jackson.databind.JsonNode node = checkResult.get(metric.trim());
+            metricVal = scalarValue(node);
+            if (node == null) {
                 throw new BusinessException(ErrorCode.QUALITY_CHECK_EXECUTE_FAILED,
-                        "Python 返回 dict 缺少结果指标: " + metric + "（实际键: " + checkResult.keySet() + "）");
+                        "Python 返回 dict 缺少结果指标: " + metric + "（实际键: " + checkResult.properties() + "）");
             }
         } else {
-            metricVal = checkResult.values().iterator().next();
+            metricVal = scalarValue(checkResult.values().iterator().next());
         }
         return toBigDecimal(metricVal);
     }
@@ -524,6 +527,20 @@ public class QualityCheckService {
             return "";
         }
         return text.length() <= max ? text : text.substring(0, max) + "...";
+    }
+
+    /** JsonNode 标量节点 → 原始值（数字/布尔/字符串/null），供 toBigDecimal 消费 */
+    private static Object scalarValue(tools.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.isIntegralNumber() ? node.longValue() : node.doubleValue();
+        }
+        if (node.isBoolean()) {
+            return node.booleanValue();
+        }
+        return node.asString();
     }
 
     private BigDecimal ratio(BigDecimal out, BigDecimal total) {

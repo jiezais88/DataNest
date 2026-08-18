@@ -1,8 +1,6 @@
 package com.datanest.engineering.service;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.engineering.entity.DagExecution;
 import com.datanest.engineering.entity.DagNode;
 import com.datanest.engineering.mapper.DagNodeMapper;
@@ -10,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,8 +73,8 @@ public class SubDagParamMappingResolver {
         List<DagNode> candidates = dagNodeMapper.selectByDagId(parentDagId).stream()
                 .filter(n -> "SUB_DAG".equalsIgnoreCase(n.getNodeType()))
                 .filter(n -> {
-                    JSONObject cfg = parseConfig(n);
-                    return cfg != null && subDagId.equals(cfg.getLong("subDagId"));
+                    ObjectNode cfg = parseConfig(n);
+                    return cfg != null && subDagId.equals(JsonUtils.getLong(cfg, "subDagId"));
                 })
                 .toList();
         if (candidates.isEmpty()) {
@@ -89,24 +89,24 @@ public class SubDagParamMappingResolver {
     }
 
     /** 按节点 paramMappings 从父执行上下文构建子 DAG 参数覆盖集 */
-    private Map<String, Object> buildOverrides(JSONObject nodeConfig, Long parentDagId,
+    private Map<String, Object> buildOverrides(ObjectNode nodeConfig, Long parentDagId,
                                                DagExecution parentExecution, String nodeId) {
         if (nodeConfig == null) {
             return Map.of();
         }
-        JSONArray mappings = nodeConfig.getJSONArray("paramMappings");
+        ArrayNode mappings = JsonUtils.getArray(nodeConfig, "paramMappings");
         if (mappings == null || mappings.isEmpty()) {
             return Map.of();
         }
         Map<String, Object> parentParams = resolveParentParams(parentDagId, parentExecution);
         Map<String, Object> overrides = new LinkedHashMap<>();
         for (int i = 0; i < mappings.size(); i++) {
-            JSONObject mapping = mappings.getJSONObject(i);
+            ObjectNode mapping = JsonUtils.asObject(mappings.get(i));
             if (mapping == null) {
                 continue;
             }
-            String mainKey = normalizeParamName(mapping.getString("mainParam"));
-            String subKey = normalizeParamName(mapping.getString("subParam"));
+            String mainKey = normalizeParamName(JsonUtils.getString(mapping, "mainParam"));
+            String subKey = normalizeParamName(JsonUtils.getString(mapping, "subParam"));
             if (mainKey == null || subKey == null) {
                 logger.warn("子 DAG 参数映射存在空项，已跳过: parentDagId={}, nodeId={}, mapping={}",
                         parentDagId, nodeId, mapping);
@@ -133,13 +133,39 @@ public class SubDagParamMappingResolver {
     private Map<String, Object> resolveParentParams(Long parentDagId, DagExecution parentExecution) {
         if (parentExecution != null && StringUtils.hasText(parentExecution.getResolvedParams())) {
             try {
-                return JSON.parseObject(parentExecution.getResolvedParams());
+                tools.jackson.databind.JsonNode node = JsonUtils.MAPPER.readTree(parentExecution.getResolvedParams());
+                Map<String, Object> map = new LinkedHashMap<>();
+                if (node instanceof ObjectNode on) {
+                    on.properties().forEach(entry -> map.put(entry.getKey(), scalarOrPojo(entry.getValue())));
+                }
+                return map;
             } catch (Exception e) {
                 logger.warn("父执行 resolvedParams 解析失败，按参数默认值现算: executionId={}: {}",
                         parentExecution.getId(), e.getMessage());
             }
         }
         return dagParameterService.resolveParams(parentDagId, null);
+    }
+
+    /** JsonNode → 标量值或 POJO（供参数覆盖集透传） */
+    private static Object scalarOrPojo(tools.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isIntegralNumber()) {
+            return node.longValue();
+        }
+        if (node.isFloatingPointNumber()) {
+            return node.doubleValue();
+        }
+        if (node.isBoolean()) {
+            return node.booleanValue();
+        }
+        if (node.isTextual()) {
+            return node.asString();
+        }
+        // 对象/数组：序列化回 JSON 字符串（fastjson2 parseObject 原返回 Map/List，语义等价）
+        return JsonUtils.toJSONString(node);
     }
 
     /** 参数名归一化：剥离 "${...}" 包装（"${biz_date}" → "biz_date"），空值返回 null */
@@ -154,12 +180,12 @@ public class SubDagParamMappingResolver {
         return StringUtils.hasText(name) ? name : null;
     }
 
-    private static JSONObject parseConfig(DagNode node) {
+    private static ObjectNode parseConfig(DagNode node) {
         if (node == null || !StringUtils.hasText(node.getConfig())) {
             return null;
         }
         try {
-            return JSON.parseObject(node.getConfig());
+            return JsonUtils.parseObject(node.getConfig());
         } catch (Exception e) {
             return null;
         }

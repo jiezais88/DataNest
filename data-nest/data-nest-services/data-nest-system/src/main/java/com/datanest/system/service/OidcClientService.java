@@ -1,7 +1,5 @@
 package com.datanest.system.service;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
 import com.datanest.system.config.SsoProperties;
@@ -14,6 +12,8 @@ import com.nimbusds.jwt.SignedJWT;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.URI;
@@ -45,6 +45,8 @@ public class OidcClientService {
     private static final long STATE_TTL_MILLIS = 10 * 60 * 1000L;
 
     private final SsoConfigService ssoConfigService;
+    /** Jackson 3 JsonMapper：复用 Spring Boot 自动配置 Bean（含 common Long→String 定制），不每次 new */
+    private final JsonMapper jsonMapper;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5)).build();
     /** state 缓存：state -> 过期时间戳（登录态外可用内存 Map，system 单实例） */
@@ -52,8 +54,9 @@ public class OidcClientService {
     /** Discovery 缓存：issuer -> endpoints */
     private final Map<String, OidcDiscovery> discoveryCache = new ConcurrentHashMap<>();
 
-    public OidcClientService(SsoConfigService ssoConfigService) {
+    public OidcClientService(SsoConfigService ssoConfigService, JsonMapper jsonMapper) {
         this.ssoConfigService = ssoConfigService;
+        this.jsonMapper = jsonMapper;
     }
 
     /** 构建 OIDC 授权 URL（前端跳转到 IdP） */
@@ -90,8 +93,9 @@ public class OidcClientService {
                     "client_id", oidc.getClientId(),
                     "client_secret", oidc.getClientSecret() == null ? "" : oidc.getClientSecret()
             ));
-            JSONObject tokenJson = JSON.parseObject(body);
-            String idToken = tokenJson == null ? null : tokenJson.getString("id_token");
+            // Jackson 3：readTree 抛 JacksonException（unchecked），无需显式捕获
+            JsonNode tokenJson = jsonMapper.readTree(body);
+            String idToken = tokenJson.path("id_token").asString(null);
             if (idToken == null || idToken.isBlank()) {
                 log.warn("OIDC token 端点未返回 id_token: {}", body);
                 throw new BusinessException(ErrorCode.SSO_ID_TOKEN_INVALID);
@@ -191,14 +195,14 @@ public class OidcClientService {
         return discoveryCache.computeIfAbsent(oidc.getIssuer(), issuer -> {
             try {
                 String url = issuer.replaceAll("/+$", "") + "/.well-known/openid-configuration";
-                JSONObject json = JSON.parseObject(get(url));
-                if (json == null) {
+                JsonNode json = jsonMapper.readTree(get(url));
+                if (json == null || json.isNull()) {
                     throw new BusinessException(ErrorCode.SSO_NOT_CONFIGURED);
                 }
-                return new OidcDiscovery(json.getString("issuer"),
-                        json.getString("authorization_endpoint"),
-                        json.getString("token_endpoint"),
-                        json.getString("jwks_uri"));
+                return new OidcDiscovery(json.path("issuer").asString(null),
+                        json.path("authorization_endpoint").asString(null),
+                        json.path("token_endpoint").asString(null),
+                        json.path("jwks_uri").asString(null));
             } catch (BusinessException e) {
                 throw e;
             } catch (Exception e) {
@@ -216,7 +220,7 @@ public class OidcClientService {
         return props.getOidc();
     }
 
-    // ---------- HTTP helpers（JDK HttpClient + fastjson2） ----------
+    // ---------- HTTP helpers（JDK HttpClient + Jackson 3） ----------
     private String get(String url) throws IOException, InterruptedException {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(10))

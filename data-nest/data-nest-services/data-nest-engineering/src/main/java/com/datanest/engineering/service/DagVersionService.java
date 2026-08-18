@@ -1,8 +1,6 @@
 package com.datanest.engineering.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
@@ -75,7 +73,7 @@ public class DagVersionService {
         DagVersion version = new DagVersion();
         version.setDagId(dagId);
         version.setVersionNo(nextVersion);
-        version.setSnapshot(JSON.toJSONString(snapshot));
+        version.setSnapshot(com.datanest.common.json.JsonUtils.toJSONString(snapshot));
         version.setChangeSummary(changeSummary);
         version.setCreatedBy(currentUserId());
         version.setCreatedAt(LocalDateTime.now());
@@ -277,10 +275,10 @@ public class DagVersionService {
         if (!org.springframework.util.StringUtils.hasText(json)) {
             return new Snapshot(List.of(), List.of(), List.of());
         }
-        JSONObject obj = JSON.parseObject(json);
-        List<DagNode> nodes = obj.getList("nodes", DagNode.class);
-        List<DagEdge> edges = obj.getList("edges", DagEdge.class);
-        List<DagParameter> params = obj.getList("params", DagParameter.class);
+        tools.jackson.databind.node.ObjectNode obj = com.datanest.common.json.JsonUtils.parseObject(json);
+        List<DagNode> nodes = com.datanest.common.json.JsonUtils.getList(obj, "nodes", DagNode.class);
+        List<DagEdge> edges = com.datanest.common.json.JsonUtils.getList(obj, "edges", DagEdge.class);
+        List<DagParameter> params = com.datanest.common.json.JsonUtils.getList(obj, "params", DagParameter.class);
         return new Snapshot(nodes, edges, params);
     }
 

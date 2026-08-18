@@ -1,6 +1,5 @@
 package com.datanest.task.core.service;
 
-import com.alibaba.fastjson2.JSON;
 import com.datanest.common.config.EncryptionConfig;
 import com.datanest.common.constant.DataSourceType;
 import com.datanest.common.constant.ExecutionStatus;
@@ -295,7 +294,7 @@ public class AddaxJobService {
             return Map.of();
         }
         try {
-            List<SourceTableDetail> details = JSON.parseArray(job.getSourceTablesDetail(), SourceTableDetail.class);
+            List<SourceTableDetail> details = com.datanest.common.json.JsonUtils.parseArray(job.getSourceTablesDetail(), SourceTableDetail.class);
             Map<String, SourceTableDetail> map = new HashMap<>();
             for (SourceTableDetail d : details) {
                 if (StringUtils.hasText(d.getSourceTable())) {

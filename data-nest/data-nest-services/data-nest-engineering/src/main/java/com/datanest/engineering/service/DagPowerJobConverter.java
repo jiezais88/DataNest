@@ -1,9 +1,8 @@
 package com.datanest.engineering.service;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
+import com.datanest.common.json.JsonUtils;
 import com.datanest.common.scheduler.PJDag;
 import com.datanest.common.scheduler.PJEdge;
 import com.datanest.common.scheduler.PJNode;
@@ -102,15 +101,15 @@ public class DagPowerJobConverter {
         }
         for (DagNode node : nodes) {
             String configJson = node.getConfig() == null ? "{}" : node.getConfig();
-            JSONObject cfg;
+            tools.jackson.databind.node.ObjectNode cfg;
             try {
-                cfg = JSON.parseObject(configJson);
+                cfg = JsonUtils.parseObject(configJson);
             } catch (Exception e) {
                 throw new BusinessException(ErrorCode.SQL_PARSE_FAILED,
                         "节点 config JSON 解析失败 (nodeId=" + node.getNodeId() + "): " + e.getMessage());
             }
             // 节点类型优先取 config.type（与 DagDsConverter 一致），兜底 node_type 列
-            String type = cfg == null ? null : cfg.getString("type");
+            String type = cfg == null ? null : JsonUtils.getString(cfg, "type");
             if (!StringUtils.hasText(type)) {
                 type = node.getNodeType();
             }
@@ -123,12 +122,13 @@ public class DagPowerJobConverter {
             switch (type) {
                 case "SQL", "SYNC", "PYTHON", "CONDITION" -> defs.add(jobDef(dagId, node, type));
                 case "SUB_DAG" -> {
-                    Long subDagId = cfg.getLong("subDagId");
+                    Long subDagId = JsonUtils.getLong(cfg, "subDagId");
                     if (subDagId == null) {
                         throw new BusinessException(ErrorCode.SUB_DAG_NOT_FOUND,
                                 "子 DAG 节点缺少 subDagId (nodeId=" + node.getNodeId() + ")");
                     }
-                    boolean syncExecution = cfg.getBooleanValue("syncExecution", true);
+                    Boolean syncExecutionVal = JsonUtils.getBoolean(cfg, "syncExecution");
+                    boolean syncExecution = syncExecutionVal == null || syncExecutionVal;
                     if (syncExecution) {
                         // 同步子 DAG：NESTED_WORKFLOW 节点，jobId = 子 DAG 的 powerjobWorkflowId
                         Dag subDag = dagMapper.selectById(subDagId);
@@ -201,6 +201,6 @@ public class DagPowerJobConverter {
         params.put("dagId", dagId);
         params.put("nodeId", node.getNodeId());
         params.put("nodeType", type);
-        return JSON.toJSONString(params);
+        return JsonUtils.toJSONString(params);
     }
 }
