@@ -1,5 +1,5 @@
 import {type ComponentType, lazy, Suspense} from 'react';
-import {Navigate, useParams} from 'react-router-dom';
+import {Navigate, useLocation, useParams} from 'react-router-dom';
 import DsSpinner from '@/components/DsSpinner';
 
 // DAG 编辑器整页懒加载：画布依赖 ReactFlow + Monaco（SQL 编辑器），
@@ -51,8 +51,27 @@ export function DagExecutionsRedirect() {
     return <Navigate to={`/engineering/dag-executions?dagId=${id}`} replace/>;
 }
 
-export const ProtectedRoute = ({children}: { children: React.ReactNode }) => {
+/**
+ * 登录态守卫 + Sprint 14 强制改密守卫。
+ * mustChangePwd（密码过期）未改密前禁止进入系统，仅放行改密页本身。
+ */
+export const ProtectedRoute = ({
+                                   children,
+                                   skipPwdCheck = false,
+                               }: { children: React.ReactNode; skipPwdCheck?: boolean }) => {
     const token = localStorage.getItem('token');
+    const location = useLocation();
     if (!token) return <Navigate to="/login" replace/>;
+    if (!skipPwdCheck) {
+        try {
+            const raw = localStorage.getItem('datanest_user_info');
+            const info = raw ? JSON.parse(raw) as { mustChangePwd?: boolean } : null;
+            if (info?.mustChangePwd && location.pathname !== '/force-change-password') {
+                return <Navigate to="/force-change-password" replace/>;
+            }
+        } catch {
+            // 本地快照损坏不阻塞登录，忽略
+        }
+    }
     return <>{children}</>;
 };

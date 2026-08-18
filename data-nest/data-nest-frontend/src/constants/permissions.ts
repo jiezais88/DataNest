@@ -115,6 +115,9 @@ export const PERM = {
     DATA_PERMISSION_MANAGE: 'data_permission:manage',
     AUDIT_VIEW: 'audit:view',
     QUEUE_MANAGE: 'queue:manage',
+    // 身份认证（Sprint 14 SSO，仅超管）
+    AUTH_CONFIG: 'auth:config',
+    AUTH_SYNC: 'auth:sync',
 } as const;
 
 export type PermissionCode = (typeof PERM)[keyof typeof PERM];
@@ -151,6 +154,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     {prefix: 'data_permission', label: '权限配置'},
     {prefix: 'audit', label: '审计日志'},
     {prefix: 'queue', label: '执行队列'},
+    {prefix: 'auth', label: '身份认证'},
 ];
 
 /** 按 code 解析模块前缀（如 datasource:view → datasource） */

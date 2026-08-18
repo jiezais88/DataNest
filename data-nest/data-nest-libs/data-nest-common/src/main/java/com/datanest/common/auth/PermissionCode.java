@@ -140,4 +140,8 @@ public final class PermissionCode {
     public static final String DATA_PERMISSION_MANAGE = "data_permission:manage";
     public static final String AUDIT_VIEW = "audit:view";
     public static final String QUEUE_MANAGE = "queue:manage";
+
+    // ============ 身份认证（Sprint 14 SSO，仅超管） ============
+    public static final String AUTH_CONFIG = "auth:config";
+    public static final String AUTH_SYNC = "auth:sync";
 }

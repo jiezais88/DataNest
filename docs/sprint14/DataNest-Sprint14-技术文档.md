@@ -13,7 +13,7 @@
 │                    SSO + 认证安全（Sprint 14）                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │ OIDC/OAuth2     授权码流程 → 本地 Sa-Token 会话（ADR-012 落地）      │
-│                   sa-token-oauth2-client（OIDC 客户端）              │
+│                   自研 OIDC 客户端（nimbus 验签，决策 D8）           │
 │ LDAP/AD         绑定认证 + OU 用户同步 + 角色映射（spring-ldap）      │
 │ 角色映射         IdP group/claim → 平台角色（Nacos 规则，映射为主）   │
 │ 登录模式         混合 / 仅 SSO（admin 本地登录保底）                 │
@@ -28,11 +28,12 @@
 
 | 依赖 | 用途 | 位置 |
 |------|------|------|
-| `sa-token-oauth2-client` | OIDC/OAuth2 授权码客户端（与 Sa-Token 同生态，Sa-Token 官方支持 OIDC Discovery） | system 服务 pom（新增） |
-| `spring-boot-starter-data-ldap` | LDAP/AD 绑定认证 + 用户同步 | system 服务 pom（新增） |
+| `nimbus-jose-jwt` | OIDC id_token 验签 / JWKS 解析（**自研 OIDC 客户端**，决策 D8；sa-token-oauth2-client 是 Sa-Token 生态 OAuth2 Server 对接用，不适合通用 OIDC 客户端） | system 服务 pom（新增，版本根 pom 统一管理） |
+| `spring-boot-starter-data-ldap` | LDAP/AD 绑定认证 + 用户同步（编程式 JNDI，未配 spring.ldap.urls 时自动配置不生效，无冲突） | system 服务 pom（新增） |
+| `fastjson2` | OIDC Discovery / token 响应 JSON 解析 | system 服务 pom（新增，版本根 pom 管理） |
 | `spring-security-crypto` | BCrypt（已有，密码策略校验复用） | system 服务 pom（已存在） |
 
-> **依赖版本**：sa-token-oauth2-client 版本与现有 sa-token 一致（由根 pom 统一管理，子模块禁止写第三方字面量版本）。spring-boot-starter-data-ldap 由 Boot 4 BOM 管理版本。
+> **依赖版本**：nimbus-jose-jwt 版本由根 pom 统一管理（子模块禁止写第三方字面量版本）；spring-boot-starter-data-ldap / fastjson2 由 Boot 4 BOM 管理版本。LdapClientService 使用 `javax.naming`（java.naming 模块），system pom 的 maven-compiler-plugin 已加 `--add-modules java.naming`。
 
 ## 3. OIDC/OAuth2 登录桥接（F1）
 
@@ -53,7 +54,7 @@
   │                                               │ 7. 验签 id_token + subject│
   │                                               │ 8. 匹配/绑定/自动建号    │
   │                                               │ 9. 建本地 Sa-Token 会话  │
-  │  10. 302 → 前端（带 Sa-Token 会话 cookie/header）                       │
+  │  10. 302 → 前端 /login#ssoToken=xxx（token 走 URL fragment，不进服务端日志/Referer） │
   │<──────────────────────────────────────────────│                        │
 ```
 
@@ -62,8 +63,11 @@
 - **端点**（网关白名单放行，`/api/system/auth/sso/**`）：
   - `GET /api/system/auth/sso/oidc/authorize` — 发起授权（生成 state 存会话 → 302 IdP）
   - `GET /api/system/auth/sso/oidc/callback` — 回调（校验 state → 换 token → 建会话 → 302 前端）
-- **OIDC 客户端**：`sa-token-oauth2-client` 自动发现（issuer discovery），配置 `issuer`/`client-id`/`client-secret`/`scope`/`redirect-uri`。
-- **id_token 验签**：从 IdP JWKS 拉公钥验签 + 校验 `aud`/`iss`/`exp`。
+- **OIDC 客户端**：自研（`OidcClientService`，决策 D8）：授权码换取 id_token → JWKS 拉公钥（nimbus）RS256 验签 → 校验 `aud`/`iss`/`exp` → 提取 `sub`/`email`/`preferred_username`/`groups`。
+  - 端点支持显式配置；授权/令牌/JWKS 端点任一为空时走 OIDC Discovery（`.well-known/openid-configuration`）。
+  - state 存内存 Map（10 分钟过期）防 CSRF；回调校验 state 不匹配/过期抛 `SSO_STATE_INVALID`。
+  - **平台用户名优先 `preferred_username`**（标准 OIDC claim），次选 email 前缀（自动建号兜底），name 仅作显示名。
+- **回调 token 传递**：回调成功 302 到前端 `/login#ssoToken=<sa-token>`（URL fragment 不落服务端日志/Referer）；前端读 hash 后 `getMe()` 拉完整 userInfo。
 - **subject 匹配**（PRD D2）：
   1. `sso_subject = id_token.sub` 命中 → 直接登录；
   2. 未命中但 `email`/`username` claim 命中本地 `sys_user` → **自动绑定**（更新 auth_source=OIDC、sso_subject）→ 登录；
@@ -75,13 +79,15 @@
 ### 4.1 认证
 
 - 端点：`POST /api/system/auth/sso/ldap/login`（body: `username`/`password`）。
-- 流程：`LdapTemplate` 或 `LdapContextSource` bind（`{baseDN},{username}` 绑定 DN）→ 校验通过 → 匹配 `sAMAccountName/uid` → 同 OIDC 的 匹配/绑定/自动建号 → 建本地 Sa-Token 会话。
+- 流程：`LdapClientService`（**编程式 JNDI**，无 Spring Data LDAP 依赖）——管理连接（bind-dn/bind-password，可匿名）搜索用户 → 用户 DN + 密码二次 bind 校验 → 提取 `uid/mail/displayName/memberOf` → 同 OIDC 的 匹配/绑定/自动建号 → 建本地 Sa-Token 会话。
+- **provider URL 拼接 base-dn**（`ldap://host:389/dc=...`）：JNDI 相对搜索基（user-search-base）基于该 base 解析，否则报 LDAP error 32 No Such Object。
+- **memberOf 是 operational 属性**（多数 OpenLDAP 实现）：默认搜索不返回，需 `SearchControls.setReturningAttributes({"*", groupAttribute})` 显式请求；属性名大小写不敏感匹配。
 
 ### 4.2 用户同步
 
 - 端点：`POST /api/system/auth/sso/ldap/sync`（超管，auth:sync）。
-- 从配置 OU（`user-filter`）拉取用户：`(sAMAccountName/uid/email/displayName)` → 逐条 upsert `sys_user`（按 `sso_subject` 或 email 匹配）→ 关联角色映射。
-- **同步不删除平台账号**（下线用禁用，PRD R3）；同步日志落审计。
+- 从配置 OU（`user-filter` 的 `{0}` 替换为 `*`）拉取全量用户：`uid/mail/displayName/memberOf` → 逐条走 `UserService.resolveSsoUser`（按 `sso_subject` 或 email 匹配）→ 自动建号/自动绑定 + 角色映射。
+- **同步不删除平台账号**（下线用禁用，PRD R3）；同步日志落审计（`LDAP_SYNC`）。
 
 ## 5. 角色映射（F3）
 
@@ -105,7 +111,7 @@
 
 ## 7. 密码策略（F5）
 
-### 7.1 sys_user 扩展字段（Flyway V1.4.0，system 库）
+### 7.1 sys_user 扩展字段（Flyway V1.2.0，system 库）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -167,26 +173,32 @@ datanest:
     password-policy: { ... }   # 见 §7.2
 ```
 
-> 写配置走 Nacos 发布 API（直插库不下发）；改配置后需重启 system 服务（SSO 配置非热生效）。
+> 写配置走 Nacos 发布 API（直插库不下发）。**SSO 配置热生效**：`SsoConfigService` 启动时从 Nacos 拉取 + 注册配置监听，身份认证页保存即 publishConfig 热生效，无需重启。
+>
+> ⚠️ **运维注意事项**：`docker compose up`（任意服务）会经 app 服务的 depends_on 触发 `middleware-nacos-init`，将 `shared-configs/*.yaml`（含 `sso-config.yaml`）重置为仓库默认值（enabled=false）。若在身份认证页保存过运行时配置，重启后需重新保存。产品运行环境（非 compose）不受影响。
 
 ## 9. 网关放行与前端改造
 
 ### 9.1 网关白名单
 
-- `JwtAuthFilter` 白名单新增：`/api/system/auth/sso/**`（authorize/callback/ldap/login）。
+- `JwtAuthFilter` 白名单新增 4 个公开端点：
+  - `/api/system/auth/sso/status`（登录页状态）
+  - `/api/system/auth/sso/oidc/authorize`、`/api/system/auth/sso/oidc/callback`（OIDC 授权码流程）
+  - `/api/system/auth/sso/ldap/login`（AD 域登录）
+- `/api/system/auth/sso/config`（读改）与 `/api/system/auth/sso/ldap/sync` 仍需鉴权（`auth:config` / `auth:sync`，仅超管）。
 - SSO 回调端点不带 Sa-Token token，网关须放行。
 
 ### 9.2 前端改造
 
 | 页面 | 改动 |
 |------|------|
-| 登录页 | 本地表单 + 「企业 SSO 登录」/「AD 域登录」按钮；`sso-only` 模式隐藏本地表单（按配置加载）；SSO 按钮 302 跳转 authorize 端点 |
-| 身份认证（新） | 超管专属：OIDC 配置 / LDAP 配置 / 角色映射规则表 / 登录模式开关 / 密码策略表单 |
-| 用户管理 | 认证来源徽章（本地/OIDC/LDAP）+ 详情内绑定 subject + 解绑按钮 + 重置锁定 |
-| 强制改密页（新） | 密码过期后跳转，改密后进入系统 |
+| 登录页 | 本地表单 + 「企业 SSO 登录」/「AD 域登录」按钮；`sso-only` 模式隐藏本地表单、仅「管理员本地登录」折叠入口（admin 逃生通道）；登录成功 `mustChangePwd` 时跳强制改密页；`#ssoToken=` hash 处理（getMe 拉 userInfo） |
+| 身份认证（新） | 超管专属：登录策略 / OIDC 配置 / LDAP 配置（含「同步目录用户」）/ 角色映射规则表 / 密码策略表单；保存即热生效 |
+| 用户管理 | 认证来源徽章（本地/OIDC/LDAP）+ 锁定状态（"已锁定"）+ 解绑按钮（非 LOCAL）+ 解除锁定按钮 + 重置密码仅 LOCAL |
+| 强制改密页（新） | 密码过期登录后跳转，改密完成进入系统；`ProtectedRoute` 对 `mustChangePwd` 用户做全局守卫 |
 
-- 前端 API：`src/api/auth.ts` 增加 SSO 相关端点；`src/types/user.ts` 增加 `authSource`/`ssoSubject`/`lockedUntil`。
-- 登录模式/密码策略配置由 `getMe` 或专门配置接口下发给登录页。
+- 前端 API：`src/api/auth.ts` 增加 `getSsoStatus`/`getSsoConfig`/`saveSsoConfig`/`ldapLogin`/`ldapSyncUsers`/`unbindSso`/`unlockUser`；`UserVO` 增加 `authSource`/`ssoSubject`/`lockedUntil`；登录返回 `userInfo.mustChangePwd`。
+- 登录页初始化调 `GET /auth/sso/status`（公开）决定是否展示企业身份入口。
 
 ## 10. 审计埋点
 

@@ -21,6 +21,8 @@ spring:
       - optional:nacos:shared-datasource.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-security.yaml?group=shared-configs&refreshEnabled=true
       - optional:nacos:shared-rpc.yaml?group=shared-configs&refreshEnabled=true
+      # Sprint 14 SSO 配置（可在「身份认证」页在线编辑保存，Nacos 热生效）
+      - optional:nacos:sso-config.yaml?group=shared-configs&refreshEnabled=true
 
   cloud:
     nacos:

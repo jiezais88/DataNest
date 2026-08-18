@@ -449,6 +449,54 @@ services:
       - datanest-net
 
   # ============================================
+  # Mock OIDC IdP — Sprint 14 SSO 测试工具（非生产）
+  # 标准 OIDC 授权码流程 + RS256，issuer=http://host.docker.internal:9040
+  #   - system 容器经 host.docker.internal → 宿主 9040 → 本容器（端口映射回环）
+  #   - 宿主浏览器/curl 经 localhost:9040 直接访问
+  # profiles: ["test"] 默认不启动（对齐 Sprint 12 ADR-S12-004）
+  # 测试用户：alice(组 datanest-engineers) / bob(组 datanest-admins) / carol(无组)
+  # ============================================
+  middleware-test-idp:
+    build:
+      context: .
+      dockerfile: docker/mock-idp.Dockerfile
+    profiles: ["test"]
+    container_name: datanest-middleware-test-idp
+    restart: unless-stopped
+    ports:
+      - "9040:9040"
+    networks:
+      - datanest-net
+
+  # ============================================
+  # Test OpenLDAP — Sprint 14 SSO 测试工具（非生产）
+  # AD 域登录（LDAP bind 认证）+ 用户同步 E2E 自测
+  # profiles: ["test"] 默认不启动（对齐 Sprint 12 ADR-S12-004）
+  # 访问：宿主 localhost:1389（ldap://localhost:1389）
+  #   system 容器经 compose 网络用 ldap://middleware-test-openldap:389 直接访问
+  # 注意：osixia 镜像不支持容器启动时自动初始化 memberof/seed（启动机制限制），
+  #   初始化脚本已挂载到 /tmp，拉起后执行一次即可（幂等）：
+  #   docker exec datanest-middleware-test-openldap /tmp/init-mock-openldap.sh
+  #   种子用户：zhangsan(组 datanest-engineers) / lisi(组 datanest-admins)
+  # ============================================
+  middleware-test-openldap:
+    image: osixia/openldap:1.5.0
+    profiles: ["test"]
+    container_name: datanest-middleware-test-openldap
+    restart: unless-stopped
+    environment:
+      - LDAP_ORGANISATION=Example Inc
+      - LDAP_DOMAIN=example.com
+      - LDAP_ADMIN_PASSWORD=admin123
+      - LDAP_TLS=false
+    ports:
+      - "1389:389"
+    volumes:
+      - ./scripts/sso-mock-idp/init-mock-openldap.sh:/tmp/init-mock-openldap.sh:ro
+    networks:
+      - datanest-net
+
+  # ============================================
   # 应用层 (app-*) — 业务服务
   # ============================================
 

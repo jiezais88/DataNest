@@ -19,7 +19,11 @@ public enum AuditOpType {
     ENABLE("启用"),
     DISABLE("禁用"),
     RESET_PASSWORD("重置密码"),
-    TRIGGER("手动触发");
+    TRIGGER("手动触发"),
+    SSO_LOGIN("企业身份登录"),
+    LDAP_SYNC("LDAP 用户同步"),
+    UNBIND("解绑"),
+    UNLOCK("解锁");
 
     private final String label;
 

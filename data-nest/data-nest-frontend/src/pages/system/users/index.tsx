@@ -3,7 +3,15 @@ import {useSearchParams} from 'react-router-dom';
 import {Table, Tooltip} from 'antd';
 import type {ColumnsType} from 'antd/es/table';
 import type {CreateUserParams, UpdateUserParams, UserVO} from '@/api/auth';
-import {createUser, getUsers, resetPassword, toggleUserStatus, updateUser} from '@/api/auth';
+import {
+    createUser,
+    getUsers,
+    resetPassword,
+    toggleUserStatus,
+    unbindSso,
+    unlockUser,
+    updateUser,
+} from '@/api/auth';
 import {formatDateTime} from '@/utils/format';
 import {notify} from '@/utils/notify';
 import usePagedList from '@/hooks/usePagedList';
@@ -24,6 +32,8 @@ import {
     HiOutlineCheck,
     HiOutlineEye,
     HiOutlineKey,
+    HiOutlineLinkSlash,
+    HiOutlineLockOpen,
     HiOutlineNoSymbol,
     HiOutlinePencilSquare,
     HiOutlinePlus,
@@ -44,6 +54,17 @@ function getRoleName(code: string) {
     return ROLE_OPTIONS.find((r) => r.value === code)?.label || code;
 }
 
+/** Sprint 14：认证来源 → 徽标（LOCAL 本地账号 / OIDC 企业 SSO / LDAP 域账号） */
+const AUTH_SOURCE_META: Record<string, { label: string; variant: 'pending' | 'accent' }> = {
+    LOCAL: {label: '本地账号', variant: 'pending'},
+    OIDC: {label: '企业 SSO', variant: 'accent'},
+    LDAP: {label: '域账号', variant: 'accent'},
+};
+
+function isLocked(user: UserVO): boolean {
+    return !!user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now();
+}
+
 export default function UsersPage() {
     const [draftKeyword, setDraftKeyword] = useState('');
 
@@ -59,6 +80,11 @@ export default function UsersPage() {
     const [toggleLoading, setToggleLoading] = useState(false);
     const [resetPwdLoading, setResetPwdLoading] = useState(false);
     const [userSubmitting, setUserSubmitting] = useState(false);
+    // Sprint 14 SSO：解绑确认 + 解锁
+    const [unbindTarget, setUnbindTarget] = useState<UserVO | null>(null);
+    const [unbindOpen, setUnbindOpen] = useState(false);
+    const [unbindLoading, setUnbindLoading] = useState(false);
+    const [unlockLoadingId, setUnlockLoadingId] = useState<string | null>(null);
 
     const {
         list: users,
@@ -188,6 +214,35 @@ export default function UsersPage() {
         setResetPwdLoading(false);
     };
 
+    const handleUnlock = async (user: UserVO) => {
+        setUnlockLoadingId(user.id);
+        try {
+            await unlockUser(user.id);
+            notify.success(`已解除用户 "${user.username}" 的登录锁定`);
+            reload();
+        } catch {
+            // 错误已由拦截器 toast
+        } finally {
+            setUnlockLoadingId(null);
+        }
+    };
+
+    const handleUnbind = async () => {
+        if (!unbindTarget) return;
+        setUnbindLoading(true);
+        try {
+            await unbindSso(unbindTarget.id);
+            notify.success(`已解除 "${unbindTarget.username}" 的企业身份绑定`);
+            setUnbindOpen(false);
+            setUnbindTarget(null);
+            reload();
+        } catch {
+            // 错误已由拦截器 toast
+        } finally {
+            setUnbindLoading(false);
+        }
+    };
+
     const columns = useMemo<ColumnsType<UserVO>>(() => [
         {
             title: '用户名',
@@ -216,6 +271,15 @@ export default function UsersPage() {
             ),
         },
         {
+            title: '认证来源',
+            dataIndex: 'authSource',
+            width: 110,
+            render: (source: string) => {
+                const meta = AUTH_SOURCE_META[source] || {label: source || '-', variant: 'pending' as const};
+                return <DsStatusBadge label={meta.label} variant={meta.variant}/>;
+            },
+        },
+        {
             title: '邮箱',
             dataIndex: 'email',
             width: 200,
@@ -237,11 +301,14 @@ export default function UsersPage() {
             title: '状态',
             dataIndex: 'enabled',
             width: COL.STATUS,
-            render: (enabled: boolean) => (
-                enabled
+            render: (enabled: boolean, user: UserVO) => {
+                if (isLocked(user)) {
+                    return <DsStatusBadge variant="danger" label="已锁定"/>;
+                }
+                return enabled
                     ? <DsStatusBadge variant="success" label="正常"/>
-                    : <DsStatusBadge variant="danger" label="已禁用"/>
-            ),
+                    : <DsStatusBadge variant="danger" label="已禁用"/>;
+            },
         },
         {
             title: '创建人',
@@ -281,62 +348,94 @@ export default function UsersPage() {
             title: '操作',
             align: 'center',
             fixed: 'right' as const,
-            width: COL.OPERATION_4,
-            render: (_, user) => (
-                <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                    <Tooltip title="详情">
-                        <DsIconButton
-                            tone="default"
-                            onClick={() => {
-                                setEditUser(user);
-                                setModalMode('view');
-                                setModalOpen(true);
-                            }}
-                            aria-label="详情"
-                        >
-                            <HiOutlineEye size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
-                    <Tooltip title="编辑">
-                        <DsIconButton
-                            tone="accent"
-                            onClick={() => {
-                                setEditUser(user);
-                                setModalMode('edit');
-                                setModalOpen(true);
-                            }}
-                            aria-label="编辑"
-                        >
-                            <HiOutlinePencilSquare size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
-                    <Tooltip title="重置密码">
-                        <DsIconButton
-                            tone="accent"
-                            onClick={() => {
-                                setResetPwdTarget(user);
-                                setResetPwdOpen(true);
-                            }}
-                            aria-label="重置密码"
-                        >
-                            <HiOutlineKey size={14}/>
-                        </DsIconButton>
-                    </Tooltip>
-                    <Tooltip title={user.enabled ? '禁用' : '启用'}>
-                        <DsIconButton
-                            tone={user.enabled ? 'danger' : 'success'}
-                            onClick={() => {
-                                setConfirmTarget(user);
-                                setConfirmOpen(true);
-                            }}
-                            aria-label={user.enabled ? '禁用' : '启用'}
-                        >
-                            {user.enabled ? <HiOutlineNoSymbol size={14}/> :
-                                <HiOutlineCheck size={14}/>}
-                        </DsIconButton>
-                    </Tooltip>
-                </div>
-            ),
+            width: COL.OPERATION_5,
+            render: (_, user) => {
+                const locked = isLocked(user);
+                const isLocal = !user.authSource || user.authSource === 'LOCAL';
+                return (
+                    <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                        <Tooltip title="详情">
+                            <DsIconButton
+                                tone="default"
+                                onClick={() => {
+                                    setEditUser(user);
+                                    setModalMode('view');
+                                    setModalOpen(true);
+                                }}
+                                aria-label="详情"
+                            >
+                                <HiOutlineEye size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                        <Tooltip title="编辑">
+                            <DsIconButton
+                                tone="accent"
+                                onClick={() => {
+                                    setEditUser(user);
+                                    setModalMode('edit');
+                                    setModalOpen(true);
+                                }}
+                                aria-label="编辑"
+                            >
+                                <HiOutlinePencilSquare size={14}/>
+                            </DsIconButton>
+                        </Tooltip>
+                        {isLocal && (
+                            <Tooltip title="重置密码">
+                                <DsIconButton
+                                    tone="accent"
+                                    onClick={() => {
+                                        setResetPwdTarget(user);
+                                        setResetPwdOpen(true);
+                                    }}
+                                    aria-label="重置密码"
+                                >
+                                    <HiOutlineKey size={14}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        )}
+                        {!isLocal && (
+                            <Tooltip title="解绑企业身份">
+                                <DsIconButton
+                                    tone="danger"
+                                    onClick={() => {
+                                        setUnbindTarget(user);
+                                        setUnbindOpen(true);
+                                    }}
+                                    aria-label="解绑企业身份"
+                                >
+                                    <HiOutlineLinkSlash size={14}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        )}
+                        {locked && (
+                            <Tooltip title="解除锁定">
+                                <DsIconButton
+                                    tone="accent"
+                                    onClick={() => handleUnlock(user)}
+                                    aria-label="解除锁定"
+                                    disabled={unlockLoadingId === user.id}
+                                >
+                                    <HiOutlineLockOpen size={14}/>
+                                </DsIconButton>
+                            </Tooltip>
+                        )}
+                        <Tooltip title={user.enabled ? '禁用' : '启用'}>
+                            <DsIconButton
+                                tone={user.enabled ? 'danger' : 'success'}
+                                onClick={() => {
+                                    setConfirmTarget(user);
+                                    setConfirmOpen(true);
+                                }}
+                                aria-label={user.enabled ? '禁用' : '启用'}
+                            >
+                                {user.enabled ? <HiOutlineNoSymbol size={14}/> :
+                                    <HiOutlineCheck size={14}/>}
+                            </DsIconButton>
+                        </Tooltip>
+                    </div>
+                );
+            },
         },
     ], []);
 
@@ -416,7 +515,7 @@ export default function UsersPage() {
                             rowKey="id"
                             loading={loading}
                             pagination={false}
-                            scroll={{x: 1290}}
+                            scroll={{x: 1460}}
                             columns={columns}
                             className="prototype-table prototype-table-flush"
                             locale={{
@@ -473,6 +572,22 @@ export default function UsersPage() {
                 onCancel={() => {
                     setResetPwdOpen(false);
                     setResetPwdTarget(null);
+                }}
+            />
+
+            {/* Sprint 14：解绑企业身份（恢复本地认证） */}
+            <ConfirmDialog
+                open={unbindOpen}
+                title="解绑企业身份"
+                message={`确定要解除用户 "${unbindTarget?.username}" 的企业身份绑定吗？解绑后需通过本地账号登录。`}
+                confirmLabel="确认解绑"
+                danger
+                loading={unbindLoading}
+                onConfirm={handleUnbind}
+                onCancel={() => {
+                    if (unbindLoading) return;
+                    setUnbindOpen(false);
+                    setUnbindTarget(null);
                 }}
             />
 

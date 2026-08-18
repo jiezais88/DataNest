@@ -17,7 +17,8 @@ public enum AuditResourceType {
     DATA_API("数据 API"),
     API_KEY("API Key"),
     SENSITIVITY("数据分级分类"),
-    EXECUTION_QUEUE("执行队列");
+    EXECUTION_QUEUE("执行队列"),
+    SSO_CONFIG("身份认证");
 
     private final String label;
 

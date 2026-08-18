@@ -1,0 +1,60 @@
+# ============================================
+# sso-config.yaml
+# Sprint 14 SSO + 认证安全配置（datanest.sso.*）
+# 消费方: app-system（可在线编辑并热生效，见「身份认证」页）
+# 注意: 密钥类字段（client-secret / bind-password）存 Nacos，生产环境务必做好 Nacos 访问控制；
+#       enabled=false 时登录页不显示 SSO 入口，本地登录行为完全不变（存量兼容）。
+# ============================================
+datanest:
+  sso:
+    # SSO 总开关：false 时 SSO/LDAP 入口不可用，不影响本地登录
+    enabled: false
+    # 登录模式：mixed（本地 + 企业身份）/ sso-only（仅企业身份，admin 本地登录保底）
+    mode: mixed
+    # 前端地址（SSO 回调后 302 重定向目标，带 token fragment）
+    frontend-url: http://localhost:3000
+    oidc:
+      enabled: false
+      # IdP 配置（授权码流程；可配授权端点，未配时走 OIDC Discovery）
+      issuer: https://idp.example.com
+      authorization-endpoint: ""
+      token-endpoint: ""
+      jwks-uri: ""
+      client-id: datanest
+      client-secret: ""
+      scope: openid,profile,email
+      redirect-uri: http://localhost:8080/api/system/auth/sso/oidc/callback
+    ldap:
+      enabled: false
+      url: ldap://localhost:389
+      base-dn: dc=example,dc=com
+      bind-dn: cn=admin,dc=example,dc=com
+      bind-password: ""
+      # 用户查询过滤器，{0} 替换为登录用户名；同步时替换为 *（全量拉取）
+      user-filter: (&(objectClass=inetOrgPerson)(uid={0}))
+      user-search-base: ou=people
+      username-attribute: uid
+      email-attribute: mail
+      display-name-attribute: displayName
+      # 组属性（memberOf 等多值属性），供角色映射 claim 使用
+      group-attribute: memberOf
+    role-mapping:
+      # 未命中任何规则时的默认角色（D3，可配置）
+      default-role: DATA_ANALYST
+      # claim 值 → 平台角色 映射规则（D4：命中则重新映射覆盖，未命中保留手动调整）
+      rules:
+        - {claim: groups, value: datanest-engineers, roles: [DATA_ENGINEER]}
+        - {claim: groups, value: datanest-admins, roles: [GOVERNANCE_ADMIN]}
+    password-policy:
+      # 复杂度（仅 LOCAL 用户）
+      min-length: 8
+      require-uppercase: true
+      require-lowercase: true
+      require-digit: true
+      require-special: false
+      # 过期（0 = 不过期）
+      expire-days: 90
+      warn-before-days: 7
+      # 失败锁定
+      fail-max: 5
+      lock-minutes: 30

@@ -1,8 +1,10 @@
 import {create} from 'zustand';
-import {getMe} from '@/api/auth';
+import {getMe, type LoginUserInfo} from '@/api/auth';
 
 const TOKEN_KEY = 'token';
 const USER_INFO_KEY = 'datanest_user_info';
+
+export type {LoginUserInfo as UserInfo};
 
 interface UserInfo {
     userId: string;
@@ -10,6 +12,8 @@ interface UserInfo {
     roles: string[];
     /** Sprint 11 F2：登录返回的按钮级权限点 code 列表（如 datasource:view） */
     permissions?: string[];
+    /** Sprint 14：密码过期强制改密标记（改密完成后清除） */
+    mustChangePwd?: boolean;
 }
 
 interface AuthState {

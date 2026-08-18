@@ -54,6 +54,8 @@
         <cdc.version>3.6.0-2.2</cdc.version>
         <!-- flink-core 2.2.1 配套 shaded guava（CDC 传递依赖带 31.1，显式锁定 33.4.0-jre-20.0） -->
         <flink-shaded-guava.version>33.4.0-jre-20.0</flink-shaded-guava.version>
+        <!-- Nimbus JOSE + JWT（Sprint 14 SSO：自研 OIDC 客户端验签 id_token / 解析 JWK，决策 D8） -->
+        <nimbus-jose-jwt.version>9.47</nimbus-jose-jwt.version>
     </properties>
 
     <dependencyManagement>
@@ -277,6 +279,13 @@
                 <groupId>tech.powerjob</groupId>
                 <artifactId>powerjob-worker-spring-boot-starter</artifactId>
                 <version>${powerjob.version}</version>
+            </dependency>
+
+            <!-- Nimbus JOSE + JWT（Sprint 14 SSO：OIDC id_token 验签 / JWK 解析，无 Spring Security 依赖） -->
+            <dependency>
+                <groupId>com.nimbusds</groupId>
+                <artifactId>nimbus-jose-jwt</artifactId>
+                <version>${nimbus-jose-jwt.version}</version>
             </dependency>
 
             <!-- Flink CDC 提交端依赖集（Sprint 8 M0 验证范本照抄，realtime 专用；版本统一由根 pom 管理） -->

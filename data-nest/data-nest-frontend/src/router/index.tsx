@@ -1,5 +1,6 @@
 import {createBrowserRouter} from 'react-router-dom';
 import LoginPage from '@/pages/login';
+import ForceChangePasswordPage from '@/pages/force-change-password';
 import Layout from '@/components/Layout';
 import {
     CollectHistoryRedirect,
@@ -17,6 +18,7 @@ const AuditLogsPage = lazyPage(() => import('@/pages/system/audit-logs'));
 const RolesPage = lazyPage(() => import('@/pages/system/roles'));
 const DataPermissionPage = lazyPage(() => import('@/pages/system/data-permission'));
 const ExecutionQueuesPage = lazyPage(() => import('@/pages/system/execution-queues'));
+const AuthConfigPage = lazyPage(() => import('@/pages/system/auth-config'));
 const DataSourcesPage = lazyPage(() => import('@/pages/engineering/datasources'));
 const CollectTasksPage = lazyPage(() => import('@/pages/governance/collect-tasks'));
 const CollectHistoryGlobalPage = lazyPage(() => import('@/pages/governance/collect-tasks/history-global'));
@@ -58,6 +60,15 @@ export const router = createBrowserRouter([
         element: <LoginPage/>,
     },
     {
+        // Sprint 14 密码过期强制改密（不进 Layout；skipPwdCheck 避免自跳循环）
+        path: '/force-change-password',
+        element: (
+            <ProtectedRoute skipPwdCheck>
+                <ForceChangePasswordPage/>
+            </ProtectedRoute>
+        ),
+    },
+    {
         // DAG 编辑器：全屏画布（不进 Layout，无侧边栏/顶栏，对齐原型）
         path: '/engineering/dags/new',
         element: (
@@ -97,6 +108,7 @@ export const router = createBrowserRouter([
             {path: 'system/roles', element: <RolesPage/>},
             {path: 'system/data-permission', element: <DataPermissionPage/>},
             {path: 'system/execution-queues', element: <ExecutionQueuesPage/>},
+            {path: 'system/auth-config', element: <AuthConfigPage/>},
             {path: 'engineering/datasources', element: <DataSourcesPage/>},
             {path: 'engineering/cdc-pipelines', element: <CdcPipelinesPage/>},
             {path: 'engineering/cdc-pipelines/new', element: <CdcPipelineWizardPage/>},

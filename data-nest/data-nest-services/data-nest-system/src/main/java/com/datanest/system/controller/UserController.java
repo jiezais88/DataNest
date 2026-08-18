@@ -105,4 +105,22 @@ public class UserController {
         userService.resetPassword(userId, req.newPassword());
         return Result.ok(null);
     }
+
+    @Operation(summary = "解绑企业身份（仅超管）", description = "Sprint 14 SSO：解除 OIDC/LDAP 绑定，恢复本地认证")
+    @SaCheckPermission(PermissionCode.USER_UPDATE)
+    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.UNBIND,
+            resourceId = "#userId", resourceName = "#result.data.username")
+    @PutMapping("/{userId}/unbind-sso")
+    public Result<UserVO> unbindSso(@Parameter(description = "用户 ID") @PathVariable Long userId) {
+        return Result.ok(userService.unbindSso(userId));
+    }
+
+    @Operation(summary = "解除登录锁定（仅超管）", description = "Sprint 14 认证安全：清零失败计数与锁定截止时间")
+    @SaCheckPermission(PermissionCode.USER_UPDATE)
+    @AuditLog(resourceType = AuditResourceType.USER, opType = AuditOpType.UNLOCK,
+            resourceId = "#userId", resourceName = "#result.data.username")
+    @PutMapping("/{userId}/unlock")
+    public Result<UserVO> unlock(@Parameter(description = "用户 ID") @PathVariable Long userId) {
+        return Result.ok(userService.unlockUser(userId));
+    }
 }

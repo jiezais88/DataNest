@@ -16,6 +16,16 @@ public class User {
     private String email;
     private String phone;
     private Boolean enabled;
+    /** 认证来源：LOCAL（本地密码）/ OIDC / LDAP（Sprint 14 SSO） */
+    private String authSource;
+    /** IdP 唯一标识：OIDC sub / LDAP dn（部分唯一索引） */
+    private String ssoSubject;
+    /** 密码过期时间（仅 LOCAL 用户） */
+    private LocalDateTime passwordExpireAt;
+    /** 连续登录失败次数（仅 LOCAL 用户） */
+    private Integer loginFailCount;
+    /** 登录锁定截止时间（仅 LOCAL 用户） */
+    private LocalDateTime lockedUntil;
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;
@@ -84,6 +94,46 @@ public class User {
 
     public void setEnabled(Boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public String getAuthSource() {
+        return authSource;
+    }
+
+    public void setAuthSource(String authSource) {
+        this.authSource = authSource;
+    }
+
+    public String getSsoSubject() {
+        return ssoSubject;
+    }
+
+    public void setSsoSubject(String ssoSubject) {
+        this.ssoSubject = ssoSubject;
+    }
+
+    public LocalDateTime getPasswordExpireAt() {
+        return passwordExpireAt;
+    }
+
+    public void setPasswordExpireAt(LocalDateTime passwordExpireAt) {
+        this.passwordExpireAt = passwordExpireAt;
+    }
+
+    public Integer getLoginFailCount() {
+        return loginFailCount;
+    }
+
+    public void setLoginFailCount(Integer loginFailCount) {
+        this.loginFailCount = loginFailCount;
+    }
+
+    public LocalDateTime getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(LocalDateTime lockedUntil) {
+        this.lockedUntil = lockedUntil;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -13,6 +13,23 @@ public enum ErrorCode {
     FORBIDDEN(1005, "无权限访问"),
     OLD_PASSWORD_ERROR(1006, "旧密码错误"),
 
+    // Sprint 14 SSO + 认证安全 errors（1xxx）
+    PASSWORD_POLICY_VIOLATION(1007, "密码不满足复杂度要求"),
+    ACCOUNT_LOCKED(1008, "登录失败次数过多，账号已锁定，请稍后再试"),
+    PASSWORD_EXPIRED(1009, "密码已过期，请修改密码后登录"),
+    SSO_NOT_CONFIGURED(1010, "SSO 未配置或不可达，请用本地账号登录"),
+    SSO_AUTH_FAILED(1011, "企业身份认证失败"),
+    SSO_BINDING_CONFLICT(1012, "该邮箱/账号已被其他企业身份绑定，无法自动绑定"),
+    SSO_ONLY_MODE(1013, "当前为仅企业身份登录模式，本地账号不可用"),
+    LOCAL_AUTH_NOT_ALLOWED(1014, "该账号为企业身份账号，请通过企业身份登录"),
+    SSO_NOT_BOUND(1015, "该用户未绑定企业身份"),
+    LDAP_CONNECTION_FAILED(1016, "LDAP 服务器连接失败"),
+    LDAP_AUTH_FAILED(1017, "域账号或密码错误"),
+    LDAP_SYNC_FAILED(1018, "LDAP 用户同步失败"),
+    SSO_STATE_INVALID(1019, "SSO 回调校验失败（state 不匹配或已过期）"),
+    SSO_ID_TOKEN_INVALID(1020, "企业身份令牌校验失败"),
+    CANNOT_UNBIND_SELF(1021, "不能解绑自己的企业身份绑定"),
+
     // User management errors (2xxx)
     USERNAME_EXISTS(2001, "用户名已存在"),
     INVALID_ROLE(2002, "无效的角色"),

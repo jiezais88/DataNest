@@ -29,6 +29,9 @@ data-nest-frontend/
 data/
 scripts/
 shared-configs/
+# 例外：mock-idp.Dockerfile 构建需要 scripts/sso-mock-idp/server.js
+!scripts/sso-mock-idp/
+!scripts/sso-mock-idp/server.js
 
 # 文档
 *.md

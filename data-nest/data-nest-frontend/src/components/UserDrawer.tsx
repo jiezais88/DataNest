@@ -97,6 +97,17 @@ export default function UserDrawer({open, editUser, mode, submitting = false, on
                                placeholder="请输入用户名"/>
                     </div>
 
+                    {isView && (
+                        <div>
+                            <label className="block text-ds-small text-ds-text-secondary mb-1">认证来源</label>
+                            <div className="px-ds-3 py-ds-2 rounded-ds-sm bg-ds-bg-hover text-ds-body text-ds-text-secondary">
+                                {editUser?.authSource === 'OIDC' && '企业 SSO（OIDC）'}
+                                {editUser?.authSource === 'LDAP' && '企业域账号（LDAP/AD）'}
+                                {(!editUser?.authSource || editUser?.authSource === 'LOCAL') && '本地账号'}
+                            </div>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-ds-small text-ds-text-secondary mb-1">
                             密码 {isEdit && <span className="text-ds-text-muted">（不修改则留空）</span>}

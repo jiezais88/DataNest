@@ -33,6 +33,11 @@ public class SaTokenConfig {
                 .addExclude(
                         "/api/system/auth/login",
                         "/api/system/auth/logout",
+                        // Sprint 14 SSO：登录页状态 / OIDC 授权与回调 / LDAP 域登录（config 与 sync 仍需鉴权）
+                        "/api/system/auth/sso/status",
+                        "/api/system/auth/sso/oidc/authorize",
+                        "/api/system/auth/sso/oidc/callback",
+                        "/api/system/auth/sso/ldap/login",
                         "/actuator/gateway/**",
                         "/actuator/health",
                         // 决策 ADR-S3-012：DS 回调内部接口走 gateway，不鉴权
