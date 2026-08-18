@@ -225,7 +225,7 @@ export default function ApiDetailPage() {
                             )}
                             <p className="text-ds-caption text-ds-text-muted mt-ds-3 mb-ds-1">排序 / 分页</p>
                             <p className="text-ds-small text-ds-text-secondary">
-                                排序由 SQL 内 ORDER BY 决定（不支持外部排序）
+                                排序以 SQL 内写的排序为准（不支持外部传参排序）
                                 <span className="text-ds-text-muted"> · </span>
                                 {detail.paginated === 1 ? `分页启用（pageSize 上限 ${detail.pageSizeMax ?? 100}）` : '分页关闭'}
                             </p>
@@ -233,7 +233,7 @@ export default function ApiDetailPage() {
                         <div>
                             <p className="text-ds-caption text-ds-text-muted mb-ds-2">返回列</p>
                             <p className="text-ds-small text-ds-text-muted">
-                                由 SQL 的 SELECT 决定，不提供字段裁剪（已知边界：请确保 SQL 未暴露敏感列）。
+                                由 SQL 查询结果决定，不提供字段裁剪（已知边界：请确保 SQL 未暴露敏感列）。
                             </p>
                         </div>
                     </div>
@@ -298,10 +298,10 @@ export default function ApiDetailPage() {
                             <HiOutlineCodeBracketSquare size={16} className="text-ds-accent"/>
                             SQL 定义
                         </h3>
-                        <span className="text-ds-caption text-ds-text-muted">只读 SELECT · 保存时重新校验并过权限闸门</span>
+                        <span className="text-ds-caption text-ds-text-muted">只读查询 · 保存时重新校验并检查权限</span>
                     </div>
-                    <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden bg-[#0f172a]">
-                        <pre className="m-0 p-ds-3.5 font-mono text-ds-small leading-relaxed whitespace-pre overflow-x-auto">
+                    <div className="border border-ds-border-subtle rounded-ds-md overflow-hidden bg-[#1e1e1e]">
+                        <pre className="m-0 p-ds-4 font-mono text-ds-small leading-relaxed whitespace-pre overflow-x-auto">
                             <SqlHighlight sql={detail.sqlText}/>
                         </pre>
                     </div>
@@ -338,7 +338,7 @@ export default function ApiDetailPage() {
                                         </span>
                                     ))}
                                     <span className="text-ds-caption text-ds-text-muted">
-                                        用于权限校验与血缘（fail-closed）
+                                        用于权限校验与血缘
                                     </span>
                                 </span>
                             )}

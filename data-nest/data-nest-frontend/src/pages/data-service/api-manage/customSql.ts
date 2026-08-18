@@ -123,12 +123,12 @@ export function clientCheckReadOnly(sql: string): string | null {
     const core = trimmed.replace(/;+\s*$/, '');
     if (core.includes(';')) {
         const rest = core.slice(core.lastIndexOf(';') + 1).trim();
-        if (rest) return '仅支持单条 SQL 语句（检测到「;」后仍有内容，多语句将被拒绝）';
+        if (rest) return '仅支持一条查询语句（检测到「;」后仍有内容，多语句将被拒绝）';
     }
     const noComments = trimmed.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--.*$/gm, ' ').trim();
     const kw = (noComments.match(/^\s*([A-Za-z]+)/)?.[1] ?? '').toUpperCase();
     if (kw !== 'SELECT' && kw !== 'WITH') {
-        return kw ? `仅支持只读 SELECT（当前以 ${kw} 开头，写操作/DDL 将被拒绝）` : '无法识别 SQL 语句，请以 SELECT / WITH 开头';
+        return kw ? `仅支持只读查询（当前以 ${kw} 开头，修改/删除类语句将被拒绝）` : '无法识别 SQL 语句，请以查询语句开头';
     }
     return null;
 }

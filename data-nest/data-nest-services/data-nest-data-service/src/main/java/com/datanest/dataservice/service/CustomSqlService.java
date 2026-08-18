@@ -300,7 +300,7 @@ public class CustomSqlService {
                 int j = skipWhitespace(sql, i + 1);
                 if (j < n) {
                     throw new BusinessException(ErrorCode.SQL_NOT_READ_ONLY,
-                            "仅支持单条 SQL 语句（检测到「;」后仍有内容，多语句将被拒绝）");
+                            "仅支持一条查询语句（检测到「;」后仍有内容，多语句将被拒绝）");
                 }
                 return; // 尾部纯分号 → 允许
             }

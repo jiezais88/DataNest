@@ -491,7 +491,7 @@ export default function ApiCreateWizardPage() {
                             <HiOutlineExclamationTriangle size={15} className="mt-0.5 flex-shrink-0"/>
                             <span>
                                 自定义 SQL 为只读查询，保存时将校验涉及的每一张表：机密表不可生成对外 API，
-                                超出你的数据权限的表将导致整体拒绝（fail-closed）。
+                                超出你数据权限的表将导致整张 API 无法创建。
                             </span>
                         </div>
                     </div>

@@ -70,7 +70,7 @@ public class ReadOnlySqlValidator {
         for (Statement statement : statements.getStatements()) {
             if (!isReadOnly(statement)) {
                 throw new BusinessException(ErrorCode.SQL_NOT_READ_ONLY,
-                        "仅允许 SELECT/WITH/SHOW/DESC/EXPLAIN 只读语句，禁止执行: " + statement.getClass().getSimpleName());
+                        "仅允许只读查询语句，禁止执行写操作/DDL: " + statement.getClass().getSimpleName());
             }
             // 提取表引用（Select 含子查询/UNION；SHOW/EXPLAIN 通常无表）
             List<String> stmtTables = finder.getTableList(statement);

@@ -22,6 +22,7 @@ import type {CustomSqlParamDef, CustomSqlParamType, SqlDatasource} from '@/types
 import DsButton from '@/components/DsButton';
 import DsFilterSelect from '@/components/DsFilterSelect';
 import DsSelect from '@/components/DsSelect';
+import DsSpinner from '@/components/DsSpinner';
 import DsTableEmpty from '@/components/DsTableEmpty';
 import {getErrorMessage} from '@/utils/error';
 import {formatNumber} from '@/utils/format';
@@ -89,7 +90,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
         }
         const params = syncParamsFromSql(sql, value.sqlParams);
         const tables = extractInvolvedTables(sql);
-        const msg = `校验通过：识别参数 ${params.length} 个 · 涉及表 ${tables.length} 张（保存时由后端做权威校验与权限闸门）`;
+        const msg = `校验通过：识别参数 ${params.length} 个 · 涉及表 ${tables.length} 张（保存时系统将再次校验并检查权限）`;
         onChange({...value, sqlParams: params, involvedTables: tables, validated: true, validateMessage: msg, dirty: false});
     }, [value, onChange]);
 
@@ -120,7 +121,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
         // 本地同步参数（避免依赖 state 异步更新），未定义的新参数在预览中自动取示例值
         const params = syncParamsFromSql(sql, value.sqlParams);
         setPreviewing(true);
-        setPreview(null);
+        // 不清空旧结果：新结果到达后直接替换，避免预览区整块消失导致页面跳动
         setPreviewError(null);
         setPreviewHint(null);
         try {
@@ -136,7 +137,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
                 .filter((p) => !(p.defaultValue && p.defaultValue.trim()))
                 .map((p) => `:${p.name}`);
             setPreviewHint(res.data && res.data.rowCount === 0 && sampleUsed.length > 0
-                ? `结果为空：参数 ${sampleUsed.join('、')} 未设默认值，预览使用了示例值，日期/数值列比较可能查不到数据。请在参数表修正类型（如日期参数改为 DATE）或填写默认值后重新试跑。`
+                ? `结果为空：参数 ${sampleUsed.join('、')} 未设默认值，预览使用了示例值，日期/数值列比较可能查不到数据。请在参数表修正类型（如日期参数改为「日期」）或填写默认值后重新试跑。`
                 : null);
         } catch (e) {
             setPreviewError(getErrorMessage(e, '预览执行失败'));
@@ -152,6 +153,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
             sqlParams: value.sqlParams.map((p) => (p.name === name ? {...p, ...patch} : p)),
             validated: false,
             dirty: true,
+            validateMessage: '参数已变更，请重新校验',
         });
     }, [value, onChange]);
 
@@ -161,6 +163,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
             sqlParams: value.sqlParams.filter((p) => p.name !== name),
             validated: false,
             dirty: true,
+            validateMessage: '参数已变更，请重新校验',
         });
     }, [value, onChange]);
 
@@ -203,7 +206,7 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
                 <label className="block text-ds-small text-ds-text-secondary mb-1">
                     SQL（只读） <span className="text-ds-danger">*</span>
                 </label>
-                <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden bg-[#1e1e1e]">
+                <div className="border border-ds-border-subtle rounded-ds-md overflow-hidden bg-[#1e1e1e]">
                     <Editor
                         height="220px"
                         defaultLanguage="sql"
@@ -346,35 +349,46 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
                             </span>
                         ))}
                         <span className="text-ds-caption text-ds-text-muted">
-                            共 {value.involvedTables.length} 张 · 任一为机密/未特批内部/无权限表将整体拒绝（fail-closed）
+                            共 {value.involvedTables.length} 张 · 任一为机密/未特批内部/无权限表，整张 API 将无法创建
                         </span>
                     </div>
                 )}
             </div>
 
             {/* 试跑预览结果 */}
-            {preview && (
+            {(preview || previewing) && (
                 <div>
                     <div className="flex items-center justify-between mb-1">
                         <label className="block text-ds-small text-ds-text-secondary">
                             预览结果 <span className="text-ds-caption text-ds-text-muted font-normal">
-                            {preview.columns.length} 列 · {formatNumber(preview.rowCount)} 行 · 用时 {preview.durationMs}ms
-                            {preview.truncated ? '（已截断，仅展示前 100 条）' : ''}
+                            {preview ? `${preview.columns.length} 列 · ${formatNumber(preview.rowCount)} 行 · 用时 ${preview.durationMs}ms` : '…'}
+                            {preview?.truncated ? '（已截断，仅展示前 100 条）' : ''}
                         </span>
                         </label>
+                        {previewing && preview && (
+                            <span className="text-ds-caption text-ds-text-muted">正在重新预览…</span>
+                        )}
                     </div>
-                    <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden max-h-[280px] overflow-y-auto">
-                        <Table
-                            className="prototype-table"
-                            columns={previewColumns}
-                            dataSource={preview.rows}
-                            rowKey={(_, idx) => idx ?? 0}
-                            pagination={false}
-                            size="small"
-                            scroll={{x: 'max-content'}}
-                            locale={{emptyText: <DsTableEmpty description="预览结果为空"/>}}
-                        />
-                    </div>
+                    {previewing && !preview && (
+                        <div className="flex items-center gap-ds-2 px-ds-3 py-ds-4 border border-ds-border-subtle rounded-ds-sm text-ds-small text-ds-text-muted">
+                            <DsSpinner size={14}/>
+                            正在执行预览…
+                        </div>
+                    )}
+                    {preview && (
+                        <div className="border border-ds-border-subtle rounded-ds-sm overflow-hidden max-h-[280px] overflow-y-auto">
+                            <Table
+                                className="prototype-table"
+                                columns={previewColumns}
+                                dataSource={preview.rows}
+                                rowKey={(_, idx) => idx ?? 0}
+                                pagination={false}
+                                size="small"
+                                scroll={{x: 'max-content'}}
+                                locale={{emptyText: <DsTableEmpty description="预览结果为空"/>}}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
             {previewError && (

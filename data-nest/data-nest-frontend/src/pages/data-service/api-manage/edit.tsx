@@ -111,7 +111,7 @@ export default function ApiEditPage() {
                     involvedTables: (d.involvedTables ?? []).map((t) =>
                         [t.database, t.schema, t.table].filter(Boolean).join('.') || t.table),
                     validated: true,
-                    validateMessage: '已保存的 SQL 定义；修改后请重新校验，保存时后端会重新校验并过权限闸门',
+                    validateMessage: '已保存的 SQL 定义；修改后请重新校验，保存时系统会再次校验并检查权限',
                     dirty: false,
                 });
                 setConfig({
@@ -211,7 +211,7 @@ export default function ApiEditPage() {
                     <h1 className="text-ds-display text-ds-text-primary">编辑 API</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
                         {isCustomSql
-                            ? '自定义 SQL 形态：可修改 SQL 与参数定义，保存时后端将重新校验（只读/参数/权限闸门）并更新血缘。'
+                            ? '自定义 SQL 形态：可修改 SQL 与参数定义，保存时系统将再次校验（只读/参数/权限）并更新血缘。'
                             : 'API 与数据表的绑定创建后不可更换；需要换表时请新建 API。'}
                     </p>
                 </div>
@@ -250,7 +250,7 @@ export default function ApiEditPage() {
             {isCustomSql && customSql?.dirty && (
                 <div className="flex items-start gap-ds-2 px-ds-3 py-ds-2 rounded-ds-sm bg-ds-warning-light text-ds-warning text-ds-small mb-ds-4">
                     <HiOutlineExclamationTriangle size={15} className="mt-0.5 flex-shrink-0"/>
-                    <span>SQL 或参数已修改，请点击「校验 SQL」通过后再保存；保存时后端会重新校验并过敏感度/数据权限闸门。</span>
+                    <span>SQL 或参数已修改，请点击「校验 SQL」通过后再保存；保存时系统会再次校验并检查敏感度/数据权限。</span>
                 </div>
             )}
 

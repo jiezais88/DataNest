@@ -250,7 +250,7 @@ export default function ApiConfigForm({columns, value, onChange, queryType, sqlP
                     <HiOutlineExclamationTriangle size={15} className="mt-0.5 flex-shrink-0"/>
                     <span>
                         已知边界：自定义 SQL 的返回列由 SQL 决定，不提供字段裁剪；请确保 SQL 未暴露敏感列（如手机号、身份证），
-                        保存时后端会对涉及的每张表做敏感度与数据权限校验（fail-closed 整体拒绝）。
+                        保存时系统会对涉及的每张表检查敏感度与数据权限，任一不过整张 API 将被拒绝。
                     </span>
                 </div>
             )}

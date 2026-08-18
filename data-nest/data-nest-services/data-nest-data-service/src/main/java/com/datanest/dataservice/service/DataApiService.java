@@ -427,7 +427,7 @@ public class DataApiService {
     private List<CustomSqlService.InvolvedTable> applyCustomSqlDefinition(DataApi api, DataApiCreateRequest request) {
         String sql = trimToNull(request.getSqlText());
         if (sql == null) {
-            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "CUSTOM_SQL 形态必须提供 SQL 文本");
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "自定义 SQL 形态必须提供 SQL 文本");
         }
         String databaseName = trimToNull(request.getDatabaseName());
         if (databaseName == null) {
@@ -460,7 +460,7 @@ public class DataApiService {
                                                                       UpdateWrapper<DataApi> wrapper) {
         String sql = trimToNull(request.getSqlText());
         if (sql == null) {
-            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "CUSTOM_SQL 形态必须提供 SQL 文本");
+            throw new BusinessException(ErrorCode.API_DEFINITION_INVALID, "自定义 SQL 形态必须提供 SQL 文本");
         }
         List<CustomSqlService.InvolvedTable> tables = customSqlService.extractInvolvedTables(
                 sql, api.getDatabaseName(), api.getSchemaName());
@@ -499,7 +499,7 @@ public class DataApiService {
                 throw e;
             }
             throw new BusinessException(ErrorCode.CUSTOM_SQL_TABLE_FORBIDDEN,
-                    "涉及表被安全闸门拒绝: " + qualifiedTable(database, schema, table) + "（" + e.getMessage() + "）");
+                    "涉及表未通过安全检查: " + qualifiedTable(database, schema, table) + "（" + e.getMessage() + "）");
         }
     }
 
@@ -518,7 +518,7 @@ public class DataApiService {
         List<CustomSqlService.InvolvedTable> tables = parseInvolvedTables(api.getInvolvedTables());
         if (tables.isEmpty()) {
             throw new BusinessException(ErrorCode.CUSTOM_SQL_TABLE_FORBIDDEN,
-                    "涉及表清单缺失或损坏，无法通过安全闸门，已阻止操作");
+                    "涉及表清单缺失或损坏，无法通过安全检查，已阻止操作");
         }
         for (CustomSqlService.InvolvedTable t : tables) {
             checkCustomSqlTableGates(api.getDatasourceId(), t.database(), t.schema(), t.table());

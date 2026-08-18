@@ -67,7 +67,7 @@ test('CS-UI-01 双形态向导：第 1 步出现「选表/自定义 SQL」单选
     await expect(customCard).toBeVisible();
     // 默认选表
     await expect(tableCard.locator('input[type="radio"]')).toBeChecked();
-    await expect(page.getByText(/fail-closed/)).toBeVisible(); // 安全提示条
+    await expect(page.getByText(/机密表不可生成对外 API/)).toBeVisible(); // 安全提示条
 });
 
 test('CS-UI-02 自定义 SQL 定义：数据源单选（Doris）+ 编辑器 + 参数自动识别 + 涉及表', async ({page}) => {
@@ -98,7 +98,7 @@ test('CS-UI-03 只读校验：DELETE 语句行内报错，禁止进入下一步'
     // 下一步被拦（门控先做只读预检：DELETE 直接弹只读错误 toast，优于「请先校验」提示）
     await page.getByRole('button', {name: /下一步/}).click();
     await expect(page.locator('.ant-message-notice-title')
-        .getByText(/仅支持只读 SELECT[（(]当前以 DELETE 开头/).first()).toBeVisible();
+        .getByText(/仅支持只读查询[（(]当前以 DELETE 开头/).first()).toBeVisible();
 });
 
 test('CS-UI-04 试跑预览：返回结果表（前 100 条）', async ({page}) => {
