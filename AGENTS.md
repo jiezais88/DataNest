@@ -155,7 +155,7 @@ DataNest 是一个数据平台。架构详情、模块/容器清单、服务间�
 - **前端规范**：见 `docs/agent/conventions-frontend.md`（技术栈、目录结构、API/错误/状态/路由/样式/分页/通知）。
 - 硬约束速记：
   - 后端统一返回 `Result<T>` / `PageResult<T>`，业务错误用 `BusinessException(ErrorCode)`。
-  - `Long` 主键序列化为字符串；实体用 `LocalDateTime`；JSONB 字段实体用 `String` + Fastjson2。
+  - `Long` 主键序列化为字符串；实体用 `LocalDateTime`；JSONB 字段实体用 `String` + Jackson 3/`JsonUtils` 解析。
   - Flyway 脚本统一紧凑单行风格。
   - 前端颜色唯一来源 `src/styles/tokens.css`；源码全部 `.tsx`；ID 全程 `string`；列表页用 `usePagedList`。
   - 接口联调先 Postman/curl 自测通过再联调前端。

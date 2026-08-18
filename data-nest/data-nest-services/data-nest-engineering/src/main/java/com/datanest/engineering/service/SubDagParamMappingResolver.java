@@ -164,7 +164,7 @@ public class SubDagParamMappingResolver {
         if (node.isTextual()) {
             return node.asString();
         }
-        // 对象/数组：序列化回 JSON 字符串（fastjson2 parseObject 原返回 Map/List，语义等价）
+        // 对象/数组：序列化回 JSON 字符串（Jackson 3，保持原有 Map/List 语义）
         return JsonUtils.toJSONString(node);
     }
 

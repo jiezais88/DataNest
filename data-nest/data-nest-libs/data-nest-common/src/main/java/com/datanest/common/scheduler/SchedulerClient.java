@@ -3,22 +3,15 @@ package com.datanest.common.scheduler;
 import com.datanest.common.constant.TaskTriggerType;
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -68,21 +61,12 @@ public class SchedulerClient {
     private String appPassword;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private RestTemplate restTemplate;
+    private final PowerJobHttpClient httpClient = PowerJobHttpClient.scheduler();
 
     /** appName → appId 本地缓存（App 已预置，启动后基本不变） */
     private final Map<String, Long> appIdCache = new ConcurrentHashMap<>();
     /** jobId → appId 本地缓存（注册/查询时填充，用于仅需 jobId 的启停删触发接口反查 appId） */
     private final Map<Long, Long> jobAppCache = new ConcurrentHashMap<>();
-
-    @PostConstruct
-    public void init() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000);
-        factory.setReadTimeout(10000);
-        restTemplate = new RestTemplate();
-        restTemplate.setRequestFactory(factory);
-    }
 
     /**
      * 注册调度任务，返回 PowerJob 任务 ID。
@@ -339,29 +323,27 @@ public class SchedulerClient {
             url.append(entry.getKey()).append('=').append(value);
             first = false;
         }
-        return doPost(url.toString(), null, errorMessage);
+        return doPost(URI.create(url.toString()), null, errorMessage);
     }
 
     /**
      * POST JSON body 风格请求（saveJob/queryJob）。
-     * 显式序列化为字符串，避免依赖 RestTemplate 默认消息转换器的 Jackson 版本探测。
+     * 显式序列化为字符串，保持 PowerJob 请求体与 Jackson 3 语义稳定。
      */
     private JsonNode postWithJson(String path, Map<String, Object> body, String errorMessage) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
         String json = objectMapper.writeValueAsString(body);
-        return doPost(serverAddress + path, new HttpEntity<>(json, headers), errorMessage);
+        return doPost(URI.create(serverAddress + path), json, errorMessage);
     }
 
-    private JsonNode doPost(String url, HttpEntity<String> request, String errorMessage) {
+    private JsonNode doPost(URI uri, String json, String errorMessage) {
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
-            JsonNode result = objectMapper.readTree(response.getBody());
+            String responseBody = json == null
+                    ? httpClient.postQuery(uri, errorMessage)
+                    : httpClient.postJson(uri, json, errorMessage);
+            JsonNode result = objectMapper.readTree(responseBody);
             return assertSuccess(result, errorMessage);
         } catch (BusinessException e) {
             throw e;
-        } catch (RestClientResponseException e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": " + e.getResponseBodyAsString());
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": " + e.getMessage(), e);
         }

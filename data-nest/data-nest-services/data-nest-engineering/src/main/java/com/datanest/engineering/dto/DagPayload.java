@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * DAG 创建/更新请求 payload（含 nodes + edges）
  * 也作为查询返回 DTO（带调度同步状态）
- * 决策 ADR-S3-FJ：使用 fastjson2 序列化
+ * 决策：使用 Jackson 3 JsonUtils 序列化
  */
 @Schema(description = "DAG 创建/更新请求 payload（含节点与边），也作为查询返回 DTO")
 @Data

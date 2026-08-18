@@ -44,7 +44,7 @@ public class CdcYamlBuilder {
     }
 
     /**
-     * 解析 configJson 高级配置键（fastjson2，项目统一 JSON 库）。
+     * 解析 configJson 高级配置键（Jackson 3，项目统一 JSON 工具）。
      * 空/缺键返回对应字段 null；非法 JSON、整数键值非整数时抛 8000 参数错误（不向上抛 500）。
      */
     public static AdvancedConfig parseAdvancedConfig(String configJson) {

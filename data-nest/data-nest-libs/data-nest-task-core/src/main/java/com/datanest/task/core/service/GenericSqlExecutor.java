@@ -131,9 +131,8 @@ public class GenericSqlExecutor {
     }
 
     /**
-     * Per-cell type-aware read. Oracle TIMESTAMP returns oracle.sql.TIMESTAMP via
-     * getObject() which fastjson2 cannot serialize cleanly (raw byte buffer shows
-     * up in JSON). Use getObject(idx, LocalDateTime.class) for temporal types.
+     * Per-cell type-aware read. Oracle TIMESTAMP returns a driver-specific temporal object;
+     * use getObject(idx, LocalDateTime.class) for temporal types so the response can be serialized cleanly.
      */
     private Object readCell(ResultSet rs, int idx, String typeName) {
         try {

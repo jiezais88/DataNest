@@ -9,13 +9,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 全局 JSON 工具类（Jackson 3，Sprint 14 起替换 fastjson2）。
+ * 全局 JSON 工具类（Jackson 3，Spring Boot 4 统一实现）。
  * <p>
  * 内部持有单例 {@link tools.jackson.databind.json.JsonMapper}（静态初始化一次，不重复创建）；
  * 未注入 Spring 容器的 JSON 解析/序列化统一走本工具类（task-core 及无 web 依赖场景）。
  * 需要与 HTTP 响应同款 Long→String 定制时，各服务直接注入 Boot 自动配置的 {@code JsonMapper} Bean。
  * <p>
- * 方法命名对齐 fastjson2 常用 API（parseObject/parseArray/toJSONString），降低迁移成本。
+ * 方法命名保持现有业务调用兼容（parseObject/parseArray/toJSONString）。
  * JSONObject/JSONArray 由 {@link ObjectNode}/{@link ArrayNode} 替代。
  */
 public final class JsonUtils {
@@ -32,7 +32,7 @@ public final class JsonUtils {
         return MAPPER;
     }
 
-    /** 解析为 ObjectNode（原 fastjson2 JSON.parseObject(String) → JSONObject） */
+    /** 解析为 ObjectNode */
     public static ObjectNode parseObject(String text) {
         if (text == null || text.isBlank()) {
             return MAPPER.createObjectNode();
@@ -96,7 +96,7 @@ public final class JsonUtils {
         return node instanceof ArrayNode an ? an : null;
     }
 
-    // ==================== 便捷取值（对齐 fastjson2 JSONObject.getXxx，缺失/null 返回 null） ====================
+    // ==================== 便捷取值（缺失/null 返回 null） ====================
 
     /** 取子节点（原 JSONObject.getJSONObject(key)），非对象返回 null */
     public static ObjectNode getObject(JsonNode node, String key) {
@@ -155,7 +155,7 @@ public final class JsonUtils {
         return MAPPER.treeToValue(node, clazz);
     }
 
-    // ==================== 构建辅助（对齐 fastjson2 JSONObject.put / JSONArray.add） ====================
+    // ==================== 构建辅助 ====================
 
     /** 写入字段（原 JSONObject.put(key, Object)）：按类型分发，非标量用 putPOJO 序列化为节点 */
     public static ObjectNode put(ObjectNode node, String key, Object value) {

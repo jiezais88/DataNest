@@ -12,7 +12,7 @@
 | Spring Cloud Alibaba | 2025.1.0.0 | Nacos Config / Discovery |
 | ORM | MyBatis-Plus 3.5.17 | PostgreSQL 分页插件已配置 |
 | 安全/登录 | Sa-Token 1.45.0 | Redis 集中式 Token |
-| JSON | Fastjson2 2.0.52（业务序列化）+ Jackson 3（Spring 默认） | Sprint 3 起 Fastjson2 替代 Jackson ObjectMapper |
+| JSON | Jackson 3（`tools.jackson.*`，Spring Boot 4 默认） | 业务 JSON 统一通过 Jackson 3 / `JsonUtils` 处理；HTTP 响应复用 Boot 自动配置的 `JsonMapper` |
 | 数据库迁移 | Flyway 10.22.0 | 每服务独立管理本库 `src/main/resources/db/migration`（基线 V1.0.0），代码驱动（共享 `FlywayAutoConfiguration`，2026-08-12 下沉，禁止自建 FlywayConfig） |
 | 密码加密 | Spring Security `PasswordEncoder`（BCrypt） | `data-nest-system` 已配置 |
 
@@ -68,7 +68,7 @@ Request DTO 使用 Jakarta Validation 注解：`@NotBlank`、`@NotNull`、`@Size
 - 实体字段驼峰命名，自动映射数据库 `snake_case`。
 - 时间字段统一用 `java.time.LocalDateTime`。
 - 布尔字段在实体中用 `Boolean`，数据库中用 `SMALLINT` 或 `BOOLEAN` 按 Flyway 脚本约定。
-- 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层用 Fastjson2 解析/组装。
+- 涉及 JSONB 的字段（如 `sourceTablesDetail`、`fieldMapping`）在实体中用 `String`，Service 层统一用 Jackson 3 / `JsonUtils` 解析和组装。
 - **实体/mapper 归 owner 服务本地包**（`com.datanest.<域>.entity/mapper`），不再共享实体模块（`data-nest-task-core-entity` 已删除）。跨服务取数一律走对应 Feign 契约模块，禁止跨域直读表。
 
 ### Flyway 脚本格式约定（硬约束）

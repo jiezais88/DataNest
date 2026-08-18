@@ -24,7 +24,7 @@ public class SaTokenConfig {
     /**
      * Sa-Token 全局过滤器 (WebFlux)
      * 校验 Token，放行登录接口，并统一处理未登录/权限异常。
-     * 决策 ADR-S3-FJ：序列化使用 fastjson2
+     * 统一使用 Jackson 3 JsonUtils 序列化 Result。
      */
     @Bean
     public SaReactorFilter saReactorFilter() {
@@ -78,7 +78,7 @@ public class SaTokenConfig {
 
     /**
      * Sa-Token Reactor 模式下，setError 返回 String 即可，
-     * 框架会自动用 String 写响应体。我们用 fastjson2 序列化 Result。
+     * 框架会自动用 String 写响应体；这里通过 JsonUtils 统一使用 Jackson 3 序列化 Result。
      */
     private static String writeResult(Result<?> result) {
         return JsonUtils.toJSONString(result);

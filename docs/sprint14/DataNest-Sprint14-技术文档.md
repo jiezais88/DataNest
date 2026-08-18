@@ -35,7 +35,7 @@
 
 > **依赖版本**：nimbus-jose-jwt 版本由根 pom 统一管理（子模块禁止写第三方字面量版本）；spring-boot-starter-data-ldap 由 Boot 4 BOM 管理版本。LdapClientService 使用 `javax.naming`（java.naming 模块），system pom 的 maven-compiler-plugin 已加 `--add-modules java.naming`。
 >
-> **Jackson 3 注意**：项目统一用 Jackson 3（`tools.jackson.*` 包名，Boot 4 默认），不用 fastjson2。JsonNode 取值用 `asString()`（Jackson 2 的 `asText()` 已改名，仍保留但已 deprecated）；`readTree` 抛 `JacksonException`（unchecked，无需显式捕获）。OidcClientService 构造注入 Boot 的 `JsonMapper` Bean（继承 common `Long→String` 全局序列化定制）。
+> **Jackson 3 注意**：项目统一使用 Jackson 3（`tools.jackson.*` 包名，Spring Boot 4 默认），业务 JSON 通过 `JsonUtils` 或注入的 `JsonMapper` 处理。JsonNode 取值用 `asString()`（Jackson 2 的 `asText()` 已改名，仍保留但已 deprecated）；`readTree` 抛 `JacksonException`（unchecked，无需显式捕获）。OidcClientService 构造注入 Boot 的 `JsonMapper` Bean（继承 common `Long→String` 全局序列化定制）。
 
 ## 3. OIDC/OAuth2 登录桥接（F1）
 

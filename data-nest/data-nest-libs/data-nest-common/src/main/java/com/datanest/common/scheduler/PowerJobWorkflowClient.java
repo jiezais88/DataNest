@@ -2,19 +2,11 @@ package com.datanest.common.scheduler;
 
 import com.datanest.common.exception.BusinessException;
 import com.datanest.common.exception.ErrorCode;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * PowerJob 工作流（Workflow/DAG）OpenAPI 客户端，DolphinScheduler DAG 编排的替换实现。
- * 与 {@link SchedulerClient} 同套配置与 HTTP 直连思路（纯 RestTemplate，不依赖 powerjob-client）。
+ * 与 {@link SchedulerClient} 同套配置与 HTTP 直连思路，复用 common 内部 PowerJobHttpClient，不依赖 powerjob-client。
  *
  * 语义对照：DS workflow → PowerJob workflow（saveWorkflow + PEWorkflowDAG 点线表示法）、
  * DS 节点任务 → timeExpressionType=WORKFLOW 的 JOB（由工作流驱动，不独立调度）。
@@ -79,19 +71,10 @@ public class PowerJobWorkflowClient {
     private String appPassword;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private RestTemplate restTemplate;
+    private final PowerJobHttpClient httpClient = PowerJobHttpClient.scheduler();
 
     /** appName → appId 本地缓存（App 已预置，启动后基本不变） */
     private final Map<String, Long> appIdCache = new ConcurrentHashMap<>();
-
-    @PostConstruct
-    public void init() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000);
-        factory.setReadTimeout(10000);
-        restTemplate = new RestTemplate();
-        restTemplate.setRequestFactory(factory);
-    }
 
     /**
      * 注册 DAG 节点对应的 JOB（WORKFLOW 时间类型，由工作流驱动），返回 PowerJob 任务 ID。
@@ -366,7 +349,7 @@ public class PowerJobWorkflowClient {
     /**
      * POST query param 风格请求（assert/runWorkflow/启停删/fetchWfInstanceInfo 均为 query param）。
      * 所有参数统一 URLEncoder 编码一次（server 端 Spring 会正常解码，initParams 传 JSON 已实测无问题），
-     * 并走 URI 形式提交，避免 RestTemplate 对 String URL 做 URI 模板展开导致双编码/大括号解析异常。
+     * 并走 URI 形式提交，避免客户端对 String URL 做 URI 模板展开导致双编码/大括号解析异常。
      */
     private JsonNode postWithQuery(String path, Map<String, Object> query, String errorMessage) {
         StringBuilder url = new StringBuilder(serverAddress).append(path).append('?');
@@ -385,24 +368,22 @@ public class PowerJobWorkflowClient {
     /**
      * POST JSON body 风格请求（saveJob/saveWorkflow/saveWorkflowNode）。
      * body 可为 Map 或 List（saveWorkflowNode 接收 List<SaveWorkflowNodeRequest>）。
-     * 显式序列化为字符串，避免依赖 RestTemplate 默认消息转换器的 Jackson 版本探测。
+     * 显式序列化为字符串，保持 PowerJob 请求体与 Jackson 3 语义稳定。
      */
     private JsonNode postWithJson(String path, Object body, String errorMessage) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
         String json = objectMapper.writeValueAsString(body);
-        return doPost(URI.create(serverAddress + path), new HttpEntity<>(json, headers), errorMessage);
+        return doPost(URI.create(serverAddress + path), json, errorMessage);
     }
 
-    private JsonNode doPost(URI uri, HttpEntity<String> request, String errorMessage) {
+    private JsonNode doPost(URI uri, String json, String errorMessage) {
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(uri, request, String.class);
-            JsonNode result = objectMapper.readTree(response.getBody());
+            String responseBody = json == null
+                    ? httpClient.postQuery(uri, errorMessage)
+                    : httpClient.postJson(uri, json, errorMessage);
+            JsonNode result = objectMapper.readTree(responseBody);
             return assertSuccess(result, errorMessage);
         } catch (BusinessException e) {
             throw e;
-        } catch (RestClientResponseException e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": " + e.getResponseBodyAsString());
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, errorMessage + ": " + e.getMessage(), e);
         }

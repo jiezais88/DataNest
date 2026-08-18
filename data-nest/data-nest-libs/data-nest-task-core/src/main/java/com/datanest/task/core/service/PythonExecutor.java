@@ -599,7 +599,8 @@ public class PythonExecutor {
         }
     }
 
-    /** 从 output.json 的 ObjectNode 提取字符串数组字段（原 fastjson2 getList(String.class)） */
+    /** 从 output.json 的 ObjectNode 提取字符串数组字段（Jackson 3 节点语义） */
+
     private List<String> extractStringList(ObjectNode node, String field) {
         tools.jackson.databind.JsonNode arrNode = node == null ? null : node.get(field);
         if (!(arrNode instanceof ArrayNode arr)) {

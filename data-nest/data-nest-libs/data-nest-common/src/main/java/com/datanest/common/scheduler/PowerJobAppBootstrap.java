@@ -3,15 +3,11 @@ package com.datanest.common.scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -40,15 +36,8 @@ public class PowerJobAppBootstrap {
     @Value("${datanest.powerjob.admin-password:powerjob_admin}")
     private String adminPassword;
 
-    private final RestTemplate restTemplate;
+    private final PowerJobHttpClient httpClient = PowerJobHttpClient.appBootstrap();
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    public PowerJobAppBootstrap() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(3000);
-        factory.setReadTimeout(5000);
-        this.restTemplate = new RestTemplate(factory);
-    }
 
     /**
      * 幂等确保 App 存在。已存在（含密码一致）直接返回；不存在则经管理员账号创建。
@@ -75,8 +64,8 @@ public class PowerJobAppBootstrap {
     /** /openApi/assert：appName+password 校验通过返回 true。 */
     private boolean assertApp(String appName) {
         try {
-            String url = serverAddress + "/openApi/assert?appName=" + appName + "&password=" + appPassword;
-            JsonNode result = objectMapper.readTree(restTemplate.postForEntity(url, null, String.class).getBody());
+            URI uri = URI.create(serverAddress + "/openApi/assert?appName=" + appName + "&password=" + appPassword);
+            JsonNode result = objectMapper.readTree(httpClient.postQuery(uri, "校验 PowerJob 应用失败"));
             return result.path("success").asBoolean(false);
         } catch (Exception e) {
             return false;
@@ -106,14 +95,10 @@ public class PowerJobAppBootstrap {
     }
 
     private JsonNode postJson(String path, Map<String, Object> body, String jwt) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        if (jwt != null) {
-            headers.set("PowerJwt", jwt);
-        }
         try {
             String json = objectMapper.writeValueAsString(body);
-            String resp = restTemplate.postForEntity(serverAddress + path, new HttpEntity<>(json, headers), String.class).getBody();
+            String resp = httpClient.postJson(URI.create(serverAddress + path), json,
+                    jwt == null ? null : "PowerJwt", jwt, path + " 调用失败");
             JsonNode result = objectMapper.readTree(resp);
             if (!result.path("success").asBoolean(false)) {
                 throw new IllegalStateException(path + " 返回失败: " + result.path("message").asText(""));
