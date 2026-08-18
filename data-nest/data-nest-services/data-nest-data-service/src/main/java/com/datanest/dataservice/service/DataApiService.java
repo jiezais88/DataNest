@@ -882,8 +882,8 @@ public class DataApiService {
             }
         }
         if (api.getPaginated() != null && api.getPaginated() == 1) {
-            params.add(docParam("page", "页码，从 1 开始（默认 1）"));
-            params.add(docParam("pageSize", "每页条数（默认 20，上限 " + api.getPageSizeMax() + "）"));
+            params.add(docParam("page", "页码（从 1 开始，默认 1）"));
+            params.add(docParam("pageSize", "每页条数（默认 20，单页上限 " + api.getPageSizeMax() + "）"));
         }
         doc.setParams(params);
         doc.setResponse("{\"code\":200,\"message\":\"success\",\"data\":{\"records\":[{...}],\"total\":0}}");

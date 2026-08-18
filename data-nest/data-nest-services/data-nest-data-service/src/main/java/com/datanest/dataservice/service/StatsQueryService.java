@@ -87,7 +87,7 @@ public class StatsQueryService {
     /** 全局调用量趋势（双线：调用量 + 失败数） */
     public List<TrendAgg> trend(String range) {
         Range r = parseRange(range);
-        return callLogMapper.trendSince(r.since(), r.unit());
+        return fillBuckets(callLogMapper.trendSince(r.since(), r.unit()), range, false);
     }
 
     /** API 健康分布（健康/警告/严重 + 综合健康分） */
@@ -220,7 +220,7 @@ public class StatsQueryService {
     /** 限流命中趋势（429 按时间桶） */
     public List<TrendAgg> rateLimitTrend(String range) {
         Range r = parseRange(range);
-        return callLogMapper.rateLimitTrendSince(r.since(), r.unit());
+        return fillBuckets(callLogMapper.rateLimitTrendSince(r.since(), r.unit()), range, false);
     }
 
     /** 单 API 调用统计（调用量/成功率/平均/P95/今日 + 趋势 + 最近明细） */
@@ -239,15 +239,66 @@ public class StatsQueryService {
         dto.setAvgMs(avg == null ? 0 : round2(avg));
         dto.setP95Ms(agg == null || agg.getP95() == null ? 0 : round2(agg.getP95()));
         dto.setTodayCalls(today == null ? 0 : today);
-        dto.setTrend(callLogMapper.trendByApiSince(apiId, r.since(), r.unit()));
+        dto.setTrend(fillBuckets(callLogMapper.trendByApiSince(apiId, r.since(), r.unit()), range, false));
         dto.setRecentLogs(recentLogs(apiId));
-        dto.setHourly(callLogMapper.hourlyByApiSince(apiId, LocalDate.now().atStartOfDay()));
+        dto.setHourly(fillBuckets(callLogMapper.hourlyByApiSince(apiId, LocalDate.now().atStartOfDay()), range, true));
         dto.setTopKeys(topKeysByApi(apiId, r.since()));
         dto.setStatusBreakdown(callLogMapper.statusBreakdownByApiSince(apiId, r.since()));
         return dto;
     }
 
     // ---------- 内部方法 ----------
+
+    /**
+     * 趋势桶补零（人工验收问题 4）：只聚合有数据的桶会让 X 轴稀疏（某天/某小时无调用即缺刻度）。
+     * 按范围生成完整时间桶序列并合并查询结果——
+     * 7d 固定「今日-6 ~ 今日」7 桶、30d 固定 30 桶、24h 固定近 24 个整点；hourlyMode 固定今日 0~23 点 24 桶（未来小时为 0）。
+     */
+    private List<TrendAgg> fillBuckets(List<TrendAgg> raw, String range, boolean hourlyMode) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime from;
+        LocalDateTime to;
+        java.time.Duration step;
+        if (hourlyMode) {
+            from = LocalDate.now().atStartOfDay();
+            to = from.plusHours(23);
+            step = java.time.Duration.ofHours(1);
+        } else {
+            LocalDateTime truncatedNow = now.truncatedTo(java.time.temporal.ChronoUnit.HOURS);
+            switch (range == null ? "" : range.trim()) {
+                case "7d" -> {
+                    from = LocalDate.now().minusDays(6).atStartOfDay();
+                    to = LocalDate.now().atStartOfDay();
+                    step = java.time.Duration.ofDays(1);
+                }
+                case "30d" -> {
+                    from = LocalDate.now().minusDays(29).atStartOfDay();
+                    to = LocalDate.now().atStartOfDay();
+                    step = java.time.Duration.ofDays(1);
+                }
+                default -> {
+                    from = truncatedNow.minusHours(23);
+                    to = truncatedNow;
+                    step = java.time.Duration.ofHours(1);
+                }
+            }
+        }
+        Map<LocalDateTime, TrendAgg> byBucket = raw.stream()
+                .filter(t -> t.getBucket() != null)
+                .collect(Collectors.toMap(TrendAgg::getBucket, Function.identity(), (a, b) -> a));
+        List<TrendAgg> filled = new ArrayList<>();
+        for (LocalDateTime t = from; !t.isAfter(to); t = t.plus(step)) {
+            TrendAgg agg = byBucket.get(t);
+            if (agg == null) {
+                agg = new TrendAgg();
+                agg.setBucket(t);
+                agg.setTotal(0L);
+                agg.setFailed(0L);
+            }
+            filled.add(agg);
+        }
+        return filled;
+    }
 
     /** 单 API 调用方 Key 排行（Top 5，key 名反查；zombie 恒 false） */
     private List<StatsTopKeyDTO> topKeysByApi(Long apiId, LocalDateTime since) {

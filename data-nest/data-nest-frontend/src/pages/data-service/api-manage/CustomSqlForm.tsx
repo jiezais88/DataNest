@@ -148,22 +148,25 @@ export default function CustomSqlForm({value, onChange, datasources, readOnly}: 
     }, [value, onChange]);
 
     const updateParam = useCallback((name: string, patch: Partial<CustomSqlParamDef>) => {
+        // 参数类型/必填/默认值变更不重置校验态：SQL 未变、参数集不变，无需重新校验（保存时后端 9018 兜底）
         onChange({
             ...value,
             sqlParams: value.sqlParams.map((p) => (p.name === name ? {...p, ...patch} : p)),
-            validated: false,
             dirty: true,
-            validateMessage: '参数已变更，请重新校验',
         });
     }, [value, onChange]);
 
     const removeParam = useCallback((name: string) => {
+        const remaining = value.sqlParams.filter((p) => p.name !== name);
+        // 删除参数但 SQL 仍引用该 :param → 即时提示并重置校验（重新校验会自动补回参数）
+        const stillReferenced = scanSqlParams(value.sqlText).includes(name);
         onChange({
             ...value,
-            sqlParams: value.sqlParams.filter((p) => p.name !== name),
-            validated: false,
+            sqlParams: remaining,
             dirty: true,
-            validateMessage: '参数已变更，请重新校验',
+            ...(stillReferenced
+                ? {validated: false, validateMessage: `参数 :${name} 仍被 SQL 引用：请重新校验（将自动补回）或从 SQL 中删除 :${name}`}
+                : {}),
         });
     }, [value, onChange]);
 

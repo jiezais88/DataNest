@@ -15,10 +15,10 @@ export function DataApiStatusBadge({status}: { status?: DataApiStatus }) {
     return <DsStatusBadge label={DATA_API_STATUS_LABEL[status] || status} variant={API_STATUS_VARIANT[status] || 'pending'}/>;
 }
 
-/** 查询定义形态徽章（Sprint 13）：自定义 SQL = indigo 徽章 / 选表 = 灰徽章（对齐原型 badge.indigo / badge.gray） */
+/** 查询定义形态徽章（Sprint 13）：自定义 SQL = indigo 徽章 / 单表查询 = 灰徽章（对齐原型 badge.indigo / badge.gray） */
 export function DataApiQueryTypeBadge({queryType}: { queryType?: DataApiQueryType }) {
     if (!queryType || queryType === 'TABLE_SELECT') {
-        return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-ds-badge bg-ds-bg-hover text-ds-text-secondary">选表</span>;
+        return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-ds-badge bg-ds-bg-hover text-ds-text-secondary">单表查询</span>;
     }
     return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-ds-badge bg-ds-accent-light text-ds-accent">自定义 SQL</span>;
 }

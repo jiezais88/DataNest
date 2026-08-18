@@ -400,7 +400,7 @@ export default function ApiCreateWizardPage() {
                 <div>
                     <h1 className="text-ds-display text-ds-text-primary">新建 API</h1>
                     <p className="text-ds-small text-ds-text-muted mt-ds-1">
-                        四步完成：选择查询定义方式 → 定义查询（选表或自定义 SQL）→ 配置调用方式 → 绑定调用凭证（Key）。
+                        四步完成：选择查询定义方式 → 定义查询（单表查询或自定义 SQL）→ 配置调用方式 → 绑定调用凭证（Key）。
                     </p>
                 </div>
                 <DsButton variant="secondary" onClick={() => navigate('/data-service/api-manage')}>
@@ -437,14 +437,14 @@ export default function ApiCreateWizardPage() {
                         <h3 className="text-ds-small font-semibold text-ds-text-primary mb-ds-3">
                             选择查询定义方式
                             <span className="text-ds-caption text-ds-text-muted font-normal ml-ds-2">
-                                决定 API 的查询逻辑来源；选表适合简单查询，自定义 SQL 支持多表 JOIN / 聚合 / 子查询等复杂口径
+                                决定 API 的查询逻辑来源；单表查询适合简单查询，自定义 SQL 支持多表 JOIN / 聚合 / 子查询等复杂口径
                             </span>
                         </h3>
                         <div className="grid grid-cols-2 gap-ds-4">
                             {([
                                 {
                                     value: 'table' as QueryMode,
-                                    title: '选表',
+                                    title: '单表查询',
                                     tag: '简单查询',
                                     desc: '从一张表生成接口，支持字段筛选 / 排序 / 分页。适合单表维度查询，配置简单。',
                                     icon: <HiOutlineTableCells size={20}/>,

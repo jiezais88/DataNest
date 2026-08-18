@@ -39,7 +39,7 @@ async function gotoWizardCustomSql(page: Page): Promise<void> {
     await expect(page.getByRole('heading', {name: '新建 API'})).toBeVisible();
     // 第 1 步：双形态单选卡片
     await expect(page.getByRole('heading', {name: '选择查询定义方式'})).toBeVisible();
-    await expect(page.locator('label').filter({hasText: '选表'}).first()).toBeVisible();
+    await expect(page.locator('label').filter({hasText: '单表查询'}).first()).toBeVisible();
     const customCard = page.locator('label').filter({hasText: '自定义 SQL'}).first();
     await customCard.click();
     await expect(customCard.locator('input[type="radio"]')).toBeChecked();
@@ -58,14 +58,14 @@ async function fillSqlEditor(page: Page, sql: string): Promise<void> {
     await page.keyboard.insertText(sql);
 }
 
-test('CS-UI-01 双形态向导：第 1 步出现「选表/自定义 SQL」单选，默认选表', async ({page}) => {
+test('CS-UI-01 双形态向导：第 1 步出现「单表查询/自定义 SQL」单选，默认单表查询', async ({page}) => {
     await gotoAs(page, ADMIN.username, ADMIN.password, '/data-service/api-manage/new');
     await expect(page.getByRole('heading', {name: '选择查询定义方式'})).toBeVisible();
-    const tableCard = page.locator('label').filter({hasText: '选表'}).first();
+    const tableCard = page.locator('label').filter({hasText: '单表查询'}).first();
     const customCard = page.locator('label').filter({hasText: '自定义 SQL'}).first();
     await expect(tableCard).toBeVisible();
     await expect(customCard).toBeVisible();
-    // 默认选表
+    // 默认单表查询
     await expect(tableCard.locator('input[type="radio"]')).toBeChecked();
     await expect(page.getByText(/机密表不可生成对外 API/)).toBeVisible(); // 安全提示条
 });

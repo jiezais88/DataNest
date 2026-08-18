@@ -51,7 +51,7 @@ const STATUS_OPTIONS = [
 
 const QUERY_TYPE_OPTIONS = [
     {value: '', label: '全部形态'},
-    {value: 'TABLE_SELECT', label: '选表'},
+    {value: 'TABLE_SELECT', label: '单表查询'},
     {value: 'CUSTOM_SQL', label: '自定义 SQL'},
 ];
 
@@ -428,13 +428,21 @@ export default function ApiManagePage() {
                         />
                         <DsFilterSelect
                             value={draft.queryType}
-                            onChange={(v) => setDraft({...draft, queryType: v as DataApiQueryType | ''})}
+                            onChange={(v) => {
+                                const next = {...query, queryType: v as DataApiQueryType | ''};
+                                setDraft({...draft, queryType: next.queryType});
+                                applyQuery(next); // 下拉即时查询
+                            }}
                             aria-label="按形态筛选"
                             options={QUERY_TYPE_OPTIONS}
                         />
                         <DsFilterSelect
                             value={draft.status}
-                            onChange={(v) => setDraft({...draft, status: v as DataApiStatus | ''})}
+                            onChange={(v) => {
+                                const next = {...query, status: v as DataApiStatus | ''};
+                                setDraft({...draft, status: next.status});
+                                applyQuery(next); // 下拉即时查询
+                            }}
                             aria-label="按状态筛选"
                             options={STATUS_OPTIONS}
                         />

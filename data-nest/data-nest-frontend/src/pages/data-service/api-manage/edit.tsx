@@ -246,11 +246,11 @@ export default function ApiEditPage() {
                 )}
             </div>
 
-            {/* 自定义 SQL：改后提示重新校验 */}
-            {isCustomSql && customSql?.dirty && (
+            {/* 自定义 SQL：改了 SQL 后提示重新校验（仅参数调整不要求重校验） */}
+            {isCustomSql && customSql?.dirty && !customSql?.validated && (
                 <div className="flex items-start gap-ds-2 px-ds-3 py-ds-2 rounded-ds-sm bg-ds-warning-light text-ds-warning text-ds-small mb-ds-4">
                     <HiOutlineExclamationTriangle size={15} className="mt-0.5 flex-shrink-0"/>
-                    <span>SQL 或参数已修改，请点击「校验 SQL」通过后再保存；保存时系统会再次校验并检查敏感度/数据权限。</span>
+                    <span>SQL 已修改，请点击「校验 SQL」通过后再保存；保存时系统会再次校验并检查敏感度/数据权限。</span>
                 </div>
             )}
 

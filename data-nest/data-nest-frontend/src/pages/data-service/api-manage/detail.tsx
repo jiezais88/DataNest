@@ -227,7 +227,7 @@ export default function ApiDetailPage() {
                             <p className="text-ds-small text-ds-text-secondary">
                                 排序以 SQL 内写的排序为准（不支持外部传参排序）
                                 <span className="text-ds-text-muted"> · </span>
-                                {detail.paginated === 1 ? `分页启用（pageSize 上限 ${detail.pageSizeMax ?? 100}）` : '分页关闭'}
+                                {detail.paginated === 1 ? `分页启用（单页上限 ${detail.pageSizeMax ?? 100} 条）` : '分页关闭'}
                             </p>
                         </div>
                         <div>
@@ -265,7 +265,7 @@ export default function ApiDetailPage() {
                             <p className="text-ds-small text-ds-text-secondary">
                                 {detail.orderBy ? <span className="font-mono">{detail.orderBy}</span> : '无排序'}
                                 <span className="text-ds-text-muted"> · </span>
-                                {detail.paginated === 1 ? `分页启用（pageSize 上限 ${detail.pageSizeMax ?? 100}）` : '分页关闭'}
+                                {detail.paginated === 1 ? `分页启用（单页上限 ${detail.pageSizeMax ?? 100} 条）` : '分页关闭'}
                             </p>
                         </div>
                         <div>

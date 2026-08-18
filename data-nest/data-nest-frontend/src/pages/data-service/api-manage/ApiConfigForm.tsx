@@ -212,7 +212,7 @@ export default function ApiConfigForm({columns, value, onChange, queryType, sqlP
                         </label>
                         {value.paginated && (
                             <span className="flex items-center gap-ds-2 text-ds-small text-ds-text-muted">
-                                pageSize 上限
+                                单页最多返回
                                 <input
                                     type="number"
                                     min={1}
@@ -221,11 +221,14 @@ export default function ApiConfigForm({columns, value, onChange, queryType, sqlP
                                     onChange={(e) => set('pageSizeMax', Number(e.target.value))}
                                     className="w-20 px-ds-2 py-ds-1 border border-ds-border-subtle rounded-ds-sm text-ds-small focus:outline-none focus:border-ds-accent"
                                 />
+                                条
                             </span>
                         )}
                     </div>
                     <p className="text-ds-caption text-ds-text-muted mt-1">
-                        {isCustomSql ? 'page 从 1 起，pageSize 默认 20，上限 100' : 'page 从 1 起，pageSize 默认 10'}
+                        {isCustomSql
+                            ? '调用方可传 page / pageSize 参数分页读取：页码从 1 开始，默认每页 20 条，单页最多返回 ' + value.pageSizeMax + ' 条'
+                            : '调用方可传 page / pageSize 参数分页读取：页码从 1 开始，默认每页 10 条'}
                     </p>
                 </div>
             </div>
@@ -234,7 +237,7 @@ export default function ApiConfigForm({columns, value, onChange, queryType, sqlP
             <div>
                 <label className="block text-ds-small text-ds-text-secondary mb-1">API 预览</label>
                 <div
-                    className="px-ds-3.5 py-ds-3 bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm font-mono text-ds-small text-ds-text-primary break-all">
+                    className="px-ds-4 py-ds-3 bg-ds-bg-root border border-ds-border-subtle rounded-ds-sm font-mono text-ds-small text-ds-text-primary break-all">
                     <span className="text-ds-accent font-bold">GET</span>{' '}
                     /open-api/v1/{normalizePathInput(value.path) || 'your-path'}{previewParams ? `?${previewParams}` : ''}
                 </div>

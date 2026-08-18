@@ -192,11 +192,12 @@ export function RankItem({rank, title, sub, value, maxValue, onClick, dimmed, ba
         </>
     );
     if (!onClick) {
-        return <div className="flex-1 flex items-center gap-ds-3 py-0.5">{content}</div>;
+        // 行高由内容决定、顶部堆叠（不用 flex-1 撑满）：单条数据不垂直居中，多条从顶部紧凑排列
+        return <div className="flex items-center gap-ds-3 py-1">{content}</div>;
     }
     return (
         <button type="button" onClick={onClick}
-                className="flex-1 w-full flex items-center gap-ds-3 py-0.5 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
+                className="w-full flex items-center gap-ds-3 py-1 text-left hover:bg-ds-bg-hover rounded-ds-sm transition-colors">
             {content}
         </button>
     );
