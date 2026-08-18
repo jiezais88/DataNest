@@ -123,7 +123,12 @@ function XAxis() {
 
 /** 四档分布趋势（多系列折线） */
 export function LevelTrendChart({data}: { data: QualityLevelTrendPoint[] }) {
-    if (data.length === 0) {
+    // 后端已按起止日期补全完整日序列（无检查的天为 0）；空态 = 无数据或四档全 0（范围内无检查明细）
+    if (data.length === 0 || data.every(p =>
+        Number(p.passCount ?? 0) === 0 &&
+        Number(p.warningCount ?? 0) === 0 &&
+        Number(p.severeCount ?? 0) === 0 &&
+        Number(p.unavailableCount ?? 0) === 0)) {
         return <div className="h-full flex items-center justify-center text-ds-small text-ds-text-muted">范围内暂无检查明细</div>;
     }
     const nums = (k: 'passCount' | 'warningCount' | 'severeCount' | 'unavailableCount') =>

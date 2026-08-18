@@ -43,8 +43,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -321,8 +323,9 @@ public class QualityReportService {
         if (filter.emptyResult) {
             return List.of();
         }
-        return detailMapper.selectDailyLevelTrend(range[0], range[1], filter.tableIds,
-                        request == null ? null : request.getJobId())
+        // 有检查明细的天（原始聚合可能稀疏：无检查的天不出点，X 轴会缺刻度）
+        Map<String, QualityLevelTrendPointDTO> byDay = detailMapper.selectDailyLevelTrend(range[0], range[1],
+                        filter.tableIds, request == null ? null : request.getJobId())
                 .stream().map(row -> {
                     QualityLevelTrendPointDTO point = new QualityLevelTrendPointDTO();
                     point.setDay((String) row.get("day"));
@@ -331,7 +334,26 @@ public class QualityReportService {
                     point.setSevereCount(number(row, "severe_count"));
                     point.setUnavailableCount(number(row, "unavailable_count"));
                     return point;
-                }).toList();
+                }).filter(p -> p.getDay() != null)
+                .collect(Collectors.toMap(QualityLevelTrendPointDTO::getDay, Function.identity()));
+        // 补全 X 轴（对齐 API 运行统计 fillBuckets）：按起止日期生成完整日序列，无检查的天补 0，
+        // 避免折线图只画有数据的点导致横轴稀疏拉宽。
+        List<QualityLevelTrendPointDTO> filled = new ArrayList<>();
+        LocalDate startDay = range[0].toLocalDate();
+        LocalDate endDay = range[1].toLocalDate();
+        for (LocalDate day = startDay; !day.isAfter(endDay); day = day.plusDays(1)) {
+            QualityLevelTrendPointDTO point = byDay.get(day.toString());
+            if (point == null) {
+                point = new QualityLevelTrendPointDTO();
+                point.setDay(day.toString());
+                point.setPassCount(0L);
+                point.setWarningCount(0L);
+                point.setSevereCount(0L);
+                point.setUnavailableCount(0L);
+            }
+            filled.add(point);
+        }
+        return filled;
     }
 
     // ==================== 评分趋势 ====================
