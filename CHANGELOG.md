@@ -1,5 +1,30 @@
 # Changelog
 
+## [v2.0.0-s14] - 2026-08-18
+
+Sprint 14 企业身份认证与认证安全交付。完整说明见 [`docs/sprint14/release-notes-v2.0.0-s14.md`](docs/sprint14/release-notes-v2.0.0-s14.md)。
+
+### Added
+
+- OIDC/OAuth2 企业 SSO 登录、LDAP/AD 域账号登录和目录用户同步。
+- 企业身份组/Claim 到 DataNest 角色的可配置映射。
+- 混合登录与仅企业身份登录模式，admin 本地登录逃生通道。
+- 本地账号密码复杂度、过期、强制改密、失败锁定和管理员解锁。
+- 用户认证来源展示、企业身份解绑与重新绑定。
+- Sprint 14 页面版人工验收清单和 API/UI 自动化回归用例。
+
+### Fixed
+
+- 解绑企业身份时显式清空 `sso_subject`，避免解绑后再次登录错误命中旧绑定。
+- 补齐审计日志 Sprint 14 新增操作和资源的中文映射：`SSO_LOGIN`、`LDAP_SYNC`、`UNBIND`、`UNLOCK`、`SSO_CONFIG`。
+- 统一企业 SSO 与 AD 域登录入口的视觉层级，AD 入口默认显示边框按钮。
+
+### Verified
+
+- 前端类型检查和生产构建通过。
+- Sprint 14 API 17/17、UI 9/9，共 26/26 全量回归通过。
+
+
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 精神记录变更，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [1.1.0] - 2026-08-17

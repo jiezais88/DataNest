@@ -18,6 +18,10 @@ export const AUDIT_OP_TYPES: { value: string; label: string }[] = [
     {value: 'DISABLE', label: '禁用'},
     {value: 'RESET_PASSWORD', label: '重置密码'},
     {value: 'TRIGGER', label: '手动触发'},
+    {value: 'SSO_LOGIN', label: '企业身份登录'},
+    {value: 'LDAP_SYNC', label: 'LDAP 用户同步'},
+    {value: 'UNBIND', label: '解绑'},
+    {value: 'UNLOCK', label: '解锁'},
 ];
 
 export const AUDIT_RESOURCE_TYPES: { value: string; label: string }[] = [
@@ -31,6 +35,7 @@ export const AUDIT_RESOURCE_TYPES: { value: string; label: string }[] = [
     {value: 'API_KEY', label: 'API Key'},
     {value: 'SENSITIVITY', label: '数据分级分类'},
     {value: 'EXECUTION_QUEUE', label: '执行队列'},
+    {value: 'SSO_CONFIG', label: '身份认证'},
 ];
 
 export function getOpTypeLabel(code: string): string {

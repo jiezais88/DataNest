@@ -1,6 +1,6 @@
 # Sprint 14 Handoff：SSO + 认证安全
 
-> 更新：2026-08-18（开发会话收尾）
+> 更新：2026-08-18（Sprint 14 正式收尾）
 > 对应文档：`../DataNest-Sprint14-PRD.md`（v1.0）、`../DataNest-Sprint14-技术文档.md`（v1.1）
 > 背景：Sprint 14 原为「多租户」，2026-08-18 用户拍板移除多租户（P2-D16），SSO 提前为 Sprint 14。
 
@@ -13,8 +13,10 @@
 | PRD | [OK] v1.0 | F1~F6 范围（OIDC/LDAP/角色映射/登录模式/密码策略/账号绑定），决策 D1~D8 全部定稿 |
 | 技术文档 | [OK] v1.1 | 已同步实现：自研 OIDC 客户端（nimbus 验签，D8）、LDAP 编程式 JNDI、配置热生效、回调 hash token、memberOf operational、nacos-init 重置注意事项、Flyway V1.2.0 |
 | 后端开发 | [OK] | system + common + gateway，全部自测通过（见 §5 验证记录） |
-| 前端开发 | [OK] | 登录页/身份认证页/用户管理/强制改密页 + 路由守卫，构建部署完成 |
-| 测试用例清单 | [OK] | 2026-08-18 测试收尾：**26/26 全绿**（API 17 + E2E 9），详见 `../测试报告.md`；含 1 个真实 Bug 修复（`unbindSso` MyBatis-Plus NOT_NULL 坑） |
+| 前端开发 | [OK] | 登录页/身份认证页/用户管理/强制改密页 + 路由守卫；企业身份入口视觉统一，typecheck/build 通过 |
+| 测试用例清单 | [OK] | API 17/17 + UI 9/9，最终回归 **26/26 全绿**；含解绑 `sso_subject` 清空回归 |
+| 人工验收清单 | [OK] | `../人工验收清单.md`，覆盖页面主链路、辅助准备、恢复清理和已知边界 |
+| 发布收尾 | [进行中] | 文档、提交、PR、集成线 tag 和双远程推送在本次收尾完成 |
 
 ## 2. 已定稿决策（用户 2026-08-18 确认）
 
@@ -102,9 +104,25 @@
 - **测试用户**：OIDC/LDAP 验证在 system 库创建了 alice/bob/carol/carol_local/dave/zhangsan/lisi/testlock，清理前先问用户。
 - **sa-token 过期配置警告**：shared-security.yaml 的 `activity-timeout` 已过期（应换 `active-timeout`），本轮未动（既有问题，范围外）。
 
-## 7. Next Action
+## 7. 正式收尾记录
 
-1. **前端浏览器联调确认**：用户在 IDE 预览确认登录页 SSO 入口、身份认证页、用户管理页渲染与交互（当前 SSO 已保持启用，mixed 模式，可直接登录页点企业 SSO / AD 域入口验证）。
-2. **测试用例清单**：[OK] 26/26 全绿，详见 `../测试报告.md`。
-3. **清理测试产物**：`e2e_s14_*` 已自动清理；`dave` 已恢复开发原始状态；SSO 运行时配置保持启用（便于联调确认）。`test-results/` 残留因 IDE safe-delete 守卫未清，手动 cmd rmdir。
-4. **代码提交**：feature/phase2-s14-sso 子分支中文提交（写 UTF-8 文件后 git commit -F）。当前 working tree 含：① `system` 服务 `unbindSso` 修复；② 三个新文件 `e2e/sprint14/api/sso-api.spec.ts`、`e2e/sprint14/e2e/sso.spec.ts`、`e2e/sprint14/e2e/helpers/seed.ts`；③ `docs/sprint14/测试报告.md` + handoff 更新。
+| 项目 | 结果 |
+|---|---|
+| 最终验证日期 | 2026-08-18 |
+| 前端验证 | `pnpm typecheck`、`pnpm build` 通过 |
+| Sprint 14 回归 | `SKIP_SETUP=1 npx playwright test e2e/sprint14 --workers=1`，26/26 通过 |
+| 人工浏览器验收 | 登录页企业 SSO/AD 入口、AD 登录框、身份认证页、审计中文筛选已核验 |
+| 本轮前端修复 | 补齐 `SSO_LOGIN`/`LDAP_SYNC`/`UNBIND`/`UNLOCK`/`SSO_CONFIG` 中文映射；AD 入口与企业 SSO 统一有边框按钮 |
+| 环境处理 | compose 初始化曾重置 SSO/OIDC/LDAP 配置，已通过身份认证页面恢复真实 Mock OIDC/LDAP 配置并重新回归 |
+| Sprint 分支提交 | 待提交后回写 |
+| GitHub PR | 待创建后回写 |
+| 集成线最终 SHA | 待合入后回写 |
+| Tag | `v2.0.0-s14`，待创建后回写 |
+| GitHub/Gitee 远程校验 | 待推送后回写 |
+
+## 8. Next Action
+
+1. 将当前 Sprint 14 收尾代码、测试和文档提交到 `feature/phase2-s14-sso`。
+2. 通过 GitHub PR 合入 `feature/phase2`，保留 Sprint 14 子分支。
+3. 在合入后的集成线提交上创建并推送 `v2.0.0-s14` 到 GitHub/Gitee。
+4. 回写本文件中的真实提交 SHA、PR、Tag 和远程校验结果。

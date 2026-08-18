@@ -33,7 +33,7 @@ docker compose up -d --no-deps app-engineering app-worker
 - 只改动单一服务时，只重建该服务即可，不必全部重启。
 - worker 镜像基于 `wgzhao/addax:6.0.11` 多阶段构建，首次构建会下载 Addax 二进制。
 - **E2E 测试库已收敛到 `test` profile（2026-08-17，Sprint 12 ADR-S12-004）**：test-mysql / test-postgres / test-oracle / test-sqlserver 默认不随 `docker compose up -d` 启动。跑 E2E（数据源/CDC/数据服务多数据源用例）前必须先 `docker compose --profile test up -d`；日常功能开发/部署不需要它们。`deploy.sh --with-test-deps` 等价于带 profile 启动。
-- **测试产物清理约定（2026-08-12 起，全局纪律）**：每次 E2E/API 测试结束必须清理临时产物——前端 `test-results*` 目录、`%TEMP%` 下 `sql_e2e*.ps1`/`verify_fix*.ps1`/`body_*.json`/`login*.json`/`create_*.json`/`export_*.json`。Windows 下 `Remove-Item` 可能被环境安全保护拦截，用 try/catch 或逐目录删，删后确认 `Test-Path` 为 false。`e2e/sprint10/` 下的正式测试套件（如 `sql-console.spec.ts`）属源码，不清理。测试创建的数据库用户（如 `analyst_test`）清理前先问用户。
+- **测试产物清理约定（2026-08-12 起，全局纪律）**：每次 E2E/API 测试结束必须及时清理临时产物——前端 `test-results*` 目录、工作区 `.zcode/` 下已结束任务产生的临时计划/输出、`%TEMP%` 下 `sql_e2e*.ps1`/`verify_fix*.ps1`/`body_*.json`/`login*.json`/`create_*.json`/`export_*.json` 及 Sprint 临时脚本。只删除已确认属于本次任务且不再使用的文件，不要删除 `.zcode/` 下仍在使用的配置或活动会话文件。Windows 下 `Remove-Item` 可能被环境安全保护拦截，用 try/catch 或逐目录删，删后确认 `Test-Path` 为 false。`e2e/sprint10/` 下的正式测试套件（如 `sql-console.spec.ts`）属源码，不清理。测试创建的数据库用户（如 `analyst_test`）清理前先问用户。
 
 ## 二、验证规范
 

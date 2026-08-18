@@ -137,7 +137,7 @@ export default function LoginPage() {
                             </DsButton>
                         )}
                         {sso.ldapEnabled && (
-                            <DsButton onClick={() => setLdapOpen(true)} className="w-full" variant="ghost">
+                            <DsButton onClick={() => setLdapOpen(true)} className="w-full" variant="secondary">
                                 <HiOutlineKey size={16}/>
                                 AD 域账号登录
                             </DsButton>

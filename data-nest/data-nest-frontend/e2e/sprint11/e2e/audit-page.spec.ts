@@ -104,6 +104,26 @@ test('P1 页面加载：标题/描述/筛选工具栏/表格表头齐全', async
     }
 });
 
+test('P1 Sprint 14 审计类型与资源筛选均显示中文', async ({page}) => {
+    await gotoAs(page, ADMIN.username, ADMIN.password, '/system/audit-logs');
+
+    const opOptions = await page.getByLabel('按操作类型筛选').locator('option').allTextContents();
+    expect(opOptions).toEqual(expect.arrayContaining(['企业身份登录', 'LDAP 用户同步', '解绑', '解锁']));
+
+    const resourceOptions = await page.getByLabel('按资源类型筛选').locator('option').allTextContents();
+    expect(resourceOptions).toContain('身份认证');
+});
+
+test('P1 登录页企业身份入口视觉层级一致', async ({page}) => {
+    await page.goto('/login');
+    const sso = page.getByRole('button', {name: '企业 SSO 登录'});
+    const ldap = page.getByRole('button', {name: 'AD 域账号登录'});
+    await expect(sso).toBeVisible();
+    await expect(ldap).toBeVisible();
+    await expect(sso).toHaveClass(/border-ds-border-subtle/);
+    await expect(ldap).toHaveClass(/border-ds-border-subtle/);
+});
+
 test('P2 数据呈现：默认近 7 天展示审计记录（含 e2e_s11_ 造数）', async ({page}) => {
     await gotoAs(page, ADMIN.username, ADMIN.password, '/system/audit-logs');
     // 造数记录（操作人 e2e_s11_page_u1）应出现在列表
