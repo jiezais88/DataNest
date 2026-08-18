@@ -81,16 +81,15 @@ docker compose up -d --no-deps app-engineering app-worker
 
 ### 分支策略（2026-08-17 起，二期生效）
 
-> 二期（Sprint 13~20，v2.0.0）**不再直接在 main 上开发**。一期 main 是稳定发布线，二期在独立集成分支上进行，避免多租户等大改造的中间状态污染 main。
+> 二期（Sprint 13~19，v2.0.0）**不再直接在 main 上开发**。一期 main 是稳定发布线，二期在独立集成分支上进行，避免大改造的中间状态污染 main。
 
 ```
 main（v1.x 稳定线，永远可发布）
   ├─ hotfix/1.x-xxx ───────────────→ main → tag v1.1.x（一期 bug，不阻塞二期）
   └─ feature/phase2（二期唯一集成线，从 main 拉出）
         ├─ feature/phase2-s13-custom-sql    每 Sprint 拉一个子分支
-        ├─ feature/phase2-s14-multitenant   完成后经 GitHub PR 合入 phase2
-        ├─ feature/phase2-s15-sso           子分支保留不删，作为里程碑
-        ├─ ... s16~s20
+        ├─ feature/phase2-s14-sso           完成后经 GitHub PR 合入 phase2
+        ├─ ... s15~s19                      子分支保留不删，作为里程碑
         ├─ 中途：从 phase2 打 tag v2.0.0-beta.x（早期试用）
         └─ 收尾：phase2 合并回 main → tag v2.0.0
 ```
@@ -98,8 +97,8 @@ main（v1.x 稳定线，永远可发布）
 规则：
 
 - 二期所有开发（后端/前端/文档）一律在 `feature/phase2-s<N>-<主题>` 子分支上进行，**禁止直接提交到 main**。
-- 子分支命名统一：`feature/phase2-s<N>-<主题>`（如 `feature/phase2-s14-multitenant`）。
-- **每个 Sprint 结束，phase2 必须可编译可运行（原子交付）**：多租户等横切改造的中途状态不得破坏后续 Sprint 的开发底座。
+- 子分支命名统一：`feature/phase2-s<N>-<主题>`（如 `feature/phase2-s14-sso`）。
+- **每个 Sprint 结束，phase2 必须可编译可运行（原子交付）**：改造的中途状态不得破坏后续 Sprint 的开发底座。
 - 一期 v1.x 问题走 `hotfix/1.x-xxx` 分支修复 → 合 main → 发 v1.1.x patch，与二期完全隔离。
 - 合入 phase2 一律走 **GitHub PR**（留痕 + 可回滚）；PR 通过后 merge（squash 或常规均可），子分支保留作里程碑。
 - 二期发布节奏：中途可打 `v2.0.0-beta.x`；收尾 phase2 合回 main 发正式 `v2.0.0`。

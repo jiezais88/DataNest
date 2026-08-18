@@ -146,7 +146,7 @@ DataNest 是一个数据平台。架构详情、模块/容器清单、服务间�
 - 做 **最小改动**，不要顺手重构无关代码；改配置/改接口后同步检查 yaml、Nacos 配置、注释、测试、前端调用点。
 - 新增依赖时检查作用域：`provided` 依赖需要在消费方显式声明。
 - **创建审计字段约定（2026-08-05 起生效，V3.6.8）**：所有实体 `create` 入口（含批量 create/DAG 节点）**只设置 `setCreatedBy`/`setCreatedAt`，禁止 `setUpdatedBy`/`setUpdatedAt`**；新增带审计字段的表时，其 `updated_at` 不要加 DB 默认值。
-- **二期分支策略（2026-08-17 起生效）**：二期（Sprint 13~20）**禁止直接提交 main**；开发走 `feature/phase2-s<N>-<主题>` 子分支 → GitHub PR 合入 `feature/phase2`（唯一集成线），收尾合回 main 发 v2.0.0；一期 bug 走 `hotfix/1.x-*` 独立修。详见 `docs/agent/build-and-deploy.md` §三。
+- **二期分支策略（2026-08-17 起生效）**：二期（Sprint 13~19）**禁止直接提交 main**；开发走 `feature/phase2-s<N>-<主题>` 子分支 → GitHub PR 合入 `feature/phase2`（唯一集成线），收尾合回 main 发 v2.0.0；一期 bug 走 `hotfix/1.x-*` 独立修。详见 `docs/agent/build-and-deploy.md` §三。
 - 不要主动运行 `git commit` / `git push`，除非用户明确要求。
 
 ## 8. 编码规范索引
