@@ -114,15 +114,14 @@
 | 人工浏览器验收 | 登录页企业 SSO/AD 入口、AD 登录框、身份认证页、审计中文筛选已核验 |
 | 本轮前端修复 | 补齐 `SSO_LOGIN`/`LDAP_SYNC`/`UNBIND`/`UNLOCK`/`SSO_CONFIG` 中文映射；AD 入口与企业 SSO 统一有边框按钮 |
 | 环境处理 | compose 初始化曾重置 SSO/OIDC/LDAP 配置，已通过身份认证页面恢复真实 Mock OIDC/LDAP 配置并重新回归 |
-| Sprint 分支提交 | 待提交后回写 |
-| GitHub PR | 待创建后回写 |
-| 集成线最终 SHA | 待合入后回写 |
-| Tag | `v2.0.0-s14`，待创建后回写 |
-| GitHub/Gitee 远程校验 | 待推送后回写 |
+| Sprint 分支提交 | `ca0d7eb`（`docs(sprint14): 完成验收与发布收尾`） |
+| GitHub PR | 未创建；按用户确认改为本地 fast-forward 合并 |
+| 集成线最终 SHA | `ca0d7eb5f4c3dde43b5f9ffd0f00356d1103a782` |
+| Tag | `v2.0.0-s14`，指向 `ca0d7eb5f4c3dde43b5f9ffd0f00356d1103a782` |
+| GitHub/Gitee 远程校验 | `feature/phase2`、`feature/phase2-s14-sso` 和 `v2.0.0-s14` 均已推送；两远程集成线和标签指向一致 |
 
 ## 8. Next Action
 
-1. 将当前 Sprint 14 收尾代码、测试和文档提交到 `feature/phase2-s14-sso`。
-2. 通过 GitHub PR 合入 `feature/phase2`，保留 Sprint 14 子分支。
-3. 在合入后的集成线提交上创建并推送 `v2.0.0-s14` 到 GitHub/Gitee。
-4. 回写本文件中的真实提交 SHA、PR、Tag 和远程校验结果。
+1. Sprint 14 已完成本地 fast-forward 合入 `feature/phase2`。
+2. `feature/phase2`、`feature/phase2-s14-sso` 和 `v2.0.0-s14` 已同步推送 GitHub/Gitee。
+3. 后续从 `feature/phase2` 继续 Sprint 15，不在本分支回退或重写历史。
